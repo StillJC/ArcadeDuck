@@ -1,0 +1,18 @@
+# Normalize line endings: Git decides text vs binary, stores LF in the repo,
+# checks out native EOL. Keeps a cross-platform (macOS/Windows/Linux) C++ tree clean.
+* text=auto
+
+# Treat known binary assets as binary (no EOL conversion, no diff noise)
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.icns  binary
+*.ttf   binary
+*.dylib binary
+*.dll   binary
+*.lib   binary
+*.so    binary
+*.a     binary
+*.bin   binary
+*.chd   binary
+*.iso   binary

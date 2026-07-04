@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:layout_width="800px"
+    android:backgroundTint="@android:color/transparent"
+    android:layout_height="400px"
+    android:padding="0dp"
+    android:background="@android:color/transparent"
+    >
+    <ImageView
+        android:layout_width="800px"
+        android:layout_height="wrap_content"
+        android:layout_alignTop="@+id/dialog_layout_main"
+        android:layout_alignBottom="@id/dialog_layout_main"
+        android:layout_alignLeft="@id/dialog_layout_main"
+        android:layout_alignRight="@id/dialog_layout_main"
+        android:background="@android:color/transparent"
+        android:src="@drawable/exit_dialog_bg"></ImageView>
+    <LinearLayout android:orientation="vertical" android:id="@+id/dialog_layout_main"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+
+        android:background="@android:color/transparent">
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#F7BB0D"
+        android:textSize="32px"
+        android:layout_marginTop="42px"
+        android:text="@string/confirm_leave"
+        android:textAlignment="center"
+        ></TextView>
+        <Button
+            android:id="@+id/btn_yes"
+            android:layout_width="722px"
+            android:height="82px"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32px"
+            android:layout_marginStart="38px"
+            android:textSize="32px"
+            android:background="@drawable/button_background"
+            android:text="@string/confirm_yes"
+            android:textAlignment="center"
+            android:textColor="@android:color/white"></Button>
+
+        <Button
+            android:id="@+id/btn_no"
+            android:layout_width="722px"
+            android:height="82px"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12px"
+            android:layout_marginStart="38px"
+            android:textSize="32px"
+            android:background="@drawable/button_background"
+            android:text="@string/confirm_no"
+            android:textAlignment="center"
+            android:textColor="@android:color/white"></Button>
+</LinearLayout>
+</RelativeLayout>

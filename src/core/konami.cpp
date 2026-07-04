@@ -1,0 +1,1179 @@
+#include "bus.h"
+#include "cdrom.h"
+#include "common/cd_image.h"
+#include "common/file_system.h"
+#include "common/log.h"
+#include "cpu_core.h"
+#include "host_display.h"
+#include "host_interface.h"
+#include "interrupt_controller.h"
+#include "konami.h"
+#include "system.h"
+#include "timers.h"
+#include "timing_event.h"
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <stdio.h>
+#include <vector>
+
+Log_SetChannel(Konami);
+
+// SCSI
+enum {
+  REG_XFERCNTLOW = 0, // read = current xfer count lo byte, write = set xfer count lo byte
+  REG_XFERCNTMID,     // read = current xfer count mid byte, write = set xfer count mid byte
+  REG_FIFO,           // read/write = FIFO
+  REG_COMMAND,        // read/write = command
+  REG_STATUS,         // read = status, write = destination SCSI ID (4)
+  REG_IRQSTATE,       // read = IRQ status, write = timeout         (5)
+  REG_INTSTATE,       // read = internal state, write = sync xfer period (6)
+  REG_FIFOSTATE,      // read = FIFO status, write = sync offset
+  REG_CTRL1,          // read/write = control 1
+  REG_CLOCKFCTR,      // clock factor (write only)
+  REG_TESTMODE,       // test mode (write only)
+  REG_CTRL2,          // read/write = control 2
+  REG_CTRL3,          // read/write = control 3
+  REG_CTRL4,          // read/write = control 4
+  REG_XFERCNTHI,      // read = current xfer count hi byte, write = set xfer count hi byte
+  REG_DATAALIGN       // data alignment (write only)
+};
+
+static u8 ScsiRegs[16];
+static u8 ScsiFifo[16];
+static u8 ScsiFifoPtr;
+static u8 ScsiCommand[12];
+static bool ScsiIsRead;
+static u32 ScsiSectorLba;
+
+// Buttons
+static u32 CurrentButtons;
+
+// FLASH
+static constexpr u32 FLASH_SIZE = 0x200000;
+static constexpr u32 FLASH_SECTOR_SIZE = 0x10000;
+
+static u8 Flash[4][FLASH_SIZE];
+static u32 FlashAddress;
+
+enum KonamiFlashMode : u8
+{
+  KONAMI_FLASH_MODE_READ_ARRAY = 0,
+  KONAMI_FLASH_MODE_UNLOCK_1,
+  KONAMI_FLASH_MODE_UNLOCK_2,
+  KONAMI_FLASH_MODE_AUTOSELECT,
+  KONAMI_FLASH_MODE_PROGRAM,
+  KONAMI_FLASH_MODE_ERASE_UNLOCK_1,
+  KONAMI_FLASH_MODE_ERASE_UNLOCK_2,
+  KONAMI_FLASH_MODE_ERASE_SELECT
+};
+
+static KonamiFlashMode FlashModeState[4];
+static bool FlashDirty[4];
+
+static std::FILE* EepromFp;
+static uint16_t Eeprom[64];
+
+// 93C46 serial EEPROM state.
+// MAME maps this through P1 bit 13 for DO and EEPROMOUT bits 0/1/2 for DI/CS/CLK.
+static bool EepromDi;
+static bool EepromDo = true;
+static bool EepromCs;
+static bool EepromClk;
+static u32 EepromShiftIn;
+static u32 EepromShiftCount;
+static u32 EepromReadShift;
+static s32 EepromReadBits;
+
+// Trackball
+static std::mutex TrackballMutex;
+
+// Pending relative movement from the real mouse / USB trackball.
+// These are not screen cursor coordinates.
+static double TrackballPendingX;
+static double TrackballPendingY;
+
+// Latched 12-bit values exposed to the Konami GV input registers.
+static u16 TrackballX;
+static u16 TrackballY;
+
+static float TrackballSensitivity = 1.0f;
+
+void KonamiTrackballReset();
+
+// Score table
+static struct {
+        u8 Name[4];
+        u16 Character;
+        u16 Score;
+} ScoreTable[2][10];
+
+// Private API
+
+static bool LoadEepromFile(const char* Path)
+{
+  if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "LoadEepromFile path='%s'\n", Path ? Path : "(null)");
+    std::fclose(fp);
+  }
+
+  EepromFp = FileSystem::OpenCFile(Path, "r+b");
+  if (!EepromFp)
+  {
+    if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "LoadEepromFile FAILED open\n");
+      std::fclose(fp);
+    }
+
+    return false;
+  }
+
+  if (fread(Eeprom, 1, sizeof(Eeprom), EepromFp) != sizeof(Eeprom))
+  {
+    if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "LoadEepromFile FAILED read\n");
+      std::fclose(fp);
+    }
+
+    return false;
+  }
+
+  if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "LoadEepromFile OK first_words:");
+    for (int i = 0; i < 16; i++)
+      std::fprintf(fp, " %04X", Eeprom[i]);
+    std::fprintf(fp, "\n");
+    std::fclose(fp);
+  }
+
+  return true;
+}
+
+static bool LoadFlashFile(const char *Path, void *Buffer)
+{
+  std::FILE* fp;
+
+  fp = FileSystem::OpenCFile(Path, "rb");
+  if (!fp)
+  {
+    return false;
+  }
+  if (fread(Buffer, 1, 0x200000, fp) != 0x200000)
+  {
+    return false;
+  }
+  fclose(fp);
+
+  return true;
+}
+
+static void AssertScsiInterrupt(void)
+{
+  g_interrupt_controller.InterruptRequest(InterruptController::IRQ::IRQ10);
+}
+
+static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
+{
+  std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
+  if (!fp)
+    return true;
+
+  std::fseek(fp, 0, SEEK_END);
+  const long size = std::ftell(fp);
+  std::fseek(fp, 0, SEEK_SET);
+
+  if (size != static_cast<long>(FLASH_SIZE))
+  {
+    std::fclose(fp);
+    return true;
+  }
+
+  u8 buffer[4096];
+
+  while (!std::feof(fp))
+  {
+    const size_t read = std::fread(buffer, 1, sizeof(buffer), fp);
+
+    for (size_t i = 0; i < read; i++)
+    {
+      if (buffer[i] != 0xFF)
+      {
+        std::fclose(fp);
+        return false;
+      }
+    }
+  }
+
+  std::fclose(fp);
+  return true;
+}
+
+static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
+{
+  const CDImage* media = g_cdrom.GetMedia();
+  if (!media)
+    return false;
+
+  CDImage* image = const_cast<CDImage*>(media);
+
+  if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
+    return false;
+
+  return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
+}
+
+static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
+{
+  if (!image)
+    return false;
+
+  if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
+    return false;
+
+  return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
+}
+
+static bool KonamiWriteFlashFile(const std::string& path, const std::vector<u8>& data)
+{
+  std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "wb");
+  if (!fp)
+    return false;
+
+  const bool ok = std::fwrite(data.data(), 1, data.size(), fp) == data.size();
+  std::fclose(fp);
+  return ok;
+}
+
+static bool KonamiExtractFlashPairFromImage(CDImage* image, u32 start_lba, const std::string& low_path,
+                                            const std::string& high_path)
+{
+  std::vector<u8> low(FLASH_SIZE);
+  std::vector<u8> high(FLASH_SIZE);
+
+  u8 sector[CDImage::DATA_SECTOR_SIZE];
+  u32 output_offset = 0;
+
+  for (u32 sector_index = 0; sector_index < 2048; sector_index++)
+  {
+    const u32 lba = start_lba + sector_index;
+
+    if (!KonamiReadDataSectorFromImage(image, lba, sector))
+    {
+      if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "FAILED flash sector read start_lba=%u sector_index=%u lba=%u\n", start_lba, sector_index,
+                     lba);
+        std::fclose(fp);
+      }
+
+      return false;
+    }
+
+    for (u32 i = 0; i < CDImage::DATA_SECTOR_SIZE; i += 2)
+    {
+      low[output_offset] = sector[i];
+      high[output_offset] = sector[i + 1];
+      output_offset++;
+    }
+  }
+
+  return KonamiWriteFlashFile(low_path, low) && KonamiWriteFlashFile(high_path, high);
+}
+
+static bool KonamiExtractFlashPairFromIso(std::FILE* iso_fp, u32 iso_offset, const std::string& low_path,
+                                          const std::string& high_path)
+{
+  std::FILE* low_fp = FileSystem::OpenCFile(low_path.c_str(), "wb");
+  if (!low_fp)
+    return false;
+
+  std::FILE* high_fp = FileSystem::OpenCFile(high_path.c_str(), "wb");
+  if (!high_fp)
+  {
+    std::fclose(low_fp);
+    return false;
+  }
+
+  if (std::fseek(iso_fp, iso_offset, SEEK_SET) != 0)
+  {
+    std::fclose(low_fp);
+    std::fclose(high_fp);
+    return false;
+  }
+
+  for (u32 i = 0; i < FLASH_SIZE; i++)
+  {
+    const int low = std::fgetc(iso_fp);
+    const int high = std::fgetc(iso_fp);
+
+    if (low < 0 || high < 0)
+    {
+      std::fclose(low_fp);
+      std::fclose(high_fp);
+      return false;
+    }
+
+    const u8 low_byte = static_cast<u8>(low);
+    const u8 high_byte = static_cast<u8>(high);
+
+    std::fwrite(&low_byte, 1, 1, low_fp);
+    std::fwrite(&high_byte, 1, 1, high_fp);
+  }
+
+  std::fclose(low_fp);
+  std::fclose(high_fp);
+  return true;
+}
+
+static void KonamiCreateParentDirectoryForFile(const std::string& path)
+{
+  const size_t slash = path.find_last_of("/\\");
+
+  if (slash == std::string::npos)
+    return;
+
+  const std::string directory = path.substr(0, slash);
+
+  if (!directory.empty())
+    FileSystem::CreateDirectory(directory.c_str(), false);
+}
+
+static bool KonamiImageIsRaw2048Iso(std::FILE* fp)
+{
+  if (std::fseek(fp, 0x8001, SEEK_SET) != 0)
+    return false;
+
+  char magic[5];
+  const bool is_iso = std::fread(magic, 1, sizeof(magic), fp) == sizeof(magic) && magic[0] == 'C' && magic[1] == 'D' &&
+                      magic[2] == '0' && magic[3] == '0' && magic[4] == '1';
+
+  std::fseek(fp, 0, SEEK_SET);
+  return is_iso;
+}
+
+static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, const std::string& flash1_path,
+                                                const std::string& flash2_path, const std::string& flash3_path)
+{
+  const bool needs_flash =
+    KonamiFlashFileIsMissingOrErased(flash0_path) || KonamiFlashFileIsMissingOrErased(flash1_path) ||
+    KonamiFlashFileIsMissingOrErased(flash2_path) || KonamiFlashFileIsMissingOrErased(flash3_path);
+
+  if (!needs_flash)
+    return;
+
+  KonamiCreateParentDirectoryForFile(flash0_path);
+  KonamiCreateParentDirectoryForFile(flash1_path);
+  KonamiCreateParentDirectoryForFile(flash2_path);
+  KonamiCreateParentDirectoryForFile(flash3_path);
+
+    auto image = CDImage::Open(System::GetRunningPath().c_str(), nullptr);
+  if (!image)
+  {
+    if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "FAILED opening running image for flash extraction: %s\n", System::GetRunningPath().c_str());
+      std::fclose(fp);
+    }
+
+    return;
+  }
+
+  // Simpsons Bowling stores the four 29F016A flash chips as two interleaved pairs on disc.
+  // Pair 0/1 starts at ISO offset 0x00065000 = LBA 202.
+  // Pair 2/3 starts at ISO offset 0x00465000 = LBA 2250.
+  const bool ok01 = KonamiExtractFlashPairFromImage(image.get(), 202, flash0_path, flash1_path);
+  const bool ok23 = KonamiExtractFlashPairFromImage(image.get(), 2250, flash2_path, flash3_path);
+
+  if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "Generated Simpsons flash from mounted disc: pair01=%u pair23=%u\n", ok01 ? 1 : 0, ok23 ? 1 : 0);
+    std::fclose(fp);
+  }
+}
+
+// Public API
+
+void KonamiInit(void)
+{
+  // Temporary Simpsons Bowling set name. Later this should come from the MAME zip/loader.
+  const std::string game_name = "simpbowl";
+  const std::string nvram_dir = "nvram/" + game_name;
+  const std::string eeprom_path = nvram_dir + "/eeprom";
+
+  FileSystem::CreateDirectory("nvram", false);
+  FileSystem::CreateDirectory(nvram_dir.c_str(), false);
+
+  const std::string flash0_path = nvram_dir + "/flash0";
+  const std::string flash1_path = nvram_dir + "/flash1";
+  const std::string flash2_path = nvram_dir + "/flash2";
+  const std::string flash3_path = nvram_dir + "/flash3";
+
+  // Empty flash chips should read as erased flash, not zero-filled RAM.
+  for (u32 chip = 0; chip < 4; chip++)
+  {
+    for (u32 i = 0; i < FLASH_SIZE; i++)
+      Flash[chip][i] = 0xFF;
+  }
+
+  FlashAddress = 0;
+
+  for (u32 chip = 0; chip < 4; chip++)
+  {
+    FlashModeState[chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+    FlashDirty[chip] = false;
+  }
+
+  if (!eeprom_path.empty())
+    LoadEepromFile(eeprom_path.c_str());
+
+  KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
+
+  LoadFlashFile(flash0_path.c_str(), Flash[0]);
+  LoadFlashFile(flash1_path.c_str(), Flash[1]);
+  LoadFlashFile(flash2_path.c_str(), Flash[2]);
+  LoadFlashFile(flash3_path.c_str(), Flash[3]);
+    
+  KonamiTrackballReset();
+  TrackballSensitivity = g_host_interface->GetFloatSettingValue("KonamiGV", "TrackballSensitivity", 1.0f);
+}
+
+void KonamiTerm(void)
+{
+}
+
+// DMA
+
+void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
+{
+  size_t ReadSize = (ControlBits >> 16) * 4;
+  u8* Ram = Bus::g_ram;
+  static u8 Sector[2048];
+  
+  if ((Value & 1) == 0)
+  {
+    switch (ScsiCommand[0])
+    {
+      case 0x03:
+        memset(Ram + Address, 0, 12);
+        break;
+      case 0x12:
+        memset(Ram + Address, 0, 32);
+        break;
+      case 0x1A:
+        memset(Ram + Address, 0, 28);
+        break;
+      case 0x28:
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI READ10 start_lba=%u read_size=%zu address=0x%08X\n", ScsiSectorLba, ReadSize, Address);
+          std::fclose(fp);
+        }
+
+          while (ReadSize >= 2048)
+        {
+          if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
+          {
+            std::memcpy(Ram + Address, Sector, 2048);
+          }
+          else
+          {
+            std::memset(Ram + Address, 0, 2048);
+
+            if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+            {
+              std::fprintf(fp, "SCSI READ10 failed mounted sector read lba=%u\n", ScsiSectorLba);
+              std::fclose(fp);
+            }
+          }
+
+          ScsiSectorLba++;
+          Address += 2048;
+          ReadSize -= 2048;
+        }
+        ControlBits &= 0xFFFF;
+        break;
+      case 0x43:
+      {
+        const uint32_t v0 = 0x01010008;
+        const uint32_t v1 = 0x00010400;
+        const uint32_t v2 = 0x00000000;
+
+        memcpy(Ram + Address + 0, &v0, sizeof(v0));
+        memcpy(Ram + Address + 4, &v1, sizeof(v1));
+        memcpy(Ram + Address + 8, &v2, sizeof(v2));
+        break;
+      }
+      default:
+        //Log_WarningPrintf("Unimplemented SCSI command %02X", ScsiCmd[0]);
+        break;
+    }
+  }
+
+  ScsiRegs[4] &= ~0x7U;
+}
+
+// SCSI
+
+void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
+{
+  const u8 Register = (Offset & 0x1F) >> 1;
+
+  Value = ScsiRegs[Register];
+
+  switch (Register)
+  {
+    case REG_FIFO:
+      Value = 0;
+      break;
+    case REG_IRQSTATE:
+      ScsiRegs[REG_STATUS] &= ~0x80U;
+      break;
+  }
+}
+
+void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
+{
+  const u8 Register = (Offset & 0x1F) >> 1;
+
+  switch (Register)
+  {
+    case REG_XFERCNTLOW:
+    case REG_XFERCNTMID:
+    case REG_XFERCNTHI:
+      ScsiRegs[REG_STATUS] &= ~0x10;
+      break;
+    case REG_FIFO:
+      ScsiFifo[ScsiFifoPtr++] = (u8)Value;
+      if (ScsiFifoPtr > 15)
+      {
+        ScsiFifoPtr = 15;
+      }
+      break;
+    case REG_COMMAND:
+      ScsiFifoPtr = 0;
+
+      switch (Value & 0x7F)
+      {
+        case 0x00:
+          ScsiRegs[REG_IRQSTATE] = 8;
+          break;
+        case 0x02:
+          ScsiRegs[REG_IRQSTATE] = 8;
+          ScsiRegs[REG_STATUS] |= 0x80;
+          AssertScsiInterrupt();
+          break;
+        case 0x03:
+          ScsiRegs[REG_INTSTATE] = 0x04;
+          AssertScsiInterrupt();
+          break;
+        case 0x42:
+          if (ScsiFifo[1] == 0 || ScsiFifo[1] == 0x48 || ScsiFifo[1] == 0x4B)
+          {
+            ScsiRegs[REG_INTSTATE] = 0x06;
+          }
+          else
+          {
+            ScsiRegs[REG_INTSTATE] = 0x04;
+          }
+
+          for (int i = 0; i < 12; i++)
+          {
+            ScsiCommand[i] = ScsiFifo[1 + i];
+          }
+
+          if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+          {
+            std::fprintf(fp, "SCSI cmd=%02X fifo=%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+                         ScsiCommand[0], ScsiCommand[0], ScsiCommand[1], ScsiCommand[2], ScsiCommand[3], ScsiCommand[4],
+                         ScsiCommand[5], ScsiCommand[6], ScsiCommand[7], ScsiCommand[8], ScsiCommand[9],
+                         ScsiCommand[10], ScsiCommand[11]);
+            std::fclose(fp);
+          }
+
+          ScsiIsRead = false;
+          switch (ScsiCommand[0])
+          {
+            case 0x03:
+            case 0x12:
+            case 0x1A:
+            case 0x43:
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
+              break;
+            case 0x15:
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
+              break;
+            case 0x28:
+              ScsiSectorLba = (ScsiFifo[3] << 24) | (ScsiFifo[4] << 16) | (ScsiFifo[5] << 8) | ScsiFifo[6];
+              ScsiIsRead = true;
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
+              break;
+          }
+          AssertScsiInterrupt();
+          break;
+        case 0x44:
+          break;
+        case 0x10:
+          if (Value & 0x80U)
+          {
+            ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 3;
+            ScsiRegs[REG_INTSTATE] = 0x00;
+            AssertScsiInterrupt();
+            break;
+          }
+          [[fallthrough]];
+
+        case 0x11:
+          AssertScsiInterrupt();
+          ScsiRegs[REG_STATUS] &= ~0x87;
+          ScsiRegs[REG_INTSTATE] = 0x00;
+          [[fallthrough]]; // ?? Why ??
+
+        case 0x12:
+          ScsiRegs[REG_STATUS] |= 0x80U;
+          ScsiRegs[REG_INTSTATE] = 0x06U;
+          break;
+
+        default:
+          // Log_WarningPrintf("Unknown command %02X!", value);
+          break;
+      }
+      break;
+  }
+  if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE)
+  {
+    ScsiRegs[Register] = (uint8_t)Value;
+  }
+}
+
+// Player 1 controls
+
+void KonamiP1Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = 0xFFFFFFFF;
+  if (CurrentButtons & 0x0080) Value &= ~(1 << 0); // LEFT
+  if (CurrentButtons & 0x0020) Value &= ~(1 << 1); // RIGHT
+  if (CurrentButtons & 0x0010) Value &= ~(1 << 2); // UP
+  if (CurrentButtons & 0x0040) Value &= ~(1 << 3); // DOWN
+  if (CurrentButtons & 0x4000) Value &= ~(1 << 4); // BUTTON 1 / CROSS
+  if (CurrentButtons & 0x2000) Value &= ~(1 << 5); // BUTTON 2 / CIRCLE
+  if (CurrentButtons & 0x0008) Value &= ~(1 << 9); // START
+  if (CurrentButtons & 0x0001) Value &= ~(1 << 10); // COIN 1
+  if (CurrentButtons & 0x0002) Value &= ~(1 << 11); // SERVICE / L3
+  if (CurrentButtons & 0x0004) Value &= ~(1 << 12); // TEST / R3
+  if (!EepromDo) Value &= ~(1 << 13);
+}
+
+void KonamiP1Write(u32 Size, u32 Offset, u32 Value)
+{
+  // Ignored
+}
+
+// Player 2 controls
+
+void KonamiP2Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = 0xFFFFFFFF;
+
+  if (CurrentButtons & 0x0100) Value &= ~(1 << 10); // COIN MECH 2 / L2
+}
+
+void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
+{
+  // Ignored
+}
+
+// FLASH
+
+static bool KonamiFlashIsUnlockAAAddress(u32 Address)
+{
+  return ((Address & 0x0FFF) == 0x0555) || ((Address & 0x0FFF) == 0x0AAA) || ((Address & 0xFFFF) == 0x5555);
+}
+
+static bool KonamiFlashIsUnlock55Address(u32 Address)
+{
+  return ((Address & 0xFFFF) == 0x02AA) || ((Address & 0xFFFF) == 0x2AAA) || ((Address & 0x0FFF) == 0x0555);
+}
+
+static bool KonamiFlashIsCommandAddress(u32 Address)
+{
+  return ((Address & 0xFFFF) == 0x0555) || ((Address & 0xFFFF) == 0x5555) || ((Address & 0x0FFF) == 0x0AAA);
+}
+
+static u8 KonamiFlashChipRead(u8 Chip, u32 Address)
+{
+  Address &= (FLASH_SIZE - 1);
+
+  if (FlashModeState[Chip] == KONAMI_FLASH_MODE_AUTOSELECT)
+  {
+    switch (Address & 0xFF)
+    {
+      case 0:
+        return 0x04; // Fujitsu manufacturer ID
+
+      case 1:
+        return 0xAD; // Fujitsu MBM29F016A device ID
+
+      case 2:
+        return 0x00;
+
+      default:
+        return 0xFF;
+    }
+  }
+
+  return Flash[Chip][Address];
+}
+
+static void KonamiFlashEraseSector(u8 Chip, u32 Address)
+{
+  const u32 SectorBase = Address & ~(FLASH_SECTOR_SIZE - 1);
+
+  for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
+    Flash[Chip][(SectorBase + i) & (FLASH_SIZE - 1)] = 0xFF;
+
+  FlashDirty[Chip] = true;
+}
+
+static void KonamiFlashEraseChip(u8 Chip)
+{
+  for (u32 i = 0; i < FLASH_SIZE; i++)
+    Flash[Chip][i] = 0xFF;
+
+  FlashDirty[Chip] = true;
+}
+
+static void KonamiFlashChipWrite(u8 Chip, u32 Address, u8 Data)
+{
+  Address &= (FLASH_SIZE - 1);
+
+  // Reset/read-array command.
+  if (Data == 0xF0 || Data == 0xFF)
+  {
+    FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+    return;
+  }
+
+  switch (FlashModeState[Chip])
+  {
+    case KONAMI_FLASH_MODE_READ_ARRAY:
+    case KONAMI_FLASH_MODE_AUTOSELECT:
+      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_1;
+      break;
+
+    case KONAMI_FLASH_MODE_UNLOCK_1:
+      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_2;
+      else
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      break;
+
+    case KONAMI_FLASH_MODE_UNLOCK_2:
+      if (!KonamiFlashIsCommandAddress(Address))
+      {
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        break;
+      }
+
+      switch (Data)
+      {
+        case 0x90:
+          FlashModeState[Chip] = KONAMI_FLASH_MODE_AUTOSELECT;
+          break;
+
+        case 0xA0:
+          FlashModeState[Chip] = KONAMI_FLASH_MODE_PROGRAM;
+          break;
+
+        case 0x80:
+          FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_1;
+          break;
+
+        default:
+          FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+          break;
+      }
+      break;
+
+    case KONAMI_FLASH_MODE_PROGRAM:
+      // Real flash can clear bits from 1 to 0, not set 0 back to 1 without erase.
+      Flash[Chip][Address] &= Data;
+      FlashDirty[Chip] = true;
+      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      break;
+
+    case KONAMI_FLASH_MODE_ERASE_UNLOCK_1:
+      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_2;
+      else
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      break;
+
+    case KONAMI_FLASH_MODE_ERASE_UNLOCK_2:
+      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_SELECT;
+      else
+        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      break;
+
+    case KONAMI_FLASH_MODE_ERASE_SELECT:
+      if (Data == 0x10 && KonamiFlashIsCommandAddress(Address))
+        KonamiFlashEraseChip(Chip);
+      else if (Data == 0x30)
+        KonamiFlashEraseSector(Chip, Address);
+
+      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      break;
+  }
+}
+
+void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
+{
+  static int flash_read_debug_count = 0;
+
+  const u32 raw_offset = Offset;
+  Offset &= 0xF;
+
+  switch (Offset)
+  {
+    case 0:
+    {
+      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
+      const u32 address = FlashAddress & 0x1FFFFF;
+
+      const u8 low = KonamiFlashChipRead(chip, address);
+      const u8 high = KonamiFlashChipRead(chip + 1, address);
+
+      Value = static_cast<u32>(low) | (static_cast<u32>(high) << 8);
+
+      if (flash_read_debug_count < 500)
+      {
+        if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "FLASH READ raw_offset=0x%08X offset=0x%X address=0x%08X chip=%u value=0x%04X mode=%u/%u\n",
+                       raw_offset, Offset, FlashAddress, chip, Value & 0xFFFF, static_cast<u32>(FlashModeState[chip]),
+                       static_cast<u32>(FlashModeState[chip + 1]));
+          std::fclose(fp);
+        }
+        flash_read_debug_count++;
+      }
+
+      FlashAddress++;
+      break;
+    }
+
+    case 8:
+      FlashAddress |= 1;
+      Value = 0;
+      break;
+
+    default:
+      Value = 0;
+      break;
+  }
+}
+
+void KonamiFlashWrite(u32 Size, u32 Offset, u32 Value)
+{
+  static int flash_write_debug_count = 0;
+
+  const u32 raw_offset = Offset;
+  Offset &= 0xF;
+
+  if (flash_write_debug_count < 2000)
+  {
+    if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "FLASH WRITE raw_offset=0x%08X offset=0x%X value=0x%04X old_address=0x%08X\n", raw_offset,
+                   Offset, Value & 0xFFFF, FlashAddress);
+      std::fclose(fp);
+    }
+    flash_write_debug_count++;
+  }
+
+  switch (Offset)
+  {
+    case 0:
+    {
+      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
+      const u32 address = FlashAddress & 0x1FFFFF;
+
+      KonamiFlashChipWrite(chip, address, static_cast<u8>(Value & 0xFF));
+      KonamiFlashChipWrite(chip + 1, address, static_cast<u8>((Value >> 8) & 0xFF));
+      break;
+    }
+
+    case 2:
+      FlashAddress = 0;
+      FlashAddress |= Value << 1;
+      break;
+
+    case 4:
+      FlashAddress &= 0xFF00FF;
+      FlashAddress |= Value << 8;
+      break;
+
+    case 6:
+      FlashAddress &= 0x00FFFF;
+      FlashAddress |= Value << 15;
+      break;
+  }
+}
+
+// EEPROM
+
+static void KonamiSerialEepromWrite(u32 Value)
+{
+  static int serial_debug_count = 0;
+
+  const bool new_di = (Value & 0x01) != 0;
+  const bool new_cs = (Value & 0x02) != 0;
+  const bool new_clk = (Value & 0x04) != 0;
+
+  if (!new_cs)
+  {
+    EepromDi = new_di;
+    EepromCs = false;
+    EepromClk = new_clk;
+    EepromShiftIn = 0;
+    EepromShiftCount = 0;
+    EepromReadShift = 0;
+    EepromReadBits = 0;
+    EepromDo = true;
+    return;
+  }
+
+  if (!EepromCs)
+  {
+    EepromShiftIn = 0;
+    EepromShiftCount = 0;
+    EepromReadShift = 0;
+    EepromReadBits = 0;
+    EepromDo = true;
+  }
+
+  // Rising edge clocks data.
+  if (!EepromClk && new_clk)
+  {
+    if (EepromReadBits > 0)
+    {
+      EepromDo = ((EepromReadShift >> 15) & 1) != 0;
+      EepromReadShift <<= 1;
+      EepromReadBits--;
+    }
+    else
+    {
+      // 93C46 ignores leading zeroes until the start bit.
+      if (EepromShiftCount == 0 && !new_di)
+      {
+        // Still waiting for start bit.
+      }
+      else
+      {
+        EepromShiftIn = (EepromShiftIn << 1) | (new_di ? 1 : 0);
+        EepromShiftCount++;
+
+        // 93C46 16-bit READ command:
+        // start bit 1, opcode 10, 6-bit address = 9 bits total.
+        if (EepromShiftCount == 9)
+        {
+          const u32 start = (EepromShiftIn >> 8) & 1;
+          const u32 opcode = (EepromShiftIn >> 6) & 3;
+          const u32 address = EepromShiftIn & 0x3F;
+          const u16 raw_value = Eeprom[address & 0x3F];
+          const u16 swapped_value = static_cast<u16>((raw_value >> 8) | (raw_value << 8));
+
+          if (serial_debug_count < 100)
+          {
+            if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
+            {
+              std::fprintf(fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u raw=0x%04X swapped=0x%04X\n",
+                           EepromShiftIn, start, opcode, address, raw_value, swapped_value);
+              std::fclose(fp);
+            }
+            serial_debug_count++;
+          }
+
+          if (start && opcode == 2)
+          {
+            EepromReadShift = swapped_value;
+            EepromReadBits = 16;
+          }
+        }
+      }
+    }
+  }
+
+  EepromDi = new_di;
+  EepromCs = new_cs;
+  EepromClk = new_clk;
+}
+
+void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
+{
+  if (Offset >= 0x00180080 && Offset < 0x00180100)
+  {
+    Value = Eeprom[((Offset - 0x80) & 0x7F) >> 1];
+  }
+  else
+  {
+    Log_WarningPrintf("%s: %08X", __FUNCTION__, Offset);
+    Value = 0;
+  }
+}
+
+void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value)
+{
+  if (Offset >= 0x00180000 && Offset < 0x00180004)
+  {
+    KonamiSerialEepromWrite(Value);
+  }
+  else if (Offset >= 0x00180080 && Offset < 0x00180100)
+  {
+    u8 RelativeOffset = (Offset - 0x80) & 0x7F;
+    Eeprom[RelativeOffset >> 1] = (u16)Value;
+
+    if (EepromFp)
+    {
+      std::fseek(EepromFp, 0, SEEK_SET);
+      fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+    }
+  }
+  else
+  {
+    Log_WarningPrintf("%s: %08X %08X", __FUNCTION__, Offset, Value);
+  }
+}
+
+static s32 KonamiConsumeTrackballAxis(double& pending)
+{
+  const s32 whole = std::clamp(static_cast<s32>(std::trunc(pending)), -2048, 2047);
+  pending -= static_cast<double>(whole);
+  return whole;
+}
+
+static u16 KonamiEncodeTrackball12(s32 value)
+{
+  return static_cast<u16>(value) & 0x0FFF;
+}
+
+static void KonamiLatchTrackball()
+{
+  std::lock_guard<std::mutex> lock(TrackballMutex);
+
+  const s32 x = KonamiConsumeTrackballAxis(TrackballPendingX);
+  const s32 y = KonamiConsumeTrackballAxis(TrackballPendingY);
+
+  TrackballX = KonamiEncodeTrackball12(x);
+  TrackballY = KonamiEncodeTrackball12(y);
+}
+
+// Trackball
+void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
+{
+  if (Offset == 0x006800C0)
+    KonamiLatchTrackball();
+
+  switch (Offset)
+  {
+    case 0x006800C0:
+      Value = (TrackballX & 0x0FF) << 8;
+      break;
+
+    case 0x006800C2:
+      Value = (TrackballX & 0xF00);
+      break;
+
+    case 0x006800C4:
+      Value = (TrackballY & 0x0FF) << 8;
+      break;
+
+    case 0x006800C6:
+      Value = (TrackballY & 0xF00);
+      break;
+
+    default:
+      Value = 0;
+      break;
+  }
+}
+
+void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
+{
+  // Ignored
+}
+
+void KonamiButtonsSet(u32 Buttons)
+{
+  CurrentButtons = Buttons ^ 0xFFFFFFFF;
+}
+
+void KonamiTrackballSetXY(u16 X, u16 Y)
+{
+  std::lock_guard<std::mutex> lock(TrackballMutex);
+
+  TrackballX = X & 0x0FFF;
+  TrackballY = Y & 0x0FFF;
+}
+
+void KonamiTrackballAddDelta(s32 X, s32 Y)
+{
+  std::lock_guard<std::mutex> lock(TrackballMutex);
+
+  // Match the old direction behavior:
+  // old code used -dx for X and +dy for Y.
+  TrackballPendingX += static_cast<double>(-X) * static_cast<double>(TrackballSensitivity);
+  TrackballPendingY += static_cast<double>(Y) * static_cast<double>(TrackballSensitivity);
+}
+
+void KonamiTrackballReset()
+{
+  std::lock_guard<std::mutex> lock(TrackballMutex);
+
+  TrackballPendingX = 0.0;
+  TrackballPendingY = 0.0;
+  TrackballX = 0;
+  TrackballY = 0;
+}
+
+// Misc
+
+void KonamiScsiIrqDeassert(void)
+{
+  CPU::ClearExternalInterrupt((u8)InterruptController::IRQ::IRQ10);
+}
+
+void KonamiEepromFixup(void)
+{
+        size_t i;
+
+        Eeprom[0] = 0;
+        for (i = 1; i < 64; i++) {
+                Eeprom[0] += Eeprom[i];
+        }
+        std::fseek(EepromFp, 0, SEEK_SET);
+        fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+}
+
+void KonamiScoreInit(void)
+{
+  u8* Ram = Bus::g_ram;
+
+  // Update the template score table
+  memcpy(Ram + 0x132A8, &ScoreTable, sizeof(ScoreTable));
+}
+
+void KonamiScoreUpdate(void)
+{
+  u8* Ram = Bus::g_ram;
+
+  // Copy the live score table
+  memcpy(&ScoreTable, Ram + 0xE31E0, sizeof(ScoreTable));
+}

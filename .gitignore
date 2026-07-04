@@ -1,0 +1,10 @@
+build/
+settings.ini
+portable.txt
+CLAUDE.md
+.DS_Store
+*.user
+*.suo
+.vs/
+._*
+emulationfiles/

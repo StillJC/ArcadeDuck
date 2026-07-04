@@ -1,0 +1,142 @@
+name: Windows Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-2025-vs2026
+
+    env:
+      BUILD_CONFIGURATION: Release
+      BUILD_PLATFORM: x64
+      QT_VERSION: 6.1.0
+      QT_INSTALL_ARCH: win64_msvc2019_64
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install aqtinstall
+          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_INSTALL_ARCH -O C:\Qt
+
+          $qmake = Get-ChildItem -Path "C:\Qt" -Recurse -Filter qmake.exe | Select-Object -First 1
+
+          if (-not $qmake) {
+            Get-ChildItem -Path "C:\Qt" -Recurse
+            throw "qmake.exe not found under C:\Qt"
+          }
+
+          $qtPath = $qmake.Directory.FullName
+
+          echo "QTDIR=$qtPath" >> $env:GITHUB_ENV
+          echo "Qt6_DIR=$qtPath" >> $env:GITHUB_ENV
+          echo "$qtPath" >> $env:GITHUB_PATH
+          echo "$qtPath\bin" >> $env:GITHUB_PATH
+
+          Write-Host "Qt found at: $qtPath"
+          Write-Host "QTDIR set to: $qtPath"
+
+      - name: Find MSBuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+
+          if (-not $msbuild) {
+            throw "MSBuild not found."
+          }
+
+          echo "MSBUILD_PATH=$msbuild" >> $env:GITHUB_ENV
+          Write-Host "MSBuild found at: $msbuild"
+
+      - name: Find solution file
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path . -Filter *.sln -Recurse | Select-Object -First 1
+
+          if (-not $sln) {
+            throw "No .sln file found."
+          }
+
+          echo "SOLUTION_FILE=$($sln.FullName)" >> $env:GITHUB_ENV
+          Write-Host "Solution found: $($sln.FullName)"
+
+      - name: Build
+        shell: pwsh
+        run: |
+          & "$env:MSBUILD_PATH" "$env:SOLUTION_FILE" `
+            /m `
+            /p:Configuration=$env:BUILD_CONFIGURATION `
+            /p:Platform=$env:BUILD_PLATFORM `
+            /p:PreferredToolArchitecture=x64 `
+            /p:QTDIR="$env:QTDIR"
+
+      - name: Package build
+        shell: pwsh
+        run: |
+          $packageRoot = "release-package"
+          $dist = "dist"
+
+          Remove-Item $packageRoot, $dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Path $dist | Out-Null
+
+          if (Test-Path "bin\x64") {
+            Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
+          } else {
+            $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" | Select-Object -First 1
+
+            if (-not $qtExe) {
+              throw "Could not find duckstation-qt-x64-Release.exe"
+            }
+
+            Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
+          }
+
+          Get-ChildItem $packageRoot -Recurse -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          New-Item -ItemType Directory -Path "$packageRoot\simpsons" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageRoot\bios" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageRoot\bezel" -Force | Out-Null
+
+          if (Test-Path README.md) {
+            Copy-Item README.md $packageRoot -Force
+          }
+
+          if (Test-Path LICENSE) {
+            Copy-Item LICENSE $packageRoot -Force
+          }
+
+          $zipName = "simpsons-bowling-duckstation-windows-x64.zip"
+          Compress-Archive -Path "$packageRoot\*" -DestinationPath "$dist\$zipName" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: simpsons-bowling-duckstation-windows-x64
+          path: dist/*.zip
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+
+          gh release create $tag dist/*.zip `
+            --title $tag `
+            --generate-notes
