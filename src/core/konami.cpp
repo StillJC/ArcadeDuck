@@ -49,6 +49,8 @@ static u8 ScsiCommand[12];
 static bool ScsiIsRead;
 static u32 ScsiSectorLba;
 
+static std::unique_ptr<TimingEvent> ScsiIrqEvent;
+
 // Buttons
 static u32 CurrentButtons;
 
@@ -177,6 +179,27 @@ static bool LoadFlashFile(const char *Path, void *Buffer)
 static void AssertScsiInterrupt(void)
 {
   g_interrupt_controller.InterruptRequest(InterruptController::IRQ::IRQ10);
+}
+
+static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
+{
+  if (ScsiIrqEvent)
+    ScsiIrqEvent->Deactivate();
+
+  AssertScsiInterrupt();
+}
+
+static void QueueScsiInterruptTicks(TickCount ticks)
+{
+  if (!ScsiIrqEvent)
+  {
+    ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
+  }
+
+  if (ticks == 0)
+    AssertScsiInterrupt();
+  else
+    ScsiIrqEvent->Schedule(ticks);
 }
 
 static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
@@ -402,6 +425,15 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
 
 void KonamiInit(void)
 {
+  if (!ScsiIrqEvent)
+  {
+    ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
+  }
+  else
+  {
+    ScsiIrqEvent->Deactivate();
+  }
+
   // Temporary Simpsons Bowling set name. Later this should come from the MAME zip/loader.
   const std::string game_name = "simpbowl";
   const std::string nvram_dir = "nvram/" + game_name;

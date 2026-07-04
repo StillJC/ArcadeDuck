@@ -458,7 +458,7 @@ void Settings::Save(SettingsInterface& si) const
   si.SetIntValue("Hacks", "GPUMaxRunAhead", gpu_max_run_ahead);
 
   si.SetBoolValue("BIOS", "PatchTTYEnable", bios_patch_tty_enable);
-  si.SetBoolValue("BIOS", "PatchFastBoot", true);
+  si.SetBoolValue("BIOS", "PatchFastBoot", bios_patch_fast_boot);
 
   for (u32 i = 0; i < NUM_CONTROLLER_AND_CARD_PORTS; i++)
   {

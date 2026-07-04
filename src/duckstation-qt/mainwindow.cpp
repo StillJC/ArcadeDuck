@@ -405,12 +405,11 @@ void MainWindow::updateMouseMode(bool paused)
   }
 
   // Simpsons Bowling uses the mouse/USB trackball as arcade trackball input.
-  // Force relative mouse mode while running so the hidden Windows cursor
-  // cannot hit the screen edge and stop movement.
-  const bool force_trackball_relative_mode = System::IsValid();
+  // Only force relative mode when the cursor is hidden, because Qt relative mode
+  // keeps the real OS cursor locked to the center of the display widget.
+  const bool hide_mouse = m_mouse_cursor_hidden || (m_display_widget->isFullScreen() && shouldHideCursorInFullscreen());
 
-  const bool hide_mouse = m_mouse_cursor_hidden || force_trackball_relative_mode ||
-                          (m_display_widget->isFullScreen() && shouldHideCursorInFullscreen());
+  const bool force_trackball_relative_mode = System::IsValid() && hide_mouse;
 
   if (hide_mouse)
     m_display_widget->setCursor(Qt::BlankCursor);

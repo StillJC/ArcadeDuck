@@ -1063,6 +1063,12 @@ static TickCount DoEXP2Access(u32 offset, u32& value)
       {
         if (!m_tty_line_buffer.empty())
         {
+          if (std::FILE* fp = std::fopen("konami_gv_tty_debug.txt", "ab"))
+          {
+            std::fprintf(fp, "TTY: %s\n", m_tty_line_buffer.c_str());
+            std::fclose(fp);
+          }
+
           Log_InfoPrintf("TTY: %s", m_tty_line_buffer.c_str());
 #ifdef _DEBUG
           if (CPU::IsTraceEnabled())
@@ -1083,8 +1089,6 @@ static TickCount DoEXP2Access(u32 offset, u32& value)
         std::fprintf(fp, "BIOS POST status offset=0x%02X value=0x%08X\n", offset, value);
         std::fclose(fp);
       }
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(750));
 
       Log_DevPrintf("BIOS POST status: %02X", value & UINT32_C(0x0F));
     }

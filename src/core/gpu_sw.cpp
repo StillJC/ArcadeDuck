@@ -18,7 +18,6 @@ Log_SetChannel(GPU_SW);
 #ifdef _MSC_VER
 #include <arm64_neon.h>
 #else
-#else
 #include <arm_neon.h>
 #endif
 #endif
@@ -514,13 +513,6 @@ void GPU_SW::UpdateDisplay()
     {
       m_host_display->ClearDisplayTexture();
       return;
-    }
-
-    static int konami_visible_delay_count = 0;
-    if (konami_visible_delay_count < 20)
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      konami_visible_delay_count++;
     }
 
     const u32 vram_offset_y = m_crtc_state.display_vram_top;
