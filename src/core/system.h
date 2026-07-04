@@ -136,6 +136,7 @@ void IncrementInternalFrameNumber();
 const std::string& GetRunningPath();
 const std::string& GetRunningCode();
 const std::string& GetRunningTitle();
+const std::string& GetArcadeDuckMameSetName();
 
 float GetFPS();
 float GetVPS();

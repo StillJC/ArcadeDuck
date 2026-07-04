@@ -148,10 +148,14 @@ bool GameDatabase::GetEntryForCode(const std::string_view& code, GameDatabaseEnt
   GetStringFromObject(*object, "developer", &entry->developer);
   GetStringFromObject(*object, "publisher", &entry->publisher);
 
+  GetStringFromObject(*object, "arcadeSystem", &entry->arcade_system);
+  GetStringFromObject(*object, "arcadeChdFolder", &entry->arcade_chd_folder);
+  GetStringFromObject(*object, "arcadeChdName", &entry->arcade_chd_name);
+  GetStringFromObject(*object, "arcadeEeprom", &entry->arcade_eeprom);
+  GetStringFromObject(*object, "arcadeHardwareProfile", &entry->arcade_hardware_profile);
+  GetStringFromObject(*object, "arcadeInputProfile", &entry->arcade_input_profile);
+
   GetUIntFromObject(*object, "minPlayers", &entry->min_players);
-  GetUIntFromObject(*object, "maxPlayers", &entry->max_players);
-  GetUIntFromObject(*object, "minBlocks", &entry->min_blocks);
-  GetUIntFromObject(*object, "maxBlocks", &entry->max_blocks);
 
   entry->release_date = 0;
   {

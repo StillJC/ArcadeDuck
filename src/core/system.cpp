@@ -309,9 +309,54 @@ bool IsLoadableFilename(const char* path)
   return false;
 }
 
-static bool ExtractKonamiGVSimpsonsEepromFromZip(const std::string& zip_path)
+static bool IsKonamiGVEepromZipEntryName(const char* filename)
 {
-  const std::string nvram_dir = "nvram" FS_OSPATH_SEPARATOR_STR "simpbowl";
+  if (!filename || filename[0] == '\0')
+    return false;
+
+  const char* extension = std::strrchr(filename, '.');
+  return (extension && StringUtil::Strcasecmp(extension, ".25c") == 0);
+}
+
+static bool ReadCurrentZipEntryToVector(unzFile zf, const std::string& zip_path, const char* entry_name,
+                                        std::vector<u8>* data)
+{
+  if (!data)
+    return false;
+
+  data->clear();
+
+  if (unzOpenCurrentFile(zf) != UNZ_OK)
+  {
+    Log_ErrorPrintf("KonamiGV: failed to open '%s' inside MAME zip '%s'", entry_name, zip_path.c_str());
+    return false;
+  }
+
+  u8 buffer[4096];
+
+  for (;;)
+  {
+    const int bytes_read = unzReadCurrentFile(zf, buffer, sizeof(buffer));
+    if (bytes_read < 0)
+    {
+      Log_ErrorPrintf("KonamiGV: failed reading '%s' from MAME zip '%s'", entry_name, zip_path.c_str());
+      unzCloseCurrentFile(zf);
+      return false;
+    }
+
+    if (bytes_read == 0)
+      break;
+
+    data->insert(data->end(), buffer, buffer + bytes_read);
+  }
+
+  unzCloseCurrentFile(zf);
+  return true;
+}
+
+static bool ExtractKonamiGVEepromFromZip(const std::string& zip_path, std::string_view set_name)
+{
+  const std::string nvram_dir = "nvram" FS_OSPATH_SEPARATOR_STR + std::string(set_name);
   const std::string eeprom_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "eeprom";
 
   if (const std::optional<std::vector<u8>> existing = FileSystem::ReadBinaryFile(eeprom_path.c_str());
@@ -330,46 +375,65 @@ static bool ExtractKonamiGVSimpsonsEepromFromZip(const std::string& zip_path)
     return false;
   }
 
-  if (unzLocateFile(zf, "simpbowl.25c", 0) != UNZ_OK)
+  if (unzGoToFirstFile(zf) != UNZ_OK)
   {
-    Log_ErrorPrintf("KonamiGV: simpbowl.25c not found in MAME zip '%s'", zip_path.c_str());
-    unzClose(zf);
-    return false;
-  }
-
-  if (unzOpenCurrentFile(zf) != UNZ_OK)
-  {
-    Log_ErrorPrintf("KonamiGV: failed to open simpbowl.25c inside MAME zip '%s'", zip_path.c_str());
+    Log_ErrorPrintf("KonamiGV: MAME zip '%s' is empty or unreadable", zip_path.c_str());
     unzClose(zf);
     return false;
   }
 
   std::vector<u8> data;
-  u8 buffer[4096];
+  std::string matched_eeprom_name;
 
   for (;;)
   {
-    const int bytes_read = unzReadCurrentFile(zf, buffer, sizeof(buffer));
-    if (bytes_read < 0)
+    unz_file_info file_info = {};
+    char zip_filename[512] = {};
+
+    if (unzGetCurrentFileInfo(zf, &file_info, zip_filename, sizeof(zip_filename), nullptr, 0, nullptr, 0) != UNZ_OK)
     {
-      Log_ErrorPrintf("KonamiGV: failed reading simpbowl.25c from MAME zip '%s'", zip_path.c_str());
-      unzCloseCurrentFile(zf);
+      Log_ErrorPrintf("KonamiGV: failed reading file info from MAME zip '%s'", zip_path.c_str());
       unzClose(zf);
       return false;
     }
 
-    if (bytes_read == 0)
+    zip_filename[sizeof(zip_filename) - 1] = '\0';
+
+    if (IsKonamiGVEepromZipEntryName(zip_filename))
+    {
+      if (!ReadCurrentZipEntryToVector(zf, zip_path, zip_filename, &data))
+      {
+        unzClose(zf);
+        return false;
+      }
+
+      if (data.size() == 0x80)
+      {
+        matched_eeprom_name = zip_filename;
+        break;
+      }
+
+      Log_WarningPrintf("KonamiGV: ignoring EEPROM candidate '%s' in MAME zip '%s' because size is %zu, expected 128",
+                        zip_filename, zip_path.c_str(), data.size());
+    }
+
+    const int next_result = unzGoToNextFile(zf);
+    if (next_result == UNZ_END_OF_LIST_OF_FILE)
       break;
 
-    data.insert(data.end(), buffer, buffer + bytes_read);
+    if (next_result != UNZ_OK)
+    {
+      Log_ErrorPrintf("KonamiGV: failed moving to next file in MAME zip '%s'", zip_path.c_str());
+      unzClose(zf);
+      return false;
+    }
   }
 
-  unzCloseCurrentFile(zf);
   unzClose(zf);
 
-  if (data.size() != 0x80)
+  if (matched_eeprom_name.empty())
   {
-    Log_ErrorPrintf("KonamiGV: simpbowl.25c has invalid size %zu in MAME zip '%s'", data.size(), zip_path.c_str());
+    Log_ErrorPrintf("KonamiGV: no valid 0x80-byte *.25c EEPROM found in MAME zip '%s'", zip_path.c_str());
     return false;
   }
 
@@ -379,7 +443,7 @@ static bool ExtractKonamiGVSimpsonsEepromFromZip(const std::string& zip_path)
     return false;
   }
 
-  Log_InfoPrintf("KonamiGV: extracted simpbowl.25c to '%s'", eeprom_path.c_str());
+  Log_InfoPrintf("KonamiGV: extracted '%s' to '%s'", matched_eeprom_name.c_str(), eeprom_path.c_str());
   return true;
 }
 
@@ -395,25 +459,42 @@ static bool ResolveKonamiGVMameZipPath(std::string* path)
   const std::string display_name = FileSystem::GetDisplayNameFromPath(path->c_str());
   const std::string_view file_title = FileSystem::GetFileTitleFromPath(display_name);
 
-  // Temporary hardcoded Simpsons Bowling MAME set resolver.
-  // User launches:
-  //   simpbowl.zip
-  //
-  // ArcadeDuck boots:
-  //   simpbowl\829uaa02.chd
-  if (file_title != "simpbowl")
+  if (file_title.empty())
     return false;
 
-  const std::string chd_path =
-    FileSystem::BuildRelativePath(path->c_str(), "simpbowl" FS_OSPATH_SEPARATOR_STR "829uaa02.chd");
+  // MAME-style layout:
+  //   setname.zip
+  //   setname\something.chd
+  const std::string set_name(file_title);
+  const std::string chd_directory = FileSystem::BuildRelativePath(path->c_str(), set_name.c_str());
 
-  if (!FileSystem::FileExists(chd_path.c_str()))
+  if (!FileSystem::DirectoryExists(chd_directory.c_str()))
   {
-    Log_ErrorPrintf("KonamiGV: MAME CHD not found for '%s': expected '%s'", path->c_str(), chd_path.c_str());
+    Log_ErrorPrintf("KonamiGV: MAME CHD directory not found for '%s': expected '%s'", path->c_str(),
+                    chd_directory.c_str());
     return false;
   }
 
-  if (!ExtractKonamiGVSimpsonsEepromFromZip(*path))
+  FileSystem::FindResultsArray chd_files;
+  FileSystem::FindFiles(chd_directory.c_str(), "*.chd", FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
+                        &chd_files);
+
+  if (chd_files.empty())
+  {
+    Log_ErrorPrintf("KonamiGV: no CHD found for MAME zip '%s' in expected directory '%s'", path->c_str(),
+                    chd_directory.c_str());
+    return false;
+  }
+
+  if (chd_files.size() > 1)
+  {
+    Log_WarningPrintf("KonamiGV: multiple CHDs found for MAME zip '%s'; using '%s'", path->c_str(),
+                      chd_files.front().FileName.c_str());
+  }
+
+  const std::string chd_path = chd_files.front().FileName;
+
+  if (!ExtractKonamiGVEepromFromZip(*path, file_title))
     Log_WarningPrintf("KonamiGV: EEPROM extraction failed for '%s'; continuing with CHD boot", path->c_str());
 
   Log_InfoPrintf("KonamiGV: resolved MAME zip '%s' to CHD '%s'", path->c_str(), chd_path.c_str());

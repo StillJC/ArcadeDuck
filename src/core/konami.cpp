@@ -434,18 +434,29 @@ void KonamiInit(void)
     ScsiIrqEvent->Deactivate();
   }
 
-  // Temporary Simpsons Bowling set name. Later this should come from the MAME zip/loader.
-  const std::string game_name = "simpbowl";
-  const std::string nvram_dir = "nvram/" + game_name;
-  const std::string eeprom_path = nvram_dir + "/eeprom";
+  // ArcadeDuck uses the active MAME set name for per-game NVRAM.
+  // Example:
+  //   simpbowl.zip -> nvram/simpbowl
+  //   kdeadeye.zip -> nvram/kdeadeye
+  //   btchamp.zip  -> nvram/btchamp
+  const std::string& game_name = System::GetRunningCode();
+
+  if (game_name.empty())
+  {
+    Log_ErrorPrintf("KonamiGV: missing MAME set name for NVRAM setup");
+    return;
+  }
+
+  const std::string nvram_dir = std::string("nvram") + FS_OSPATH_SEPARATOR_STR + game_name;
+  const std::string eeprom_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "eeprom";
 
   FileSystem::CreateDirectory("nvram", false);
   FileSystem::CreateDirectory(nvram_dir.c_str(), false);
 
-  const std::string flash0_path = nvram_dir + "/flash0";
-  const std::string flash1_path = nvram_dir + "/flash1";
-  const std::string flash2_path = nvram_dir + "/flash2";
-  const std::string flash3_path = nvram_dir + "/flash3";
+  const std::string flash0_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash0";
+  const std::string flash1_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash1";
+  const std::string flash2_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash2";
+  const std::string flash3_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash3";
 
   // Empty flash chips should read as erased flash, not zero-filled RAM.
   for (u32 chip = 0; chip < 4; chip++)

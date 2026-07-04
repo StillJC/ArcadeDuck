@@ -64,9 +64,10 @@ bool GameList::IsScannableFilename(const std::string& path)
   return (StringUtil::Strcasecmp(path.c_str() + pos, ".zip") == 0);
 }
 
-static bool ResolveKonamiGVMameZipPathForGameListScan(const std::string& path, std::string* scan_path)
+static bool ResolveKonamiGVMameZipPathForGameListScan(GameDatabase* database, const std::string& path,
+                                                      std::string* scan_path)
 {
-  if (!scan_path)
+  if (!database || !scan_path)
     return false;
 
   *scan_path = path;
@@ -78,16 +79,26 @@ static bool ResolveKonamiGVMameZipPathForGameListScan(const std::string& path, s
   const std::string display_name = FileSystem::GetDisplayNameFromPath(path);
   const std::string_view file_title = FileSystem::GetFileTitleFromPath(display_name);
 
-  // Temporary hardcoded Simpsons Bowling MAME set resolver.
-  if (file_title != "simpbowl")
+  GameDatabaseEntry dbentry;
+  if (!database->GetEntryForCode(file_title, &dbentry))
     return false;
 
-  const std::string chd_path =
-    FileSystem::BuildRelativePath(path.c_str(), "simpbowl" FS_OSPATH_SEPARATOR_STR "829uaa02.chd");
+  if (dbentry.arcade_chd_folder.empty() || dbentry.arcade_chd_name.empty())
+  {
+    Log_ErrorPrintf("ArcadeDuck: database entry for '%.*s' is missing arcade CHD metadata",
+                    static_cast<int>(file_title.length()), file_title.data());
+    return false;
+  }
+
+  const std::string relative_chd_path =
+    dbentry.arcade_chd_folder + FS_OSPATH_SEPARATOR_STR + dbentry.arcade_chd_name + ".chd";
+
+  const std::string chd_path = FileSystem::BuildRelativePath(path.c_str(), relative_chd_path.c_str());
 
   if (!FileSystem::FileExists(chd_path.c_str()))
   {
-    Log_ErrorPrintf("KonamiGV: MAME CHD not found while scanning '%s': expected '%s'", path.c_str(), chd_path.c_str());
+    Log_ErrorPrintf("ArcadeDuck: MAME CHD not found while scanning '%s': expected '%s'", path.c_str(),
+                    chd_path.c_str());
     return false;
   }
 
@@ -177,8 +188,9 @@ bool GameList::GetGameListEntry(const std::string& path, GameListEntry* entry)
   if (System::IsPsfFileName(path.c_str()))
     return GetPsfListEntry(path.c_str(), entry);
 
-  std::string scan_path;
-  ResolveKonamiGVMameZipPathForGameListScan(path, &scan_path);
+    std::string scan_path = path;
+  LoadDatabase();
+  ResolveKonamiGVMameZipPathForGameListScan(&m_database, path, &scan_path);
 
   std::unique_ptr<CDImage> cdi = CDImage::Open(scan_path.c_str(), nullptr);
   if (!cdi)
@@ -194,21 +206,20 @@ bool GameList::GetGameListEntry(const std::string& path, GameListEntry* entry)
   GameDatabaseEntry dbentry;
   const std::string_view filename_code = FileSystem::GetFileTitleFromPath(path);
 
-  if (filename_code == "arcade" || filename_code == "simpbowl")
+  if (m_database.GetEntryForCode(filename_code, &dbentry))
   {
-    // ArcadeDuck MAME set
-    entry->code = std::string(filename_code);
-    entry->title = std::string(filename_code);
-    entry->genre = "Sports";
-    entry->developer = "Konami";
-    entry->publisher = "Konami";
-    entry->compatibility_rating = GameListCompatibilityRating::Unknown;
-    entry->release_date = 0;
-    entry->min_players = 1;
-    entry->max_players = 4;
-    entry->min_blocks = 0;
-    entry->max_blocks = 0;
-    entry->supported_controllers = ~0u;
+    // ArcadeDuck MAME set or database-known title.
+    entry->code = std::move(dbentry.serial);
+    entry->title = std::move(dbentry.title);
+    entry->genre = std::move(dbentry.genre);
+    entry->publisher = std::move(dbentry.publisher);
+    entry->developer = std::move(dbentry.developer);
+    entry->release_date = dbentry.release_date;
+    entry->min_players = static_cast<u8>(dbentry.min_players);
+    entry->max_players = static_cast<u8>(dbentry.max_players);
+    entry->min_blocks = static_cast<u8>(dbentry.min_blocks);
+    entry->max_blocks = static_cast<u8>(dbentry.max_blocks);
+    entry->supported_controllers = dbentry.supported_controllers_mask;
   }
   else if (!m_database.GetEntryForDisc(cdi.get(), &dbentry))
   {
@@ -238,6 +249,7 @@ bool GameList::GetGameListEntry(const std::string& path, GameListEntry* entry)
     entry->max_blocks = static_cast<u8>(dbentry.max_blocks);
     entry->supported_controllers = dbentry.supported_controllers_mask;
   }
+
   // region detection
   entry->region = System::GetRegionFromSystemArea(cdi.get());
 

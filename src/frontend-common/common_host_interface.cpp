@@ -249,7 +249,7 @@ void CommonHostInterface::InitializeUserDirectory()
   result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("savestates").c_str(), false);
   result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("screenshots").c_str(), false);
   result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("shaders").c_str(), false);
-  result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("simpsons").c_str(), false);
+  result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("roms").c_str(), false);
   result &= FileSystem::CreateDirectory(GetUserDirectoryRelativePath("textures").c_str(), false);
 
   // Games directory for UWP because it's a pain to create them manually.
