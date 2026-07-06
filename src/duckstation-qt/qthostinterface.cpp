@@ -472,6 +472,22 @@ void QtHostInterface::onDisplayWindowMouseMoveEvent(int x, int y)
   io.MousePos[1] = static_cast<float>(y);
 
   m_display->SetMousePosition(x, y);
+  if (System::IsValid() && KonamiIsKDeadEye())
+  {
+    const s32 width = m_display->GetWindowWidth();
+    const s32 height = m_display->GetWindowHeight();
+
+    if (width > 0 && height > 0)
+    {
+      float normalized_x = static_cast<float>(x) / static_cast<float>(width);
+      float normalized_y = static_cast<float>(y) / static_cast<float>(height);
+
+      normalized_x = std::clamp(normalized_x, 0.0f, 1.0f);
+      normalized_y = std::clamp(normalized_y, 0.0f, 1.0f);
+
+      KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+    }
+  }
 }
 
 void QtHostInterface::onDisplayWindowMouseButtonEvent(int button, bool pressed)
@@ -489,7 +505,8 @@ void QtHostInterface::onDisplayWindowMouseButtonEvent(int button, bool pressed)
       return;
     }
   }
-
+  if (System::IsValid() && KonamiIsKDeadEye() && button == 1)
+    KonamiLightgunSetTrigger(0, pressed);
   HandleHostMouseEvent(button, pressed);
 }
 
