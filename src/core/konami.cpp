@@ -48,6 +48,11 @@ static u8 ScsiFifoPtr;
 static u8 ScsiCommand[12];
 static bool ScsiIsRead;
 static u32 ScsiSectorLba;
+static bool ScsiAudioPlaying;
+static bool ScsiAudioPaused;
+static u8 ScsiAudioTrack;
+static u8 ScsiAudioIndex;
+static u32 ScsiAudioRelativeLba;
 
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
 
@@ -61,6 +66,77 @@ static constexpr u32 FLASH_SECTOR_SIZE = 0x10000;
 static u8 Flash[4][FLASH_SIZE];
 static u32 FlashAddress;
 
+static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
+{
+  const u32 word_offset = (relative_offset >> 1) & 0x3FFFFF;
+  const u32 chip = (word_offset >= FLASH_SIZE) ? 2 : 0;
+  const u32 chip_offset = word_offset & (FLASH_SIZE - 1);
+
+  return static_cast<u16>(Flash[chip][chip_offset] | (Flash[chip + 1][chip_offset] << 8));
+}
+
+void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
+{
+  static int kdeadeye_flash_read_debug_count = 0;
+
+  const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
+
+  switch (Size)
+  {
+    case 1:
+    {
+      const u16 word = KonamiKDeadEyeFlashRead16(relative_offset);
+      Value = (relative_offset & 1) ? (word >> 8) : (word & 0xFF);
+      break;
+    }
+
+    case 2:
+      Value = KonamiKDeadEyeFlashRead16(relative_offset);
+      break;
+
+    case 4:
+    {
+      const u16 low = KonamiKDeadEyeFlashRead16(relative_offset);
+      const u16 high = KonamiKDeadEyeFlashRead16(relative_offset + 2);
+      Value = static_cast<u32>(low) | (static_cast<u32>(high) << 16);
+      break;
+    }
+
+    default:
+      Value = 0xFFFFFFFF;
+      break;
+  }
+
+  if (kdeadeye_flash_read_debug_count < 1000)
+  {
+    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X value=0x%08X\n", Size, Offset, relative_offset,
+                   Value);
+      std::fclose(fp);
+    }
+
+    kdeadeye_flash_read_debug_count++;
+  }
+}
+
+void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
+{
+  static int kdeadeye_flash_write_debug_count = 0;
+
+  if (kdeadeye_flash_write_debug_count < 1000)
+  {
+    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "WRITE size=%u offset=0x%08X value=0x%08X\n", Size, Offset, Value);
+      std::fclose(fp);
+    }
+
+    kdeadeye_flash_write_debug_count++;
+  }
+
+  // First-pass KDeadEye support: direct flash writes are ignored.
+}
 enum KonamiFlashMode : u8
 {
   KONAMI_FLASH_MODE_READ_ARRAY = 0,
@@ -103,6 +179,20 @@ static u16 TrackballX;
 static u16 TrackballY;
 
 static float TrackballSensitivity = 1.0f;
+
+// Lightgun
+static std::mutex LightgunMutex;
+
+static float LightgunNormalizedX[2] = {0.5f, 0.5f};
+static float LightgunNormalizedY[2] = {0.5f, 0.5f};
+static bool LightgunTrigger[2] = {false, false};
+
+static constexpr u16 LIGHTGUN_X_MIN = 0x004C;
+static constexpr u16 LIGHTGUN_X_MAX = 0x01BB;
+static constexpr u16 LIGHTGUN_Y_MIN = 0x0000;
+static constexpr u16 LIGHTGUN_Y_MAX = 0x00EF;
+static constexpr u16 LIGHTGUN_X_CENTER = 0x0100;
+static constexpr u16 LIGHTGUN_Y_CENTER = 0x0077;
 
 void KonamiTrackballReset();
 
@@ -425,6 +515,12 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
 
 void KonamiInit(void)
 {
+  if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "KONAMI INIT CALLED\n");
+    std::fclose(fp);
+  }
+
   if (!ScsiIrqEvent)
   {
     ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
@@ -433,6 +529,12 @@ void KonamiInit(void)
   {
     ScsiIrqEvent->Deactivate();
   }
+
+  ScsiAudioPlaying = false;
+  ScsiAudioPaused = false;
+  ScsiAudioTrack = 1;
+  ScsiAudioIndex = 1;
+  ScsiAudioRelativeLba = 0;
 
   // ArcadeDuck uses the active MAME set name for per-game NVRAM.
   // Example:
@@ -482,9 +584,21 @@ void KonamiInit(void)
   LoadFlashFile(flash1_path.c_str(), Flash[1]);
   LoadFlashFile(flash2_path.c_str(), Flash[2]);
   LoadFlashFile(flash3_path.c_str(), Flash[3]);
-    
+
   KonamiTrackballReset();
   TrackballSensitivity = g_host_interface->GetFloatSettingValue("KonamiGV", "TrackballSensitivity", 1.0f);
+
+  {
+    std::lock_guard<std::mutex> lock(LightgunMutex);
+
+    LightgunNormalizedX[0] = 0.5f;
+    LightgunNormalizedY[0] = 0.5f;
+    LightgunTrigger[0] = false;
+
+    LightgunNormalizedX[1] = 0.5f;
+    LightgunNormalizedY[1] = 0.5f;
+    LightgunTrigger[1] = false;
+  }
 }
 
 void KonamiTerm(void)
@@ -498,20 +612,123 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   size_t ReadSize = (ControlBits >> 16) * 4;
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
-  
-  if ((Value & 1) == 0)
+
+  // Some Konami GV READ10 transfers use a DMA block count of 0.
+  // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
+  // we can recover the intended byte count directly from the command's sector count.
+  if (ReadSize == 0 && ScsiCommand[0] == 0x28)
+  {
+    const u32 read10_sector_count = (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8];
+
+    if (read10_sector_count != 0)
+      ReadSize = static_cast<size_t>(read10_sector_count) * CDImage::DATA_SECTOR_SIZE;
+  }
+    if ((Value & 1) == 0)
   {
     switch (ScsiCommand[0])
     {
       case 0x03:
-        memset(Ram + Address, 0, 12);
+        // REQUEST SENSE. Return a valid fixed-format "no sense / no error" packet.
+        std::memset(Ram + Address, 0, 12);
+
+        Ram[Address + 0] = 0x70; // fixed-format current error response
+        Ram[Address + 2] = 0x00; // sense key: no sense
+        Ram[Address + 7] = 0x0A; // additional sense length
+
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI REQUEST SENSE response address=0x%08X response=0x%02X sense=0x%02X length=%u\n",
+                       Address, Ram[Address + 0], Ram[Address + 2], Ram[Address + 7]);
+          std::fclose(fp);
+        }
         break;
       case 0x12:
-        memset(Ram + Address, 0, 32);
+      {
+        // INQUIRY. Return a minimal valid CD-ROM device identity.
+        std::memset(Ram + Address, 0, 32);
+
+        Ram[Address + 0] = 0x05; // peripheral device type: CD/DVD device
+        Ram[Address + 1] = 0x80; // removable media
+        Ram[Address + 2] = 0x02; // ISO/ECMA/ANSI version-ish
+        Ram[Address + 3] = 0x02; // response data format
+        Ram[Address + 4] = 0x1B; // additional length for 32-byte response
+
+        std::memcpy(Ram + Address + 8, "KONAMI  ", 8);
+        std::memcpy(Ram + Address + 16, "GV CD-ROM       ", 16);
+
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI INQUIRY response address=0x%08X type=0x%02X removable=0x%02X length=%u\n", Address,
+                       Ram[Address + 0], Ram[Address + 1], Ram[Address + 4]);
+          std::fclose(fp);
+        }
         break;
+      }
       case 0x1A:
-        memset(Ram + Address, 0, 28);
+      {
+        // MODE SENSE(6). Dead Eye requests page 0x0E, CD audio control.
+        // Return a minimal valid mode page instead of all zeroes.
+        std::memset(Ram + Address, 0, 28);
+
+        Ram[Address + 0] = 0x12; // mode data length: bytes after this field
+        Ram[Address + 1] = 0x00; // medium type
+        Ram[Address + 2] = 0x00; // device-specific parameter
+        Ram[Address + 3] = 0x00; // block descriptor length
+
+        Ram[Address + 4] = 0x0E; // page code: CD audio control
+        Ram[Address + 5] = 0x0E; // page length
+
+        // Conservative/default CD audio control values.
+        Ram[Address + 6] = 0x04;
+        Ram[Address + 7] = 0x00;
+        Ram[Address + 8] = 0x00;
+        Ram[Address + 9] = 0x00;
+        Ram[Address + 10] = 0x00;
+        Ram[Address + 11] = 0x00;
+        Ram[Address + 12] = 0x00;
+        Ram[Address + 13] = 0x00;
+        Ram[Address + 14] = 0x00;
+        Ram[Address + 15] = 0x00;
+        Ram[Address + 16] = 0x00;
+        Ram[Address + 17] = 0x00;
+        Ram[Address + 18] = 0x00;
+        Ram[Address + 19] = 0x00;
+
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI MODE SENSE response address=0x%08X page=0x%02X length=%u mode_length=%u\n", Address,
+                       Ram[Address + 4], Ram[Address + 5], Ram[Address + 0]);
+          std::fclose(fp);
+        }
         break;
+      }
+      case 0x43:
+      {
+        // READ TOC. Return a minimal fake TOC with track 1 data and track 2 audio.
+        std::memset(Ram + Address, 0, 12);
+
+        Ram[Address + 0] = 0x00;
+        Ram[Address + 1] = 0x1A;
+        Ram[Address + 2] = 0x01;
+        Ram[Address + 3] = 0x02;
+
+        Ram[Address + 4] = 0x00;
+        Ram[Address + 5] = 0x14;
+        Ram[Address + 6] = 0x01;
+        Ram[Address + 7] = 0x00;
+
+        Ram[Address + 8] = 0x00;
+        Ram[Address + 9] = 0x00;
+        Ram[Address + 10] = 0x00;
+        Ram[Address + 11] = 0x00;
+
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI READ TOC response address=0x%08X length=12 first=1 last=2\n", Address);
+          std::fclose(fp);
+        }
+        break;
+      }
       case 0x28:
         if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
         {
@@ -521,17 +738,65 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
 
           while (ReadSize >= 2048)
         {
-          if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
-          {
-            std::memcpy(Ram + Address, Sector, 2048);
-          }
+            if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
+            {
+              static int read10_data_debug_count = 0;
+
+              if (read10_data_debug_count < 20000)
+              {
+                u32 checksum = 0;
+
+                for (u32 i = 0; i < 2048; i++)
+                  checksum = (checksum + Sector[i]) & 0xFFFFFFFFU;
+
+                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+                {
+                  std::fprintf(fp,
+                               "SCSI READ10 DATA count=%d lba=%u sectors=%u address=0x%08X first=%02X %02X %02X %02X "
+                               "checksum=0x%08X\n",
+                               read10_data_debug_count, ScsiSectorLba,
+                               (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8], Address, Sector[0], Sector[1],
+                               Sector[2], Sector[3], checksum);
+                  std::fclose(fp);
+                }
+
+                read10_data_debug_count++;
+              }
+
+              std::memcpy(Ram + Address, Sector, 2048);
+              if (Address <= 0x00056D2C && (Address + 2048) > 0x00056D2C)
+              {
+                const u32 target_offset = 0x00056D2C - Address;
+                const u32 word_before = static_cast<u32>(Sector[target_offset - 4]) |
+                                        (static_cast<u32>(Sector[target_offset - 3]) << 8) |
+                                        (static_cast<u32>(Sector[target_offset - 2]) << 16) |
+                                        (static_cast<u32>(Sector[target_offset - 1]) << 24);
+                const u32 word_at = static_cast<u32>(Sector[target_offset + 0]) |
+                                    (static_cast<u32>(Sector[target_offset + 1]) << 8) |
+                                    (static_cast<u32>(Sector[target_offset + 2]) << 16) |
+                                    (static_cast<u32>(Sector[target_offset + 3]) << 24);
+                const u32 word_after = static_cast<u32>(Sector[target_offset + 4]) |
+                                       (static_cast<u32>(Sector[target_offset + 5]) << 8) |
+                                       (static_cast<u32>(Sector[target_offset + 6]) << 16) |
+                                       (static_cast<u32>(Sector[target_offset + 7]) << 24);
+
+                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+                {
+                  std::fprintf(fp,
+                               "SCSI TARGET EPC LOAD lba=%u address=0x%08X target_offset=0x%X "
+                               "before=0x%08X at=0x%08X after=0x%08X\n",
+                               ScsiSectorLba, Address, target_offset, word_before, word_at, word_after);
+                  std::fclose(fp);
+                }
+              }
+            }
           else
           {
             std::memset(Ram + Address, 0, 2048);
 
             if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
             {
-              std::fprintf(fp, "SCSI READ10 failed mounted sector read lba=%u\n", ScsiSectorLba);
+              std::fprintf(fp, "SCSI READ10 failed mounted sector read lba=%u address=0x%08X\n", ScsiSectorLba, Address);
               std::fclose(fp);
             }
           }
@@ -542,18 +807,25 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         }
         ControlBits &= 0xFFFF;
         break;
-      case 0x43:
+      case 0x42:
       {
-        const uint32_t v0 = 0x01010008;
-        const uint32_t v1 = 0x00010400;
-        const uint32_t v2 = 0x00000000;
+        // READ SUB-CHANNEL. Match the earlier KDeadEye branch stub that got the title/display path moving.
+        const u8 response[16] = {0x00, 0x11, 0x00, 0x0C, 0x01, 0x00, 0x02, 0x01,
+                                 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-        memcpy(Ram + Address + 0, &v0, sizeof(v0));
-        memcpy(Ram + Address + 4, &v1, sizeof(v1));
-        memcpy(Ram + Address + 8, &v2, sizeof(v2));
+        const size_t copy_size = std::min<size_t>(ReadSize, sizeof(response));
+        std::memcpy(Ram + Address, response, copy_size);
+
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "SCSI READ SUBCHANNEL OLD STUB copy=%u status_byte=%02X track=%u index=%u\n",
+                       static_cast<u32>(copy_size), response[1], response[6], response[7]);
+          std::fclose(fp);
+        }
+
         break;
       }
-      default:
+        default:
         //Log_WarningPrintf("Unimplemented SCSI command %02X", ScsiCmd[0]);
         break;
     }
@@ -641,17 +913,52 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           }
 
           ScsiIsRead = false;
+          ScsiIsRead = false;
           switch (ScsiCommand[0])
           {
             case 0x03:
             case 0x12:
             case 0x1A:
+            case 0x42:
             case 0x43:
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
               break;
+
+            case 0x00:
             case 0x15:
+              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+              {
+                std::fprintf(fp, "SCSI simple command complete cmd=%02X status_phase=0\n", ScsiCommand[0]);
+                std::fclose(fp);
+              }
+
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
               break;
+
+            case 0x48: // PLAY AUDIO TRACK/INDEX - no-op success for KDeadEye
+            case 0x4B: // PAUSE/RESUME - no-op success for KDeadEye
+            {
+              if (KonamiIsKDeadEye())
+              {
+                ScsiAudioPlaying = false;
+                ScsiAudioPaused = false;
+
+                ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
+                ScsiRegs[REG_INTSTATE] = 0x04U;
+
+                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+                {
+                  std::fprintf(fp, "SCSI AUDIO OLD STUB cmd=%02X no-op success\n", ScsiCommand[0]);
+                  std::fclose(fp);
+                }
+
+                AssertScsiInterrupt();
+                break;
+              }
+
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
+              break;
+            }
             case 0x28:
               ScsiSectorLba = (ScsiFifo[3] << 24) | (ScsiFifo[4] << 16) | (ScsiFifo[5] << 8) | ScsiFifo[6];
               ScsiIsRead = true;
@@ -1184,6 +1491,93 @@ void KonamiTrackballReset()
   TrackballPendingY = 0.0;
   TrackballX = 0;
   TrackballY = 0;
+}
+
+bool KonamiIsKDeadEye()
+{
+  return System::GetRunningCode() == "kdeadeye";
+}
+
+static u16 KonamiScaleLightgunAxis(float normalized, u16 min_value, u16 max_value)
+{
+  normalized = std::clamp(normalized, 0.0f, 1.0f);
+  return static_cast<u16>(static_cast<float>(min_value) + (normalized * static_cast<float>(max_value - min_value)));
+}
+
+static u16 KonamiGetLightgunX(u32 player)
+{
+  if (player >= 2)
+    return LIGHTGUN_X_CENTER;
+
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+  return KonamiScaleLightgunAxis(LightgunNormalizedX[player], LIGHTGUN_X_MIN, LIGHTGUN_X_MAX);
+}
+
+static u16 KonamiGetLightgunY(u32 player)
+{
+  if (player >= 2)
+    return LIGHTGUN_Y_CENTER;
+
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+  return KonamiScaleLightgunAxis(LightgunNormalizedY[player], LIGHTGUN_Y_MIN, LIGHTGUN_Y_MAX);
+}
+
+void KonamiLightgunX1Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = KonamiGetLightgunX(0);
+}
+
+void KonamiLightgunY1Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = KonamiGetLightgunY(0);
+}
+
+void KonamiLightgunX2Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = KonamiGetLightgunX(1);
+}
+
+void KonamiLightgunY2Read(u32 Size, u32 Offset, u32& Value)
+{
+  Value = KonamiGetLightgunY(1);
+}
+
+void KonamiLightgunButtonsRead(u32 Size, u32 Offset, u32& Value)
+{
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+
+  Value = 0xFFFF;
+
+  if (LightgunTrigger[0])
+    Value &= ~0x0001U;
+
+  if (LightgunTrigger[1])
+    Value &= ~0x0002U;
+}
+
+void KonamiLightgunWrite(u32 Size, u32 Offset, u32 Value)
+{
+  // Ignored / nop.
+}
+
+void KonamiLightgunSetPosition(u32 Player, float X, float Y)
+{
+  if (Player >= 2)
+    return;
+
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+
+  LightgunNormalizedX[Player] = std::clamp(X, 0.0f, 1.0f);
+  LightgunNormalizedY[Player] = std::clamp(Y, 0.0f, 1.0f);
+}
+
+void KonamiLightgunSetTrigger(u32 Player, bool Pressed)
+{
+  if (Player >= 2)
+    return;
+
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+  LightgunTrigger[Player] = Pressed;
 }
 
 // Misc

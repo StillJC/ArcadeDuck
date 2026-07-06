@@ -920,7 +920,20 @@ ALWAYS_INLINE static TickCount DoBIOSAccess(u32 offset, u32& value)
       }
       return m_exp1_access_time[static_cast<u32>(size)];
     }
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoKDeadEyeFlashAccess(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiKDeadEyeFlashRead(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiKDeadEyeFlashWrite(1U << static_cast<u32>(size), offset, value);
+      }
 
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
     template<MemoryAccessType type, MemoryAccessSize size>
     static ALWAYS_INLINE TickCount DoFlashAccess(u32 offset, u32& value)
     {
@@ -948,7 +961,80 @@ ALWAYS_INLINE static TickCount DoBIOSAccess(u32 offset, u32& value)
       }
       return m_exp1_access_time[static_cast<u32>(size)];
     }
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoLightgunX1Access(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiLightgunX1Read(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiLightgunWrite(1U << static_cast<u32>(size), offset, value);
+      }
 
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
+
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoLightgunY1Access(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiLightgunY1Read(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiLightgunWrite(1U << static_cast<u32>(size), offset, value);
+      }
+
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
+
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoLightgunX2Access(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiLightgunX2Read(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiLightgunWrite(1U << static_cast<u32>(size), offset, value);
+      }
+
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
+
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoLightgunY2Access(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiLightgunY2Read(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiLightgunWrite(1U << static_cast<u32>(size), offset, value);
+      }
+
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
+
+    template<MemoryAccessType type, MemoryAccessSize size>
+    static ALWAYS_INLINE TickCount DoLightgunButtonsAccess(u32 offset, u32& value)
+    {
+      if constexpr (type == MemoryAccessType::Read)
+      {
+        KonamiLightgunButtonsRead(1U << static_cast<u32>(size), offset, value);
+      }
+      else
+      {
+        KonamiLightgunWrite(1U << static_cast<u32>(size), offset, value);
+      }
+
+      return m_exp1_access_time[static_cast<u32>(size)];
+    }
     template<MemoryAccessType type, MemoryAccessSize size>
     static ALWAYS_INLINE TickCount DoTrackballAccess(u32 offset, u32& value)
     {
@@ -1746,6 +1832,12 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     {
       return DoScsiAccess<type, size>(address & EXP1_MASK, value);
     }
+    // KDeadEye direct flash window.
+    if (KonamiIsKDeadEye() && address >= 0x1F380000 && address <= 0x1F3FFFFF)
+    {
+      return DoKDeadEyeFlashAccess<type, size>(address & EXP1_MASK, value);
+    }
+
     if (address >= 0x1F100000 && address <= 0x1F100003)
     {
       return DoP1Access<type, size>(address & EXP1_MASK, value);
@@ -1753,6 +1845,124 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     if (address >= 0x1F100004 && address <= 0x1F100007)
     {
       return DoP2Access<type, size>(address & EXP1_MASK, value);
+    }
+    // KDeadEye GV I/O ports.
+    if (KonamiIsKDeadEye())
+    {
+      auto LogKDeadEyeRegAccess = [&](const char* name) {
+        static int kdeadeye_reg_debug_count = 0;
+
+        const bool force_serial_context = (type == MemoryAccessType::Write && address == 0x1F680011);
+
+        if (kdeadeye_reg_debug_count < 1600 || force_serial_context)
+        {
+          if (std::FILE* fp = std::fopen("kdeadeye_reg_debug.txt", "ab"))
+          {
+            std::fprintf(
+              fp, "KDEADEYE REG pc=0x%08X %-12s %s size=%u address=0x%08X offset=0x%08X value=0x%08X data8=0x%02X\n",
+              CPU::g_state.current_instruction_pc, name, (type == MemoryAccessType::Read) ? "READ" : "WRITE",
+              1U << static_cast<u32>(size), address, address & EXP1_MASK, value, value & 0xFF);
+
+            if constexpr (type == MemoryAccessType::Write)
+            {
+              static int kdeadeye_serial_context_debug_count = 0;
+
+              if (address == 0x1F680011 && kdeadeye_serial_context_debug_count < 80)
+              {
+                const u32 epc = CPU::g_state.cop0_regs.EPC;
+
+                u32 epc_before = 0;
+                u32 epc_word = 0;
+                u32 epc_after = 0;
+
+                const bool epc_before_ok = SafeReadInstruction(epc - 4, &epc_before);
+                const bool epc_word_ok = SafeReadInstruction(epc, &epc_word);
+                const bool epc_after_ok = SafeReadInstruction(epc + 4, &epc_after);
+                std::fprintf(fp,
+                             "KDEADEYE SERIALCTX curpc=0x%08X regs_pc=0x%08X inst=0x%08X "
+                             "epc=0x%08X epc_before=%u:0x%08X epc_word=%u:0x%08X epc_after=%u:0x%08X "
+                             "cause=0x%08X excode=%u badvaddr=0x%08X sr=0x%08X "
+                             "ra=0x%08X sp=0x%08X "
+                             "v0=0x%08X v1=0x%08X a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X "
+                             "t0=0x%08X t1=0x%08X t2=0x%08X t3=0x%08X\n",
+                             CPU::g_state.current_instruction_pc, CPU::g_state.regs.pc,
+                             CPU::g_state.current_instruction.bits, epc, static_cast<u32>(epc_before_ok), epc_before,
+                             static_cast<u32>(epc_word_ok), epc_word, static_cast<u32>(epc_after_ok), epc_after,
+                             CPU::g_state.cop0_regs.cause.bits, (CPU::g_state.cop0_regs.cause.bits >> 2) & 0x1F,
+                             CPU::g_state.cop0_regs.BadVaddr, CPU::g_state.cop0_regs.sr.bits, CPU::g_state.regs.r[31],
+                             CPU::g_state.regs.r[29], CPU::g_state.regs.r[2], CPU::g_state.regs.r[3],
+                             CPU::g_state.regs.r[4], CPU::g_state.regs.r[5], CPU::g_state.regs.r[6],
+                             CPU::g_state.regs.r[7], CPU::g_state.regs.r[8], CPU::g_state.regs.r[9],
+                             CPU::g_state.regs.r[10], CPU::g_state.regs.r[11]);
+
+                kdeadeye_serial_context_debug_count++;
+              }
+            }
+
+            std::fclose(fp);
+          }
+
+          if (kdeadeye_reg_debug_count < 1600)
+            kdeadeye_reg_debug_count++;
+        }
+      };
+
+      // Base Konami GV DUART/control area.
+      // KDeadEye writes here during startup/audio-control loops.
+      if (address >= 0x1F680000 && address <= 0x1F68001F)
+      {
+        if constexpr (type == MemoryAccessType::Read)
+          value = 0;
+
+        LogKDeadEyeRegAccess("DUART");
+        return m_exp1_access_time[static_cast<u32>(size)];
+      }
+
+      if (address >= 0x1F680080 && address <= 0x1F680083)
+      {
+        const TickCount ticks = DoLightgunX1Access<type, size>(address & EXP1_MASK, value);
+        LogKDeadEyeRegAccess("GUNX1");
+        return ticks;
+      }
+
+      if (address >= 0x1F680090 && address <= 0x1F680093)
+      {
+        const TickCount ticks = DoLightgunY1Access<type, size>(address & EXP1_MASK, value);
+        LogKDeadEyeRegAccess("GUNY1");
+        return ticks;
+      }
+
+      if (address >= 0x1F6800A0 && address <= 0x1F6800A3)
+      {
+        const TickCount ticks = DoLightgunX2Access<type, size>(address & EXP1_MASK, value);
+        LogKDeadEyeRegAccess("GUNX2");
+        return ticks;
+      }
+
+      if (address >= 0x1F6800B0 && address <= 0x1F6800B3)
+      {
+        const TickCount ticks = DoLightgunY2Access<type, size>(address & EXP1_MASK, value);
+        LogKDeadEyeRegAccess("GUNY2");
+        return ticks;
+      }
+
+      if (address >= 0x1F6800C0 && address <= 0x1F6800C3)
+      {
+        const TickCount ticks = DoLightgunButtonsAccess<type, size>(address & EXP1_MASK, value);
+        LogKDeadEyeRegAccess("BUTTONS");
+        return ticks;
+      }
+
+      if (address >= 0x1F6800E0 && address <= 0x1F6800E3)
+      {
+        LogKDeadEyeRegAccess("NOP_E0");
+        return m_exp1_access_time[static_cast<u32>(size)];
+      }
+
+      if (address >= 0x1F680000 && address <= 0x1F6800FF)
+      {
+        LogKDeadEyeRegAccess("UNKNOWN");
+      }
     }
     if (address >= 0x1F680080 && address < 0x1F680090)
     {
@@ -1770,12 +1980,30 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     {
       return m_exp1_access_time[static_cast<u32>(size)];
     }
+    if (KonamiIsKDeadEye())
+    {
+      static int kdeadeye_exp1_fallback_debug_count = 0;
+
+      if (kdeadeye_exp1_fallback_debug_count < 1000)
+      {
+        if (std::FILE* fp = std::fopen("kdeadeye_exp1_fallback_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "KDEADEYE EXP1 FALLBACK %s size=%u address=0x%08X offset=0x%08X value=0x%08X\n",
+                       (type == MemoryAccessType::Read) ? "READ" : "WRITE", 1U << static_cast<u32>(size), address,
+                       address & EXP1_MASK, value);
+          std::fclose(fp);
+        }
+
+        kdeadeye_exp1_fallback_debug_count++;
+      }
+    }
+
     return DoEXP1Access<type, size>(address & EXP1_MASK, value);
   }
-  else if (address < MEMCTRL_BASE)
-  {
-    return DoInvalidAccess(type, size, address, value);
-  }
+else if (address < MEMCTRL_BASE)
+{
+  return DoInvalidAccess(type, size, address, value);
+}
   else if (address < (MEMCTRL_BASE + MEMCTRL_SIZE))
   {
     return DoMemoryControlAccess<type, size>(address & MEMCTRL_MASK, value);
