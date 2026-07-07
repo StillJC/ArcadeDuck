@@ -179,7 +179,7 @@ void AnalogController::SetButtonState(Button button, bool pressed)
 
     m_button_state |= bit;
   }
-  KonamiButtonsSet(m_button_state);
+  KonamiButtonsSet(m_index, m_button_state);
 }
 
 void AnalogController::SetButtonState(s32 button_code, bool pressed)
