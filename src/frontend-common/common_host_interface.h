@@ -343,6 +343,7 @@ public:
   void DrawDebugWindows();
 
   void DrawBezelOverlay();
+  void DrawSindenBorderOverlay();
   void ReloadBezelOverlayTexture();
   void ReleaseBezelOverlayTexture();
 

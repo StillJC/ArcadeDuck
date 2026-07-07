@@ -452,6 +452,48 @@ void ControllerSettingsWidget::createPortBindingSettingsUi(int index, PortSettin
     }
   }
 
+  // Sinden border
+  if (ctype == ControllerType::NamcoGunCon)
+  {
+    layout->addWidget(QtUtils::CreateHorizontalLine(ui->widget), start_row++, 0, 1, 4);
+    layout->addWidget(new QLabel(tr("Lightgun Settings:"), ui->bindings_container), start_row++, 0, 1, 4);
+
+    const std::string section_name = StringUtil::StdStringFromFormat("Controller%d", index + 1);
+
+    QComboBox* lightgun_device = new QComboBox(ui->bindings_container);
+    lightgun_device->addItem(tr("Disabled"), QStringLiteral("Disabled"));
+    lightgun_device->addItem(tr("System Mouse"), QStringLiteral("SystemMouse"));
+
+    SettingWidgetBinder::BindWidgetToStringSetting(m_host_interface, lightgun_device, section_name, "LightgunDevice",
+                                                   index == 0 ? "SystemMouse" : "Disabled");
+
+    layout->addWidget(new QLabel(tr("Lightgun Device"), ui->bindings_container), start_row, 0);
+    layout->addWidget(lightgun_device, start_row, 1, 1, 3);
+    start_row++;
+
+    if (index == 0)
+    {
+      QCheckBox* sinden_border = new QCheckBox(tr("Draw Sinden Border"), ui->bindings_container);
+      SettingWidgetBinder::BindWidgetToBoolSetting(m_host_interface, sinden_border, section_name, "SindenBorder",
+                                                   false);
+
+      layout->addWidget(sinden_border, start_row, 0, 1, 4);
+      start_row++;
+
+      QSpinBox* sinden_border_width = new QSpinBox(ui->bindings_container);
+      sinden_border_width->setMinimum(1);
+      sinden_border_width->setMaximum(64);
+      sinden_border_width->setSuffix(tr(" px"));
+
+      SettingWidgetBinder::BindWidgetToIntSetting(m_host_interface, sinden_border_width, section_name,
+                                                  "SindenBorderWidth", 4);
+
+      layout->addWidget(new QLabel(tr("Sinden Border Width"), ui->bindings_container), start_row, 0);
+      layout->addWidget(sinden_border_width, start_row, 1, 1, 3);
+      start_row++;
+    }
+  }
+
   // turbo/autofire
   if (ctype != ControllerType::None)
   {

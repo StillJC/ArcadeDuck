@@ -66,6 +66,7 @@ private:
   std::string m_crosshair_image_path;
   float m_crosshair_image_scale = 1.0f;
   float m_x_scale = 1.0f;
+  bool m_lightgun_device_system_mouse = false;
 
   // buttons are active low
   u16 m_button_state = UINT16_C(0xFFFF);

@@ -487,7 +487,14 @@ void QtHostInterface::onDisplayWindowMouseMoveEvent(int x, int y)
         const float normalized_x = static_cast<float>(x - draw_left) / static_cast<float>(draw_width);
         const float normalized_y = static_cast<float>(y - draw_top) / static_cast<float>(draw_height);
 
-        KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+        const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+        const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+
+        if (player1_device == "SystemMouse")
+          KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+
+        if (player2_device == "SystemMouse")
+          KonamiLightgunSetPosition(1, normalized_x, normalized_y);
       }
     }
   }
@@ -508,8 +515,7 @@ void QtHostInterface::onDisplayWindowMouseButtonEvent(int button, bool pressed)
       return;
     }
   }
-  if (System::IsValid() && KonamiIsKDeadEye() && button == 1)
-    KonamiLightgunSetTrigger(0, pressed);
+
   HandleHostMouseEvent(button, pressed);
 }
 

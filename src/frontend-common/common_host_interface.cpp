@@ -152,6 +152,34 @@ void CommonHostInterface::DrawBezelOverlay()
                                            tint);
 }
 
+void CommonHostInterface::DrawSindenBorderOverlay()
+{
+  if (!System::IsValid() || !m_display)
+    return;
+
+  if (!GetBoolSettingValue("Controller1", "SindenBorder", false))
+    return;
+
+  const s32 window_width = m_display->GetWindowWidth();
+  const s32 window_height = m_display->GetWindowHeight();
+  if (window_width <= 0 || window_height <= 0)
+    return;
+
+  const auto [draw_left, draw_top, draw_width, draw_height] =
+    m_display->CalculateDrawRect(window_width, window_height, m_display->GetDisplayTopMargin());
+
+  if (draw_width <= 0 || draw_height <= 0)
+    return;
+
+  const int configured_width = GetIntSettingValue("Controller1", "SindenBorderWidth", 4);
+  const float border_width = static_cast<float>(std::clamp(configured_width, 1, 64));
+
+  const ImVec2 top_left(static_cast<float>(draw_left), static_cast<float>(draw_top));
+  const ImVec2 bottom_right(static_cast<float>(draw_left + draw_width), static_cast<float>(draw_top + draw_height));
+
+  ImGui::GetForegroundDrawList()->AddRect(top_left, bottom_right, IM_COL32(255, 255, 255, 255), 0.0f, 0, border_width);
+}
+
 CommonHostInterface::~CommonHostInterface() = default;
 
 bool CommonHostInterface::Initialize()
@@ -1257,6 +1285,7 @@ void CommonHostInterface::DrawImGuiWindows()
   if (system_valid)
   {
     DrawBezelOverlay();
+    DrawSindenBorderOverlay();
 
     if (m_save_state_selector_ui->IsOpen())
       m_save_state_selector_ui->Draw();

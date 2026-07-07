@@ -334,11 +334,16 @@ void NamcoGunCon::LoadSettings(const char* section)
   m_crosshair_image_scale = g_host_interface->GetFloatSettingValue(section, "CrosshairScale", 1.0f);
 
   m_x_scale = g_host_interface->GetFloatSettingValue(section, "XScale", 1.0f);
+
+  const char* default_lightgun_device = (m_index == 0) ? "SystemMouse" : "Disabled";
+  const std::string lightgun_device =
+    g_host_interface->GetStringSettingValue(section, "LightgunDevice", default_lightgun_device);
+  m_lightgun_device_system_mouse = (lightgun_device == "SystemMouse");
 }
 
 bool NamcoGunCon::GetSoftwareCursor(const Common::RGBA8Image** image, float* image_scale, bool* relative_mode)
 {
-  if (!m_crosshair_image.IsValid())
+  if (!m_lightgun_device_system_mouse || !m_crosshair_image.IsValid())
     return false;
 
   *image = &m_crosshair_image;
