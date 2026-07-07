@@ -3,6 +3,7 @@
 #include "common/cd_image.h"
 #include "common/file_system.h"
 #include "common/log.h"
+#include "cpu_code_cache.h"
 #include "cpu_core.h"
 #include "host_display.h"
 #include "host_interface.h"
@@ -63,16 +64,67 @@ static u32 CurrentButtons;
 static constexpr u32 FLASH_SIZE = 0x200000;
 static constexpr u32 FLASH_SECTOR_SIZE = 0x10000;
 
+static constexpr u32 KDEADEYE_FLASH_SIZE = 0x80000;
+
 static u8 Flash[4][FLASH_SIZE];
 static u32 FlashAddress;
 
-static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
+static u8 KDeadEyeFlash[KDEADEYE_FLASH_SIZE];
+static bool KDeadEyeFlashValid = false;
+
+static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
+{
+  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
+    KDeadEyeFlash[i] = 0xFF;
+
+  KDeadEyeFlashValid = false;
+
+  std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
+  if (!fp)
+    return false;
+
+  std::fseek(fp, 0, SEEK_END);
+  const long size = std::ftell(fp);
+  std::fseek(fp, 0, SEEK_SET);
+
+  if (size != static_cast<long>(KDEADEYE_FLASH_SIZE))
+  {
+    std::fclose(fp);
+    return false;
+  }
+
+  const size_t read = std::fread(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  std::fclose(fp);
+
+  KDeadEyeFlashValid = (read == KDEADEYE_FLASH_SIZE);
+  return KDeadEyeFlashValid;
+}
+
+static u16 KonamiKDeadEyeSingleFlashRead16(u32 relative_offset)
+{
+  relative_offset &= (KDEADEYE_FLASH_SIZE - 1);
+
+  const u32 high_offset = relative_offset & ~1U;
+  const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+
+  return static_cast<u16>((KDeadEyeFlash[high_offset] << 8) | KDeadEyeFlash[low_offset]);
+}
+
+static u16 KonamiKDeadEyeFallbackFlashRead16(u32 relative_offset)
 {
   const u32 word_offset = (relative_offset >> 1) & 0x3FFFFF;
   const u32 chip = (word_offset >= FLASH_SIZE) ? 2 : 0;
   const u32 chip_offset = word_offset & (FLASH_SIZE - 1);
 
   return static_cast<u16>(Flash[chip][chip_offset] | (Flash[chip + 1][chip_offset] << 8));
+}
+
+static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
+{
+  if (KDeadEyeFlashValid)
+    return KonamiKDeadEyeSingleFlashRead16(relative_offset);
+
+  return KonamiKDeadEyeFallbackFlashRead16(relative_offset);
 }
 
 void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
@@ -85,8 +137,14 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     case 1:
     {
-      const u16 word = KonamiKDeadEyeFlashRead16(relative_offset);
-      Value = (relative_offset & 1) ? (word >> 8) : (word & 0xFF);
+      if (KDeadEyeFlashValid)
+        Value = KDeadEyeFlash[relative_offset & (KDEADEYE_FLASH_SIZE - 1)];
+      else
+      {
+        const u16 word = KonamiKDeadEyeFlashRead16(relative_offset);
+        Value = (relative_offset & 1) ? (word >> 8) : (word & 0xFF);
+      }
+
       break;
     }
 
@@ -111,8 +169,8 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
     {
-      std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X value=0x%08X\n", Size, Offset, relative_offset,
-                   Value);
+      std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X single=%u value=0x%08X\n", Size, Offset,
+                   relative_offset, KDeadEyeFlashValid ? 1 : 0, Value);
       std::fclose(fp);
     }
 
@@ -128,7 +186,8 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
   {
     if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
     {
-      std::fprintf(fp, "WRITE size=%u offset=0x%08X value=0x%08X\n", Size, Offset, Value);
+      std::fprintf(fp, "WRITE size=%u offset=0x%08X single=%u value=0x%08X\n", Size, Offset, KDeadEyeFlashValid ? 1 : 0,
+                   Value);
       std::fclose(fp);
     }
 
@@ -165,6 +224,13 @@ static u32 EepromShiftIn;
 static u32 EepromShiftCount;
 static u32 EepromReadShift;
 static s32 EepromReadBits;
+static bool EepromWriteEnabled;
+static bool EepromWriteAll;
+static u32 EepromWriteAddress;
+static u32 EepromWriteShift;
+static s32 EepromWriteBits;
+static u16 KonamiEepromSwap16(u16 value);
+static void KonamiSaveEepromFile();
 
 // Trackball
 static std::mutex TrackballMutex;
@@ -559,6 +625,7 @@ void KonamiInit(void)
   const std::string flash1_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash1";
   const std::string flash2_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash2";
   const std::string flash3_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash3";
+  const std::string kdeadeye_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
 
   // Empty flash chips should read as erased flash, not zero-filled RAM.
   for (u32 chip = 0; chip < 4; chip++)
@@ -567,6 +634,24 @@ void KonamiInit(void)
       Flash[chip][i] = 0xFF;
   }
 
+  EepromDi = false;
+  EepromDo = true;
+  EepromCs = false;
+  EepromClk = false;
+  EepromShiftIn = 0;
+  EepromShiftCount = 0;
+  EepromReadShift = 0;
+  EepromReadBits = 0;
+  EepromWriteEnabled = false;
+  EepromWriteAll = false;
+  EepromWriteAddress = 0;
+  EepromWriteShift = 0;
+  EepromWriteBits = 0;
+
+  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
+    KDeadEyeFlash[i] = 0xFF;
+
+  KDeadEyeFlashValid = false;
   FlashAddress = 0;
 
   for (u32 chip = 0; chip < 4; chip++)
@@ -578,12 +663,23 @@ void KonamiInit(void)
   if (!eeprom_path.empty())
     LoadEepromFile(eeprom_path.c_str());
 
-  KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
+  if (KonamiIsKDeadEye() && KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path))
+  {
+    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "Loaded single KDeadEye flash file: %s\n", kdeadeye_flash_path.c_str());
+      std::fclose(fp);
+    }
+  }
+  else
+  {
+    KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
 
-  LoadFlashFile(flash0_path.c_str(), Flash[0]);
-  LoadFlashFile(flash1_path.c_str(), Flash[1]);
-  LoadFlashFile(flash2_path.c_str(), Flash[2]);
-  LoadFlashFile(flash3_path.c_str(), Flash[3]);
+    LoadFlashFile(flash0_path.c_str(), Flash[0]);
+    LoadFlashFile(flash1_path.c_str(), Flash[1]);
+    LoadFlashFile(flash2_path.c_str(), Flash[2]);
+    LoadFlashFile(flash3_path.c_str(), Flash[3]);
+  }
 
   KonamiTrackballReset();
   TrackballSensitivity = g_host_interface->GetFloatSettingValue("KonamiGV", "TrackballSensitivity", 1.0f);
@@ -603,6 +699,12 @@ void KonamiInit(void)
 
 void KonamiTerm(void)
 {
+  if (EepromFp)
+  {
+    KonamiSaveEepromFile();
+    std::fclose(EepromFp);
+    EepromFp = nullptr;
+  }
 }
 
 // DMA
@@ -764,6 +866,8 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
               }
 
               std::memcpy(Ram + Address, Sector, 2048);
+              CPU::CodeCache::InvalidateCodePages(Address, 2048 / sizeof(u32));
+
               if (Address <= 0x00056D2C && (Address + 2048) > 0x00056D2C)
               {
                 const u32 target_offset = 0x00056D2C - Address;
@@ -1296,6 +1400,10 @@ static void KonamiSerialEepromWrite(u32 Value)
     EepromShiftCount = 0;
     EepromReadShift = 0;
     EepromReadBits = 0;
+    EepromWriteAll = false;
+    EepromWriteAddress = 0;
+    EepromWriteShift = 0;
+    EepromWriteBits = 0;
     EepromDo = true;
     return;
   }
@@ -1306,6 +1414,10 @@ static void KonamiSerialEepromWrite(u32 Value)
     EepromShiftCount = 0;
     EepromReadShift = 0;
     EepromReadBits = 0;
+    EepromWriteAll = false;
+    EepromWriteAddress = 0;
+    EepromWriteShift = 0;
+    EepromWriteBits = 0;
     EepromDo = true;
   }
 
@@ -1317,6 +1429,51 @@ static void KonamiSerialEepromWrite(u32 Value)
       EepromDo = ((EepromReadShift >> 15) & 1) != 0;
       EepromReadShift <<= 1;
       EepromReadBits--;
+    }
+    else if (EepromWriteBits > 0)
+    {
+      EepromWriteShift = (EepromWriteShift << 1) | (new_di ? 1 : 0);
+      EepromWriteBits--;
+
+      if (EepromWriteBits == 0)
+      {
+        const u16 wire_value = static_cast<u16>(EepromWriteShift & 0xFFFF);
+        const u16 raw_value = KonamiEepromSwap16(wire_value);
+
+        if (EepromWriteEnabled)
+        {
+          if (EepromWriteAll)
+          {
+            for (u32 i = 0; i < 64; i++)
+              Eeprom[i] = raw_value;
+          }
+          else
+          {
+            Eeprom[EepromWriteAddress & 0x3F] = raw_value;
+          }
+
+          KonamiSaveEepromFile();
+        }
+
+        if (serial_debug_count < 300)
+        {
+          if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
+          {
+            std::fprintf(fp, "EEPROM WRITE address=%u write_all=%u enabled=%u wire=0x%04X raw=0x%04X\n",
+                         EepromWriteAddress & 0x3F, EepromWriteAll ? 1 : 0, EepromWriteEnabled ? 1 : 0, wire_value,
+                         raw_value);
+            std::fclose(fp);
+          }
+          serial_debug_count++;
+        }
+
+        EepromShiftIn = 0;
+        EepromShiftCount = 0;
+        EepromWriteAll = false;
+        EepromWriteAddress = 0;
+        EepromWriteShift = 0;
+        EepromDo = true;
+      }
     }
     else
     {
@@ -1330,31 +1487,109 @@ static void KonamiSerialEepromWrite(u32 Value)
         EepromShiftIn = (EepromShiftIn << 1) | (new_di ? 1 : 0);
         EepromShiftCount++;
 
-        // 93C46 16-bit READ command:
-        // start bit 1, opcode 10, 6-bit address = 9 bits total.
+        // 93C46 16-bit command:
+        // start bit 1, opcode 2 bits, 6-bit address = 9 bits total.
         if (EepromShiftCount == 9)
         {
           const u32 start = (EepromShiftIn >> 8) & 1;
           const u32 opcode = (EepromShiftIn >> 6) & 3;
           const u32 address = EepromShiftIn & 0x3F;
           const u16 raw_value = Eeprom[address & 0x3F];
-          const u16 swapped_value = static_cast<u16>((raw_value >> 8) | (raw_value << 8));
+          const u16 swapped_value = KonamiEepromSwap16(raw_value);
 
-          if (serial_debug_count < 100)
+          if (serial_debug_count < 300)
           {
             if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
             {
-              std::fprintf(fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u raw=0x%04X swapped=0x%04X\n",
-                           EepromShiftIn, start, opcode, address, raw_value, swapped_value);
+              std::fprintf(
+                fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u raw=0x%04X swapped=0x%04X enabled=%u\n",
+                EepromShiftIn, start, opcode, address, raw_value, swapped_value, EepromWriteEnabled ? 1 : 0);
               std::fclose(fp);
             }
             serial_debug_count++;
           }
 
-          if (start && opcode == 2)
+          if (!start)
           {
+            EepromShiftIn = 0;
+            EepromShiftCount = 0;
+          }
+          else if (opcode == 2)
+          {
+            // READ
             EepromReadShift = swapped_value;
             EepromReadBits = 16;
+          }
+          else if (opcode == 1)
+          {
+            // WRITE word; next 16 clocked bits are data.
+            EepromWriteAll = false;
+            EepromWriteAddress = address;
+            EepromWriteShift = 0;
+            EepromWriteBits = 16;
+            EepromDo = false;
+          }
+          else if (opcode == 3)
+          {
+            // ERASE word.
+            if (EepromWriteEnabled)
+            {
+              Eeprom[address & 0x3F] = 0xFFFF;
+              KonamiSaveEepromFile();
+            }
+
+            EepromDo = true;
+            EepromShiftIn = 0;
+            EepromShiftCount = 0;
+          }
+          else
+          {
+            // Special commands use opcode 00 and address high bits:
+            // 00xxxx = EWDS, 01xxxx = WRAL, 10xxxx = ERAL, 11xxxx = EWEN.
+            const u32 special = (address >> 4) & 3;
+
+            switch (special)
+            {
+              case 0:
+                // EWDS
+                EepromWriteEnabled = false;
+                EepromDo = true;
+                EepromShiftIn = 0;
+                EepromShiftCount = 0;
+                break;
+
+              case 1:
+                // WRAL; next 16 clocked bits are written to all words.
+                EepromWriteAll = true;
+                EepromWriteAddress = 0;
+                EepromWriteShift = 0;
+                EepromWriteBits = 16;
+                EepromDo = false;
+                break;
+
+              case 2:
+                // ERAL
+                if (EepromWriteEnabled)
+                {
+                  for (u32 i = 0; i < 64; i++)
+                    Eeprom[i] = 0xFFFF;
+
+                  KonamiSaveEepromFile();
+                }
+
+                EepromDo = true;
+                EepromShiftIn = 0;
+                EepromShiftCount = 0;
+                break;
+
+              case 3:
+                // EWEN
+                EepromWriteEnabled = true;
+                EepromDo = true;
+                EepromShiftIn = 0;
+                EepromShiftCount = 0;
+                break;
+            }
           }
         }
       }
@@ -1365,7 +1600,6 @@ static void KonamiSerialEepromWrite(u32 Value)
   EepromCs = new_cs;
   EepromClk = new_clk;
 }
-
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
 {
   if (Offset >= 0x00180080 && Offset < 0x00180100)
@@ -1379,6 +1613,21 @@ void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
   }
 }
 
+static u16 KonamiEepromSwap16(u16 value)
+{
+  return static_cast<u16>((value >> 8) | (value << 8));
+}
+
+static void KonamiSaveEepromFile()
+{
+  if (!EepromFp)
+    return;
+
+  std::fseek(EepromFp, 0, SEEK_SET);
+  std::fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+  std::fflush(EepromFp);
+}
+
 void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value)
 {
   if (Offset >= 0x00180000 && Offset < 0x00180004)
@@ -1390,11 +1639,7 @@ void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value)
     u8 RelativeOffset = (Offset - 0x80) & 0x7F;
     Eeprom[RelativeOffset >> 1] = (u16)Value;
 
-    if (EepromFp)
-    {
-      std::fseek(EepromFp, 0, SEEK_SET);
-      fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
-    }
+    KonamiSaveEepromFile();
   }
   else
   {
