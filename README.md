@@ -1,6 +1,6 @@
 <img width="1254" height="1254" alt="arcadeduck" src="https://github.com/user-attachments/assets/bde407af-90f7-49b3-b299-2ca7277913ef" />
 
-ArcadeDuck
+# ArcadeDuck
 
 ArcadeDuck is a PlayStation-based arcade hardware emulator project built from DuckStation.
 
@@ -8,15 +8,15 @@ It is focused on arcade systems that used PS1-derived hardware, not retail PlayS
 
 The goal is simple:
 
-Load arcade ROM sets.
-Boot arcade hardware.
+Load arcade ROM sets.  
+Boot arcade hardware.  
 Play arcade games.
 
-No console-first setup.
-No living-room PlayStation baggage.
+No console-first setup.  
+No living-room PlayStation baggage.  
 No babysitting BIOS dropdowns like it’s 1998 and Windows just ate your sound card driver again.
 
-The Experience
+## The Experience
 
 ArcadeDuck is being built as an arcade-first emulator.
 
@@ -32,7 +32,7 @@ ArcadeDuck will handle system-specific BIOS selection, CHD paths, EEPROM, flash,
 
 The interface will be built around arcade systems and arcade games, not PlayStation discs, memory cards, console regions, or other console clutter.
 
-Target Hardware
+## Target Hardware
 
 ArcadeDuck is aimed at PS1-based arcade platforms, including:
 
@@ -53,17 +53,20 @@ The current focus is Konami GV, including games like:
 
 The weird sensor, printer, camera, heartbeat, and other “what the hell were they doing?” games are interesting, but they can wait. First priority is getting the normal arcade stuff solid before chasing every cursed daughterboard Konami felt like inventing.
 
-ROM Layout
+## ROM Layout
 
 ArcadeDuck is being built around a MAME-style arcade layout.
 
+```text
 roms/
   simpbowl.zip
   simpbowl/
     829uaa02.chd
+```
 
 Per-game save data will live separately:
 
+```text
 nvram/
   simpbowl/
     eeprom
@@ -71,10 +74,11 @@ nvram/
     flash1
     flash2
     flash3
+```
 
 The emulator treats these as arcade sets, not loose console discs.
 
-Current Development
+## Current Development
 
 The project is currently centered on Konami GV support.
 
@@ -90,7 +94,7 @@ Main work areas include:
 
 The Simpsons Bowling is the first major proof-of-concept, because apparently one fully working Simpsons bowling game was enough to justify forking an emulator. That sounds stupid until you remember this is exactly how hobby projects happen.
 
-Controls
+## Controls
 
 ArcadeDuck will use arcade-style input setups:
 
@@ -105,7 +109,7 @@ Trackballs will behave like trackballs, not like a mouse cursor pretending it ha
 
 Lightguns will support proper aiming, multiple players, off-screen reload, and normal user binding instead of hardcoded mouse button nonsense.
 
-User Interface
+## User Interface
 
 The UI is moving away from console emulator language and toward arcade hardware language.
 
@@ -121,24 +125,24 @@ Internally, the PS1 core is still there doing the heavy lifting. Externally, the
 
 That is the whole point.
 
-Visual Style
+## Visual Style
 
 ArcadeDuck is meant to feel like the era these boards came from.
 
-Late 90s arcade hardware.
-Conversion cabinets.
-CRT bezels.
-Gunmetal panels.
-PCB traces.
-JAMMA labels.
-SCSI cables.
+Late 90s arcade hardware.  
+Conversion cabinets.  
+CRT bezels.  
+Gunmetal panels.  
+PCB traces.  
+JAMMA labels.  
+SCSI cables.  
 CD-ROM drives that sound like they are one bad seek away from retirement.
 
 The visual direction is not modern neon gamer sludge. It is not a spaceship dashboard. It is not a fake e-sports overlay.
 
 It should feel like arcade hardware from that chunky, specific, slightly ugly, and somehow cooler era before everything tried to look like a smartphone app.
 
-About the Project
+## About the Project
 
 This is being built by someone learning as he goes, not pretending to be an emulator wizard.
 
@@ -146,7 +150,7 @@ I break things, test things, read code that occasionally looks like ancient curs
 
 The goal is still serious: build ArcadeDuck carefully, keep it arcade-first, and avoid creating a pile of hacks future-me wants to throw into traffic.
 
-Near-Term Focus
+## Near-Term Focus
 
 Right now the focus is simple:
 
@@ -158,12 +162,12 @@ Right now the focus is simple:
 
 One board at a time. One weird 90s hardware problem at a time.
 
-Status
+## Status
 
 ArcadeDuck is experimental.
 
-Some things work.
-Some things almost work.
+Some things work.  
+Some things almost work.  
 Some things explode because a 1990s arcade board expected a very specific flash chip to respond in a very specific way and nobody told the emulator yet.
 
 That is the fun part, unfortunately.
