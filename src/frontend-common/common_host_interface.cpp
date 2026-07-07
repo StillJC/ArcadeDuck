@@ -22,6 +22,7 @@
 #include "core/settings.h"
 #include "core/spu.h"
 #include "core/system.h"
+#include "core/konami.h"
 #include "core/texture_replacements.h"
 #include "core/timers.h"
 #include "fullscreen_ui.h"
@@ -36,6 +37,7 @@
 #include "save_state_selector_ui.h"
 #include "scmversion/scmversion.h"
 #include <cmath>
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -1692,6 +1694,53 @@ void CommonHostInterface::UpdateInputMap(SettingsInterface& si)
 
   if (!UpdateControllerInputMapFromGameSettings())
     UpdateControllerInputMap(si);
+
+  const auto konami_debug = [](const char* fmt, ...) {
+    std::FILE* fp = std::fopen("konami_gv_input_debug.txt", "ab");
+    if (!fp)
+      return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    std::vfprintf(fp, fmt, ap);
+    va_end(ap);
+
+    std::fputc('\n', fp);
+    std::fclose(fp);
+  };
+
+  const auto bind_konami_gv_button = [this, &si, &konami_debug](const char* key, u32 mask) {
+    const std::vector<std::string> bindings = si.GetStringList("KonamiGV", key);
+
+    konami_debug("Konami GV binding list: %s count=%u", key, static_cast<unsigned>(bindings.size()));
+
+    for (const std::string& binding : bindings)
+    {
+      const std::string::size_type slash_pos = binding.find('/');
+      if (slash_pos == std::string::npos)
+      {
+        konami_debug("Malformed Konami GV binding: %s = %s", key, binding.c_str());
+        continue;
+      }
+
+      const std::string_view device = std::string_view(binding).substr(0, slash_pos);
+      const std::string_view button = std::string_view(binding).substr(slash_pos + 1);
+
+      konami_debug("Konami GV binding registered: %s = %s mask=0x%08X", key, binding.c_str(), mask);
+
+      AddButtonToInputMap(binding, device, button, [key, mask, konami_debug](bool pressed) {
+        konami_debug("Konami GV binding fired: %s pressed=%u mask=0x%08X", key, pressed ? 1 : 0, mask);
+
+        if (System::IsShutdown())
+          return;
+
+        KonamiArcadeButtonSet(0, mask, pressed);
+      });
+    }
+  };
+
+  bind_konami_gv_button("Service", 1 << 11);
+  bind_konami_gv_button("Test", 1 << 12);
 
   UpdateHotkeyInputMap(si);
 }

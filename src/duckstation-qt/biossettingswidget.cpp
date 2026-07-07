@@ -1,4 +1,5 @@
 #include "biossettingswidget.h"
+#include "inputbindingwidgets.h"
 #include "core/bios.h"
 #include "qthostinterface.h"
 #include "qtutils.h"
@@ -98,26 +99,13 @@ BIOSSettingsWidget::BIOSSettingsWidget(QtHostInterface* host_interface, QWidget*
   if (m_host_interface->GetStringSettingValue("KonamiGV", "TrackballSensitivity", "").empty())
     m_host_interface->SetFloatSettingValue("KonamiGV", "TrackballSensitivity", 1.0f);
 
-  // Konami GV file path helpers
-  auto bindKonamiPath = [this](QLineEdit* edit, QPushButton* browse, const char* key) {
-    edit->setText(
-      QString::fromStdString(m_host_interface->GetStringSettingValue("KonamiGV", key, "")));
-    connect(edit, &QLineEdit::textChanged, [this, key](const QString& text) {
-      m_host_interface->SetStringSettingValue("KonamiGV", key, text.toStdString().c_str());
-    });
-    connect(browse, &QPushButton::clicked, [this, edit]() {
-      QString path = QFileDialog::getOpenFileName(QtUtils::GetRootWidget(this), tr("Select File"), edit->text());
-      if (!path.isEmpty())
-        edit->setText(path);
-    });
-  };
+  // Konami GV Test & Service buttons
+  m_ui.formLayoutKonami->addRow(
+    tr("Service:"), new InputButtonBindingWidget(m_host_interface, "KonamiGV", "Service", m_ui.groupBoxKonami));
 
-  bindKonamiPath(m_ui.konamiEEPROMPath,  m_ui.browseKonamiEEPROMPath,  "EEPROMPath");
-  bindKonamiPath(m_ui.konamiFlashPath0,  m_ui.browseKonamiFlashPath0,  "FlashPath0");
-  bindKonamiPath(m_ui.konamiFlashPath1,  m_ui.browseKonamiFlashPath1,  "FlashPath1");
-  bindKonamiPath(m_ui.konamiFlashPath2,  m_ui.browseKonamiFlashPath2,  "FlashPath2");
-  bindKonamiPath(m_ui.konamiFlashPath3,  m_ui.browseKonamiFlashPath3,  "FlashPath3");
-
+  m_ui.formLayoutKonami->addRow(
+    tr("Test:"), new InputButtonBindingWidget(m_host_interface, "KonamiGV", "Test", m_ui.groupBoxKonami));
+  
   dialog->registerWidgetHelp(m_ui.fastBoot, tr("Fast Boot"), tr("Unchecked"),
                              tr("Patches the BIOS to skip the console's boot animation. Does not work with all games, "
                                 "but usually safe to enable."));

@@ -173,118 +173,53 @@
      </layout>
     </widget>
    </item>
-   <item>
-    <widget class="QGroupBox" name="groupBoxKonami">
-     <property name="title">
-      <string>Konami GV System</string>
-     </property>
-     <layout class="QFormLayout" name="formLayoutKonami">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelTrackballSensitivity">
-        <property name="text">
-         <string>Trackball Sensitivity:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="trackballSensitivity">
-        <property name="minimum">
-         <double>0.100000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>10.000000000000000</double>
-        </property>
-        <property name="singleStep">
-         <double>0.100000000000000</double>
-        </property>
-        <property name="value">
-         <double>1.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelEEPROMPath">
-        <property name="text">
-         <string>EEPROM Path:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <layout class="QHBoxLayout">
-        <item><widget class="QLineEdit" name="konamiEEPROMPath"/></item>
-        <item><widget class="QPushButton" name="browseKonamiEEPROMPath"><property name="text"><string>Browse...</string></property></widget></item>
-       </layout>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelFlashPath0">
-        <property name="text">
-         <string>Flash 0 Path:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout">
-        <item><widget class="QLineEdit" name="konamiFlashPath0"/></item>
-        <item><widget class="QPushButton" name="browseKonamiFlashPath0"><property name="text"><string>Browse...</string></property></widget></item>
-       </layout>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="labelFlashPath1">
-        <property name="text">
-         <string>Flash 1 Path:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <layout class="QHBoxLayout">
-        <item><widget class="QLineEdit" name="konamiFlashPath1"/></item>
-        <item><widget class="QPushButton" name="browseKonamiFlashPath1"><property name="text"><string>Browse...</string></property></widget></item>
-       </layout>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="labelFlashPath2">
-        <property name="text">
-         <string>Flash 2 Path:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <layout class="QHBoxLayout">
-        <item><widget class="QLineEdit" name="konamiFlashPath2"/></item>
-        <item><widget class="QPushButton" name="browseKonamiFlashPath2"><property name="text"><string>Browse...</string></property></widget></item>
-       </layout>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="labelFlashPath3">
-        <property name="text">
-         <string>Flash 3 Path:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <layout class="QHBoxLayout">
-        <item><widget class="QLineEdit" name="konamiFlashPath3"/></item>
-        <item><widget class="QPushButton" name="browseKonamiFlashPath3"><property name="text"><string>Browse...</string></property></widget></item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
+	  <item>
+		  <widget class="QGroupBox" name="groupBoxKonami">
+			  <property name="title">
+				  <string>Konami GV System</string>
+			  </property>
+			  <layout class="QFormLayout" name="formLayoutKonami">
+				  <item row="0" column="0">
+					  <widget class="QLabel" name="labelTrackballSensitivity">
+						  <property name="text">
+							  <string>Trackball Sensitivity:</string>
+						  </property>
+					  </widget>
+				  </item>
+				  <item row="0" column="1">
+					  <widget class="QDoubleSpinBox" name="trackballSensitivity">
+						  <property name="minimum">
+							  <double>0.100000000000000</double>
+						  </property>
+						  <property name="maximum">
+							  <double>10.000000000000000</double>
+						  </property>
+						  <property name="singleStep">
+							  <double>0.100000000000000</double>
+						  </property>
+						  <property name="value">
+							  <double>1.000000000000000</double>
+						  </property>
+					  </widget>
+				  </item>
+			  </layout>
+		  </widget>
+	  </item>
+	  <item>
+		  <spacer name="verticalSpacer">
+			  <property name="orientation">
+				  <enum>Qt::Vertical</enum>
+			  </property>
+			  <property name="sizeHint" stdset="0">
+				  <size>
+					  <width>20</width>
+					  <height>40</height>
+				  </size>
+			  </property>
+		  </spacer>
+	  </item>
   </layout>
- </widget>
- <resources/>
- <connections/>
+</widget>
+<resources/>
+<connections/>
 </ui>
