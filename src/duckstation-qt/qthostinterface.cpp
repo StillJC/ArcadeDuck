@@ -8,8 +8,10 @@
 #include "core/cheats.h"
 #include "core/controller.h"
 #include "core/gpu.h"
+#include "core/host_display.h"
 #include "core/konami.h"
 #include "core/memory_card.h"
+#include "core/namco_guncon.h"
 #include "core/system.h"
 #include "frontend-common/fullscreen_ui.h"
 #include "frontend-common/game_list.h"
@@ -500,6 +502,122 @@ void QtHostInterface::onDisplayWindowMouseMoveEvent(int x, int y)
   }
 }
 
+struct RawLightgunCursorState
+{
+  bool valid = false;
+  int x = 0;
+  int y = 0;
+  std::string device_name;
+};
+
+static RawLightgunCursorState s_raw_lightgun_cursors[2];
+
+struct RawLightgunCursorTextureState
+{
+  const void* pixels = nullptr;
+  u32 width = 0;
+  u32 height = 0;
+  std::unique_ptr<HostDisplayTexture> texture;
+};
+
+static RawLightgunCursorTextureState s_raw_lightgun_cursor_textures[2];
+
+static void DrawRawLightgunCursorOverlay(HostDisplay* display)
+{
+  if (!display || !System::IsValid() || !KonamiIsKDeadEye())
+    return;
+
+  static constexpr const char* section_names[2] = {"Controller1", "Controller2"};
+
+  for (u32 i = 0; i < 2; i++)
+  {
+    const RawLightgunCursorState& cursor = s_raw_lightgun_cursors[i];
+    if (!cursor.valid)
+      continue;
+
+    const std::string selected_device =
+      g_host_interface->GetStringSettingValue(section_names[i], "LightgunDevice", i == 0 ? "SystemMouse" : "Disabled");
+
+    if (selected_device != cursor.device_name)
+      continue;
+
+    Controller* controller = System::GetController(i);
+    if (!controller || controller->GetType() != ControllerType::NamcoGunCon)
+      continue;
+
+    const NamcoGunCon* guncon = static_cast<const NamcoGunCon*>(controller);
+    const Common::RGBA8Image& image = guncon->GetCrosshairImage();
+    if (!image.IsValid())
+      continue;
+
+    RawLightgunCursorTextureState& texture_state = s_raw_lightgun_cursor_textures[i];
+
+    if (!texture_state.texture || texture_state.pixels != image.GetPixels() ||
+        texture_state.width != image.GetWidth() || texture_state.height != image.GetHeight())
+    {
+      texture_state.texture =
+        display->CreateTexture(image.GetWidth(), image.GetHeight(), 1, 1, 1, HostDisplayPixelFormat::RGBA8,
+                               image.GetPixels(), image.GetByteStride(), false);
+
+      texture_state.pixels = image.GetPixels();
+      texture_state.width = image.GetWidth();
+      texture_state.height = image.GetHeight();
+    }
+
+    if (!texture_state.texture)
+      continue;
+
+    const float scale = guncon->GetCrosshairImageScale();
+    const float width = static_cast<float>(image.GetWidth()) * scale;
+    const float height = static_cast<float>(image.GetHeight()) * scale;
+
+    const ImVec2 top_left(static_cast<float>(cursor.x) - (width * 0.5f),
+                          static_cast<float>(cursor.y) - (height * 0.5f));
+    const ImVec2 bottom_right(top_left.x + width, top_left.y + height);
+
+    ImGui::GetForegroundDrawList()->AddImage(static_cast<ImTextureID>(texture_state.texture->GetHandle()), top_left,
+                                             bottom_right);
+  }
+}
+
+void QtHostInterface::onDisplayWindowRawMouseMoveEvent(const QString& device_name, int x, int y)
+{
+  DebugAssert(isOnWorkerThread());
+
+  if (!m_display || !System::IsValid() || !KonamiIsKDeadEye())
+    return;
+
+  const s32 window_width = m_display->GetWindowWidth();
+  const s32 window_height = m_display->GetWindowHeight();
+  if (window_width <= 0 || window_height <= 0)
+    return;
+
+  const auto [draw_left, draw_top, draw_width, draw_height] =
+    m_display->CalculateDrawRect(window_width, window_height, m_display->GetDisplayTopMargin());
+
+  if (draw_width <= 0 || draw_height <= 0)
+    return;
+
+  const float normalized_x = static_cast<float>(x - draw_left) / static_cast<float>(draw_width);
+  const float normalized_y = static_cast<float>(y - draw_top) / static_cast<float>(draw_height);
+
+  const std::string raw_device_name = device_name.toStdString();
+  const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+  const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+
+  if (player1_device == raw_device_name)
+  {
+    KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+    s_raw_lightgun_cursors[0] = {true, x, y, raw_device_name};
+  }
+
+  if (player2_device == raw_device_name)
+  {
+    KonamiLightgunSetPosition(1, normalized_x, normalized_y);
+    s_raw_lightgun_cursors[1] = {true, x, y, raw_device_name};
+  }
+}
+
 void QtHostInterface::onDisplayWindowMouseButtonEvent(int button, bool pressed)
 {
   DebugAssert(isOnWorkerThread());
@@ -683,6 +801,7 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
           Qt::BlockingQueuedConnection);
   connect(widget, &QtDisplayWidget::windowKeyEvent, this, &QtHostInterface::onDisplayWindowKeyEvent);
   connect(widget, &QtDisplayWidget::windowMouseMoveEvent, this, &QtHostInterface::onDisplayWindowMouseMoveEvent);
+  connect(widget, &QtDisplayWidget::windowRawMouseMoveEvent, this, &QtHostInterface::onDisplayWindowRawMouseMoveEvent);
 
   connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [](int dx, int dy) {
     if (System::IsValid())
@@ -1730,6 +1849,7 @@ void QtHostInterface::renderDisplay()
 {
   ImGui::NewFrame();
   DrawImGuiWindows();
+  DrawRawLightgunCursorOverlay(m_display.get());
   m_display->Render();
   ImGui::EndFrame();
 }

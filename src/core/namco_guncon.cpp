@@ -341,6 +341,16 @@ void NamcoGunCon::LoadSettings(const char* section)
   m_lightgun_device_system_mouse = (lightgun_device == "SystemMouse");
 }
 
+const Common::RGBA8Image& NamcoGunCon::GetCrosshairImage() const
+{
+  return m_crosshair_image;
+}
+
+float NamcoGunCon::GetCrosshairImageScale() const
+{
+  return m_crosshair_image_scale;
+}
+
 bool NamcoGunCon::GetSoftwareCursor(const Common::RGBA8Image** image, float* image_scale, bool* relative_mode)
 {
   if (!m_lightgun_device_system_mouse || !m_crosshair_image.IsValid())

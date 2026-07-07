@@ -16,8 +16,68 @@
 #include <QtWidgets/QInputDialog>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QMessageBox>
+#if defined(_WIN32)
+#include "common/windows_headers.h"
+#endif
+#include <vector>
 
 static constexpr char INPUT_PROFILE_FILTER[] = "Input Profiles (*.ini)";
+
+#if defined(_WIN32)
+static QString GetRawMouseDisplayName(const QString& device_name, u32 index)
+{
+  QString label = device_name;
+
+  const qsizetype vid_pos = label.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
+  const qsizetype pid_pos = label.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
+
+  if (vid_pos >= 0 && pid_pos >= 0)
+  {
+    const QString vid = label.mid(vid_pos, 8).toUpper();
+    const QString pid = label.mid(pid_pos, 8).toUpper();
+    return QStringLiteral("%1 %2 — Windows Raw Mouse %3").arg(vid, pid).arg(index + 1);
+  }
+
+  return QStringLiteral("Windows Raw Mouse %1 — %2").arg(index + 1).arg(device_name);
+}
+
+static std::vector<std::pair<QString, QString>> GetRawMouseDeviceList()
+{
+  std::vector<std::pair<QString, QString>> devices;
+
+  UINT device_count = 0;
+  if (GetRawInputDeviceList(nullptr, &device_count, sizeof(RAWINPUTDEVICELIST)) != 0 || device_count == 0)
+    return devices;
+
+  std::vector<RAWINPUTDEVICELIST> raw_devices(device_count);
+  if (GetRawInputDeviceList(raw_devices.data(), &device_count, sizeof(RAWINPUTDEVICELIST)) == static_cast<UINT>(-1))
+    return devices;
+
+  for (UINT i = 0; i < device_count; i++)
+  {
+    if (raw_devices[i].dwType != RIM_TYPEMOUSE)
+      continue;
+
+    UINT name_size = 0;
+    GetRawInputDeviceInfoA(raw_devices[i].hDevice, RIDI_DEVICENAME, nullptr, &name_size);
+    if (name_size == 0)
+      continue;
+
+    std::vector<char> name(name_size + 1);
+    if (GetRawInputDeviceInfoA(raw_devices[i].hDevice, RIDI_DEVICENAME, name.data(), &name_size) ==
+        static_cast<UINT>(-1))
+      continue;
+
+    const QString device_name = QString::fromLocal8Bit(name.data());
+    const QString display_name = GetRawMouseDisplayName(device_name, static_cast<u32>(devices.size()));
+    const QString setting_value = QStringLiteral("RawMouse:%1").arg(device_name);
+
+    devices.emplace_back(display_name, setting_value);
+  }
+
+  return devices;
+}
+#endif
 
 ControllerSettingsWidget::ControllerSettingsWidget(QtHostInterface* host_interface, QWidget* parent /* = nullptr */)
   : QWidget(parent), m_host_interface(host_interface)
@@ -463,6 +523,11 @@ void ControllerSettingsWidget::createPortBindingSettingsUi(int index, PortSettin
     QComboBox* lightgun_device = new QComboBox(ui->bindings_container);
     lightgun_device->addItem(tr("Disabled"), QStringLiteral("Disabled"));
     lightgun_device->addItem(tr("System Mouse"), QStringLiteral("SystemMouse"));
+
+#if defined(_WIN32)
+    for (const auto& [display_name, setting_value] : GetRawMouseDeviceList())
+      lightgun_device->addItem(display_name, setting_value);
+#endif
 
     SettingWidgetBinder::BindWidgetToStringSetting(m_host_interface, lightgun_device, section_name, "LightgunDevice",
                                                    index == 0 ? "SystemMouse" : "Disabled");

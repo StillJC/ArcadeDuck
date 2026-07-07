@@ -1,9 +1,14 @@
 #pragma once
 #include "common/types.h"
 #include "common/window_info.h"
+#include <QtCore/QByteArray>
+#include <QtCore/QString>
+#include <QtCore/QtGlobal>
 #include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QWidget>
 #include <optional>
+#include <utility>
+#include <vector>
 
 class QtDisplayWidget final : public QWidget
 {
@@ -30,6 +35,7 @@ Q_SIGNALS:
   void windowClosedEvent();
   void windowKeyEvent(int key_code, int mods, bool pressed);
   void windowMouseMoveEvent(int x, int y);
+  void windowRawMouseMoveEvent(const QString& device_name, int x, int y);
   void windowMouseRelativeEvent(int dx, int dy);
   void windowMouseButtonEvent(int button, bool pressed);
   void windowMouseWheelEvent(const QPoint& angle_delta);
@@ -37,7 +43,23 @@ Q_SIGNALS:
 protected:
   bool event(QEvent* event) override;
 
+#if defined(_WIN32)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  bool nativeEvent(const QByteArray& event_type, void* message, qintptr* result) override;
+#else
+  bool nativeEvent(const QByteArray& event_type, void* message, long* result) override;
+#endif
+#endif
+
 private:
+#if defined(_WIN32)
+  void registerRawInputMouse();
+  void logRawInputDevices();
+  QString getRawMouseSettingValue(void* device_handle);
+
+  std::vector<std::pair<QString, QPoint>> m_raw_mouse_positions;
+#endif
+
   QPoint m_relative_mouse_start_position{};
   QPoint m_relative_mouse_last_position{};
   QPoint m_last_mouse_global_position{};
