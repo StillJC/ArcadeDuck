@@ -174,8 +174,12 @@ void CommonHostInterface::DrawSindenBorderOverlay()
   const int configured_width = GetIntSettingValue("Controller1", "SindenBorderWidth", 4);
   const float border_width = static_cast<float>(std::clamp(configured_width, 1, 64));
 
-  const ImVec2 top_left(static_cast<float>(draw_left), static_cast<float>(draw_top));
-  const ImVec2 bottom_right(static_cast<float>(draw_left + draw_width), static_cast<float>(draw_top + draw_height));
+  const float half_border_width = border_width * 0.5f;
+
+  const ImVec2 top_left(static_cast<float>(draw_left) + half_border_width,
+                        static_cast<float>(draw_top) + half_border_width);
+  const ImVec2 bottom_right(static_cast<float>(draw_left + draw_width) - half_border_width,
+                            static_cast<float>(draw_top + draw_height) - half_border_width);
 
   ImGui::GetForegroundDrawList()->AddRect(top_left, bottom_right, IM_COL32(255, 255, 255, 255), 0.0f, 0, border_width);
 }
