@@ -71,6 +71,19 @@ static u32 FlashAddress;
 
 static u8 KDeadEyeFlash[KDEADEYE_FLASH_SIZE];
 static bool KDeadEyeFlashValid = false;
+static bool KDeadEyeFlashDirty = false;
+static std::string KDeadEyeFlashPath;
+
+enum KonamiKDeadEyeFlashMode : u8
+{
+  KDEADEYE_FLASH_MODE_READ_ARRAY,
+  KDEADEYE_FLASH_MODE_READ_STATUS,
+  KDEADEYE_FLASH_MODE_PROGRAM,
+  KDEADEYE_FLASH_MODE_ERASE_SETUP
+};
+
+static KonamiKDeadEyeFlashMode KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
+static u16 KDeadEyeFlashStatus = 0x0080;
 
 static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
 {
@@ -98,6 +111,21 @@ static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
 
   KDeadEyeFlashValid = (read == KDEADEYE_FLASH_SIZE);
   return KDeadEyeFlashValid;
+}
+
+static void KonamiSaveKDeadEyeFlashFile()
+{
+  if (!KDeadEyeFlashValid || !KDeadEyeFlashDirty || KDeadEyeFlashPath.empty())
+    return;
+
+  std::FILE* fp = FileSystem::OpenCFile(KDeadEyeFlashPath.c_str(), "wb");
+  if (!fp)
+    return;
+
+  std::fwrite(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  std::fclose(fp);
+
+  KDeadEyeFlashDirty = false;
 }
 
 static u16 KonamiKDeadEyeSingleFlashRead16(u32 relative_offset)
@@ -132,6 +160,18 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   static int kdeadeye_flash_read_debug_count = 0;
 
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
+
+  if (KDeadEyeFlashValid && KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_READ_STATUS)
+  {
+    Value = KDeadEyeFlashStatus & 0xFF;
+
+    if (Size == 2)
+      Value |= Value << 8;
+    else if (Size == 4)
+      Value |= Value << 8 | Value << 16 | Value << 24;
+
+    return;
+  }
 
   switch (Size)
   {
@@ -182,19 +222,145 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
   static int kdeadeye_flash_write_debug_count = 0;
 
+  const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
+  const u32 byte_offset = relative_offset & (KDEADEYE_FLASH_SIZE - 1);
+  const u16 command = static_cast<u16>(Value & 0xFF);
+
   if (kdeadeye_flash_write_debug_count < 1000)
   {
     if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
     {
-      std::fprintf(fp, "WRITE size=%u offset=0x%08X single=%u value=0x%08X\n", Size, Offset, KDeadEyeFlashValid ? 1 : 0,
-                   Value);
+      std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X single=%u mode=%u value=0x%08X\n", Size, Offset,
+                   relative_offset, KDeadEyeFlashValid ? 1 : 0, static_cast<u32>(KDeadEyeFlashMode), Value);
       std::fclose(fp);
     }
 
     kdeadeye_flash_write_debug_count++;
   }
 
-  // First-pass KDeadEye support: direct flash writes are ignored.
+  if (!KDeadEyeFlashValid)
+    return;
+
+  if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
+  {
+    switch (Size)
+    {
+      case 1:
+        KDeadEyeFlash[byte_offset] &= static_cast<u8>(Value & 0xFF);
+        break;
+
+      case 2:
+      {
+        const u32 high_offset = byte_offset & ~1U;
+        const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+
+        KDeadEyeFlash[high_offset] &= static_cast<u8>((Value >> 8) & 0xFF);
+        KDeadEyeFlash[low_offset] &= static_cast<u8>(Value & 0xFF);
+        break;
+      }
+
+      case 4:
+      {
+        const u32 first_offset = byte_offset & ~1U;
+        const u32 second_offset = (first_offset + 2) & (KDEADEYE_FLASH_SIZE - 1);
+
+        const u16 low_word = static_cast<u16>(Value & 0xFFFF);
+        const u16 high_word = static_cast<u16>((Value >> 16) & 0xFFFF);
+
+        KDeadEyeFlash[first_offset] &= static_cast<u8>((low_word >> 8) & 0xFF);
+        KDeadEyeFlash[(first_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] &= static_cast<u8>(low_word & 0xFF);
+        KDeadEyeFlash[second_offset] &= static_cast<u8>((high_word >> 8) & 0xFF);
+        KDeadEyeFlash[(second_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] &= static_cast<u8>(high_word & 0xFF);
+        break;
+      }
+    }
+
+    KDeadEyeFlashDirty = true;
+    KDeadEyeFlashStatus = 0x0080;
+    KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+    return;
+  }
+
+  if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_ERASE_SETUP)
+  {
+    if (command == 0xD0)
+    {
+      const u32 block_start = byte_offset & ~(FLASH_SECTOR_SIZE - 1);
+
+      for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
+        KDeadEyeFlash[(block_start + i) & (KDEADEYE_FLASH_SIZE - 1)] = 0xFF;
+
+      KDeadEyeFlashDirty = true;
+      KDeadEyeFlashStatus = 0x0080;
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+    }
+    else
+    {
+      KDeadEyeFlashStatus = 0x00B0;
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+    }
+
+    return;
+  }
+
+  switch (command)
+  {
+    case 0xFF:
+      // Read array / reset.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    case 0x70:
+      // Read status register.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      break;
+
+    case 0x50:
+      // Clear status register.
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    case 0x40:
+    case 0x10:
+      // Program next write.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_PROGRAM;
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    case 0x20:
+      // Erase setup. Next write should be 0xD0.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_ERASE_SETUP;
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    case 0xB0:
+      // Suspend not currently needed; report ready.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    case 0xD0:
+      // Resume/confirm without erase setup. Treat as ready.
+      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      KDeadEyeFlashStatus = 0x0080;
+      break;
+
+    default:
+      if (kdeadeye_flash_write_debug_count < 1000)
+      {
+        if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+        {
+          std::fprintf(fp, "UNKNOWN KDeadEye flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
+                       command, Value);
+          std::fclose(fp);
+        }
+
+        kdeadeye_flash_write_debug_count++;
+      }
+
+      break;
+  }
 }
 enum KonamiFlashMode : u8
 {
@@ -652,6 +818,10 @@ void KonamiInit(void)
     KDeadEyeFlash[i] = 0xFF;
 
   KDeadEyeFlashValid = false;
+  KDeadEyeFlashDirty = false;
+  KDeadEyeFlashPath.clear();
+  KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
+  KDeadEyeFlashStatus = 0x0080;
   FlashAddress = 0;
 
   for (u32 chip = 0; chip < 4; chip++)
@@ -665,6 +835,8 @@ void KonamiInit(void)
 
   if (KonamiIsKDeadEye() && KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path))
   {
+    KDeadEyeFlashPath = kdeadeye_flash_path;
+
     if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "Loaded single KDeadEye flash file: %s\n", kdeadeye_flash_path.c_str());
@@ -699,6 +871,8 @@ void KonamiInit(void)
 
 void KonamiTerm(void)
 {
+  KonamiSaveKDeadEyeFlashFile();
+
   if (EepromFp)
   {
     KonamiSaveEepromFile();
