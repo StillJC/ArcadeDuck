@@ -418,6 +418,7 @@ static std::mutex LightgunMutex;
 static float LightgunNormalizedX[2] = {0.5f, 0.5f};
 static float LightgunNormalizedY[2] = {0.5f, 0.5f};
 static bool LightgunTrigger[2] = {false, false};
+static bool LightgunOffscreen[2] = {false, false};
 
 static constexpr u16 LIGHTGUN_X_MIN = 0x004C;
 static constexpr u16 LIGHTGUN_X_MAX = 0x01BB;
@@ -425,6 +426,8 @@ static constexpr u16 LIGHTGUN_Y_MIN = 0x0000;
 static constexpr u16 LIGHTGUN_Y_MAX = 0x00EF;
 static constexpr u16 LIGHTGUN_X_CENTER = 0x0100;
 static constexpr u16 LIGHTGUN_Y_CENTER = 0x0077;
+static constexpr u16 LIGHTGUN_X_OFFSCREEN = 0x0000;
+static constexpr u16 LIGHTGUN_Y_OFFSCREEN = 0x00F0;
 
 void KonamiTrackballReset();
 
@@ -862,10 +865,12 @@ void KonamiInit(void)
     LightgunNormalizedX[0] = 0.5f;
     LightgunNormalizedY[0] = 0.5f;
     LightgunTrigger[0] = false;
+    LightgunOffscreen[0] = false;
 
     LightgunNormalizedX[1] = 0.5f;
     LightgunNormalizedY[1] = 0.5f;
     LightgunTrigger[1] = false;
+    LightgunOffscreen[1] = false;
   }
 }
 
@@ -1929,6 +1934,10 @@ static u16 KonamiGetLightgunX(u32 player)
     return LIGHTGUN_X_CENTER;
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
+
+  if (LightgunOffscreen[player])
+    return LIGHTGUN_X_OFFSCREEN;
+
   return KonamiScaleLightgunAxis(LightgunNormalizedX[player], LIGHTGUN_X_MIN, LIGHTGUN_X_MAX);
 }
 
@@ -1938,6 +1947,10 @@ static u16 KonamiGetLightgunY(u32 player)
     return LIGHTGUN_Y_CENTER;
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
+
+  if (LightgunOffscreen[player])
+    return LIGHTGUN_Y_OFFSCREEN;
+
   return KonamiScaleLightgunAxis(LightgunNormalizedY[player], LIGHTGUN_Y_MIN, LIGHTGUN_Y_MAX);
 }
 
@@ -1986,6 +1999,7 @@ void KonamiLightgunSetPosition(u32 Player, float X, float Y)
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
 
+  LightgunOffscreen[Player] = (X < 0.0f || X > 1.0f || Y < 0.0f || Y > 1.0f);
   LightgunNormalizedX[Player] = std::clamp(X, 0.0f, 1.0f);
   LightgunNormalizedY[Player] = std::clamp(Y, 0.0f, 1.0f);
 }

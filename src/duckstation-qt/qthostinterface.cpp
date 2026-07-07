@@ -474,18 +474,21 @@ void QtHostInterface::onDisplayWindowMouseMoveEvent(int x, int y)
   m_display->SetMousePosition(x, y);
   if (System::IsValid() && KonamiIsKDeadEye())
   {
-    const s32 width = m_display->GetWindowWidth();
-    const s32 height = m_display->GetWindowHeight();
+    const s32 window_width = m_display->GetWindowWidth();
+    const s32 window_height = m_display->GetWindowHeight();
 
-    if (width > 0 && height > 0)
+    if (window_width > 0 && window_height > 0)
     {
-      float normalized_x = static_cast<float>(x) / static_cast<float>(width);
-      float normalized_y = static_cast<float>(y) / static_cast<float>(height);
+      const auto [draw_left, draw_top, draw_width, draw_height] =
+        m_display->CalculateDrawRect(window_width, window_height, m_display->GetDisplayTopMargin());
 
-      normalized_x = std::clamp(normalized_x, 0.0f, 1.0f);
-      normalized_y = std::clamp(normalized_y, 0.0f, 1.0f);
+      if (draw_width > 0 && draw_height > 0)
+      {
+        const float normalized_x = static_cast<float>(x - draw_left) / static_cast<float>(draw_width);
+        const float normalized_y = static_cast<float>(y - draw_top) / static_cast<float>(draw_height);
 
-      KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+        KonamiLightgunSetPosition(0, normalized_x, normalized_y);
+      }
     }
   }
 }
