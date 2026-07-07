@@ -16,10 +16,10 @@ public:
     Count
   };
 
-  NamcoGunCon();
+  explicit NamcoGunCon(u32 index);
   ~NamcoGunCon() override;
 
-  static std::unique_ptr<NamcoGunCon> Create();
+  static std::unique_ptr<NamcoGunCon> Create(u32 index);
   static std::optional<s32> StaticGetAxisCodeByName(std::string_view button_name);
   static std::optional<s32> StaticGetButtonCodeByName(std::string_view button_name);
   static AxisList StaticGetAxisNames();
@@ -59,6 +59,8 @@ private:
     YLSB,
     YMSB
   };
+  
+  u32 m_index = 0;
 
   Common::RGBA8Image m_crosshair_image;
   std::string m_crosshair_image_path;

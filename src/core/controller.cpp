@@ -81,7 +81,7 @@ std::unique_ptr<Controller> Controller::Create(ControllerType type, u32 index)
       return AnalogJoystick::Create(index);
 
     case ControllerType::NamcoGunCon:
-      return NamcoGunCon::Create();
+      return NamcoGunCon::Create(index);
 
     case ControllerType::PlayStationMouse:
       return PlayStationMouse::Create();

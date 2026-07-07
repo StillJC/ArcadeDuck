@@ -58,7 +58,7 @@ static u32 ScsiAudioRelativeLba;
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
 
 // Buttons
-static u32 CurrentButtons;
+static u32 CurrentButtons[2];
 
 // FLASH
 static constexpr u32 FLASH_SIZE = 0x200000;
@@ -419,6 +419,7 @@ static float LightgunNormalizedX[2] = {0.5f, 0.5f};
 static float LightgunNormalizedY[2] = {0.5f, 0.5f};
 static bool LightgunTrigger[2] = {false, false};
 static bool LightgunOffscreen[2] = {false, false};
+static bool LightgunShootOffscreen[2] = {false, false};
 
 static constexpr u16 LIGHTGUN_X_MIN = 0x004C;
 static constexpr u16 LIGHTGUN_X_MAX = 0x01BB;
@@ -859,6 +860,9 @@ void KonamiInit(void)
   KonamiTrackballReset();
   TrackballSensitivity = g_host_interface->GetFloatSettingValue("KonamiGV", "TrackballSensitivity", 1.0f);
 
+  CurrentButtons[0] = 0xFFFFFFFF;
+  CurrentButtons[1] = 0xFFFFFFFF;
+
   {
     std::lock_guard<std::mutex> lock(LightgunMutex);
 
@@ -866,11 +870,13 @@ void KonamiInit(void)
     LightgunNormalizedY[0] = 0.5f;
     LightgunTrigger[0] = false;
     LightgunOffscreen[0] = false;
+    LightgunShootOffscreen[0] = false;
 
     LightgunNormalizedX[1] = 0.5f;
     LightgunNormalizedY[1] = 0.5f;
     LightgunTrigger[1] = false;
     LightgunOffscreen[1] = false;
+    LightgunShootOffscreen[1] = false;
   }
 }
 
@@ -1289,18 +1295,12 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
 void KonamiP1Read(u32 Size, u32 Offset, u32& Value)
 {
-  Value = 0xFFFFFFFF;
-  if (CurrentButtons & 0x0080) Value &= ~(1 << 0); // LEFT
-  if (CurrentButtons & 0x0020) Value &= ~(1 << 1); // RIGHT
-  if (CurrentButtons & 0x0010) Value &= ~(1 << 2); // UP
-  if (CurrentButtons & 0x0040) Value &= ~(1 << 3); // DOWN
-  if (CurrentButtons & 0x4000) Value &= ~(1 << 4); // BUTTON 1 / CROSS
-  if (CurrentButtons & 0x2000) Value &= ~(1 << 5); // BUTTON 2 / CIRCLE
-  if (CurrentButtons & 0x0008) Value &= ~(1 << 9); // START
-  if (CurrentButtons & 0x0001) Value &= ~(1 << 10); // COIN 1
-  if (CurrentButtons & 0x0002) Value &= ~(1 << 11); // SERVICE / L3
-  if (CurrentButtons & 0x0004) Value &= ~(1 << 12); // TEST / R3
-  if (!EepromDo) Value &= ~(1 << 13);
+  Value = CurrentButtons[0];
+
+  if (EepromDo)
+    Value |= (1 << 13);
+  else
+    Value &= ~(1 << 13);
 }
 
 void KonamiP1Write(u32 Size, u32 Offset, u32 Value)
@@ -1312,9 +1312,7 @@ void KonamiP1Write(u32 Size, u32 Offset, u32 Value)
 
 void KonamiP2Read(u32 Size, u32 Offset, u32& Value)
 {
-  Value = 0xFFFFFFFF;
-
-  if (CurrentButtons & 0x0100) Value &= ~(1 << 10); // COIN MECH 2 / L2
+  Value = CurrentButtons[1];
 }
 
 void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
@@ -1884,9 +1882,50 @@ void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
   // Ignored
 }
 
-void KonamiButtonsSet(u32 Buttons)
+void KonamiButtonsSet(u32 Player, u32 Buttons)
 {
-  CurrentButtons = Buttons ^ 0xFFFFFFFF;
+  if (Player >= 2)
+    return;
+
+  u32 value = 0xFFFFFFFF;
+
+  // Convert PS1 controller active-low bits to Konami GV active-low JAMMA bits.
+  const auto map_button = [&value, Buttons](u32 psx_mask, u32 gv_mask) {
+    if ((Buttons & psx_mask) == 0)
+      value &= ~gv_mask;
+  };
+
+  map_button(0x0080, 1 << 0); // Left
+  map_button(0x0020, 1 << 1); // Right
+  map_button(0x0010, 1 << 2); // Up
+  map_button(0x0040, 1 << 3); // Down
+
+  map_button(0x4000, 1 << 4); // Button 1 / Cross
+  map_button(0x2000, 1 << 5); // Button 2 / Circle
+  map_button(0x8000, 1 << 6); // Button 3 / Square
+  map_button(0x1000, 1 << 7); // Button 4 / Triangle
+
+  map_button(0x0008, 1 << 9);  // Start
+  map_button(0x0001, 1 << 10); // Coin / Select
+
+  if (Player == 0)
+  {
+    map_button(0x0002, 1 << 11); // Service / L3
+    map_button(0x0004, 1 << 12); // Test / R3
+  }
+
+  CurrentButtons[Player] = value;
+}
+
+void KonamiArcadeButtonSet(u32 Player, u32 ButtonMask, bool Pressed)
+{
+  if (Player >= 2)
+    return;
+
+  if (Pressed)
+    CurrentButtons[Player] &= ~ButtonMask;
+  else
+    CurrentButtons[Player] |= ButtonMask;
 }
 
 void KonamiTrackballSetXY(u16 X, u16 Y)
@@ -1935,7 +1974,7 @@ static u16 KonamiGetLightgunX(u32 player)
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
 
-  if (LightgunOffscreen[player])
+  if (LightgunOffscreen[player] || LightgunShootOffscreen[player])
     return LIGHTGUN_X_OFFSCREEN;
 
   return KonamiScaleLightgunAxis(LightgunNormalizedX[player], LIGHTGUN_X_MIN, LIGHTGUN_X_MAX);
@@ -1948,7 +1987,7 @@ static u16 KonamiGetLightgunY(u32 player)
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
 
-  if (LightgunOffscreen[player])
+  if (LightgunOffscreen[player] || LightgunShootOffscreen[player])
     return LIGHTGUN_Y_OFFSCREEN;
 
   return KonamiScaleLightgunAxis(LightgunNormalizedY[player], LIGHTGUN_Y_MIN, LIGHTGUN_Y_MAX);
@@ -2011,6 +2050,15 @@ void KonamiLightgunSetTrigger(u32 Player, bool Pressed)
 
   std::lock_guard<std::mutex> lock(LightgunMutex);
   LightgunTrigger[Player] = Pressed;
+}
+
+void KonamiLightgunSetShootOffscreen(u32 Player, bool Pressed)
+{
+  if (Player >= 2)
+    return;
+
+  std::lock_guard<std::mutex> lock(LightgunMutex);
+  LightgunShootOffscreen[Player] = Pressed;
 }
 
 // Misc

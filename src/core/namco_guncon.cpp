@@ -5,12 +5,15 @@
 #include "gpu.h"
 #include "host_display.h"
 #include "host_interface.h"
+#include "konami.h"
 #include "resources.h"
 #include "system.h"
 #include <array>
 Log_SetChannel(NamcoGunCon);
 
-NamcoGunCon::NamcoGunCon() = default;
+NamcoGunCon::NamcoGunCon(u32 index) : m_index(index)
+{
+}
 
 NamcoGunCon::~NamcoGunCon() = default;
 
@@ -72,6 +75,13 @@ void NamcoGunCon::SetButtonState(Button button, bool pressed)
     if (m_shoot_offscreen != pressed)
     {
       m_shoot_offscreen = pressed;
+
+      if (System::IsValid() && KonamiIsKDeadEye())
+      {
+        KonamiLightgunSetShootOffscreen(m_index, pressed);
+        KonamiLightgunSetTrigger(m_index, pressed);
+      }
+
       SetButtonState(Button::Trigger, pressed);
     }
 
@@ -83,6 +93,27 @@ void NamcoGunCon::SetButtonState(Button button, bool pressed)
     m_button_state &= ~(u16(1) << indices[static_cast<u8>(button)]);
   else
     m_button_state |= u16(1) << indices[static_cast<u8>(button)];
+
+  if (System::IsValid() && KonamiIsKDeadEye())
+  {
+    switch (button)
+    {
+      case Button::Trigger:
+        KonamiLightgunSetTrigger(m_index, pressed);
+        break;
+
+      case Button::A:
+        KonamiArcadeButtonSet(m_index, 0x00000400, pressed); // Coin
+        break;
+
+      case Button::B:
+        KonamiArcadeButtonSet(m_index, 0x00000200, pressed); // Start
+        break;
+
+      default:
+        break;
+    }
+  }
 }
 
 void NamcoGunCon::SetButtonState(s32 button_code, bool pressed)
@@ -214,9 +245,9 @@ void NamcoGunCon::UpdatePosition()
                   m_position_x);
 }
 
-std::unique_ptr<NamcoGunCon> NamcoGunCon::Create()
+std::unique_ptr<NamcoGunCon> NamcoGunCon::Create(u32 index)
 {
-  return std::make_unique<NamcoGunCon>();
+  return std::make_unique<NamcoGunCon>(index);
 }
 
 std::optional<s32> NamcoGunCon::StaticGetAxisCodeByName(std::string_view button_name)
@@ -226,20 +257,23 @@ std::optional<s32> NamcoGunCon::StaticGetAxisCodeByName(std::string_view button_
 
 std::optional<s32> NamcoGunCon::StaticGetButtonCodeByName(std::string_view button_name)
 {
-#define BUTTON(name)                                                                                                   \
-  if (button_name == #name)                                                                                            \
-  {                                                                                                                    \
-    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::name)));                                              \
+  if (button_name == "Trigger")
+    return static_cast<s32>(Button::Trigger);
+
+  if (button_name == "ShootOffscreen" || button_name == "Shoot Offscreen" ||
+      button_name == "Shoot Offscreen / Reload" || button_name == "Reload")
+  {
+    return static_cast<s32>(Button::ShootOffscreen);
   }
 
-  BUTTON(Trigger);
-  BUTTON(ShootOffscreen);
-  BUTTON(A);
-  BUTTON(B);
+  // Keep old A/B names working for existing configs, but expose them as Coin/Start in the UI.
+  if (button_name == "Coin" || button_name == "A")
+    return static_cast<s32>(Button::A);
+
+  if (button_name == "Start" || button_name == "B")
+    return static_cast<s32>(Button::B);
 
   return std::nullopt;
-
-#undef BUTTON
 }
 
 Controller::AxisList NamcoGunCon::StaticGetAxisNames()
@@ -250,9 +284,9 @@ Controller::AxisList NamcoGunCon::StaticGetAxisNames()
 Controller::ButtonList NamcoGunCon::StaticGetButtonNames()
 {
   return {{TRANSLATABLE("NamcoGunCon", "Trigger"), static_cast<s32>(Button::Trigger)},
-          {TRANSLATABLE("NamcoGunCon", "ShootOffscreen"), static_cast<s32>(Button::ShootOffscreen)},
-          {TRANSLATABLE("NamcoGunCon", "A"), static_cast<s32>(Button::A)},
-          {TRANSLATABLE("NamcoGunCon", "B"), static_cast<s32>(Button::B)}};
+          {TRANSLATABLE("NamcoGunCon", "Shoot Offscreen / Reload"), static_cast<s32>(Button::ShootOffscreen)},
+          {TRANSLATABLE("NamcoGunCon", "Coin"), static_cast<s32>(Button::A)},
+          {TRANSLATABLE("NamcoGunCon", "Start"), static_cast<s32>(Button::B)}};
 }
 
 u32 NamcoGunCon::StaticGetVibrationMotorCount()
