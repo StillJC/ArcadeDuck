@@ -23,8 +23,24 @@
 
 Log_SetChannel(Konami);
 
-// SCSI
-enum {
+// Legacy Konami GV SCSI shim.
+//
+// This is currently a hand-written approximation of the NCR53CF96/CD-ROM path.
+// MAME models Konami GV as NCR53CF96 + NSCSI CD-ROM + PSX DMA channel 5.
+// These globals are the fake register/FIFO/command state used by the current shim.
+// Beat the Champ is exposing why this needs to become a real NCR53CF96-style path.
+//
+// Current call flow:
+//   bus.cpp 0x1F000000-0x1F00001F
+//     -> KonamiScsiRead()/KonamiScsiWrite()
+//     -> ScsiRegs/ScsiFifo/ScsiCommand
+//     -> KonamiDmaControlWrite()
+//     -> fake REQUEST SENSE / INQUIRY / MODE SENSE / READ10 / READ TOC responses.
+//
+// Do not add more game-specific SCSI hacks here unless they are temporary diagnostics.
+// Long-term target: replace this shim with a proper GV SCSI controller layer.
+enum
+{
   REG_XFERCNTLOW = 0, // read = current xfer count lo byte, write = set xfer count lo byte
   REG_XFERCNTMID,     // read = current xfer count mid byte, write = set xfer count mid byte
   REG_FIFO,           // read/write = FIFO
@@ -207,7 +223,7 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
 
   if (kdeadeye_flash_read_debug_count < 1000)
   {
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug", "ab"))
     {
       std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X single=%u value=0x%08X\n", Size, Offset,
                    relative_offset, KDeadEyeFlashValid ? 1 : 0, Value);
@@ -228,7 +244,7 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
 
   if (kdeadeye_flash_write_debug_count < 1000)
   {
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug", "ab"))
     {
       std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X single=%u mode=%u value=0x%08X\n", Size, Offset,
                    relative_offset, KDeadEyeFlashValid ? 1 : 0, static_cast<u32>(KDeadEyeFlashMode), Value);
@@ -349,7 +365,7 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
     default:
       if (kdeadeye_flash_write_debug_count < 1000)
       {
-        if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+        if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
         {
           std::fprintf(fp, "UNKNOWN KDeadEye flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
                        command, Value);
@@ -461,7 +477,9 @@ static bool LoadEepromFile(const char* Path)
     return false;
   }
 
-  if (fread(Eeprom, 1, sizeof(Eeprom), EepromFp) != sizeof(Eeprom))
+  u8 raw[sizeof(Eeprom)];
+
+  if (std::fread(raw, 1, sizeof(raw), EepromFp) != sizeof(raw))
   {
     if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
     {
@@ -470,6 +488,16 @@ static bool LoadEepromFile(const char* Path)
     }
 
     return false;
+  }
+
+  if (KonamiUsesDirectGVFlash())
+  {
+    for (size_t i = 0; i < std::size(Eeprom); i++)
+      Eeprom[i] = static_cast<u16>((static_cast<u16>(raw[i * 2]) << 8) | raw[(i * 2) + 1]);
+  }
+  else
+  {
+    std::memcpy(Eeprom, raw, sizeof(Eeprom));
   }
 
   if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
@@ -575,7 +603,19 @@ static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
   if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
     return false;
 
-  return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
+  u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
+
+  if (image->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
+    return false;
+
+  // Konami GV MAME CHDs are already presenting the useful 2048-byte data
+  // payload at the start of DuckStation's RawSector buffer here.
+  //
+  // Do not use CDImage::ReadMode::DataOnly for this path. DuckStation's
+  // DataOnly mode copies from raw_sector + 24, which drops the first 24 bytes
+  // for these GV CHD reads and causes btchamp to fail immediately at LBA 16.
+  std::memcpy(sector, raw_sector, CDImage::DATA_SECTOR_SIZE);
+  return true;
 }
 
 static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
@@ -749,6 +789,12 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
 
 // Public API
 
+bool KonamiUsesDirectGVFlash()
+{
+  const std::string& code = System::GetRunningCode();
+  return code == "kdeadeye" || code == "btchamp";
+}
+
 void KonamiInit(void)
 {
   if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -837,13 +883,15 @@ void KonamiInit(void)
   if (!eeprom_path.empty())
     LoadEepromFile(eeprom_path.c_str());
 
-  if (KonamiIsKDeadEye() && KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path))
+  if (KonamiUsesDirectGVFlash())
   {
+    KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path);
     KDeadEyeFlashPath = kdeadeye_flash_path;
 
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug", "ab"))
     {
-      std::fprintf(fp, "Loaded single KDeadEye flash file: %s\n", kdeadeye_flash_path.c_str());
+      std::fprintf(fp, "Loaded single direct GV flash file: %s valid=%u\n", kdeadeye_flash_path.c_str(),
+                   KDeadEyeFlashValid ? 1 : 0);
       std::fclose(fp);
     }
   }
@@ -892,13 +940,26 @@ void KonamiTerm(void)
   }
 }
 
-// DMA
+// Legacy SCSI DMA / fake command execution.
+// This is where the current shim manually answers SCSI commands like
+// REQUEST SENSE, INQUIRY, MODE SENSE, READ10, READ TOC, and READ SUB-CHANNEL.
+// MAME does this through NCR53CF96 + NSCSI CD-ROM behavior instead.
 
 void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
 {
   size_t ReadSize = (ControlBits >> 16) * 4;
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
+
+  if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
+  {
+    std::fprintf(fp,
+                 "SCSI DMA ENTER pc=0x%08X control=0x%08X address=0x%08X value=0x%08X "
+                 "cmd=0x%02X read_size_initial=%zu status=0x%02X irq=0x%02X int=0x%02X fifo_state=0x%02X\n",
+                 CPU::g_state.current_instruction_pc, ControlBits, Address, Value, ScsiCommand[0], ReadSize,
+                 ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
+    std::fclose(fp);
+  }
 
   // Some Konami GV READ10 transfers use a DMA block count of 0.
   // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
@@ -997,7 +1058,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         Ram[Address + 0] = 0x00;
         Ram[Address + 1] = 0x1A;
         Ram[Address + 2] = 0x01;
-        Ram[Address + 3] = 0x02;
+        Ram[Address + 3] = (System::GetRunningCode() == "btchamp") ? 0x0C : 0x02;
 
         Ram[Address + 4] = 0x00;
         Ram[Address + 5] = 0x14;
@@ -1120,7 +1181,12 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
     }
   }
 
-  ScsiRegs[4] &= ~0x7U;
+  // End the fake SCSI DMA transfer.
+  // MAME drives this through NCR53CF96 DRQ + PSX DMA channel 5; our legacy shim
+  // currently completes the transfer synchronously, so make sure the DMA channel
+  // is no longer marked active after command data has been copied.
+  ControlBits &= 0xFFFF;
+  ScsiRegs[REG_STATUS] &= ~0x07U;
 }
 
 // SCSI
@@ -1801,7 +1867,24 @@ static void KonamiSaveEepromFile()
     return;
 
   std::fseek(EepromFp, 0, SEEK_SET);
-  std::fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+
+  if (KonamiUsesDirectGVFlash())
+  {
+    u8 raw[sizeof(Eeprom)];
+
+    for (size_t i = 0; i < std::size(Eeprom); i++)
+    {
+      raw[i * 2] = static_cast<u8>((Eeprom[i] >> 8) & 0xFF);
+      raw[(i * 2) + 1] = static_cast<u8>(Eeprom[i] & 0xFF);
+    }
+
+    std::fwrite(raw, 1, sizeof(raw), EepromFp);
+  }
+  else
+  {
+    std::fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+  }
+
   std::fflush(EepromFp);
 }
 

@@ -23,6 +23,7 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value);
 void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value);
 
 bool KonamiIsKDeadEye();
+bool KonamiUsesDirectGVFlash();
 
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value);
 void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value);
