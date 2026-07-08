@@ -7,10 +7,175 @@
 #include "inputbindingmonitor.h"
 #include "qthostinterface.h"
 #include "qtutils.h"
+#if defined(_WIN32)
+#include "common/windows_headers.h"
+#include <cfgmgr32.h>
+#include <setupapi.h>
+#endif
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QMouseEvent>
 #include <cmath>
+
+#if defined(_WIN32)
+static bool IsGenericRawMouseDeviceNameForBinding(const QString& name)
+{
+  return name.isEmpty() || name == QStringLiteral("HID-compliant mouse") ||
+         name == QStringLiteral("USB Input Device") || name == QStringLiteral("USB Composite Device") ||
+         name == QStringLiteral("USB Root Hub (USB 3.0)") || name == QStringLiteral("Generic USB Hub") ||
+         name.contains(QStringLiteral("Hub"), Qt::CaseInsensitive) ||
+         name == QStringLiteral("HID-compliant vendor-defined device") ||
+         name == QStringLiteral("HID-compliant consumer control device") ||
+         name == QStringLiteral("HID-compliant system controller") || name == QStringLiteral("HID Keyboard Device");
+}
+
+static QString GetSetupAPIDevicePropertyForBinding(HDEVINFO device_info_set, SP_DEVINFO_DATA* device_info_data,
+                                                   DWORD property)
+{
+  WCHAR property_buffer[512] = {};
+  DWORD property_type = 0;
+
+  if (!SetupDiGetDeviceRegistryPropertyW(device_info_set, device_info_data, property, &property_type,
+                                         reinterpret_cast<PBYTE>(property_buffer), sizeof(property_buffer), nullptr))
+  {
+    return {};
+  }
+
+  if (property_buffer[0] == 0)
+    return {};
+
+  return QString::fromWCharArray(property_buffer);
+}
+
+static QString GetRawMouseVidPidTokenForBinding(const QString& device_name)
+{
+  const qsizetype vid_pos = device_name.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
+  const qsizetype pid_pos = device_name.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
+
+  if (vid_pos < 0 || pid_pos < 0)
+    return {};
+
+  return QStringLiteral("%1&%2").arg(device_name.mid(vid_pos, 8).toUpper(), device_name.mid(pid_pos, 8).toUpper());
+}
+
+static QString GetRawMouseSiblingDeviceDisplayNameForBinding(const QString& device_name)
+{
+  const QString vid_pid_token = GetRawMouseVidPidTokenForBinding(device_name);
+  if (vid_pid_token.isEmpty())
+    return {};
+
+  HDEVINFO device_info_set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+  if (device_info_set == INVALID_HANDLE_VALUE)
+    return {};
+
+  QString best_display_name;
+
+  for (DWORD device_index = 0;; device_index++)
+  {
+    SP_DEVINFO_DATA device_info_data = {};
+    device_info_data.cbSize = sizeof(device_info_data);
+
+    if (!SetupDiEnumDeviceInfo(device_info_set, device_index, &device_info_data))
+      break;
+
+    WCHAR instance_id_buffer[512] = {};
+    if (CM_Get_Device_IDW(device_info_data.DevInst, instance_id_buffer,
+                          static_cast<ULONG>(sizeof(instance_id_buffer) / sizeof(instance_id_buffer[0])),
+                          0) != CR_SUCCESS)
+    {
+      continue;
+    }
+
+    const QString instance_id = QString::fromWCharArray(instance_id_buffer).toUpper();
+    if (!instance_id.contains(vid_pid_token))
+      continue;
+
+    QString display_name = GetSetupAPIDevicePropertyForBinding(device_info_set, &device_info_data, SPDRP_FRIENDLYNAME);
+
+    if (display_name.isEmpty())
+      display_name = GetSetupAPIDevicePropertyForBinding(device_info_set, &device_info_data, SPDRP_DEVICEDESC);
+
+    if (!IsGenericRawMouseDeviceNameForBinding(display_name))
+    {
+      best_display_name = display_name;
+      break;
+    }
+  }
+
+  SetupDiDestroyDeviceInfoList(device_info_set);
+  return best_display_name;
+}
+
+static QString GetRawMouseSetupAPIDisplayNameForBinding(const QString& device_name)
+{
+  const std::wstring interface_path = device_name.toStdWString();
+
+  HDEVINFO device_info_set = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+  if (device_info_set == INVALID_HANDLE_VALUE)
+    return {};
+
+  SP_DEVICE_INTERFACE_DATA interface_data = {};
+  interface_data.cbSize = sizeof(interface_data);
+
+  QString display_name;
+
+  if (SetupDiOpenDeviceInterfaceW(device_info_set, interface_path.c_str(), 0, &interface_data))
+  {
+    DWORD required_size = 0;
+    SetupDiGetDeviceInterfaceDetailW(device_info_set, &interface_data, nullptr, 0, &required_size, nullptr);
+
+    if (required_size > 0)
+    {
+      std::vector<BYTE> detail_buffer(required_size);
+      SP_DEVICE_INTERFACE_DETAIL_DATA_W* detail_data =
+        reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(detail_buffer.data());
+      detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+
+      SP_DEVINFO_DATA device_info_data = {};
+      device_info_data.cbSize = sizeof(device_info_data);
+
+      if (SetupDiGetDeviceInterfaceDetailW(device_info_set, &interface_data, detail_data, required_size, nullptr,
+                                           &device_info_data))
+      {
+        display_name = GetSetupAPIDevicePropertyForBinding(device_info_set, &device_info_data, SPDRP_FRIENDLYNAME);
+
+        if (display_name.isEmpty())
+          display_name = GetSetupAPIDevicePropertyForBinding(device_info_set, &device_info_data, SPDRP_DEVICEDESC);
+
+        if (IsGenericRawMouseDeviceNameForBinding(display_name))
+        {
+          if (const QString sibling_display_name = GetRawMouseSiblingDeviceDisplayNameForBinding(device_name);
+              !sibling_display_name.isEmpty())
+          {
+            display_name = sibling_display_name;
+          }
+        }
+      }
+    }
+  }
+
+  SetupDiDestroyDeviceInfoList(device_info_set);
+
+  if (IsGenericRawMouseDeviceNameForBinding(display_name))
+    return {};
+
+  return display_name;
+}
+
+static QString GetRawMouseDisplayNameForBinding(const QString& device_name, u32 index)
+{
+  if (const QString setupapi_name = GetRawMouseSetupAPIDisplayNameForBinding(device_name); !setupapi_name.isEmpty())
+    return setupapi_name;
+
+  const qsizetype vid_pos = device_name.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
+  const qsizetype pid_pos = device_name.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
+
+  if (vid_pos >= 0 && pid_pos >= 0)
+    return QStringLiteral("Wireless USB Mouse %1").arg(index + 1);
+
+  return QStringLiteral("Raw Mouse %1").arg(index + 1);
+}
+#endif
 
 InputBindingWidget::InputBindingWidget(QtHostInterface* host_interface, std::string section_name, std::string key_name,
                                        QWidget* parent)
@@ -34,11 +199,61 @@ InputBindingWidget::~InputBindingWidget()
 void InputBindingWidget::updateText()
 {
   if (m_bindings.empty())
+  {
     setText(QString());
-  else if (m_bindings.size() > 1)
+    return;
+  }
+
+  if (m_bindings.size() > 1)
+  {
     setText(tr("%n bindings", "", static_cast<int>(m_bindings.size())));
-  else
-    setText(QString::fromStdString(m_bindings[0]));
+    return;
+  }
+
+  const std::string& binding = m_bindings[0];
+
+#if defined(_WIN32)
+  if (binding.rfind("Mouse/Button", 0) == 0)
+  {
+    const int button_id = std::atoi(binding.c_str() + std::strlen("Mouse/Button"));
+
+    int controller_number = 0;
+    int raw_button_number = 0;
+
+    if (button_id >= 101 && button_id <= 105)
+    {
+      controller_number = 1;
+      raw_button_number = button_id - 100;
+    }
+    else if (button_id >= 201 && button_id <= 205)
+    {
+      controller_number = 2;
+      raw_button_number = button_id - 200;
+    }
+
+    if (controller_number != 0 && raw_button_number != 0)
+    {
+      const std::string controller_section = StringUtil::StdStringFromFormat("Controller%d", controller_number);
+      std::string raw_device_setting =
+        m_host_interface->GetStringSettingValue(controller_section.c_str(), "LightgunDevice", "");
+
+      static constexpr char raw_mouse_prefix[] = "RawMouse:";
+      if (raw_device_setting.rfind(raw_mouse_prefix, 0) == 0)
+      {
+        raw_device_setting.erase(0, std::strlen(raw_mouse_prefix));
+
+        const QString raw_device_name = QString::fromStdString(raw_device_setting);
+        const QString raw_display_name =
+          GetRawMouseDisplayNameForBinding(raw_device_name, static_cast<u32>(controller_number - 1));
+
+        setText(QStringLiteral("%1 Button %2").arg(raw_display_name).arg(raw_button_number));
+        return;
+      }
+    }
+  }
+#endif
+
+  setText(QString::fromStdString(binding));
 }
 
 void InputBindingWidget::bindToControllerAxis(int controller_index, int axis_index, bool inverted,
@@ -105,7 +320,15 @@ bool InputBindingWidget::eventFilter(QObject* watched, QEvent* event)
   {
     const u32 button_mask = static_cast<u32>(static_cast<const QMouseEvent*>(event)->button());
     const u32 button_index = (button_mask == 0u) ? 0 : CountTrailingZeros(button_mask);
-    m_new_binding_value = StringUtil::StdStringFromFormat("Mouse/Button%d", button_index + 1);
+    if (std::optional<std::string> raw_binding =
+          m_host_interface->GetLastRawLightgunButtonBindingForController(m_section_name))
+    {
+      m_new_binding_value = std::move(raw_binding.value());
+    }
+    else
+    {
+      m_new_binding_value = StringUtil::StdStringFromFormat("Mouse/Button%d", button_index + 1);
+    }
     setNewBinding();
     stopListeningForInput();
     return true;

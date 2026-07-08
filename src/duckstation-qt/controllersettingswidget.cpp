@@ -18,27 +18,205 @@
 #include <QtWidgets/QMessageBox>
 #if defined(_WIN32)
 #include "common/windows_headers.h"
+#include <cfgmgr32.h>
+#include <devpkey.h>
+#include <setupapi.h>
 #endif
-#include <vector>
 
 static constexpr char INPUT_PROFILE_FILTER[] = "Input Profiles (*.ini)";
 
 #if defined(_WIN32)
-static QString GetRawMouseDisplayName(const QString& device_name, u32 index)
+
+static constexpr DEVPROPKEY ARCADEDUCK_DEVPKEY_Device_DeviceDesc = {
+  {0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 2};
+
+static constexpr DEVPROPKEY ARCADEDUCK_DEVPKEY_Device_FriendlyName = {
+  {0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
+
+static bool IsGenericRawMouseDeviceName(const QString& name);
+
+static QString GetSetupAPIDeviceProperty(HDEVINFO device_info_set, SP_DEVINFO_DATA* device_info_data, DWORD property)
 {
-  QString label = device_name;
+  WCHAR property_buffer[512] = {};
+  DWORD property_type = 0;
 
-  const qsizetype vid_pos = label.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
-  const qsizetype pid_pos = label.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
-
-  if (vid_pos >= 0 && pid_pos >= 0)
+  if (!SetupDiGetDeviceRegistryPropertyW(device_info_set, device_info_data, property, &property_type,
+                                         reinterpret_cast<PBYTE>(property_buffer), sizeof(property_buffer), nullptr))
   {
-    const QString vid = label.mid(vid_pos, 8).toUpper();
-    const QString pid = label.mid(pid_pos, 8).toUpper();
-    return QStringLiteral("%1 %2 — Windows Raw Mouse %3").arg(vid, pid).arg(index + 1);
+    return {};
   }
 
-  return QStringLiteral("Windows Raw Mouse %1 — %2").arg(index + 1).arg(device_name);
+  if (property_buffer[0] == 0)
+    return {};
+
+  return QString::fromWCharArray(property_buffer);
+}
+
+static bool IsGenericRawMouseDeviceName(const QString& name)
+{
+  return name.isEmpty() || name == QStringLiteral("HID-compliant mouse") ||
+         name == QStringLiteral("USB Input Device") || name == QStringLiteral("USB Composite Device") ||
+         name == QStringLiteral("USB Root Hub (USB 3.0)") || name == QStringLiteral("Generic USB Hub") ||
+         name.contains(QStringLiteral("Hub"), Qt::CaseInsensitive) ||
+         name == QStringLiteral("HID-compliant vendor-defined device") ||
+         name == QStringLiteral("HID-compliant consumer control device") ||
+         name == QStringLiteral("HID-compliant system controller") || name == QStringLiteral("HID Keyboard Device");
+}
+
+static QString GetRawMouseVidPidToken(const QString& device_name)
+{
+  const qsizetype vid_pos = device_name.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
+  const qsizetype pid_pos = device_name.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
+
+  if (vid_pos < 0 || pid_pos < 0)
+    return {};
+
+  return QStringLiteral("%1&%2").arg(device_name.mid(vid_pos, 8).toUpper(), device_name.mid(pid_pos, 8).toUpper());
+}
+
+static QString GetRawMouseSiblingDeviceDisplayName(const QString& device_name)
+{
+  const QString vid_pid_token = GetRawMouseVidPidToken(device_name);
+  if (vid_pid_token.isEmpty())
+    return {};
+
+  HDEVINFO device_info_set = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, DIGCF_PRESENT | DIGCF_ALLCLASSES);
+  if (device_info_set == INVALID_HANDLE_VALUE)
+    return {};
+
+  QString best_display_name;
+
+  for (DWORD device_index = 0;; device_index++)
+  {
+    SP_DEVINFO_DATA device_info_data = {};
+    device_info_data.cbSize = sizeof(device_info_data);
+
+    if (!SetupDiEnumDeviceInfo(device_info_set, device_index, &device_info_data))
+      break;
+
+    WCHAR instance_id_buffer[512] = {};
+    if (CM_Get_Device_IDW(device_info_data.DevInst, instance_id_buffer,
+                          static_cast<ULONG>(std::size(instance_id_buffer)), 0) != CR_SUCCESS)
+    {
+      continue;
+    }
+
+    const QString instance_id = QString::fromWCharArray(instance_id_buffer).toUpper();
+    if (!instance_id.contains(vid_pid_token))
+      continue;
+
+    QString display_name = GetSetupAPIDeviceProperty(device_info_set, &device_info_data, SPDRP_FRIENDLYNAME);
+
+    if (display_name.isEmpty())
+      display_name = GetSetupAPIDeviceProperty(device_info_set, &device_info_data, SPDRP_DEVICEDESC);
+
+    if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "RAW MOUSE SIBLING instance=%ls display=%ls\n", instance_id.toStdWString().c_str(),
+                   display_name.toStdWString().c_str());
+      std::fclose(fp);
+    }
+
+    if (!IsGenericRawMouseDeviceName(display_name))
+    {
+      best_display_name = display_name;
+      break;
+    }
+  }
+
+  SetupDiDestroyDeviceInfoList(device_info_set);
+  return best_display_name;
+}
+
+static QString GetRawMouseSetupAPIDisplayName(const QString& device_name)
+{
+  const std::wstring interface_path = device_name.toStdWString();
+
+  HDEVINFO device_info_set = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+  if (device_info_set == INVALID_HANDLE_VALUE)
+    return {};
+
+  SP_DEVICE_INTERFACE_DATA interface_data = {};
+  interface_data.cbSize = sizeof(interface_data);
+
+  QString display_name;
+
+  if (SetupDiOpenDeviceInterfaceW(device_info_set, interface_path.c_str(), 0, &interface_data))
+  {
+    DWORD required_size = 0;
+    SetupDiGetDeviceInterfaceDetailW(device_info_set, &interface_data, nullptr, 0, &required_size, nullptr);
+
+    if (required_size > 0)
+    {
+      std::vector<BYTE> detail_buffer(required_size);
+      SP_DEVICE_INTERFACE_DETAIL_DATA_W* detail_data =
+        reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(detail_buffer.data());
+      detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+
+      SP_DEVINFO_DATA device_info_data = {};
+      device_info_data.cbSize = sizeof(device_info_data);
+
+      if (SetupDiGetDeviceInterfaceDetailW(device_info_set, &interface_data, detail_data, required_size, nullptr,
+                                           &device_info_data))
+      {
+        display_name = GetSetupAPIDeviceProperty(device_info_set, &device_info_data, SPDRP_FRIENDLYNAME);
+
+        if (display_name.isEmpty())
+          display_name = GetSetupAPIDeviceProperty(device_info_set, &device_info_data, SPDRP_DEVICEDESC);
+
+        if (IsGenericRawMouseDeviceName(display_name))
+        {
+          if (const QString sibling_display_name = GetRawMouseSiblingDeviceDisplayName(device_name);
+              !sibling_display_name.isEmpty())
+          {
+            display_name = sibling_display_name;
+          }
+        }
+      }
+    }
+  }
+
+  SetupDiDestroyDeviceInfoList(device_info_set);
+
+  if (IsGenericRawMouseDeviceName(display_name))
+    return {};
+
+  return display_name;
+}
+
+static QString GetRawMouseDisplayName(const QString& device_name, u32 index)
+{
+  if (const QString setupapi_name = GetRawMouseSetupAPIDisplayName(device_name); !setupapi_name.isEmpty())
+    return setupapi_name;
+
+  DEVPROPTYPE property_type = 0;
+  WCHAR property_buffer[512] = {};
+  ULONG property_buffer_size = sizeof(property_buffer);
+
+  const std::wstring interface_path = device_name.toStdWString();
+
+  CONFIGRET result =
+    CM_Get_Device_Interface_PropertyW(interface_path.c_str(), &ARCADEDUCK_DEVPKEY_Device_FriendlyName, &property_type,
+                                      reinterpret_cast<PBYTE>(property_buffer), &property_buffer_size, 0);
+
+  if (result != CR_SUCCESS || property_buffer[0] == 0)
+  {
+    property_buffer_size = sizeof(property_buffer);
+    result =
+      CM_Get_Device_Interface_PropertyW(interface_path.c_str(), &ARCADEDUCK_DEVPKEY_Device_DeviceDesc, &property_type,
+                                        reinterpret_cast<PBYTE>(property_buffer), &property_buffer_size, 0);
+  }
+
+  if (result == CR_SUCCESS && property_buffer[0] != 0)
+    return QString::fromWCharArray(property_buffer);
+
+  const qsizetype vid_pos = device_name.indexOf(QStringLiteral("VID_"), 0, Qt::CaseInsensitive);
+  const qsizetype pid_pos = device_name.indexOf(QStringLiteral("PID_"), 0, Qt::CaseInsensitive);
+
+if (vid_pos >= 0 && pid_pos >= 0)
+    return QStringLiteral("Wireless USB Mouse %1").arg(index + 1);
+
+  return QStringLiteral("Raw Mouse %1").arg(index + 1);
 }
 
 static std::vector<std::pair<QString, QString>> GetRawMouseDeviceList()

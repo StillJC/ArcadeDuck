@@ -215,6 +215,22 @@ bool QtDisplayWidget::nativeEvent(const QByteArray& event_type, void* message, l
       emit windowRawMouseMoveEvent(setting_value, new_x, new_y);
       break;
     }
+
+    const USHORT button_flags = raw->data.mouse.usButtonFlags;
+    const auto emit_raw_mouse_button = [this, &setting_value, button_flags](USHORT down_flag, USHORT up_flag,
+                                                                            int button) {
+      if (button_flags & down_flag)
+        emit windowRawMouseButtonEvent(setting_value, button, true);
+
+      if (button_flags & up_flag)
+        emit windowRawMouseButtonEvent(setting_value, button, false);
+    };
+
+    emit_raw_mouse_button(RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, 1);
+    emit_raw_mouse_button(RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, 2);
+    emit_raw_mouse_button(RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, 3);
+    emit_raw_mouse_button(RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, 4);
+    emit_raw_mouse_button(RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, 5);
   }
 
   return false;

@@ -5,6 +5,7 @@
 #include "frontend-common/common_host_interface.h"
 #include "frontend-common/game_list.h"
 #include "qtutils.h"
+#include <QtCore/QAbstractNativeEventFilter>
 #include <QtCore/QByteArray>
 #include <QtCore/QObject>
 #include <QtCore/QSettings>
@@ -15,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -36,7 +38,7 @@ Q_DECLARE_METATYPE(std::shared_ptr<SystemBootParameters>);
 Q_DECLARE_METATYPE(const GameListEntry*);
 Q_DECLARE_METATYPE(GPURenderer);
 
-class QtHostInterface final : public QObject, public CommonHostInterface
+class QtHostInterface final : public QObject, public CommonHostInterface, public QAbstractNativeEventFilter
 {
   Q_OBJECT
 
@@ -89,11 +91,15 @@ public:
 
   ALWAYS_INLINE bool isOnWorkerThread() const { return QThread::currentThread() == m_worker_thread; }
 
+  std::optional<std::string> GetLastRawLightgunButtonBindingForController(const std::string& section_name);
+
   ALWAYS_INLINE MainWindow* getMainWindow() const { return m_main_window; }
   void setMainWindow(MainWindow* window);
   HostDisplay* createHostDisplay();
   void connectDisplaySignals(QtDisplayWidget* widget);
   void reinstallTranslator();
+
+  bool nativeEventFilter(const QByteArray& event_type, void* message, qintptr* result) override;
 
   void populateLoadStateMenu(const char* game_code, QMenu* menu);
   void populateSaveStateMenu(const char* game_code, QMenu* menu);
@@ -196,6 +202,7 @@ private Q_SLOTS:
   void doStopThread();
   void onDisplayWindowMouseMoveEvent(int x, int y);
   void onDisplayWindowRawMouseMoveEvent(const QString& device_name, int x, int y);
+  void onDisplayWindowRawMouseButtonEvent(const QString& device_name, int button, bool pressed);
   void onDisplayWindowMouseButtonEvent(int button, bool pressed);
   void onDisplayWindowMouseWheelEvent(const QPoint& delta_angle);
   void onDisplayWindowResized(int width, int height);

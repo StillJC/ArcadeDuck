@@ -5,6 +5,7 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/string_util.h"
+#include "common/windows_headers.h"
 #include "core/cheats.h"
 #include "core/controller.h"
 #include "core/gpu.h"
@@ -34,6 +35,7 @@
 #include <QtCore/QFile>
 #include <QtCore/QTimer>
 #include <QtCore/QTranslator>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMenu>
@@ -59,10 +61,18 @@ QtHostInterface::QtHostInterface(QObject* parent) : QObject(parent), CommonHostI
   qRegisterMetaType<std::shared_ptr<SystemBootParameters>>();
   qRegisterMetaType<const GameListEntry*>();
   qRegisterMetaType<GPURenderer>();
+
+#if defined(_WIN32)
+  QCoreApplication::instance()->installNativeEventFilter(this);
+#endif
 }
 
 QtHostInterface::~QtHostInterface()
 {
+#if defined(_WIN32)
+  QCoreApplication::instance()->removeNativeEventFilter(this);
+#endif
+
   Assert(!m_display);
 }
 
@@ -389,6 +399,35 @@ void QtHostInterface::setMainWindow(MainWindow* window)
 {
   DebugAssert((!m_main_window && window) || (m_main_window && !window));
   m_main_window = window;
+
+#if defined(_WIN32)
+  if (m_main_window)
+  {
+    RAWINPUTDEVICE rid = {};
+    rid.usUsagePage = 0x01;
+    rid.usUsage = 0x02;
+    rid.dwFlags = RIDEV_INPUTSINK;
+    rid.hwndTarget = reinterpret_cast<HWND>(m_main_window->winId());
+
+    if (RegisterRawInputDevices(&rid, 1, sizeof(rid)))
+    {
+      if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "MAIN WINDOW RAW INPUT registered hwnd=%p\n", rid.hwndTarget);
+        std::fclose(fp);
+      }
+    }
+    else
+    {
+      if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "MAIN WINDOW RAW INPUT registration failed error=%lu hwnd=%p\n", GetLastError(),
+                     rid.hwndTarget);
+        std::fclose(fp);
+      }
+    }
+  }
+#endif
 }
 
 void QtHostInterface::bootSystem(std::shared_ptr<SystemBootParameters> params)
@@ -507,10 +546,129 @@ struct RawLightgunCursorState
   bool valid = false;
   int x = 0;
   int y = 0;
+  double last_movement_time = 0.0;
   std::string device_name;
 };
 
 static RawLightgunCursorState s_raw_lightgun_cursors[2];
+static constexpr double RAW_LIGHTGUN_CURSOR_IDLE_TIMEOUT = 2.0;
+
+struct RawLightgunButtonState
+{
+  bool valid = false;
+  std::string device_name;
+  int button = 0;
+  bool pressed = false;
+  double event_time = 0.0;
+};
+
+static RawLightgunButtonState s_last_raw_lightgun_button;
+
+bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* message, qintptr* result)
+{
+  Q_UNUSED(event_type);
+  Q_UNUSED(result);
+
+#if defined(_WIN32)
+  MSG* msg = static_cast<MSG*>(message);
+  if (!msg || msg->message != WM_INPUT)
+    return false;
+
+  UINT data_size = 0;
+  if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, nullptr, &data_size,
+                      sizeof(RAWINPUTHEADER)) != 0 ||
+      data_size == 0)
+  {
+    return false;
+  }
+
+  std::vector<BYTE> data(data_size);
+  if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, data.data(), &data_size,
+                      sizeof(RAWINPUTHEADER)) != data_size)
+  {
+    return false;
+  }
+
+  const RAWINPUT* raw = reinterpret_cast<const RAWINPUT*>(data.data());
+  if (raw->header.dwType != RIM_TYPEMOUSE)
+    return false;
+
+  UINT name_size = 0;
+  GetRawInputDeviceInfoA(raw->header.hDevice, RIDI_DEVICENAME, nullptr, &name_size);
+  if (name_size == 0)
+    return false;
+
+  std::vector<char> name(name_size + 1);
+  if (GetRawInputDeviceInfoA(raw->header.hDevice, RIDI_DEVICENAME, name.data(), &name_size) == static_cast<UINT>(-1))
+    return false;
+
+  const std::string raw_device_name = StringUtil::StdStringFromFormat("RawMouse:%s", name.data());
+  const USHORT button_flags = raw->data.mouse.usButtonFlags;
+
+  const auto update_last_raw_button = [raw_device_name, button_flags](USHORT down_flag, USHORT up_flag, int button) {
+    if (button_flags & down_flag)
+    {
+      s_last_raw_lightgun_button.valid = true;
+      s_last_raw_lightgun_button.device_name = raw_device_name;
+      s_last_raw_lightgun_button.button = button;
+      s_last_raw_lightgun_button.pressed = true;
+      s_last_raw_lightgun_button.event_time = ImGui::GetTime();
+    }
+
+    if (button_flags & up_flag)
+    {
+      s_last_raw_lightgun_button.valid = true;
+      s_last_raw_lightgun_button.device_name = raw_device_name;
+      s_last_raw_lightgun_button.button = button;
+      s_last_raw_lightgun_button.pressed = false;
+      s_last_raw_lightgun_button.event_time = ImGui::GetTime();
+    }
+  };
+
+  update_last_raw_button(RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, 1);
+  update_last_raw_button(RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, 2);
+  update_last_raw_button(RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, 3);
+  update_last_raw_button(RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, 4);
+  update_last_raw_button(RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, 5);
+#endif
+
+  return false;
+}
+
+std::optional<std::string>
+QtHostInterface::GetLastRawLightgunButtonBindingForController(const std::string& section_name)
+{
+  if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "BIND CHECK section=%s valid=%d pressed=%d device=%s button=%d age=%f\n", section_name.c_str(),
+                 s_last_raw_lightgun_button.valid ? 1 : 0, s_last_raw_lightgun_button.pressed ? 1 : 0,
+                 s_last_raw_lightgun_button.device_name.c_str(), s_last_raw_lightgun_button.button,
+                 s_last_raw_lightgun_button.valid ? (ImGui::GetTime() - s_last_raw_lightgun_button.event_time) : -1.0);
+    std::fclose(fp);
+  }
+
+  if (!s_last_raw_lightgun_button.valid)
+    return std::nullopt;
+
+  // Only accept very recent raw button events. This prevents an older raw click from
+  // accidentally overriding a normal mouse click in the binding UI.
+  if ((ImGui::GetTime() - s_last_raw_lightgun_button.event_time) > 0.25)
+    return std::nullopt;
+
+  const std::string selected_device = GetStringSettingValue(section_name.c_str(), "LightgunDevice",
+                                                            section_name == "Controller1" ? "SystemMouse" : "Disabled");
+
+  if (selected_device != s_last_raw_lightgun_button.device_name)
+    return std::nullopt;
+
+  if (section_name == "Controller1")
+    return StringUtil::StdStringFromFormat("Mouse/Button%d", 100 + s_last_raw_lightgun_button.button);
+
+  if (section_name == "Controller2")
+    return StringUtil::StdStringFromFormat("Mouse/Button%d", 200 + s_last_raw_lightgun_button.button);
+
+  return std::nullopt;
+}
 
 struct RawLightgunCursorTextureState
 {
@@ -533,6 +691,9 @@ static void DrawRawLightgunCursorOverlay(HostDisplay* display)
   {
     const RawLightgunCursorState& cursor = s_raw_lightgun_cursors[i];
     if (!cursor.valid)
+      continue;
+
+    if ((ImGui::GetTime() - cursor.last_movement_time) > RAW_LIGHTGUN_CURSOR_IDLE_TIMEOUT)
       continue;
 
     const std::string selected_device =
@@ -608,13 +769,44 @@ void QtHostInterface::onDisplayWindowRawMouseMoveEvent(const QString& device_nam
   if (player1_device == raw_device_name)
   {
     KonamiLightgunSetPosition(0, normalized_x, normalized_y);
-    s_raw_lightgun_cursors[0] = {true, x, y, raw_device_name};
+    s_raw_lightgun_cursors[0] = {true, x, y, ImGui::GetTime(), raw_device_name};
   }
 
   if (player2_device == raw_device_name)
   {
     KonamiLightgunSetPosition(1, normalized_x, normalized_y);
-    s_raw_lightgun_cursors[1] = {true, x, y, raw_device_name};
+    s_raw_lightgun_cursors[1] = {true, x, y, ImGui::GetTime(), raw_device_name};
+  }
+}
+
+void QtHostInterface::onDisplayWindowRawMouseButtonEvent(const QString& device_name, int button, bool pressed)
+{
+  DebugAssert(isOnWorkerThread());
+
+  if (button < 1 || button > 5)
+    return;
+
+  const std::string raw_device_name = device_name.toStdString();
+  s_last_raw_lightgun_button = {true, raw_device_name, button, pressed, ImGui::GetTime()};
+  if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
+  {
+    std::fprintf(fp, "RAW BUTTON device=%s button=%d pressed=%d time=%f\n", raw_device_name.c_str(), button,
+                 pressed ? 1 : 0, ImGui::GetTime());
+    std::fclose(fp);
+  }
+  const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+  const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+
+  if (player1_device == raw_device_name)
+  {
+    HandleHostMouseEvent(100 + button, pressed);
+    return;
+  }
+
+  if (player2_device == raw_device_name)
+  {
+    HandleHostMouseEvent(200 + button, pressed);
+    return;
   }
 }
 
@@ -802,7 +994,9 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
   connect(widget, &QtDisplayWidget::windowKeyEvent, this, &QtHostInterface::onDisplayWindowKeyEvent);
   connect(widget, &QtDisplayWidget::windowMouseMoveEvent, this, &QtHostInterface::onDisplayWindowMouseMoveEvent);
   connect(widget, &QtDisplayWidget::windowRawMouseMoveEvent, this, &QtHostInterface::onDisplayWindowRawMouseMoveEvent);
-
+  connect(widget, &QtDisplayWidget::windowRawMouseButtonEvent, this,
+          &QtHostInterface::onDisplayWindowRawMouseButtonEvent);
+ 
   connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [](int dx, int dy) {
     if (System::IsValid())
       KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));

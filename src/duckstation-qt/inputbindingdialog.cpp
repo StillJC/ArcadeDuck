@@ -58,7 +58,15 @@ bool InputBindingDialog::eventFilter(QObject* watched, QEvent* event)
   {
     const u32 button_mask = static_cast<u32>(static_cast<const QMouseEvent*>(event)->button());
     const u32 button_index = (button_mask == 0u) ? 0 : CountTrailingZeros(button_mask);
-    m_new_binding_value = StringUtil::StdStringFromFormat("Mouse/Button%d", button_index + 1);
+    if (std::optional<std::string> raw_binding =
+          m_host_interface->GetLastRawLightgunButtonBindingForController(m_section_name))
+    {
+      m_new_binding_value = std::move(raw_binding.value());
+    }
+    else
+    {
+      m_new_binding_value = StringUtil::StdStringFromFormat("Mouse/Button%d", button_index + 1);
+    }
     addNewBinding(std::move(m_new_binding_value));
     stopListeningForInput();
     return true;

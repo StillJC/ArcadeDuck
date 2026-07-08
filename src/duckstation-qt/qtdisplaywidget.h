@@ -35,7 +35,8 @@ Q_SIGNALS:
   void windowClosedEvent();
   void windowKeyEvent(int key_code, int mods, bool pressed);
   void windowMouseMoveEvent(int x, int y);
-  void windowRawMouseMoveEvent(const QString& device_name, int x, int y);
+  void windowRawMouseMoveEvent(const QString& device_name, int dx, int dy);
+  void windowRawMouseButtonEvent(const QString& device_name, int button, bool pressed);
   void windowMouseRelativeEvent(int dx, int dy);
   void windowMouseButtonEvent(int button, bool pressed);
   void windowMouseWheelEvent(const QPoint& angle_delta);
