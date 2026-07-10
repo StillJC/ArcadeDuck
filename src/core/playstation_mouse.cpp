@@ -5,11 +5,12 @@
 #include "gpu.h"
 #include "host_display.h"
 #include "host_interface.h"
+#include "konami.h"
 #include "system.h"
 #include <array>
 Log_SetChannel(PlayStationMouse);
 
-PlayStationMouse::PlayStationMouse()
+PlayStationMouse::PlayStationMouse(u32 index) : m_index(index)
 {
   m_last_host_position_x = g_host_interface->GetDisplay()->GetMousePositionX();
   m_last_host_position_y = g_host_interface->GetDisplay()->GetMousePositionY();
@@ -70,11 +71,34 @@ bool PlayStationMouse::GetButtonState(s32 button_code) const
 
 void PlayStationMouse::SetButtonState(Button button, bool pressed)
 {
-  static constexpr std::array<u8, static_cast<size_t>(Button::Count)> indices = {{11, 10}};
+  const u16 bit = u16(1) << static_cast<u8>(button);
+
   if (pressed)
-    m_button_state &= ~(u16(1) << indices[static_cast<u8>(button)]);
+    m_button_state &= ~bit;
   else
-    m_button_state |= u16(1) << indices[static_cast<u8>(button)];
+    m_button_state |= bit;
+
+  switch (button)
+  {
+    case Button::Button1:
+      KonamiArcadeButtonSet(m_index, 0x00000010, pressed);
+      break;
+
+    case Button::Button2:
+      KonamiArcadeButtonSet(m_index, 0x00000020, pressed);
+      break;
+
+    case Button::Coin:
+      KonamiArcadeButtonSet(m_index, 0x00000400, pressed);
+      break;
+
+    case Button::Start:
+      KonamiArcadeButtonSet(m_index, 0x00000200, pressed);
+      break;
+
+    default:
+      break;
+  }
 }
 
 void PlayStationMouse::SetButtonState(s32 button_code, bool pressed)
@@ -183,9 +207,9 @@ void PlayStationMouse::UpdatePosition()
   m_delta_y = static_cast<s8>(std::clamp<s32>(delta_y, std::numeric_limits<s8>::min(), std::numeric_limits<s8>::max()));
 }
 
-std::unique_ptr<PlayStationMouse> PlayStationMouse::Create()
+std::unique_ptr<PlayStationMouse> PlayStationMouse::Create(u32 index)
 {
-  return std::make_unique<PlayStationMouse>();
+  return std::make_unique<PlayStationMouse>(index);
 }
 
 std::optional<s32> PlayStationMouse::StaticGetAxisCodeByName(std::string_view button_name)
@@ -201,8 +225,10 @@ std::optional<s32> PlayStationMouse::StaticGetButtonCodeByName(std::string_view 
     return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::name)));                                              \
   }
 
-  BUTTON(Left);
-  BUTTON(Right);
+  BUTTON(Button1);
+  BUTTON(Button2);
+  BUTTON(Coin);
+  BUTTON(Start);
 
   return std::nullopt;
 
@@ -216,8 +242,10 @@ Controller::AxisList PlayStationMouse::StaticGetAxisNames()
 
 Controller::ButtonList PlayStationMouse::StaticGetButtonNames()
 {
-  return {{TRANSLATABLE("PlayStationMouse", "Left"), static_cast<s32>(Button::Left)},
-          {TRANSLATABLE("PlayStationMouse", "Right"), static_cast<s32>(Button::Right)}};
+  return {{TRANSLATABLE("PlayStationMouse", "Button1"), static_cast<s32>(Button::Button1)},
+          {TRANSLATABLE("PlayStationMouse", "Button2"), static_cast<s32>(Button::Button2)},
+          {TRANSLATABLE("PlayStationMouse", "Coin"), static_cast<s32>(Button::Coin)},
+          {TRANSLATABLE("PlayStationMouse", "Start"), static_cast<s32>(Button::Start)}};
 }
 
 u32 PlayStationMouse::StaticGetVibrationMotorCount()

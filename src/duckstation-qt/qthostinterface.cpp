@@ -603,13 +603,14 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
     return false;
 
   const std::string raw_device_name = StringUtil::StdStringFromFormat("RawMouse:%s", name.data());
-  const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
 
   if (System::IsValid())
   {
     if (System::GetRunningCode() == "btchamp")
     {
-      const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+      const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
+      const std::string player2_device = GetStringSettingValue("Controller2", "TrackballDevice", "Disabled");
 
       if (player1_device == raw_device_name)
       {
@@ -623,6 +624,8 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
     }
     else if (System::GetRunningCode() == "simpbowl")
     {
+      const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
       if (player1_device == raw_device_name)
       {
         KonamiTrackballAddDelta(static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
@@ -630,6 +633,8 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
     }
     else if (KonamiIsKDeadEye() && m_display)
     {
+      const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+
       const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
 
       s32 player = -1;
@@ -725,8 +730,10 @@ QtHostInterface::GetLastRawLightgunButtonBindingForController(const std::string&
   if ((ImGui::GetTime() - s_last_raw_lightgun_button.event_time) > 0.25)
     return std::nullopt;
 
-  const std::string selected_device = GetStringSettingValue(section_name.c_str(), "LightgunDevice",
-                                                            section_name == "Controller1" ? "SystemMouse" : "Disabled");
+  const std::string controller_type = GetStringSettingValue(section_name.c_str(), "Type", "");
+
+  const std::string selected_device = GetStringSettingValue(
+    section_name.c_str(), controller_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
 
   if (selected_device != s_last_raw_lightgun_button.device_name)
     return std::nullopt;
@@ -864,8 +871,15 @@ void QtHostInterface::onDisplayWindowRawMouseButtonEvent(const QString& device_n
                  pressed ? 1 : 0, ImGui::GetTime());
     std::fclose(fp);
   }
-  const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
-  const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+  const std::string player1_type = GetStringSettingValue("Controller1", "Type", "");
+
+  const std::string player2_type = GetStringSettingValue("Controller2", "Type", "");
+
+  const std::string player1_device = GetStringSettingValue(
+    "Controller1", player1_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
+
+  const std::string player2_device = GetStringSettingValue(
+    "Controller2", player2_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
 
   if (player1_device == raw_device_name)
   {
@@ -1071,13 +1085,15 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
     if (!System::IsValid())
       return;
 
-    if (System::GetRunningCode() == "btchamp")
-    {
-      const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+    const std::string running_code = System::GetRunningCode();
 
-if (player1_device.rfind("RawMouse:", 0) == 0)
-        return;
-    }
+    if (running_code != "simpbowl" && running_code != "btchamp")
+      return;
+
+    const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
+    if (player1_device != "SystemMouse")
+      return;
 
     KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
   });

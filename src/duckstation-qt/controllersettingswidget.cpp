@@ -277,56 +277,38 @@ MultitapMode ControllerSettingsWidget::getMultitapMode()
     .value_or(Settings::DEFAULT_MULTITAP_MODE);
 }
 
-QString ControllerSettingsWidget::getTabTitleForPort(u32 index, MultitapMode mode) const
+QString ControllerSettingsWidget::getTabTitleForPort(u32 index, MultitapMode) const
 {
-  constexpr u32 NUM_PORTS_PER_MULTITAP = 4;
+  const ControllerType controller_type =
+    Settings::ParseControllerTypeName(m_host_interface->GetStringSettingValue("Controller1", "Type").c_str())
+      .value_or(ControllerType::AnalogController);
 
-  u32 port_number, subport_number;
+  u32 player_count = 2;
 
-  switch (mode)
+  switch (controller_type)
   {
-    case MultitapMode::Port1Only:
-    {
-      if (index == NUM_PORTS_PER_MULTITAP)
-        return tr("Port %1").arg((index / NUM_PORTS_PER_MULTITAP) + 1);
-      else if (index > NUM_PORTS_PER_MULTITAP)
-        return QString();
+    case ControllerType::NamcoGunCon:
+      player_count = 3;
+      break;
 
-      port_number = 0;
-      subport_number = index;
-    }
-    break;
+    case ControllerType::NeGcon:
+      player_count = 1;
+      break;
 
-    case MultitapMode::Port2Only:
-    {
-      if (index == 0)
-        return tr("Port %1").arg(index + 1);
-      else if (index > NUM_PORTS_PER_MULTITAP)
-        return QString();
+    case ControllerType::AnalogController:
+    case ControllerType::PlayStationMouse:
+      player_count = 2;
+      break;
 
-      port_number = 1;
-      subport_number = (index - 1);
-    }
-    break;
-
-    case MultitapMode::BothPorts:
-    {
-      port_number = index / NUM_PORTS_PER_MULTITAP;
-      subport_number = (index % NUM_PORTS_PER_MULTITAP);
-    }
-    break;
-
-    case MultitapMode::Disabled:
     default:
-    {
-      if (index >= (NUM_CONTROLLER_AND_CARD_PORTS / NUM_PORTS_PER_MULTITAP))
-        return QString();
-
-      return tr("Port %1").arg(index + 1);
-    }
+      player_count = 1;
+      break;
   }
 
-  return tr("Port %1%2").arg(port_number + 1).arg(QChar::fromLatin1('A' + subport_number));
+  if (index >= player_count)
+    return QString();
+
+  return tr("Player %1").arg(index + 1);
 }
 
 void ControllerSettingsWidget::createUi()
@@ -369,7 +351,10 @@ void ControllerSettingsWidget::onProfileLoaded()
 
     {
       QSignalBlocker blocker(m_port_ui[i].controller_type);
-      m_port_ui[i].controller_type->setCurrentIndex(static_cast<int>(ctype));
+
+      const int selected_index = m_port_ui[i].controller_type->findData(static_cast<int>(ctype));
+
+      m_port_ui[i].controller_type->setCurrentIndex(selected_index >= 0 ? selected_index : 0);
     }
     createPortBindingSettingsUi(i, &m_port_ui[i], ctype);
   }
@@ -408,16 +393,28 @@ void ControllerSettingsWidget::createPortSettingsUi(int index, PortSettingsUI* u
   hbox->addSpacing(8);
 
   ui->controller_type = new QComboBox(ui->widget);
-  for (int i = 0; i < static_cast<int>(ControllerType::Count); i++)
-  {
-    ui->controller_type->addItem(
-      qApp->translate("ControllerType", Settings::GetControllerTypeDisplayName(static_cast<ControllerType>(i))));
-  }
+
+  const auto add_controller_type = [ui](ControllerType type) {
+    ui->controller_type->addItem(qApp->translate("ControllerType", Settings::GetControllerTypeDisplayName(type)),
+                                 static_cast<int>(type));
+  };
+
+  add_controller_type(ControllerType::AnalogController);
+  add_controller_type(ControllerType::NamcoGunCon);
+  add_controller_type(ControllerType::PlayStationMouse);
+  add_controller_type(ControllerType::NeGcon);
+  add_controller_type(ControllerType::DigitalController);
+  add_controller_type(ControllerType::AnalogJoystick);
+  add_controller_type(ControllerType::None);
+
   ControllerType ctype =
     Settings::ParseControllerTypeName(
       m_host_interface->GetStringSettingValue(TinyString::FromFormat("Controller%d", index + 1), "Type").c_str())
       .value_or(ControllerType::None);
-  ui->controller_type->setCurrentIndex(static_cast<int>(ctype));
+
+  const int selected_index = ui->controller_type->findData(static_cast<int>(ctype));
+
+  ui->controller_type->setCurrentIndex(selected_index >= 0 ? selected_index : 0);
   connect(ui->controller_type, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
           [this, index]() { onControllerTypeChanged(index); });
 
@@ -690,6 +687,30 @@ void ControllerSettingsWidget::createPortBindingSettingsUi(int index, PortSettin
     }
   }
 
+  if (ctype == ControllerType::PlayStationMouse)
+  {
+    layout->addWidget(QtUtils::CreateHorizontalLine(ui->widget), start_row++, 0, 1, 4);
+    layout->addWidget(new QLabel(tr("Trackball Settings:"), ui->bindings_container), start_row++, 0, 1, 4);
+
+    const std::string section_name = StringUtil::StdStringFromFormat("Controller%d", index + 1);
+
+    QComboBox* trackball_device = new QComboBox(ui->bindings_container);
+    trackball_device->addItem(tr("Disabled"), QStringLiteral("Disabled"));
+    trackball_device->addItem(tr("System Mouse"), QStringLiteral("SystemMouse"));
+
+#if defined(_WIN32)
+    for (const auto& [display_name, setting_value] : GetRawMouseDeviceList())
+      trackball_device->addItem(display_name, setting_value);
+#endif
+
+    SettingWidgetBinder::BindWidgetToStringSetting(m_host_interface, trackball_device, section_name, "TrackballDevice",
+                                                   "Disabled");
+
+    layout->addWidget(new QLabel(tr("Trackball Device"), ui->bindings_container), start_row, 0);
+    layout->addWidget(trackball_device, start_row, 1, 1, 3);
+    start_row++;
+  }
+
   // Sinden border
   if (ctype == ControllerType::NamcoGunCon)
   {
@@ -796,15 +817,33 @@ void ControllerSettingsWidget::createPortBindingSettingsUi(int index, PortSettin
 
 void ControllerSettingsWidget::onControllerTypeChanged(int index)
 {
-  const int type_index = m_port_ui[index].controller_type->currentIndex();
-  if (type_index < 0 || type_index >= static_cast<int>(ControllerType::Count))
+  const QVariant type_data = m_port_ui[index].controller_type->currentData();
+
+  if (!type_data.isValid())
     return;
 
+  const int type_value = type_data.toInt();
+
+  if (type_value < 0 || type_value >= static_cast<int>(ControllerType::Count))
+  {
+    return;
+  }
+
+  const ControllerType ctype = static_cast<ControllerType>(type_value);
+
   m_host_interface->SetStringSettingValue(TinyString::FromFormat("Controller%d", index + 1), "Type",
-                                          Settings::GetControllerTypeName(static_cast<ControllerType>(type_index)));
+                                          Settings::GetControllerTypeName(ctype));
 
   m_host_interface->applySettings();
-  createPortBindingSettingsUi(index, &m_port_ui[index], static_cast<ControllerType>(type_index));
+
+  if (index == 0)
+  {
+    QMetaObject::invokeMethod(this, [this]() { updateMultitapControllerTitles(); }, Qt::QueuedConnection);
+
+    return;
+  }
+
+  createPortBindingSettingsUi(index, &m_port_ui[index], ctype);
 }
 
 void ControllerSettingsWidget::onLoadProfileClicked()

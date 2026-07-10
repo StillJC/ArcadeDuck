@@ -9,15 +9,17 @@ class PlayStationMouse final : public Controller
 public:
   enum class Button : u8
   {
-    Left = 0,
-    Right = 1,
+    Button1 = 0,
+    Button2,
+    Coin,
+    Start,
     Count
   };
 
-  PlayStationMouse();
+  explicit PlayStationMouse(u32 index);
   ~PlayStationMouse() override;
 
-  static std::unique_ptr<PlayStationMouse> Create();
+  static std::unique_ptr<PlayStationMouse> Create(u32 index);
   static std::optional<s32> StaticGetAxisCodeByName(std::string_view button_name);
   static std::optional<s32> StaticGetButtonCodeByName(std::string_view button_name);
   static AxisList StaticGetAxisNames();
@@ -44,6 +46,7 @@ public:
   bool GetSoftwareCursor(const Common::RGBA8Image** image, float* image_scale, bool* relative_mode) override;
 
 private:
+  u32 m_index;
   void UpdatePosition();
 
   enum class TransferState : u8
