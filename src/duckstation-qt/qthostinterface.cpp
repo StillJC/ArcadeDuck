@@ -607,7 +607,21 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
 
   if (System::IsValid())
   {
-    if (System::GetRunningCode() == "simpbowl")
+    if (System::GetRunningCode() == "btchamp")
+    {
+      const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+
+      if (player1_device == raw_device_name)
+      {
+        KonamiTrackballAddDelta(0, static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
+      }
+
+      if (player2_device == raw_device_name)
+      {
+        KonamiTrackballAddDelta(1, static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
+      }
+    }
+    else if (System::GetRunningCode() == "simpbowl")
     {
       if (player1_device == raw_device_name)
       {
@@ -1053,9 +1067,19 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
   connect(widget, &QtDisplayWidget::windowRawMouseButtonEvent, this,
           &QtHostInterface::onDisplayWindowRawMouseButtonEvent);
 
-  connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [](int dx, int dy) {
-    if (System::IsValid())
-      KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
+  connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [this](int dx, int dy) {
+    if (!System::IsValid())
+      return;
+
+    if (System::GetRunningCode() == "btchamp")
+    {
+      const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+
+if (player1_device.rfind("RawMouse:", 0) == 0)
+        return;
+    }
+
+    KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
   });
 
   connect(widget, &QtDisplayWidget::windowMouseButtonEvent, this, &QtHostInterface::onDisplayWindowMouseButtonEvent);
