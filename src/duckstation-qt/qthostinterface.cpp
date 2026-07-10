@@ -996,7 +996,7 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
   connect(widget, &QtDisplayWidget::windowRawMouseMoveEvent, this, &QtHostInterface::onDisplayWindowRawMouseMoveEvent);
   connect(widget, &QtDisplayWidget::windowRawMouseButtonEvent, this,
           &QtHostInterface::onDisplayWindowRawMouseButtonEvent);
- 
+
   connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [](int dx, int dy) {
     if (System::IsValid())
       KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
