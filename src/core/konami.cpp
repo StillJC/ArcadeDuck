@@ -417,14 +417,14 @@ static void KonamiSaveEepromFile();
 // Trackball
 static std::mutex TrackballMutex;
 
-// Pending relative movement from the real mouse / USB trackball.
+// Pending relative movement from the real mice / USB trackballs.
 // These are not screen cursor coordinates.
-static double TrackballPendingX;
-static double TrackballPendingY;
+static double TrackballPendingX[2];
+static double TrackballPendingY[2];
 
 // Latched 12-bit values exposed to the Konami GV input registers.
-static u16 TrackballX;
-static u16 TrackballY;
+static u16 TrackballX[2];
+static u16 TrackballY[2];
 static s32 TrackballCounterX;
 static s32 TrackballCounterY;
 static s32 TrackballStartX;
@@ -1923,15 +1923,18 @@ static u16 KonamiEncodeTrackball12(s32 value)
   return static_cast<u16>(value) & 0x0FFF;
 }
 
-static void KonamiLatchTrackball()
+static void KonamiLatchTrackball(u32 Player)
 {
+  if (Player >= 2)
+    return;
+
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  const s32 x = KonamiConsumeTrackballAxis(TrackballPendingX);
-  const s32 y = KonamiConsumeTrackballAxis(TrackballPendingY);
+  const s32 x = KonamiConsumeTrackballAxis(TrackballPendingX[Player]);
+  const s32 y = KonamiConsumeTrackballAxis(TrackballPendingY[Player]);
 
-  TrackballX = KonamiEncodeTrackball12(x);
-  TrackballY = KonamiEncodeTrackball12(y);
+  TrackballX[Player] = KonamiEncodeTrackball12(x);
+  TrackballY[Player] = KonamiEncodeTrackball12(y);
 }
 
 // Trackball
@@ -1949,45 +1952,52 @@ void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
 
     btchamp_trackball_debug_count++;
   }
-  if ((System::GetRunningCode() == "btchamp" && Offset == 0x00680086) || Offset == 0x006800C0)
-    KonamiLatchTrackball();
+  if (System::GetRunningCode() == "btchamp" && Offset == 0x00680086)
+  {
+    KonamiLatchTrackball(0);
+    KonamiLatchTrackball(1);
+  }
+  else if (Offset == 0x006800C0)
+  {
+    KonamiLatchTrackball(0);
+  }
 
   switch (Offset)
   {
     case 0x00680080:
       // P1 X low byte in high byte, P2 X low byte in low byte.
-      Value = ((TrackballX & 0x00FF) << 8);
+      Value = ((TrackballX[0] & 0x00FF) << 8) | (TrackballX[1] & 0x00FF);
       break;
 
     case 0x00680082:
-      // P1 X high byte in high byte, P2 X high byte in low byte.
-      Value = (((TrackballX >> 8) & 0x000F) << 8);
+      // P1 X high nibble in high byte, P2 X high nibble in low byte.
+      Value = (((TrackballX[0] >> 8) & 0x000F) << 8) | ((TrackballX[1] >> 8) & 0x000F);
       break;
 
     case 0x00680084:
       // P1 Y low byte in high byte, P2 Y low byte in low byte.
-      Value = ((TrackballY & 0x00FF) << 8);
+      Value = ((TrackballY[0] & 0x00FF) << 8) | (TrackballY[1] & 0x00FF);
       break;
 
     case 0x00680086:
-      // P1 Y high byte in high byte, P2 Y high byte in low byte.
-      Value = (((TrackballY >> 8) & 0x000F) << 8);
+      // P1 Y high nibble in high byte, P2 Y high nibble in low byte.
+      Value = (((TrackballY[0] >> 8) & 0x000F) << 8) | ((TrackballY[1] >> 8) & 0x000F);
       break;
 
     case 0x006800C0:
-      Value = (TrackballX & 0x0FF) << 8;
+      Value = (TrackballX[0] & 0x0FF) << 8;
       break;
 
     case 0x006800C2:
-      Value = (TrackballX & 0xF00);
+      Value = TrackballX[0] & 0xF00;
       break;
 
     case 0x006800C4:
-      Value = (TrackballY & 0x0FF) << 8;
+      Value = (TrackballY[0] & 0x0FF) << 8;
       break;
 
     case 0x006800C6:
-      Value = (TrackballY & 0xF00);
+      Value = TrackballY[0] & 0xF00;
       break;
 
     default:
@@ -1999,12 +2009,17 @@ void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
   {
     static int value_debug_count = 0;
 
-    if (value_debug_count < 300 && (TrackballX != 0 || TrackballY != 0))
+    if (value_debug_count < 300 &&
+        (TrackballX[0] != 0 || TrackballY[0] != 0 || TrackballX[1] != 0 || TrackballY[1] != 0))
     {
       if (std::FILE* fp = std::fopen("btchamp_trackball_values.txt", "ab"))
       {
-        std::fprintf(fp, "offset=0x%08X value=0x%04X x=0x%04X y=0x%04X\n", Offset, Value & 0xFFFF, TrackballX,
-                     TrackballY);
+        std::fprintf(fp,
+                     "offset=0x%08X value=0x%04X "
+                     "p1_x=0x%04X p1_y=0x%04X "
+                     "p2_x=0x%04X p2_y=0x%04X\n",
+                     Offset, Value & 0xFFFF, TrackballX[0], TrackballY[0], TrackballX[1], TrackballY[1]);
+
         std::fclose(fp);
       }
 
@@ -2027,7 +2042,8 @@ void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
                      "offset=0x%08X value=0x%08X bit0_reset=%u bit1_cs=%u counter_x=0x%03X counter_y=0x%03X "
                      "start_x=0x%03X start_y=0x%03X out_x=0x%03X out_y=0x%03X\n",
                      Offset, Value, Value & 1, (Value >> 1) & 1, TrackballCounterX & 0x0FFF, TrackballCounterY & 0x0FFF,
-                     TrackballStartX & 0x0FFF, TrackballStartY & 0x0FFF, TrackballX & 0x0FFF, TrackballY & 0x0FFF);
+                     TrackballStartX & 0x0FFF, TrackballStartY & 0x0FFF, TrackballX[0] & 0x0FFF,
+                     TrackballY[0] & 0x0FFF);
         std::fclose(fp);
       }
 
@@ -2043,8 +2059,10 @@ void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
       TrackballStartX = TrackballCounterX;
       TrackballStartY = TrackballCounterY;
 
-      TrackballX = 0;
-      TrackballY = 0;
+      TrackballX[0] = 0;
+      TrackballY[0] = 0;
+      TrackballX[1] = 0;
+      TrackballY[1] = 0;
     }
 
     TrackballResetActive = reset_active;
@@ -2103,29 +2121,42 @@ void KonamiTrackballSetXY(u16 X, u16 Y)
 {
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  TrackballX = X & 0x0FFF;
-  TrackballY = Y & 0x0FFF;
+  TrackballX[0] = X & 0x0FFF;
+  TrackballY[0] = Y & 0x0FFF;
 }
 
-void KonamiTrackballAddDelta(s32 X, s32 Y)
+void KonamiTrackballAddDelta(u32 Player, s32 X, s32 Y)
 {
+  if (Player >= 2)
+    return;
+
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
   const s32 adjusted_x = (System::GetRunningCode() == "btchamp") ? X : -X;
 
-  TrackballPendingX += static_cast<double>(adjusted_x) * static_cast<double>(TrackballSensitivity);
-  TrackballPendingY += static_cast<double>(Y) * static_cast<double>(TrackballSensitivity);
+  TrackballPendingX[Player] += static_cast<double>(adjusted_x) * static_cast<double>(TrackballSensitivity);
+
+  TrackballPendingY[Player] += static_cast<double>(Y) * static_cast<double>(TrackballSensitivity);
+}
+
+void KonamiTrackballAddDelta(s32 X, s32 Y)
+{
+  KonamiTrackballAddDelta(0, X, Y);
 }
 
 void KonamiTrackballReset()
 {
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  TrackballPendingX = 0.0;
-  TrackballPendingY = 0.0;
+  TrackballPendingX[0] = 0.0;
+  TrackballPendingY[0] = 0.0;
+  TrackballPendingX[1] = 0.0;
+  TrackballPendingY[1] = 0.0;
 
-  TrackballX = 0;
-  TrackballY = 0;
+  TrackballX[0] = 0;
+  TrackballY[0] = 0;
+  TrackballX[1] = 0;
+  TrackballY[1] = 0;
 
   TrackballResetActive = false;
 }
