@@ -42,9 +42,6 @@ public:
 
   void SetButtonState(Button button, bool pressed);
 
-  void LoadSettings(const char* section) override;
-  bool GetSoftwareCursor(const Common::RGBA8Image** image, float* image_scale, bool* relative_mode) override;
-
 private:
   u32 m_index;
   void UpdatePosition();
@@ -70,5 +67,4 @@ private:
 
   TransferState m_transfer_state = TransferState::Idle;
 
-  bool m_use_relative_mode = false;
 };

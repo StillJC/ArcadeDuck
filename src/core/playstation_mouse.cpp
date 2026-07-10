@@ -255,23 +255,7 @@ u32 PlayStationMouse::StaticGetVibrationMotorCount()
 
 Controller::SettingList PlayStationMouse::StaticGetSettings()
 {
-  static constexpr std::array<SettingInfo, 1> settings = {{
-    {SettingInfo::Type::Boolean, "RelativeMouseMode", TRANSLATABLE("PlayStationMouse", "Relative Mouse Mode"),
-     TRANSLATABLE("PlayStationMouse", "Locks the mouse cursor to the window, use for FPS games."), "false"},
-  }};
-
-  return SettingList(settings.begin(), settings.end());
+  return {};
 }
 
-void PlayStationMouse::LoadSettings(const char* section)
-{
-  Controller::LoadSettings(section);
 
-  m_use_relative_mode = g_host_interface->GetBoolSettingValue(section, "RelativeMouseMode");
-}
-
-bool PlayStationMouse::GetSoftwareCursor(const Common::RGBA8Image** image, float* image_scale, bool* relative_mode)
-{
-  *relative_mode = m_use_relative_mode;
-  return m_use_relative_mode;
-}
