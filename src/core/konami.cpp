@@ -76,14 +76,22 @@ static std::unique_ptr<TimingEvent> ScsiIrqEvent;
 // Buttons
 static u32 CurrentButtons[2];
 
-// FLASH
-static constexpr u32 FLASH_SIZE = 0x200000;
-static constexpr u32 FLASH_SECTOR_SIZE = 0x10000;
+// Konami GV flash state
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SIZE = 0x200000;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE = 0x10000;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT = 4;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR = 2;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT =
+  (KONAMI_GV_FUJITSU_FLASH_SIZE * KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR) / CDImage::DATA_SECTOR_SIZE;
+
+static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_01_LBA = 202;
+static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA = 2250;
 
 static constexpr u32 KDEADEYE_FLASH_SIZE = 0x80000;
+static constexpr u32 KDEADEYE_FLASH_SECTOR_SIZE = 0x10000;
 
-static u8 Flash[4][FLASH_SIZE];
-static u32 FlashAddress;
+static u8 GVFujitsuFlash[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT][KONAMI_GV_FUJITSU_FLASH_SIZE];
+static u32 GVFujitsuFlashAddress;
 
 static u8 KDeadEyeFlash[KDEADEYE_FLASH_SIZE];
 static bool KDeadEyeFlashValid = false;
@@ -157,10 +165,10 @@ static u16 KonamiKDeadEyeSingleFlashRead16(u32 relative_offset)
 static u16 KonamiKDeadEyeFallbackFlashRead16(u32 relative_offset)
 {
   const u32 word_offset = (relative_offset >> 1) & 0x3FFFFF;
-  const u32 chip = (word_offset >= FLASH_SIZE) ? 2 : 0;
-  const u32 chip_offset = word_offset & (FLASH_SIZE - 1);
+  const u32 chip = (word_offset >= KONAMI_GV_FUJITSU_FLASH_SIZE) ? 2 : 0;
+  const u32 chip_offset = word_offset & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-  return static_cast<u16>(Flash[chip][chip_offset] | (Flash[chip + 1][chip_offset] << 8));
+  return static_cast<u16>(GVFujitsuFlash[chip][chip_offset] | (GVFujitsuFlash[chip + 1][chip_offset] << 8));
 }
 
 static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
@@ -321,9 +329,9 @@ if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
   {
     if (command == 0xD0)
     {
-      const u32 block_start = byte_offset & ~(FLASH_SECTOR_SIZE - 1);
+      const u32 block_start = byte_offset & ~(KDEADEYE_FLASH_SECTOR_SIZE - 1);
 
-      for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
+      for (u32 i = 0; i < KDEADEYE_FLASH_SECTOR_SIZE; i++)
         KDeadEyeFlash[(block_start + i) & (KDEADEYE_FLASH_SIZE - 1)] = 0xFF;
 
       kdeadeye_flash_erase_count++;
@@ -410,20 +418,20 @@ if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
       break;
   }
 }
-enum KonamiFlashMode : u8
+enum KonamiGVFujitsuFlashMode : u8
 {
-  KONAMI_FLASH_MODE_READ_ARRAY = 0,
-  KONAMI_FLASH_MODE_UNLOCK_1,
-  KONAMI_FLASH_MODE_UNLOCK_2,
-  KONAMI_FLASH_MODE_AUTOSELECT,
-  KONAMI_FLASH_MODE_PROGRAM,
-  KONAMI_FLASH_MODE_ERASE_UNLOCK_1,
-  KONAMI_FLASH_MODE_ERASE_UNLOCK_2,
-  KONAMI_FLASH_MODE_ERASE_SELECT
+  KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY = 0,
+  KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1,
+  KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2,
+  KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT,
+  KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT
 };
 
-static KonamiFlashMode FlashModeState[4];
-static bool FlashDirty[4];
+static KonamiGVFujitsuFlashMode GVFujitsuFlashModeState[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT];
+static bool GVFujitsuFlashDirty[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT];
 
 static std::FILE* EepromFp;
 static uint16_t Eeprom[64];
@@ -542,21 +550,19 @@ static bool LoadEepromFile(const char* Path)
   return true;
 }
 
-static bool LoadFlashFile(const char *Path, void *Buffer)
+static bool KonamiGVFujitsuFlashLoadFile(const char* path, void* buffer)
 {
-  std::FILE* fp;
-
-  fp = FileSystem::OpenCFile(Path, "rb");
+  std::FILE* fp = FileSystem::OpenCFile(path, "rb");
   if (!fp)
-  {
     return false;
-  }
-  if (fread(Buffer, 1, 0x200000, fp) != 0x200000)
-  {
-    return false;
-  }
-  fclose(fp);
 
+  if (std::fread(buffer, 1, KONAMI_GV_FUJITSU_FLASH_SIZE, fp) != KONAMI_GV_FUJITSU_FLASH_SIZE)
+  {
+    std::fclose(fp);
+    return false;
+  }
+
+  std::fclose(fp);
   return true;
 }
 
@@ -586,7 +592,7 @@ static void QueueScsiInterruptTicks(TickCount ticks)
     ScsiIrqEvent->Schedule(ticks);
 }
 
-static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
+static bool KonamiGVFujitsuFlashFileIsMissingOrErased(const std::string& path)
 {
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
   if (!fp)
@@ -596,21 +602,25 @@ static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
   const long size = std::ftell(fp);
   std::fseek(fp, 0, SEEK_SET);
 
-  if (size != static_cast<long>(FLASH_SIZE))
+  if (size != static_cast<long>(KONAMI_GV_FUJITSU_FLASH_SIZE))
   {
     std::fclose(fp);
     return true;
   }
 
-  u8 buffer[4096];
+u8 buffer[4096];
 
-  while (!std::feof(fp))
+  for (u32 offset = 0; offset < KONAMI_GV_FUJITSU_FLASH_SIZE; offset += sizeof(buffer))
   {
-    const size_t read = std::fread(buffer, 1, sizeof(buffer), fp);
-
-    for (size_t i = 0; i < read; i++)
+    if (std::fread(buffer, 1, sizeof(buffer), fp) != sizeof(buffer))
     {
-      if (buffer[i] != 0xFF)
+      std::fclose(fp);
+      return true;
+    }
+
+    for (u8 value : buffer)
+    {
+      if (value != 0xFF)
       {
         std::fclose(fp);
         return false;
@@ -648,7 +658,7 @@ static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
   return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
 }
 
-static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
+static bool KonamiGVFujitsuFlashReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
 {
   if (!image)
     return false;
@@ -659,7 +669,7 @@ static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
   return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
 }
 
-static bool KonamiWriteFlashFile(const std::string& path, const std::vector<u8>& data)
+static bool KonamiGVFujitsuFlashWriteFile(const std::string& path, const std::vector<u8>& data)
 {
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "wb");
   if (!fp)
@@ -670,20 +680,20 @@ static bool KonamiWriteFlashFile(const std::string& path, const std::vector<u8>&
   return ok;
 }
 
-static bool KonamiExtractFlashPairFromImage(CDImage* image, u32 start_lba, const std::string& low_path,
+static bool KonamiGVFujitsuFlashExtractPairFromImage(CDImage* image, u32 start_lba, const std::string& low_path,
                                             const std::string& high_path)
 {
-  std::vector<u8> low(FLASH_SIZE);
-  std::vector<u8> high(FLASH_SIZE);
+  std::vector<u8> low(KONAMI_GV_FUJITSU_FLASH_SIZE);
+  std::vector<u8> high(KONAMI_GV_FUJITSU_FLASH_SIZE);
 
   u8 sector[CDImage::DATA_SECTOR_SIZE];
   u32 output_offset = 0;
 
-  for (u32 sector_index = 0; sector_index < 2048; sector_index++)
+  for (u32 sector_index = 0; sector_index < KONAMI_GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT; sector_index++)
   {
     const u32 lba = start_lba + sector_index;
 
-    if (!KonamiReadDataSectorFromImage(image, lba, sector))
+    if (!KonamiGVFujitsuFlashReadDataSectorFromImage(image, lba, sector))
     {
       if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
       {
@@ -703,52 +713,7 @@ static bool KonamiExtractFlashPairFromImage(CDImage* image, u32 start_lba, const
     }
   }
 
-  return KonamiWriteFlashFile(low_path, low) && KonamiWriteFlashFile(high_path, high);
-}
-
-static bool KonamiExtractFlashPairFromIso(std::FILE* iso_fp, u32 iso_offset, const std::string& low_path,
-                                          const std::string& high_path)
-{
-  std::FILE* low_fp = FileSystem::OpenCFile(low_path.c_str(), "wb");
-  if (!low_fp)
-    return false;
-
-  std::FILE* high_fp = FileSystem::OpenCFile(high_path.c_str(), "wb");
-  if (!high_fp)
-  {
-    std::fclose(low_fp);
-    return false;
-  }
-
-  if (std::fseek(iso_fp, iso_offset, SEEK_SET) != 0)
-  {
-    std::fclose(low_fp);
-    std::fclose(high_fp);
-    return false;
-  }
-
-  for (u32 i = 0; i < FLASH_SIZE; i++)
-  {
-    const int low = std::fgetc(iso_fp);
-    const int high = std::fgetc(iso_fp);
-
-    if (low < 0 || high < 0)
-    {
-      std::fclose(low_fp);
-      std::fclose(high_fp);
-      return false;
-    }
-
-    const u8 low_byte = static_cast<u8>(low);
-    const u8 high_byte = static_cast<u8>(high);
-
-    std::fwrite(&low_byte, 1, 1, low_fp);
-    std::fwrite(&high_byte, 1, 1, high_fp);
-  }
-
-  std::fclose(low_fp);
-  std::fclose(high_fp);
-  return true;
+  return KonamiGVFujitsuFlashWriteFile(low_path, low) && KonamiGVFujitsuFlashWriteFile(high_path, high);
 }
 
 static void KonamiCreateParentDirectoryForFile(const std::string& path)
@@ -764,25 +729,12 @@ static void KonamiCreateParentDirectoryForFile(const std::string& path)
     FileSystem::CreateDirectory(directory.c_str(), false);
 }
 
-static bool KonamiImageIsRaw2048Iso(std::FILE* fp)
-{
-  if (std::fseek(fp, 0x8001, SEEK_SET) != 0)
-    return false;
-
-  char magic[5];
-  const bool is_iso = std::fread(magic, 1, sizeof(magic), fp) == sizeof(magic) && magic[0] == 'C' && magic[1] == 'D' &&
-                      magic[2] == '0' && magic[3] == '0' && magic[4] == '1';
-
-  std::fseek(fp, 0, SEEK_SET);
-  return is_iso;
-}
-
-static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, const std::string& flash1_path,
+static void KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(const std::string& flash0_path, const std::string& flash1_path,
                                                 const std::string& flash2_path, const std::string& flash3_path)
 {
   const bool needs_flash =
-    KonamiFlashFileIsMissingOrErased(flash0_path) || KonamiFlashFileIsMissingOrErased(flash1_path) ||
-    KonamiFlashFileIsMissingOrErased(flash2_path) || KonamiFlashFileIsMissingOrErased(flash3_path);
+    KonamiGVFujitsuFlashFileIsMissingOrErased(flash0_path) || KonamiGVFujitsuFlashFileIsMissingOrErased(flash1_path) ||
+    KonamiGVFujitsuFlashFileIsMissingOrErased(flash2_path) || KonamiGVFujitsuFlashFileIsMissingOrErased(flash3_path);
 
   if (!needs_flash)
     return;
@@ -807,8 +759,10 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
   // Simpsons Bowling stores the four 29F016A flash chips as two interleaved pairs on disc.
   // Pair 0/1 starts at ISO offset 0x00065000 = LBA 202.
   // Pair 2/3 starts at ISO offset 0x00465000 = LBA 2250.
-  const bool ok01 = KonamiExtractFlashPairFromImage(image.get(), 202, flash0_path, flash1_path);
-  const bool ok23 = KonamiExtractFlashPairFromImage(image.get(), 2250, flash2_path, flash3_path);
+  const bool ok01 = KonamiGVFujitsuFlashExtractPairFromImage(image.get(), KONAMI_GV_FUJITSU_SIMPSONS_PAIR_01_LBA,
+                                                             flash0_path, flash1_path);
+  const bool ok23 = KonamiGVFujitsuFlashExtractPairFromImage(image.get(), KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA,
+                                                             flash2_path, flash3_path);
 
   if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
   {
@@ -874,10 +828,10 @@ void KonamiInit(void)
   const std::string kdeadeye_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
 
   // Empty flash chips should read as erased flash, not zero-filled RAM.
-  for (u32 chip = 0; chip < 4; chip++)
+  for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
   {
-    for (u32 i = 0; i < FLASH_SIZE; i++)
-      Flash[chip][i] = 0xFF;
+    for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SIZE; i++)
+      GVFujitsuFlash[chip][i] = 0xFF;
   }
 
   EepromDi = false;
@@ -902,12 +856,12 @@ void KonamiInit(void)
   KDeadEyeFlashPath.clear();
   KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
   KDeadEyeFlashStatus = 0x0080;
-  FlashAddress = 0;
+  GVFujitsuFlashAddress = 0;
 
-  for (u32 chip = 0; chip < 4; chip++)
+  for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
   {
-    FlashModeState[chip] = KONAMI_FLASH_MODE_READ_ARRAY;
-    FlashDirty[chip] = false;
+    GVFujitsuFlashModeState[chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
+    GVFujitsuFlashDirty[chip] = false;
   }
 
   if (!eeprom_path.empty())
@@ -927,12 +881,12 @@ void KonamiInit(void)
   }
   else if (game_name == "simpbowl")
   {
-    KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
+    KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
 
-    LoadFlashFile(flash0_path.c_str(), Flash[0]);
-    LoadFlashFile(flash1_path.c_str(), Flash[1]);
-    LoadFlashFile(flash2_path.c_str(), Flash[2]);
-    LoadFlashFile(flash3_path.c_str(), Flash[3]);
+    KonamiGVFujitsuFlashLoadFile(flash0_path.c_str(), GVFujitsuFlash[0]);
+    KonamiGVFujitsuFlashLoadFile(flash1_path.c_str(), GVFujitsuFlash[1]);
+    KonamiGVFujitsuFlashLoadFile(flash2_path.c_str(), GVFujitsuFlash[2]);
+    KonamiGVFujitsuFlashLoadFile(flash3_path.c_str(), GVFujitsuFlash[3]);
   }
 
   KonamiTrackballReset();
@@ -1416,28 +1370,28 @@ void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
   // Ignored
 }
 
-// FLASH
+// Konami GV Fujitsu flash
 
-static bool KonamiFlashIsUnlockAAAddress(u32 Address)
+static bool KonamiGVFujitsuFlashIsUnlockAAAddress(u32 Address)
 {
   return ((Address & 0x0FFF) == 0x0555) || ((Address & 0x0FFF) == 0x0AAA) || ((Address & 0xFFFF) == 0x5555);
 }
 
-static bool KonamiFlashIsUnlock55Address(u32 Address)
+static bool KonamiGVFujitsuFlashIsUnlock55Address(u32 Address)
 {
   return ((Address & 0xFFFF) == 0x02AA) || ((Address & 0xFFFF) == 0x2AAA) || ((Address & 0x0FFF) == 0x0555);
 }
 
-static bool KonamiFlashIsCommandAddress(u32 Address)
+static bool KonamiGVFujitsuFlashIsCommandAddress(u32 Address)
 {
   return ((Address & 0xFFFF) == 0x0555) || ((Address & 0xFFFF) == 0x5555) || ((Address & 0x0FFF) == 0x0AAA);
 }
 
-static u8 KonamiFlashChipRead(u8 Chip, u32 Address)
+static u8 KonamiGVFujitsuFlashChipRead(u8 Chip, u32 Address)
 {
-  Address &= (FLASH_SIZE - 1);
+  Address &= (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-  if (FlashModeState[Chip] == KONAMI_FLASH_MODE_AUTOSELECT)
+  if (GVFujitsuFlashModeState[Chip] == KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT)
   {
     switch (Address & 0xFF)
     {
@@ -1455,115 +1409,115 @@ static u8 KonamiFlashChipRead(u8 Chip, u32 Address)
     }
   }
 
-  return Flash[Chip][Address];
+  return GVFujitsuFlash[Chip][Address];
 }
 
-static void KonamiFlashEraseSector(u8 Chip, u32 Address)
+static void KonamiGVFujitsuFlashEraseSector(u8 Chip, u32 Address)
 {
-  const u32 SectorBase = Address & ~(FLASH_SECTOR_SIZE - 1);
+  const u32 SectorBase = Address & ~(KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE - 1);
 
-  for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
-    Flash[Chip][(SectorBase + i) & (FLASH_SIZE - 1)] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE; i++)
+    GVFujitsuFlash[Chip][(SectorBase + i) & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1)] = 0xFF;
 
-  FlashDirty[Chip] = true;
+  GVFujitsuFlashDirty[Chip] = true;
 }
 
-static void KonamiFlashEraseChip(u8 Chip)
+static void KonamiGVFujitsuFlashEraseChip(u8 Chip)
 {
-  for (u32 i = 0; i < FLASH_SIZE; i++)
-    Flash[Chip][i] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SIZE; i++)
+    GVFujitsuFlash[Chip][i] = 0xFF;
 
-  FlashDirty[Chip] = true;
+  GVFujitsuFlashDirty[Chip] = true;
 }
 
-static void KonamiFlashChipWrite(u8 Chip, u32 Address, u8 Data)
+static void KonamiGVFujitsuFlashChipWrite(u8 Chip, u32 Address, u8 Data)
 {
-  Address &= (FLASH_SIZE - 1);
+  Address &= (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
   // Reset/read-array command.
   if (Data == 0xF0 || Data == 0xFF)
   {
-    FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+    GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
     return;
   }
 
-  switch (FlashModeState[Chip])
+  switch (GVFujitsuFlashModeState[Chip])
   {
-    case KONAMI_FLASH_MODE_READ_ARRAY:
-    case KONAMI_FLASH_MODE_AUTOSELECT:
-      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_1;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY:
+    case KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT:
+      if (Data == 0xAA && KonamiGVFujitsuFlashIsUnlockAAAddress(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1;
       break;
 
-    case KONAMI_FLASH_MODE_UNLOCK_1:
-      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_2;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1:
+      if (Data == 0x55 && KonamiGVFujitsuFlashIsUnlock55Address(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_UNLOCK_2:
-      if (!KonamiFlashIsCommandAddress(Address))
+    case KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2:
+      if (!KonamiGVFujitsuFlashIsCommandAddress(Address))
       {
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
         break;
       }
 
       switch (Data)
       {
         case 0x90:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_AUTOSELECT;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT;
           break;
 
         case 0xA0:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_PROGRAM;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM;
           break;
 
         case 0x80:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_1;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1;
           break;
 
         default:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
           break;
       }
       break;
 
-    case KONAMI_FLASH_MODE_PROGRAM:
+    case KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM:
       // Real flash can clear bits from 1 to 0, not set 0 back to 1 without erase.
-      Flash[Chip][Address] &= Data;
-      FlashDirty[Chip] = true;
-      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      GVFujitsuFlash[Chip][Address] &= Data;
+      GVFujitsuFlashDirty[Chip] = true;
+      GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_UNLOCK_1:
-      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_2;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1:
+      if (Data == 0xAA && KonamiGVFujitsuFlashIsUnlockAAAddress(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_UNLOCK_2:
-      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_SELECT;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2:
+      if (Data == 0x55 && KonamiGVFujitsuFlashIsUnlock55Address(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_SELECT:
-      if (Data == 0x10 && KonamiFlashIsCommandAddress(Address))
-        KonamiFlashEraseChip(Chip);
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT:
+      if (Data == 0x10 && KonamiGVFujitsuFlashIsCommandAddress(Address))
+        KonamiGVFujitsuFlashEraseChip(Chip);
       else if (Data == 0x30)
-        KonamiFlashEraseSector(Chip, Address);
+        KonamiGVFujitsuFlashEraseSector(Chip, Address);
 
-      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
   }
 }
 
-void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
+void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int flash_read_debug_count = 0;
+  static int gv_fujitsu_flash_read_debug_count = 0;
 
   const u32 raw_offset = Offset;
   Offset &= 0xF;
@@ -1572,32 +1526,33 @@ void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     case 0:
     {
-      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
-      const u32 address = FlashAddress & 0x1FFFFF;
+      const u8 chip =
+        (GVFujitsuFlashAddress >= KONAMI_GV_FUJITSU_FLASH_SIZE) ? KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = GVFujitsuFlashAddress & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-      const u8 low = KonamiFlashChipRead(chip, address);
-      const u8 high = KonamiFlashChipRead(chip + 1, address);
+      const u8 low = KonamiGVFujitsuFlashChipRead(chip, address);
+      const u8 high = KonamiGVFujitsuFlashChipRead(chip + 1, address);
 
       Value = static_cast<u32>(low) | (static_cast<u32>(high) << 8);
 
-      if (flash_read_debug_count < 500)
+      if (gv_fujitsu_flash_read_debug_count < 500)
       {
         if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
         {
           std::fprintf(fp, "FLASH READ raw_offset=0x%08X offset=0x%X address=0x%08X chip=%u value=0x%04X mode=%u/%u\n",
-                       raw_offset, Offset, FlashAddress, chip, Value & 0xFFFF, static_cast<u32>(FlashModeState[chip]),
-                       static_cast<u32>(FlashModeState[chip + 1]));
+                       raw_offset, Offset, GVFujitsuFlashAddress, chip, Value & 0xFFFF, static_cast<u32>(GVFujitsuFlashModeState[chip]),
+                       static_cast<u32>(GVFujitsuFlashModeState[chip + 1]));
           std::fclose(fp);
         }
-        flash_read_debug_count++;
+        gv_fujitsu_flash_read_debug_count++;
       }
 
-      FlashAddress++;
+      GVFujitsuFlashAddress++;
       break;
     }
 
     case 8:
-      FlashAddress |= 1;
+      GVFujitsuFlashAddress |= 1;
       Value = 0;
       break;
 
@@ -1607,49 +1562,50 @@ void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
   }
 }
 
-void KonamiFlashWrite(u32 Size, u32 Offset, u32 Value)
+void KonamiGVFujitsuFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int flash_write_debug_count = 0;
+  static int gv_fujitsu_flash_write_debug_count = 0;
 
   const u32 raw_offset = Offset;
   Offset &= 0xF;
 
-  if (flash_write_debug_count < 2000)
+  if (gv_fujitsu_flash_write_debug_count < 2000)
   {
     if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "FLASH WRITE raw_offset=0x%08X offset=0x%X value=0x%04X old_address=0x%08X\n", raw_offset,
-                   Offset, Value & 0xFFFF, FlashAddress);
+                   Offset, Value & 0xFFFF, GVFujitsuFlashAddress);
       std::fclose(fp);
     }
-    flash_write_debug_count++;
+    gv_fujitsu_flash_write_debug_count++;
   }
 
   switch (Offset)
   {
     case 0:
     {
-      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
-      const u32 address = FlashAddress & 0x1FFFFF;
+      const u8 chip =
+        (GVFujitsuFlashAddress >= KONAMI_GV_FUJITSU_FLASH_SIZE) ? KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = GVFujitsuFlashAddress & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-      KonamiFlashChipWrite(chip, address, static_cast<u8>(Value & 0xFF));
-      KonamiFlashChipWrite(chip + 1, address, static_cast<u8>((Value >> 8) & 0xFF));
+      KonamiGVFujitsuFlashChipWrite(chip, address, static_cast<u8>(Value & 0xFF));
+      KonamiGVFujitsuFlashChipWrite(chip + 1, address, static_cast<u8>((Value >> 8) & 0xFF));
       break;
     }
 
     case 2:
-      FlashAddress = 0;
-      FlashAddress |= Value << 1;
+      GVFujitsuFlashAddress = 0;
+      GVFujitsuFlashAddress |= Value << 1;
       break;
 
     case 4:
-      FlashAddress &= 0xFF00FF;
-      FlashAddress |= Value << 8;
+      GVFujitsuFlashAddress &= 0xFF00FF;
+      GVFujitsuFlashAddress |= Value << 8;
       break;
 
     case 6:
-      FlashAddress &= 0x00FFFF;
-      FlashAddress |= Value << 15;
+      GVFujitsuFlashAddress &= 0x00FFFF;
+      GVFujitsuFlashAddress |= Value << 15;
       break;
   }
 }

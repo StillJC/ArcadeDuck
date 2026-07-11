@@ -935,15 +935,15 @@ ALWAYS_INLINE static TickCount DoBIOSAccess(u32 offset, u32& value)
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     template<MemoryAccessType type, MemoryAccessSize size>
-    static ALWAYS_INLINE TickCount DoFlashAccess(u32 offset, u32& value)
+    static ALWAYS_INLINE TickCount DoGVFujitsuFlashAccess(u32 offset, u32& value)
     {
       if constexpr (type == MemoryAccessType::Read)
       {
-        KonamiFlashRead(1U << (u32)size, offset, value);
+        KonamiGVFujitsuFlashRead(1U << (u32)size, offset, value);
       }
       else
       {
-        KonamiFlashWrite(1U << (u32)size, offset, value);
+        KonamiGVFujitsuFlashWrite(1U << (u32)size, offset, value);
       }
       return m_exp1_access_time[static_cast<u32>(size)];
     }
@@ -1972,7 +1972,7 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
         return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
 
       if (game_name == "simpbowl")
-        return DoFlashAccess<type, size>(address & EXP1_MASK, value);
+        return DoGVFujitsuFlashAccess<type, size>(address & EXP1_MASK, value);
     }
     if (address >= 0x1F180000 && address < 0x1F180100)
     {
