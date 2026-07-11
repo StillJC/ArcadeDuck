@@ -16,8 +16,8 @@ void KonamiP1Write(u32 Size, u32 Offset, u32 Value);
 void KonamiP2Read(u32 Size, u32 Offset, u32& Value);
 void KonamiP2Write(u32 Size, u32 Offset, u32 Value);
 
-void KonamiFlashRead(u32 Size, u32 Offset, u32& Value);
-void KonamiFlashWrite(u32 Size, u32 Offset, u32 Value);
+void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value);
+void KonamiGVFujitsuFlashWrite(u32 Size, u32 Offset, u32 Value);
 
 void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value);
 void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value);
