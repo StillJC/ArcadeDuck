@@ -525,7 +525,10 @@ static bool LoadEepromFile(const char* Path)
     return false;
   }
 
-  std::memcpy(Eeprom, raw, sizeof(Eeprom));
+  for (u32 i = 0; i < 64; i++)
+  {
+    Eeprom[i] = (static_cast<u16>(raw[(i * 2) + 0]) << 8) | static_cast<u16>(raw[(i * 2) + 1]);
+  }
 
   if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
   {
@@ -1937,10 +1940,16 @@ static void KonamiSaveEepromFile()
   if (!EepromFp)
     return;
 
+  u8 raw[sizeof(Eeprom)];
+
+  for (u32 i = 0; i < 64; i++)
+  {
+    raw[(i * 2) + 0] = static_cast<u8>(Eeprom[i] >> 8);
+    raw[(i * 2) + 1] = static_cast<u8>(Eeprom[i] & 0xFF);
+  }
+
   std::fseek(EepromFp, 0, SEEK_SET);
-
-  std::fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
-
+  std::fwrite(raw, 1, sizeof(raw), EepromFp);
   std::fflush(EepromFp);
 }
 
