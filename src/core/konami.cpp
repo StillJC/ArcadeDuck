@@ -922,7 +922,7 @@ void KonamiInit(void)
       std::fclose(fp);
     }
   }
-  else
+  else if (game_name == "simpbowl")
   {
     KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
 
