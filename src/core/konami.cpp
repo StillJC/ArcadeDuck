@@ -23,8 +23,24 @@
 
 Log_SetChannel(Konami);
 
-// SCSI
-enum {
+// Legacy Konami GV SCSI shim.
+//
+// This is currently a hand-written approximation of the NCR53CF96/CD-ROM path.
+// MAME models Konami GV as NCR53CF96 + NSCSI CD-ROM + PSX DMA channel 5.
+// These globals are the fake register/FIFO/command state used by the current shim.
+// Beat the Champ is exposing why this needs to become a real NCR53CF96-style path.
+//
+// Current call flow:
+//   bus.cpp 0x1F000000-0x1F00001F
+//     -> KonamiScsiRead()/KonamiScsiWrite()
+//     -> ScsiRegs/ScsiFifo/ScsiCommand
+//     -> KonamiDmaControlWrite()
+//     -> fake REQUEST SENSE / INQUIRY / MODE SENSE / READ10 / READ TOC responses.
+//
+// Do not add more game-specific SCSI hacks here unless they are temporary diagnostics.
+// Long-term target: replace this shim with a proper GV SCSI controller layer.
+enum
+{
   REG_XFERCNTLOW = 0, // read = current xfer count lo byte, write = set xfer count lo byte
   REG_XFERCNTMID,     // read = current xfer count mid byte, write = set xfer count mid byte
   REG_FIFO,           // read/write = FIFO
@@ -162,16 +178,16 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
 
   if (KDeadEyeFlashValid && KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_READ_STATUS)
-  {
-    Value = KDeadEyeFlashStatus & 0xFF;
+{
+  // The Sharp LH28F400 is a 16-bit flash device.
+  // Its ready status is 0x0080, not 0x8080.
+  Value = KDeadEyeFlashStatus;
 
-    if (Size == 2)
-      Value |= Value << 8;
-    else if (Size == 4)
-      Value |= Value << 8 | Value << 16 | Value << 24;
+  if (Size == 4)
+    Value |= Value << 16;
 
-    return;
-  }
+  return;
+}
 
   switch (Size)
   {
@@ -207,7 +223,7 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
 
   if (kdeadeye_flash_read_debug_count < 1000)
   {
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X single=%u value=0x%08X\n", Size, Offset,
                    relative_offset, KDeadEyeFlashValid ? 1 : 0, Value);
@@ -221,6 +237,8 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
 void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
   static int kdeadeye_flash_write_debug_count = 0;
+  static u32 kdeadeye_flash_program_count = 0;
+  static u32 kdeadeye_flash_erase_count = 0;
 
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
   const u32 byte_offset = relative_offset & (KDEADEYE_FLASH_SIZE - 1);
@@ -228,7 +246,7 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
 
   if (kdeadeye_flash_write_debug_count < 1000)
   {
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X single=%u mode=%u value=0x%08X\n", Size, Offset,
                    relative_offset, KDeadEyeFlashValid ? 1 : 0, static_cast<u32>(KDeadEyeFlashMode), Value);
@@ -241,12 +259,12 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
   if (!KDeadEyeFlashValid)
     return;
 
-  if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
+if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
   {
     switch (Size)
     {
       case 1:
-        KDeadEyeFlash[byte_offset] &= static_cast<u8>(Value & 0xFF);
+        KDeadEyeFlash[byte_offset] = static_cast<u8>(Value & 0xFF);
         break;
 
       case 2:
@@ -254,8 +272,8 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
         const u32 high_offset = byte_offset & ~1U;
         const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
 
-        KDeadEyeFlash[high_offset] &= static_cast<u8>((Value >> 8) & 0xFF);
-        KDeadEyeFlash[low_offset] &= static_cast<u8>(Value & 0xFF);
+        KDeadEyeFlash[high_offset] = static_cast<u8>((Value >> 8) & 0xFF);
+        KDeadEyeFlash[low_offset] = static_cast<u8>(Value & 0xFF);
         break;
       }
 
@@ -267,11 +285,29 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
         const u16 low_word = static_cast<u16>(Value & 0xFFFF);
         const u16 high_word = static_cast<u16>((Value >> 16) & 0xFFFF);
 
-        KDeadEyeFlash[first_offset] &= static_cast<u8>((low_word >> 8) & 0xFF);
-        KDeadEyeFlash[(first_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] &= static_cast<u8>(low_word & 0xFF);
-        KDeadEyeFlash[second_offset] &= static_cast<u8>((high_word >> 8) & 0xFF);
-        KDeadEyeFlash[(second_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] &= static_cast<u8>(high_word & 0xFF);
+        KDeadEyeFlash[first_offset] = static_cast<u8>((low_word >> 8) & 0xFF);
+
+        KDeadEyeFlash[(first_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(low_word & 0xFF);
+
+        KDeadEyeFlash[second_offset] = static_cast<u8>((high_word >> 8) & 0xFF);
+
+        KDeadEyeFlash[(second_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(high_word & 0xFF);
         break;
+      }
+    }
+
+    kdeadeye_flash_program_count++;
+
+    if (kdeadeye_flash_program_count <= 16 || (kdeadeye_flash_program_count % 256) == 0)
+    {
+      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "PROGRAM count=%u offset=0x%08X byte_offset=0x%08X "
+                     "size=%u value=0x%08X\n",
+                     kdeadeye_flash_program_count, Offset, byte_offset, Size, Value);
+
+        std::fclose(fp);
       }
     }
 
@@ -289,6 +325,18 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
 
       for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
         KDeadEyeFlash[(block_start + i) & (KDEADEYE_FLASH_SIZE - 1)] = 0xFF;
+
+      kdeadeye_flash_erase_count++;
+
+      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "ERASE count=%u offset=0x%08X "
+                     "byte_offset=0x%08X block_start=0x%08X\n",
+                     kdeadeye_flash_erase_count, Offset, byte_offset, block_start);
+
+        std::fclose(fp);
+      }
 
       KDeadEyeFlashDirty = true;
       KDeadEyeFlashStatus = 0x0080;
@@ -349,7 +397,7 @@ void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
     default:
       if (kdeadeye_flash_write_debug_count < 1000)
       {
-        if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+        if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
         {
           std::fprintf(fp, "UNKNOWN KDeadEye flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
                        command, Value);
@@ -395,21 +443,24 @@ static bool EepromWriteAll;
 static u32 EepromWriteAddress;
 static u32 EepromWriteShift;
 static s32 EepromWriteBits;
-static u16 KonamiEepromSwap16(u16 value);
 static void KonamiSaveEepromFile();
 
 // Trackball
 static std::mutex TrackballMutex;
 
-// Pending relative movement from the real mouse / USB trackball.
+// Pending relative movement from the real mice / USB trackballs.
 // These are not screen cursor coordinates.
-static double TrackballPendingX;
-static double TrackballPendingY;
+static double TrackballPendingX[2];
+static double TrackballPendingY[2];
 
 // Latched 12-bit values exposed to the Konami GV input registers.
-static u16 TrackballX;
-static u16 TrackballY;
-
+static u16 TrackballX[2];
+static u16 TrackballY[2];
+static s32 TrackballCounterX;
+static s32 TrackballCounterY;
+static s32 TrackballStartX;
+static s32 TrackballStartY;
+static bool TrackballResetActive;
 static float TrackballSensitivity = 1.0f;
 
 // Lightgun
@@ -461,7 +512,9 @@ static bool LoadEepromFile(const char* Path)
     return false;
   }
 
-  if (fread(Eeprom, 1, sizeof(Eeprom), EepromFp) != sizeof(Eeprom))
+  u8 raw[sizeof(Eeprom)];
+
+  if (std::fread(raw, 1, sizeof(raw), EepromFp) != sizeof(raw))
   {
     if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
     {
@@ -470,6 +523,11 @@ static bool LoadEepromFile(const char* Path)
     }
 
     return false;
+  }
+
+  for (u32 i = 0; i < 64; i++)
+  {
+    Eeprom[i] = (static_cast<u16>(raw[(i * 2) + 0]) << 8) | static_cast<u16>(raw[(i * 2) + 1]);
   }
 
   if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
@@ -567,13 +625,25 @@ static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
 static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
 {
   const CDImage* media = g_cdrom.GetMedia();
-  if (!media)
-    return false;
-
   CDImage* image = const_cast<CDImage*>(media);
+  if (!image)
+    return false;
 
   if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
     return false;
+
+  if (System::GetRunningCode() == "btchamp")
+  {
+    u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
+
+    if (image->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
+      return false;
+
+    // Beat the Champ's GV CHD presents its useful 2048-byte payload at the
+    // beginning of DuckStation's raw-sector buffer.
+    std::memcpy(sector, raw_sector, CDImage::DATA_SECTOR_SIZE);
+    return true;
+  }
 
   return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
 }
@@ -749,6 +819,12 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
 
 // Public API
 
+bool KonamiUsesDirectGVFlash()
+{
+  const std::string& code = System::GetRunningCode();
+  return code == "kdeadeye" || code == "btchamp";
+}
+
 void KonamiInit(void)
 {
   if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -837,17 +913,19 @@ void KonamiInit(void)
   if (!eeprom_path.empty())
     LoadEepromFile(eeprom_path.c_str());
 
-  if (KonamiIsKDeadEye() && KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path))
+  if (KonamiUsesDirectGVFlash())
   {
+    KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path);
     KDeadEyeFlashPath = kdeadeye_flash_path;
 
-    if (std::FILE* fp = std::fopen("kdeadeye_flash_debug.txt", "ab"))
+    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
-      std::fprintf(fp, "Loaded single KDeadEye flash file: %s\n", kdeadeye_flash_path.c_str());
+      std::fprintf(fp, "Loaded single direct GV flash file: %s valid=%u\n", kdeadeye_flash_path.c_str(),
+                   KDeadEyeFlashValid ? 1 : 0);
       std::fclose(fp);
     }
   }
-  else
+  else if (game_name == "simpbowl")
   {
     KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
 
@@ -892,13 +970,26 @@ void KonamiTerm(void)
   }
 }
 
-// DMA
+// Legacy SCSI DMA / fake command execution.
+// This is where the current shim manually answers SCSI commands like
+// REQUEST SENSE, INQUIRY, MODE SENSE, READ10, READ TOC, and READ SUB-CHANNEL.
+// MAME does this through NCR53CF96 + NSCSI CD-ROM behavior instead.
 
 void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
 {
   size_t ReadSize = (ControlBits >> 16) * 4;
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
+
+  if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
+  {
+    std::fprintf(fp,
+                 "SCSI DMA ENTER pc=0x%08X control=0x%08X address=0x%08X value=0x%08X "
+                 "cmd=0x%02X read_size_initial=%zu status=0x%02X irq=0x%02X int=0x%02X fifo_state=0x%02X\n",
+                 CPU::g_state.current_instruction_pc, ControlBits, Address, Value, ScsiCommand[0], ReadSize,
+                 ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
+    std::fclose(fp);
+  }
 
   // Some Konami GV READ10 transfers use a DMA block count of 0.
   // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
@@ -997,7 +1088,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         Ram[Address + 0] = 0x00;
         Ram[Address + 1] = 0x1A;
         Ram[Address + 2] = 0x01;
-        Ram[Address + 3] = 0x02;
+        Ram[Address + 3] = (System::GetRunningCode() == "btchamp") ? 0x0C : 0x02;
 
         Ram[Address + 4] = 0x00;
         Ram[Address + 5] = 0x14;
@@ -1120,7 +1211,12 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
     }
   }
 
-  ScsiRegs[4] &= ~0x7U;
+  // End the fake SCSI DMA transfer.
+  // MAME drives this through NCR53CF96 DRQ + PSX DMA channel 5; our legacy shim
+  // currently completes the transfer synchronously, so make sure the DMA channel
+  // is no longer marked active after command data has been copied.
+  ControlBits &= 0xFFFF;
+  ScsiRegs[REG_STATUS] &= ~0x07U;
 }
 
 // SCSI
@@ -1224,10 +1320,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
               break;
 
-            case 0x48: // PLAY AUDIO TRACK/INDEX - no-op success for KDeadEye
-            case 0x4B: // PAUSE/RESUME - no-op success for KDeadEye
+            case 0x48: // PLAY AUDIO TRACK/INDEX
+            case 0x4B: // PAUSE/RESUME
             {
-              if (KonamiIsKDeadEye())
+              if (KonamiIsKDeadEye() || System::GetRunningCode() == "btchamp")
               {
                 ScsiAudioPlaying = false;
                 ScsiAudioPaused = false;
@@ -1237,14 +1333,14 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
                 if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
                 {
-                  std::fprintf(fp, "SCSI AUDIO OLD STUB cmd=%02X no-op success\n", ScsiCommand[0]);
+                  std::fprintf(fp, "SCSI AUDIO STUB cmd=%02X no-op success game=%s\n", ScsiCommand[0],
+                               System::GetRunningCode().c_str());
                   std::fclose(fp);
                 }
 
                 AssertScsiInterrupt();
                 break;
               }
-
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
               break;
             }
@@ -1560,6 +1656,11 @@ void KonamiFlashWrite(u32 Size, u32 Offset, u32 Value)
 
 // EEPROM
 
+static u16 KonamiEepromSwap16(u16 value)
+{
+  return static_cast<u16>((value >> 8) | (value << 8));
+}
+
 static void KonamiSerialEepromWrite(u32 Value)
 {
   static int serial_debug_count = 0;
@@ -1567,6 +1668,29 @@ static void KonamiSerialEepromWrite(u32 Value)
   const bool new_di = (Value & 0x01) != 0;
   const bool new_cs = (Value & 0x02) != 0;
   const bool new_clk = (Value & 0x04) != 0;
+  static u32 eeprom_edge_debug_count = 0;
+
+  const bool cs_changed = (EepromCs != new_cs);
+  const bool rising_edge = (!EepromClk && new_clk);
+
+  if (eeprom_edge_debug_count < 5000 && (cs_changed || (new_cs && rising_edge)))
+  {
+    if (std::FILE* fp = std::fopen("konami_gv_eeprom_edges_debug.txt", "ab"))
+    {
+      std::fprintf(fp,
+                   "pc=0x%08X value=0x%08X "
+                   "old_cs=%u new_cs=%u old_clk=%u new_clk=%u di=%u do=%u "
+                   "shift=0x%08X shift_count=%u read_bits=%d "
+                   "write_bits=%d write_enabled=%u\n",
+                   CPU::g_state.current_instruction_pc, Value, EepromCs ? 1 : 0, new_cs ? 1 : 0, EepromClk ? 1 : 0,
+                   new_clk ? 1 : 0, new_di ? 1 : 0, EepromDo ? 1 : 0, EepromShiftIn, EepromShiftCount, EepromReadBits,
+                   EepromWriteBits, EepromWriteEnabled ? 1 : 0);
+
+      std::fclose(fp);
+    }
+
+    eeprom_edge_debug_count++;
+  }
 
   if (!new_cs)
   {
@@ -1636,9 +1760,8 @@ static void KonamiSerialEepromWrite(u32 Value)
         {
           if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
           {
-            std::fprintf(fp, "EEPROM WRITE address=%u write_all=%u enabled=%u wire=0x%04X raw=0x%04X\n",
-                         EepromWriteAddress & 0x3F, EepromWriteAll ? 1 : 0, EepromWriteEnabled ? 1 : 0, wire_value,
-                         raw_value);
+            std::fprintf(fp, "EEPROM WRITE address=%u write_all=%u enabled=%u value=0x%04X\n",
+                         EepromWriteAddress & 0x3F, EepromWriteAll ? 1 : 0, EepromWriteEnabled ? 1 : 0, wire_value);
             std::fclose(fp);
           }
           serial_debug_count++;
@@ -1671,16 +1794,14 @@ static void KonamiSerialEepromWrite(u32 Value)
           const u32 start = (EepromShiftIn >> 8) & 1;
           const u32 opcode = (EepromShiftIn >> 6) & 3;
           const u32 address = EepromShiftIn & 0x3F;
-          const u16 raw_value = Eeprom[address & 0x3F];
-          const u16 swapped_value = KonamiEepromSwap16(raw_value);
+          const u16 eeprom_value = KonamiEepromSwap16(Eeprom[address & 0x3F]);
 
           if (serial_debug_count < 300)
           {
             if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
             {
-              std::fprintf(
-                fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u raw=0x%04X swapped=0x%04X enabled=%u\n",
-                EepromShiftIn, start, opcode, address, raw_value, swapped_value, EepromWriteEnabled ? 1 : 0);
+              std::fprintf(fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u value=0x%04X enabled=%u\n",
+                           EepromShiftIn, start, opcode, address, eeprom_value, EepromWriteEnabled ? 1 : 0);
               std::fclose(fp);
             }
             serial_debug_count++;
@@ -1693,9 +1814,12 @@ static void KonamiSerialEepromWrite(u32 Value)
           }
           else if (opcode == 2)
           {
-            // READ
-            EepromReadShift = swapped_value;
+            // READ.
+            // A 93C46 outputs a dummy 0 bit immediately after the command,
+            // then shifts the 16-bit EEPROM word out MSB-first.
+            EepromReadShift = eeprom_value;
             EepromReadBits = 16;
+            EepromDo = false;
           }
           else if (opcode == 1)
           {
@@ -1781,7 +1905,28 @@ void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
 {
   if (Offset >= 0x00180080 && Offset < 0x00180100)
   {
-    Value = Eeprom[((Offset - 0x80) & 0x7F) >> 1];
+    const u32 relative_offset = (Offset - 0x00180080) & 0x7F;
+    const u32 word_index = relative_offset >> 1;
+
+    Value = Eeprom[word_index];
+
+    static u32 direct_eeprom_read_log_count = 0;
+    if (direct_eeprom_read_log_count < 2000)
+    {
+      if (std::FILE* fp = std::fopen("konami_gv_eeprom_direct_debug.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "DIRECT EEPROM READ "
+                     "game=%s pc=0x%08X size=%u offset=0x%08X "
+                     "relative=0x%02X index=%u value=0x%08X word=0x%04X\n",
+                     System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Size, Offset,
+                     relative_offset, word_index, Value, Eeprom[word_index]);
+
+        std::fclose(fp);
+      }
+
+      direct_eeprom_read_log_count++;
+    }
   }
   else
   {
@@ -1790,18 +1935,21 @@ void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
   }
 }
 
-static u16 KonamiEepromSwap16(u16 value)
-{
-  return static_cast<u16>((value >> 8) | (value << 8));
-}
-
 static void KonamiSaveEepromFile()
 {
   if (!EepromFp)
     return;
 
+  u8 raw[sizeof(Eeprom)];
+
+  for (u32 i = 0; i < 64; i++)
+  {
+    raw[(i * 2) + 0] = static_cast<u8>(Eeprom[i] >> 8);
+    raw[(i * 2) + 1] = static_cast<u8>(Eeprom[i] & 0xFF);
+  }
+
   std::fseek(EepromFp, 0, SEEK_SET);
-  std::fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+  std::fwrite(raw, 1, sizeof(raw), EepromFp);
   std::fflush(EepromFp);
 }
 
@@ -1813,9 +1961,25 @@ void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value)
   }
   else if (Offset >= 0x00180080 && Offset < 0x00180100)
   {
-    u8 RelativeOffset = (Offset - 0x80) & 0x7F;
-    Eeprom[RelativeOffset >> 1] = (u16)Value;
+    const u32 relative_offset = (Offset - 0x00180080) & 0x7F;
+    const u32 word_index = relative_offset >> 1;
+    const u16 old_value = Eeprom[word_index];
+    const u16 new_value = static_cast<u16>(Value);
 
+    if (std::FILE* fp = std::fopen("konami_gv_eeprom_direct_debug.txt", "ab"))
+    {
+      std::fprintf(fp,
+                   "DIRECT EEPROM WRITE "
+                   "game=%s pc=0x%08X size=%u offset=0x%08X "
+                   "relative=0x%02X index=%u raw_value=0x%08X "
+                   "old_word=0x%04X new_word=0x%04X\n",
+                   System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Size, Offset, relative_offset,
+                   word_index, Value, old_value, new_value);
+
+      std::fclose(fp);
+    }
+
+    Eeprom[word_index] = new_value;
     KonamiSaveEepromFile();
   }
   else
@@ -1836,50 +2000,152 @@ static u16 KonamiEncodeTrackball12(s32 value)
   return static_cast<u16>(value) & 0x0FFF;
 }
 
-static void KonamiLatchTrackball()
+static void KonamiLatchTrackball(u32 Player)
 {
+  if (Player >= 2)
+    return;
+
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  const s32 x = KonamiConsumeTrackballAxis(TrackballPendingX);
-  const s32 y = KonamiConsumeTrackballAxis(TrackballPendingY);
+  const s32 x = KonamiConsumeTrackballAxis(TrackballPendingX[Player]);
+  const s32 y = KonamiConsumeTrackballAxis(TrackballPendingY[Player]);
 
-  TrackballX = KonamiEncodeTrackball12(x);
-  TrackballY = KonamiEncodeTrackball12(y);
+  TrackballX[Player] = KonamiEncodeTrackball12(x);
+  TrackballY[Player] = KonamiEncodeTrackball12(y);
 }
 
 // Trackball
 void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
 {
-  if (Offset == 0x006800C0)
-    KonamiLatchTrackball();
+  static int btchamp_trackball_debug_count = 0;
+
+  if (System::GetRunningCode() == "btchamp" && btchamp_trackball_debug_count < 500)
+  {
+    if (std::FILE* fp = std::fopen("btchamp_trackball_debug.txt", "ab"))
+    {
+      std::fprintf(fp, "TRACKBALL READ offset=0x%08X\n", Offset);
+      std::fclose(fp);
+    }
+
+    btchamp_trackball_debug_count++;
+  }
+  if (System::GetRunningCode() == "btchamp" && Offset == 0x00680086)
+  {
+    KonamiLatchTrackball(0);
+    KonamiLatchTrackball(1);
+  }
+  else if (Offset == 0x006800C0)
+  {
+    KonamiLatchTrackball(0);
+  }
 
   switch (Offset)
   {
+    case 0x00680080:
+      // P1 X low byte in high byte, P2 X low byte in low byte.
+      Value = ((TrackballX[0] & 0x00FF) << 8) | (TrackballX[1] & 0x00FF);
+      break;
+
+    case 0x00680082:
+      // P1 X high nibble in high byte, P2 X high nibble in low byte.
+      Value = (((TrackballX[0] >> 8) & 0x000F) << 8) | ((TrackballX[1] >> 8) & 0x000F);
+      break;
+
+    case 0x00680084:
+      // P1 Y low byte in high byte, P2 Y low byte in low byte.
+      Value = ((TrackballY[0] & 0x00FF) << 8) | (TrackballY[1] & 0x00FF);
+      break;
+
+    case 0x00680086:
+      // P1 Y high nibble in high byte, P2 Y high nibble in low byte.
+      Value = (((TrackballY[0] >> 8) & 0x000F) << 8) | ((TrackballY[1] >> 8) & 0x000F);
+      break;
+
     case 0x006800C0:
-      Value = (TrackballX & 0x0FF) << 8;
+      Value = (TrackballX[0] & 0x0FF) << 8;
       break;
 
     case 0x006800C2:
-      Value = (TrackballX & 0xF00);
+      Value = TrackballX[0] & 0xF00;
       break;
 
     case 0x006800C4:
-      Value = (TrackballY & 0x0FF) << 8;
+      Value = (TrackballY[0] & 0x0FF) << 8;
       break;
 
     case 0x006800C6:
-      Value = (TrackballY & 0xF00);
+      Value = TrackballY[0] & 0xF00;
       break;
 
     default:
       Value = 0;
       break;
   }
+
+  if (System::GetRunningCode() == "btchamp")
+  {
+    static int value_debug_count = 0;
+
+    if (value_debug_count < 300 &&
+        (TrackballX[0] != 0 || TrackballY[0] != 0 || TrackballX[1] != 0 || TrackballY[1] != 0))
+    {
+      if (std::FILE* fp = std::fopen("btchamp_trackball_values.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "offset=0x%08X value=0x%04X "
+                     "p1_x=0x%04X p1_y=0x%04X "
+                     "p2_x=0x%04X p2_y=0x%04X\n",
+                     Offset, Value & 0xFFFF, TrackballX[0], TrackballY[0], TrackballX[1], TrackballY[1]);
+
+        std::fclose(fp);
+      }
+
+      value_debug_count++;
+    }
+  }
 }
 
 void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
 {
-  // Ignored
+  if (System::GetRunningCode() == "btchamp" && (Offset == 0x00680088 || Offset == 0x0068008A))
+  {
+    static int btchamp_trackball_write_debug_count = 0;
+
+    if (btchamp_trackball_write_debug_count < 200)
+    {
+      if (std::FILE* fp = std::fopen("btchamp_trackball_writes.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "offset=0x%08X value=0x%08X bit0_reset=%u bit1_cs=%u counter_x=0x%03X counter_y=0x%03X "
+                     "start_x=0x%03X start_y=0x%03X out_x=0x%03X out_y=0x%03X\n",
+                     Offset, Value, Value & 1, (Value >> 1) & 1, TrackballCounterX & 0x0FFF, TrackballCounterY & 0x0FFF,
+                     TrackballStartX & 0x0FFF, TrackballStartY & 0x0FFF, TrackballX[0] & 0x0FFF,
+                     TrackballY[0] & 0x0FFF);
+        std::fclose(fp);
+      }
+
+      btchamp_trackball_write_debug_count++;
+    }
+
+    const bool reset_active = ((Value & 0x0001) == 0);
+
+    if (reset_active && !TrackballResetActive)
+    {
+      std::lock_guard<std::mutex> lock(TrackballMutex);
+
+      TrackballStartX = TrackballCounterX;
+      TrackballStartY = TrackballCounterY;
+
+      TrackballX[0] = 0;
+      TrackballY[0] = 0;
+      TrackballX[1] = 0;
+      TrackballY[1] = 0;
+    }
+
+    TrackballResetActive = reset_active;
+
+    return;
+  }
 }
 
 void KonamiButtonsSet(u32 Player, u32 Buttons)
@@ -1932,28 +2198,44 @@ void KonamiTrackballSetXY(u16 X, u16 Y)
 {
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  TrackballX = X & 0x0FFF;
-  TrackballY = Y & 0x0FFF;
+  TrackballX[0] = X & 0x0FFF;
+  TrackballY[0] = Y & 0x0FFF;
+}
+
+void KonamiTrackballAddDelta(u32 Player, s32 X, s32 Y)
+{
+  if (Player >= 2)
+    return;
+
+  std::lock_guard<std::mutex> lock(TrackballMutex);
+
+  const s32 adjusted_x = (System::GetRunningCode() == "btchamp") ? X : -X;
+
+  TrackballPendingX[Player] += static_cast<double>(adjusted_x) * static_cast<double>(TrackballSensitivity);
+
+  TrackballPendingY[Player] += static_cast<double>(Y) * static_cast<double>(TrackballSensitivity);
 }
 
 void KonamiTrackballAddDelta(s32 X, s32 Y)
 {
-  std::lock_guard<std::mutex> lock(TrackballMutex);
-
-  // Match the old direction behavior:
-  // old code used -dx for X and +dy for Y.
-  TrackballPendingX += static_cast<double>(-X) * static_cast<double>(TrackballSensitivity);
-  TrackballPendingY += static_cast<double>(Y) * static_cast<double>(TrackballSensitivity);
+  KonamiTrackballAddDelta(0, X, Y);
 }
 
 void KonamiTrackballReset()
 {
   std::lock_guard<std::mutex> lock(TrackballMutex);
 
-  TrackballPendingX = 0.0;
-  TrackballPendingY = 0.0;
-  TrackballX = 0;
-  TrackballY = 0;
+  TrackballPendingX[0] = 0.0;
+  TrackballPendingY[0] = 0.0;
+  TrackballPendingX[1] = 0.0;
+  TrackballPendingY[1] = 0.0;
+
+  TrackballX[0] = 0;
+  TrackballY[0] = 0;
+  TrackballX[1] = 0;
+  TrackballY[1] = 0;
+
+  TrackballResetActive = false;
 }
 
 bool KonamiIsKDeadEye()
@@ -2070,14 +2352,12 @@ void KonamiScsiIrqDeassert(void)
 
 void KonamiEepromFixup(void)
 {
-        size_t i;
+  Eeprom[0] = 0;
 
-        Eeprom[0] = 0;
-        for (i = 1; i < 64; i++) {
-                Eeprom[0] += Eeprom[i];
-        }
-        std::fseek(EepromFp, 0, SEEK_SET);
-        fwrite(Eeprom, 1, sizeof(Eeprom), EepromFp);
+  for (size_t i = 1; i < std::size(Eeprom); i++)
+    Eeprom[0] = static_cast<u16>(Eeprom[0] + Eeprom[i]);
+
+  KonamiSaveEepromFile();
 }
 
 void KonamiScoreInit(void)

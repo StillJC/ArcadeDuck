@@ -23,6 +23,7 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value);
 void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value);
 
 bool KonamiIsKDeadEye();
+bool KonamiUsesDirectGVFlash();
 
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value);
 void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value);
@@ -45,6 +46,7 @@ void KonamiButtonsSet(u32 Player, u32 Buttons);
 void KonamiArcadeButtonSet(u32 Player, u32 ButtonMask, bool Pressed);
 
 void KonamiTrackballSetXY(u16 X, u16 Y);
+void KonamiTrackballAddDelta(u32 Player, s32 X, s32 Y);
 void KonamiTrackballAddDelta(s32 X, s32 Y);
 void KonamiTrackballReset();
 

@@ -51,8 +51,8 @@ QtDisplayWidget::QtDisplayWidget(QWidget* parent) : QWidget(parent)
   setMouseTracking(true);
 
 #if defined(_WIN32)
-  registerRawInputMouse();
-  logRawInputDevices();
+  //registerRawInputMouse();
+  //logRawInputDevices();
 #endif
 }
 

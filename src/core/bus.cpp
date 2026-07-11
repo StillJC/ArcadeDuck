@@ -1832,8 +1832,8 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     {
       return DoScsiAccess<type, size>(address & EXP1_MASK, value);
     }
-    // KDeadEye direct flash window.
-    if (KonamiIsKDeadEye() && address >= 0x1F380000 && address <= 0x1F3FFFFF)
+    // Direct GV flash window used by KDeadEye and Beat the Champ.
+    if (KonamiUsesDirectGVFlash() && address >= 0x1F380000 && address <= 0x1F3FFFFF)
     {
       return DoKDeadEyeFlashAccess<type, size>(address & EXP1_MASK, value);
     }
@@ -1966,7 +1966,13 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     }
     if (address >= 0x1F680080 && address < 0x1F680090)
     {
-      return DoFlashAccess<type, size>(address & EXP1_MASK, value);
+      const std::string& game_name = System::GetRunningCode();
+
+      if (game_name == "btchamp")
+        return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
+
+      if (game_name == "simpbowl")
+        return DoFlashAccess<type, size>(address & EXP1_MASK, value);
     }
     if (address >= 0x1F180000 && address < 0x1F180100)
     {

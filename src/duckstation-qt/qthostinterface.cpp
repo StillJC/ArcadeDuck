@@ -603,33 +603,108 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
     return false;
 
   const std::string raw_device_name = StringUtil::StdStringFromFormat("RawMouse:%s", name.data());
+
+  if (System::IsValid())
+  {
+    if (System::GetRunningCode() == "btchamp")
+    {
+      const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
+      const std::string player2_device = GetStringSettingValue("Controller2", "TrackballDevice", "Disabled");
+
+      if (player1_device == raw_device_name)
+      {
+        KonamiTrackballAddDelta(0, static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
+      }
+
+      if (player2_device == raw_device_name)
+      {
+        KonamiTrackballAddDelta(1, static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
+      }
+    }
+    else if (System::GetRunningCode() == "simpbowl")
+    {
+      const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
+      if (player1_device == raw_device_name)
+      {
+        KonamiTrackballAddDelta(static_cast<s32>(raw->data.mouse.lLastX), static_cast<s32>(raw->data.mouse.lLastY));
+      }
+    }
+    else if (KonamiIsKDeadEye() && m_display)
+    {
+      const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
+
+      const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+
+      s32 player = -1;
+
+      if (player1_device == raw_device_name)
+        player = 0;
+      else if (player2_device == raw_device_name)
+        player = 1;
+
+      if (player >= 0)
+      {
+        const s32 window_width = m_display->GetWindowWidth();
+        const s32 window_height = m_display->GetWindowHeight();
+
+        if (window_width > 0 && window_height > 0)
+        {
+          static s32 raw_mouse_x[2] = {};
+          static s32 raw_mouse_y[2] = {};
+          static bool raw_mouse_initialized[2] = {};
+          static std::string raw_mouse_device[2];
+
+          if (!raw_mouse_initialized[player] || raw_mouse_device[player] != raw_device_name)
+          {
+            raw_mouse_x[player] = window_width / 2;
+            raw_mouse_y[player] = window_height / 2;
+            raw_mouse_device[player] = raw_device_name;
+            raw_mouse_initialized[player] = true;
+          }
+
+          raw_mouse_x[player] =
+            std::clamp(raw_mouse_x[player] + static_cast<s32>(raw->data.mouse.lLastX), 0, window_width - 1);
+
+          raw_mouse_y[player] =
+            std::clamp(raw_mouse_y[player] + static_cast<s32>(raw->data.mouse.lLastY), 0, window_height - 1);
+
+          QMetaObject::invokeMethod(this, "onDisplayWindowRawMouseMoveEvent", Qt::QueuedConnection,
+                                    Q_ARG(QString, QString::fromStdString(raw_device_name)),
+                                    Q_ARG(int, raw_mouse_x[player]), Q_ARG(int, raw_mouse_y[player]));
+        }
+      }
+    }
+  }
+
   const USHORT button_flags = raw->data.mouse.usButtonFlags;
 
-  const auto update_last_raw_button = [raw_device_name, button_flags](USHORT down_flag, USHORT up_flag, int button) {
-    if (button_flags & down_flag)
-    {
+  const auto update_raw_button = [this, raw_device_name, button_flags](USHORT down_flag, USHORT up_flag, int button) {
+    const auto forward_button = [this, &raw_device_name, button](bool pressed) {
       s_last_raw_lightgun_button.valid = true;
       s_last_raw_lightgun_button.device_name = raw_device_name;
       s_last_raw_lightgun_button.button = button;
-      s_last_raw_lightgun_button.pressed = true;
+      s_last_raw_lightgun_button.pressed = pressed;
       s_last_raw_lightgun_button.event_time = ImGui::GetTime();
-    }
+
+      QMetaObject::invokeMethod(this, "onDisplayWindowRawMouseButtonEvent", Qt::QueuedConnection,
+                                Q_ARG(QString, QString::fromStdString(raw_device_name)), Q_ARG(int, button),
+                                Q_ARG(bool, pressed));
+    };
+
+    if (button_flags & down_flag)
+      forward_button(true);
 
     if (button_flags & up_flag)
-    {
-      s_last_raw_lightgun_button.valid = true;
-      s_last_raw_lightgun_button.device_name = raw_device_name;
-      s_last_raw_lightgun_button.button = button;
-      s_last_raw_lightgun_button.pressed = false;
-      s_last_raw_lightgun_button.event_time = ImGui::GetTime();
-    }
+      forward_button(false);
   };
 
-  update_last_raw_button(RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, 1);
-  update_last_raw_button(RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, 2);
-  update_last_raw_button(RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, 3);
-  update_last_raw_button(RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, 4);
-  update_last_raw_button(RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, 5);
+  update_raw_button(RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, 1);
+  update_raw_button(RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, 2);
+  update_raw_button(RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, 3);
+  update_raw_button(RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, 4);
+  update_raw_button(RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, 5);
 #endif
 
   return false;
@@ -655,8 +730,10 @@ QtHostInterface::GetLastRawLightgunButtonBindingForController(const std::string&
   if ((ImGui::GetTime() - s_last_raw_lightgun_button.event_time) > 0.25)
     return std::nullopt;
 
-  const std::string selected_device = GetStringSettingValue(section_name.c_str(), "LightgunDevice",
-                                                            section_name == "Controller1" ? "SystemMouse" : "Disabled");
+  const std::string controller_type = GetStringSettingValue(section_name.c_str(), "Type", "");
+
+  const std::string selected_device = GetStringSettingValue(
+    section_name.c_str(), controller_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
 
   if (selected_device != s_last_raw_lightgun_button.device_name)
     return std::nullopt;
@@ -794,8 +871,15 @@ void QtHostInterface::onDisplayWindowRawMouseButtonEvent(const QString& device_n
                  pressed ? 1 : 0, ImGui::GetTime());
     std::fclose(fp);
   }
-  const std::string player1_device = GetStringSettingValue("Controller1", "LightgunDevice", "SystemMouse");
-  const std::string player2_device = GetStringSettingValue("Controller2", "LightgunDevice", "Disabled");
+  const std::string player1_type = GetStringSettingValue("Controller1", "Type", "");
+
+  const std::string player2_type = GetStringSettingValue("Controller2", "Type", "");
+
+  const std::string player1_device = GetStringSettingValue(
+    "Controller1", player1_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
+
+  const std::string player2_device = GetStringSettingValue(
+    "Controller2", player2_type == "PlayStationMouse" ? "TrackballDevice" : "LightgunDevice", "Disabled");
 
   if (player1_device == raw_device_name)
   {
@@ -996,10 +1080,22 @@ void QtHostInterface::connectDisplaySignals(QtDisplayWidget* widget)
   connect(widget, &QtDisplayWidget::windowRawMouseMoveEvent, this, &QtHostInterface::onDisplayWindowRawMouseMoveEvent);
   connect(widget, &QtDisplayWidget::windowRawMouseButtonEvent, this,
           &QtHostInterface::onDisplayWindowRawMouseButtonEvent);
- 
-  connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [](int dx, int dy) {
-    if (System::IsValid())
-      KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
+
+  connect(widget, &QtDisplayWidget::windowMouseRelativeEvent, this, [this](int dx, int dy) {
+    if (!System::IsValid())
+      return;
+
+    const std::string running_code = System::GetRunningCode();
+
+    if (running_code != "simpbowl" && running_code != "btchamp")
+      return;
+
+    const std::string player1_device = GetStringSettingValue("Controller1", "TrackballDevice", "Disabled");
+
+    if (player1_device != "SystemMouse")
+      return;
+
+    KonamiTrackballAddDelta(static_cast<s32>(dx), static_cast<s32>(dy));
   });
 
   connect(widget, &QtDisplayWidget::windowMouseButtonEvent, this, &QtHostInterface::onDisplayWindowMouseButtonEvent);
