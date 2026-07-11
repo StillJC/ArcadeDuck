@@ -1966,10 +1966,13 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     }
     if (address >= 0x1F680080 && address < 0x1F680090)
     {
-      if (System::GetRunningCode() == "btchamp")
+      const std::string& game_name = System::GetRunningCode();
+
+      if (game_name == "btchamp")
         return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
 
-      return DoFlashAccess<type, size>(address & EXP1_MASK, value);
+      if (game_name == "simpbowl")
+        return DoFlashAccess<type, size>(address & EXP1_MASK, value);
     }
     if (address >= 0x1F180000 && address < 0x1F180100)
     {

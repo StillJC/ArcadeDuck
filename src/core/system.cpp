@@ -437,6 +437,12 @@ static bool ExtractKonamiGVEepromFromZip(const std::string& zip_path, std::strin
     return false;
   }
 
+  // MAME's 16-bit 93C46 NVRAM files store each word in the opposite byte
+  // order from the raw .25c ROM dump. Convert once when seeding NVRAM so
+  // ArcadeDuck and MAME can exchange persistent EEPROM files directly.
+  for (size_t i = 0; i < data.size(); i += 2)
+    std::swap(data[i], data[i + 1]);
+
   if (!FileSystem::WriteBinaryFile(eeprom_path.c_str(), data.data(), data.size()))
   {
     Log_ErrorPrintf("KonamiGV: failed writing EEPROM to '%s'", eeprom_path.c_str());
