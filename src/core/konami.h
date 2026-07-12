@@ -19,11 +19,12 @@ void KonamiP2Write(u32 Size, u32 Offset, u32 Value);
 void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value);
 void KonamiGVFujitsuFlashWrite(u32 Size, u32 Offset, u32 Value);
 
-void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value);
-void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value);
+void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value);
+void KonamiGVSharpFlashWrite(u32 Size, u32 Offset, u32 Value);
 
 bool KonamiIsKDeadEye();
 bool KonamiUsesDirectGVFlash();
+bool KonamiConsumeAutomaticResetRequest();
 
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value);
 void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value);
