@@ -8,7 +8,9 @@
 #include "dma.h"
 #include "host_interface.h"
 #include "interrupt_controller.h"
+#include "konami_gv_cdrom.h"
 #include "system.h"
+#include <cstdio>
 #ifdef WITH_IMGUI
 #include "imgui.h"
 #endif
@@ -1825,6 +1827,26 @@ void SPU::Execute(TickCount ticks)
 
       // Mix in CD audio.
       const auto [cd_audio_left, cd_audio_right] = g_cdrom.GetAudioFrame();
+
+      // DEBUG CODE
+      static bool logged_cd_audio_state = false;
+      if (!logged_cd_audio_state && (cd_audio_left != 0 || cd_audio_right != 0))
+      {
+        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        {
+          std::fprintf(fp,
+                       "SPU CD AUDIO sample_left=%d sample_right=%d "
+                       "enabled=%u volume_left=%d volume_right=%d\n",
+                       static_cast<int>(cd_audio_left), static_cast<int>(cd_audio_right),
+                       m_SPUCNT.cd_audio_enable ? 1u : 0u, static_cast<int>(m_cd_audio_volume_left),
+                       static_cast<int>(m_cd_audio_volume_right));
+
+          std::fclose(fp);
+        }
+
+        logged_cd_audio_state = true;
+      }
+
       if (m_SPUCNT.cd_audio_enable)
       {
         const s32 cd_audio_volume_left = ApplyVolume(s32(cd_audio_left), m_cd_audio_volume_left);
@@ -1839,6 +1861,84 @@ void SPU::Execute(TickCount ticks)
           reverb_in_right += cd_audio_volume_right;
         }
       }
+
+      // Konami GV CDDA uses the arcade board's external audio path rather
+      // than the PlayStation CD-audio enable and volume registers.
+      const auto [external_cdda_left, external_cdda_right] = g_cdrom.GetExternalCDAudioFrame();
+
+      s32 external_cdda_mix_left = 0;
+      s32 external_cdda_mix_right = 0;
+
+      KonamiGVCDROMMixAudioFrame(external_cdda_left, external_cdda_right, &external_cdda_mix_left,
+                                 &external_cdda_mix_right);
+
+      // DEBUG CODE
+      static bool gv_cdda_debug_started = false;
+      static u32 gv_cdda_debug_frames = 0;
+      static u32 gv_cdda_zero_frames = 0;
+      static u32 gv_cdda_clipped_frames = 0;
+      static u32 gv_cdda_debug_reports = 0;
+
+      static s32 gv_cdda_max_voice_mix = 0;
+      static s32 gv_cdda_max_external_mix = 0;
+
+      if (!gv_cdda_debug_started && (external_cdda_left != 0 || external_cdda_right != 0))
+      {
+        gv_cdda_debug_started = true;
+      }
+
+      if (gv_cdda_debug_started && gv_cdda_debug_reports < 10)
+      {
+        const auto absolute_value = [](s32 value) { return (value < 0) ? -value : value; };
+
+        gv_cdda_debug_frames++;
+
+        if (external_cdda_left == 0 && external_cdda_right == 0)
+        {
+          gv_cdda_zero_frames++;
+        }
+
+        const s32 combined_left = left_sum + external_cdda_mix_left;
+
+        const s32 combined_right = right_sum + external_cdda_mix_right;
+
+        if (combined_left < -32768 || combined_left > 32767 || combined_right < -32768 || combined_right > 32767)
+        {
+          gv_cdda_clipped_frames++;
+        }
+
+        gv_cdda_max_voice_mix =
+          std::max(gv_cdda_max_voice_mix, std::max(absolute_value(left_sum), absolute_value(right_sum)));
+
+        gv_cdda_max_external_mix =
+          std::max(gv_cdda_max_external_mix,
+                   std::max(absolute_value(external_cdda_mix_left), absolute_value(external_cdda_mix_right)));
+
+        if (gv_cdda_debug_frames >= SPU::SAMPLE_RATE)
+        {
+          if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+          {
+            std::fprintf(fp,
+                         "SPU GV MIX frames=%u zero_external=%u "
+                         "clipped_before_reverb=%u max_voice=%d "
+                         "max_external=%d\n",
+                         gv_cdda_debug_frames, gv_cdda_zero_frames, gv_cdda_clipped_frames,
+                         static_cast<int>(gv_cdda_max_voice_mix), static_cast<int>(gv_cdda_max_external_mix));
+
+            std::fclose(fp);
+          }
+
+          gv_cdda_debug_frames = 0;
+          gv_cdda_zero_frames = 0;
+          gv_cdda_clipped_frames = 0;
+          gv_cdda_max_voice_mix = 0;
+          gv_cdda_max_external_mix = 0;
+          gv_cdda_debug_reports++;
+        }
+      }
+
+      left_sum += external_cdda_mix_left;
+      right_sum += external_cdda_mix_right;
 
       // Compute reverb.
       s32 reverb_out_left, reverb_out_right;

@@ -413,6 +413,25 @@ void CDROM::SetReadaheadSectors(u32 readahead_sectors)
   m_reader.QueueReadSector(m_requested_lba);
 }
 
+void CDROM::PushExternalCDAudioFrames(const u32* frames, u32 frame_count)
+{
+  if (!frames || frame_count == 0)
+    return;
+
+  g_spu.GeneratePendingSamples();
+
+  const u32 frames_to_push = std::min<u32>(frame_count, m_external_cdda_fifo.GetSpace());
+
+  if (frames_to_push > 0)
+    m_external_cdda_fifo.PushRange(frames, frames_to_push);
+}
+
+void CDROM::ClearExternalCDAudioFrames()
+{
+  g_spu.GeneratePendingSamples();
+  m_external_cdda_fifo.Clear();
+}
+
 void CDROM::CPUClockChanged()
 {
   // reschedule the disc read event

@@ -171,6 +171,12 @@ static u32 KonamiGVScsiTransferCounter()
 
 static void KonamiGVTraceScsiCommand()
 {
+  // DEBUG CODE
+  // Beat the Champ polls READ SUB-CHANNEL thousands of times per second.
+  // Do not perform synchronous file logging for every poll.
+  if (ScsiCommand[0] == 0x42)
+    return;
+
   std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab");
   if (!fp)
     return;
@@ -302,14 +308,19 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
 
-  if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
+  // DEBUG CODE
+  // Avoid synchronous logging for high-frequency READ SUB-CHANNEL polling.
+  if (ScsiCommand[0] != 0x42)
   {
+    if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
+    {
     std::fprintf(fp,
                  "SCSI DMA ENTER pc=0x%08X control=0x%08X address=0x%08X value=0x%08X "
                  "cmd=0x%02X read_size_initial=%zu status=0x%02X irq=0x%02X int=0x%02X fifo_state=0x%02X\n",
                  CPU::g_state.current_instruction_pc, ControlBits, Address, Value, ScsiCommand[0], ReadSize,
                  ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
-    std::fclose(fp);
+      std::fclose(fp);
+    }
   }
 
   // Some Konami GV READ10 transfers use a DMA block count of 0.
@@ -323,26 +334,81 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
       ReadSize = static_cast<size_t>(read10_sector_count) * CDImage::DATA_SECTOR_SIZE;
   }
 
-  // DEBUG CODE
   // MODE SELECT(6) transfers a parameter list from system RAM to the CD-ROM.
-  // Capture the payload before the legacy shim completes the DMA transfer.
   if ((Value & 1) != 0 && ScsiCommand[0] == 0x15)
   {
     const size_t parameter_length = std::min<size_t>(ReadSize, ScsiCommand[4]);
 
+    const u8* const parameter_data = Ram + Address;
+
+    // DEBUG CODE
     if (std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab"))
     {
       std::fprintf(fp,
-                   "MODE_SELECT_PAYLOAD GAME=%s PC=0x%08X ADDRESS=0x%08X "
-                   "DMA_LENGTH=%zu CDB_LENGTH=%u DATA=",
+                   "MODE_SELECT_PAYLOAD GAME=%s PC=0x%08X "
+                   "ADDRESS=0x%08X DMA_LENGTH=%zu CDB_LENGTH=%u DATA=",
                    System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Address, ReadSize,
                    ScsiCommand[4]);
 
       for (size_t i = 0; i < parameter_length; i++)
-        std::fprintf(fp, "%02X%s", Ram[Address + i], (i + 1 < parameter_length) ? " " : "");
+      {
+        std::fprintf(fp, "%02X%s", parameter_data[i], (i + 1 < parameter_length) ? " " : "");
+      }
 
       std::fprintf(fp, "\n");
       std::fclose(fp);
+    }
+
+    if (parameter_length >= 4)
+    {
+      const size_t block_descriptor_length = parameter_data[3];
+
+      size_t page_offset = 4 + block_descriptor_length;
+
+      while ((page_offset + 2) <= parameter_length)
+      {
+        const u8 page_code = parameter_data[page_offset] & 0x3F;
+
+        const size_t page_length = parameter_data[page_offset + 1];
+
+        const size_t page_size = 2 + page_length;
+
+        if ((page_offset + page_size) > parameter_length)
+          break;
+
+        if (page_code == 0x0E && page_length >= 0x0E)
+        {
+          const size_t audio_output_offset = page_offset + 16;
+
+          if ((audio_output_offset + 8) > parameter_length)
+            break;
+
+          for (u8 output = 0; output < 4; output++)
+          {
+            const size_t output_offset = audio_output_offset + (output * 2);
+
+            KonamiGVCDROMSetAudioOutput(output, parameter_data[output_offset], parameter_data[output_offset + 1]);
+          }
+
+          // DEBUG CODE
+          if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+          {
+            std::fprintf(fp,
+                         "SCSI MODE SELECT CDDA "
+                         "out0=%u/%u out1=%u/%u "
+                         "out2=%u/%u out3=%u/%u\n",
+                         parameter_data[audio_output_offset + 0] & 0x0F, parameter_data[audio_output_offset + 1],
+                         parameter_data[audio_output_offset + 2] & 0x0F, parameter_data[audio_output_offset + 3],
+                         parameter_data[audio_output_offset + 4] & 0x0F, parameter_data[audio_output_offset + 5],
+                         parameter_data[audio_output_offset + 6] & 0x0F, parameter_data[audio_output_offset + 7]);
+
+            std::fclose(fp);
+          }
+          break;
+        }
+
+        page_offset += page_size;
+      }
     }
   }
 
@@ -533,12 +599,17 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         {
           std::fprintf(fp,
                        "SCSI READ SUBCHANNEL response address=0x%08X requested=%u returned=%u "
-                       "status=0x%02X track=%u index=%u\n",
+                       "status=0x%02X track=%u index=%u "
+                       "absolute=%02X %02X %02X %02X "
+                       "relative=%02X %02X %02X %02X\n",
                        Address, response_size, response_length, response_length > 1 ? Ram[Address + 1] : 0,
-                       response_length > 6 ? Ram[Address + 6] : 0, response_length > 7 ? Ram[Address + 7] : 0);
+                       response_length > 6 ? Ram[Address + 6] : 0, response_length > 7 ? Ram[Address + 7] : 0,
+                       response_length > 11 ? Ram[Address + 8] : 0, response_length > 11 ? Ram[Address + 9] : 0,
+                       response_length > 11 ? Ram[Address + 10] : 0, response_length > 11 ? Ram[Address + 11] : 0,
+                       response_length > 15 ? Ram[Address + 12] : 0, response_length > 15 ? Ram[Address + 13] : 0,
+                       response_length > 15 ? Ram[Address + 14] : 0, response_length > 15 ? Ram[Address + 15] : 0);
           std::fclose(fp);
         }
-
         break;
       }
       default:

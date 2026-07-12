@@ -2,16 +2,20 @@
 
 #include "cdrom.h"
 #include "system.h"
+#include "timing_event.h"
 
 #include "common/cd_image.h"
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
 
 static std::unique_ptr<CDImage> s_konami_gv_cdrom_media;
+static std::unique_ptr<TimingEvent> s_konami_gv_cdda_event;
 
 static bool s_konami_gv_cdda_playing;
 static bool s_konami_gv_cdda_paused;
+static bool s_konami_gv_cdda_completed;
 
 static u8 s_konami_gv_cdda_track;
 static u8 s_konami_gv_cdda_index;
@@ -20,7 +24,85 @@ static u8 s_konami_gv_cdda_end_track;
 static u8 s_konami_gv_cdda_end_index;
 
 static CDImage::LBA s_konami_gv_cdda_lba;
+static CDImage::LBA s_konami_gv_cdda_read_lba;
 static CDImage::LBA s_konami_gv_cdda_end_lba;
+
+static constexpr u32 KONAMI_GV_CDDA_READ_AHEAD_SECTORS = 4;
+static u8 s_konami_gv_cdda_output_channel[4];
+static u8 s_konami_gv_cdda_output_volume[4];
+
+static bool KonamiGVCDROMQueueCDDASector(CDImage::LBA lba)
+{
+  u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
+
+  if (!s_konami_gv_cdrom_media || !s_konami_gv_cdrom_media->Seek(1, lba) ||
+      s_konami_gv_cdrom_media->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
+  {
+    return false;
+  }
+
+  constexpr u32 cdda_frames_per_sector = CDImage::RAW_SECTOR_SIZE / (sizeof(s16) * 2);
+
+  u32 audio_frames[cdda_frames_per_sector];
+
+  const u8* sector_ptr = raw_sector;
+
+  for (u32 i = 0; i < cdda_frames_per_sector; i++)
+  {
+    s16 left;
+    s16 right;
+
+    std::memcpy(&left, sector_ptr, sizeof(left));
+    std::memcpy(&right, sector_ptr + sizeof(left), sizeof(right));
+
+    audio_frames[i] = static_cast<u32>(static_cast<u16>(left)) | (static_cast<u32>(static_cast<u16>(right)) << 16);
+
+    sector_ptr += sizeof(s16) * 2;
+  }
+
+  g_cdrom.PushExternalCDAudioFrames(audio_frames, cdda_frames_per_sector);
+
+  return true;
+}
+
+static void KonamiGVCDROMCDDASectorEvent(void*, TickCount, TickCount)
+{
+  if (!s_konami_gv_cdda_playing || s_konami_gv_cdda_paused)
+    return;
+
+  s_konami_gv_cdda_lba++;
+
+  if (s_konami_gv_cdda_lba >= s_konami_gv_cdda_end_lba)
+  {
+    s_konami_gv_cdda_lba = s_konami_gv_cdda_end_lba;
+
+    s_konami_gv_cdda_playing = false;
+    s_konami_gv_cdda_paused = false;
+    s_konami_gv_cdda_completed = true;
+
+    if (s_konami_gv_cdda_event)
+      s_konami_gv_cdda_event->Deactivate();
+
+    return;
+  }
+
+  if (s_konami_gv_cdda_read_lba >= s_konami_gv_cdda_end_lba)
+    return;
+
+  if (!KonamiGVCDROMQueueCDDASector(s_konami_gv_cdda_read_lba))
+  {
+    s_konami_gv_cdda_playing = false;
+    s_konami_gv_cdda_paused = false;
+    s_konami_gv_cdda_completed = false;
+
+    if (s_konami_gv_cdda_event)
+      s_konami_gv_cdda_event->Deactivate();
+
+    return;
+  }
+
+  s_konami_gv_cdda_read_lba++;
+}
 
 static bool KonamiGVCDROMOpenMountedMedia()
 {
@@ -39,8 +121,23 @@ void KonamiGVCDROMInitialize()
 {
   s_konami_gv_cdrom_media.reset();
 
+  const TickCount cdda_sector_ticks = System::GetTicksPerSecond() / CDImage::FRAMES_PER_SECOND;
+
+  if (!s_konami_gv_cdda_event)
+  {
+    s_konami_gv_cdda_event = TimingEvents::CreateTimingEvent(
+      "Konami GV CDDA Sector", cdda_sector_ticks, cdda_sector_ticks, KonamiGVCDROMCDDASectorEvent, nullptr, false);
+  }
+  else
+  {
+    s_konami_gv_cdda_event->Deactivate();
+    s_konami_gv_cdda_event->SetPeriod(cdda_sector_ticks);
+    s_konami_gv_cdda_event->SetInterval(cdda_sector_ticks);
+  }
+
   s_konami_gv_cdda_playing = false;
   s_konami_gv_cdda_paused = false;
+  s_konami_gv_cdda_completed = false;
 
   s_konami_gv_cdda_track = 1;
   s_konami_gv_cdda_index = 1;
@@ -49,15 +146,32 @@ void KonamiGVCDROMInitialize()
   s_konami_gv_cdda_end_index = 1;
 
   s_konami_gv_cdda_lba = 0;
+  s_konami_gv_cdda_read_lba = 0;
   s_konami_gv_cdda_end_lba = 0;
+
+  // Default GV stereo routing before the game supplies MODE SELECT
+  // CD Audio Control page 0x0E values.
+  s_konami_gv_cdda_output_channel[0] = 1;
+  s_konami_gv_cdda_output_volume[0] = 0xFF;
+
+  s_konami_gv_cdda_output_channel[1] = 2;
+  s_konami_gv_cdda_output_volume[1] = 0xFF;
+
+  s_konami_gv_cdda_output_channel[2] = 0;
+  s_konami_gv_cdda_output_volume[2] = 0x00;
+
+  s_konami_gv_cdda_output_channel[3] = 0;
+  s_konami_gv_cdda_output_volume[3] = 0x00;
 }
 
 void KonamiGVCDROMShutdown()
 {
+  s_konami_gv_cdda_event.reset();
   s_konami_gv_cdrom_media.reset();
 
   s_konami_gv_cdda_playing = false;
   s_konami_gv_cdda_paused = false;
+  s_konami_gv_cdda_completed = false;
 }
 
 bool KonamiGVCDROMReadDataSector(u32 lba, u8* sector)
@@ -251,6 +365,18 @@ bool KonamiGVCDROMPlayAudioTrackIndex(u8 start_track, u8 start_index, u8 end_tra
   if (start_lba >= end_lba)
     return false;
 
+  // Some GV games repeatedly issue the same PLAY AUDIO command while the
+  // requested track is already playing. Treat it as a status refresh rather
+  // than restarting the track and clearing the buffered audio.
+  if (s_konami_gv_cdda_playing && !s_konami_gv_cdda_paused && s_konami_gv_cdda_track == start_track &&
+      s_konami_gv_cdda_index == start_index && s_konami_gv_cdda_end_track == resolved_end_track &&
+      s_konami_gv_cdda_end_index == end_index)
+  {
+    return true;
+  }
+
+  g_cdrom.ClearExternalCDAudioFrames();
+
   s_konami_gv_cdda_playing = true;
   s_konami_gv_cdda_paused = false;
 
@@ -261,7 +387,40 @@ bool KonamiGVCDROMPlayAudioTrackIndex(u8 start_track, u8 start_index, u8 end_tra
   s_konami_gv_cdda_end_index = end_index;
 
   s_konami_gv_cdda_lba = start_lba;
+  s_konami_gv_cdda_read_lba = start_lba;
   s_konami_gv_cdda_end_lba = end_lba;
+
+  for (u32 i = 0; i < KONAMI_GV_CDDA_READ_AHEAD_SECTORS && s_konami_gv_cdda_read_lba < s_konami_gv_cdda_end_lba; i++)
+  {
+    if (!KonamiGVCDROMQueueCDDASector(s_konami_gv_cdda_read_lba))
+    {
+      s_konami_gv_cdda_playing = false;
+      s_konami_gv_cdda_paused = false;
+      return false;
+    }
+
+    s_konami_gv_cdda_read_lba++;
+  }
+
+  // DEBUG CODE
+  if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+  {
+    const u32 sector_count = static_cast<u32>(s_konami_gv_cdda_end_lba - s_konami_gv_cdda_lba);
+
+    std::fprintf(fp, "CDDA RANGE start_lba=%u end_lba=%u sectors=%u duration=%.2f seconds\n",
+                 static_cast<u32>(s_konami_gv_cdda_lba), static_cast<u32>(s_konami_gv_cdda_end_lba), sector_count,
+                 static_cast<double>(sector_count) / static_cast<double>(CDImage::FRAMES_PER_SECOND));
+
+    std::fclose(fp);
+  }
+
+  s_konami_gv_cdda_completed = false;
+
+  if (s_konami_gv_cdda_event)
+    s_konami_gv_cdda_event->Reset();
+
+  if (s_konami_gv_cdda_event)
+    s_konami_gv_cdda_event->Activate();
 
   return true;
 }
@@ -272,6 +431,66 @@ void KonamiGVCDROMPauseAudio(bool resume)
     return;
 
   s_konami_gv_cdda_paused = !resume;
+
+  if (!s_konami_gv_cdda_event)
+    return;
+
+  if (resume)
+  {
+    s_konami_gv_cdda_event->Reset();
+    s_konami_gv_cdda_event->Activate();
+  }
+  else
+  {
+    s_konami_gv_cdda_event->Deactivate();
+    g_cdrom.ClearExternalCDAudioFrames();
+  }
+}
+
+void KonamiGVCDROMSetAudioOutput(u8 output, u8 channel, u8 volume)
+{
+  if (output >= 4)
+    return;
+
+  s_konami_gv_cdda_output_channel[output] = static_cast<u8>(channel & 0x0F);
+
+  s_konami_gv_cdda_output_volume[output] = volume;
+}
+
+static s32 KonamiGVCDROMSelectAudioChannel(u8 channel, s16 input_left, s16 input_right)
+{
+  switch (channel)
+  {
+    case 1:
+      return static_cast<s32>(input_left);
+
+    case 2:
+      return static_cast<s32>(input_right);
+
+    case 3:
+      return (static_cast<s32>(input_left) + static_cast<s32>(input_right)) / 2;
+
+    default:
+      return 0;
+  }
+}
+
+void KonamiGVCDROMMixAudioFrame(s16 input_left, s16 input_right, s32* output_left, s32* output_right)
+{
+  if (!output_left || !output_right)
+    return;
+
+  const s32 routed_left = KonamiGVCDROMSelectAudioChannel(s_konami_gv_cdda_output_channel[0], input_left, input_right);
+
+  const s32 routed_right = KonamiGVCDROMSelectAudioChannel(s_konami_gv_cdda_output_channel[1], input_left, input_right);
+
+  // Keep the current temporary /12 maximum level while allowing
+  // MODE SELECT volume values to scale each GV output independently.
+  constexpr s32 maximum_output_scale = 0xFF * 12;
+
+  *output_left = (routed_left * static_cast<s32>(s_konami_gv_cdda_output_volume[0])) / maximum_output_scale;
+
+  *output_right = (routed_right * static_cast<s32>(s_konami_gv_cdda_output_volume[1])) / maximum_output_scale;
 }
 
 u32 KonamiGVCDROMReadSubChannel(const u8* cdb, u8* response, u32 response_size)
@@ -284,11 +503,20 @@ u32 KonamiGVCDROMReadSubChannel(const u8* cdb, u8* response, u32 response_size)
   // Audio status:
   // 0x11 = playing
   // 0x12 = paused
+  // 0x13 = playback completed successfully
   // 0x15 = no current audio status
   if (s_konami_gv_cdda_playing)
+  {
     response[1] = s_konami_gv_cdda_paused ? 0x12 : 0x11;
+  }
+  else if (s_konami_gv_cdda_completed)
+  {
+    response[1] = 0x13;
+  }
   else
+  {
     response[1] = 0x15;
+  }
 
   // Only current-position data format 0x01 is currently required.
   if ((cdb[2] & 0x40) == 0 || cdb[3] != 0x01 || response_size < 16)
