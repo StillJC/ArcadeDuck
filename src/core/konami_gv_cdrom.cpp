@@ -430,20 +430,51 @@ void KonamiGVCDROMPauseAudio(bool resume)
   if (!s_konami_gv_cdda_playing)
     return;
 
-  s_konami_gv_cdda_paused = !resume;
-
   if (!s_konami_gv_cdda_event)
+  {
+    s_konami_gv_cdda_paused = !resume;
     return;
+  }
 
   if (resume)
   {
+    if (!s_konami_gv_cdda_paused)
+      return;
+
+    s_konami_gv_cdda_paused = false;
+
+    for (u32 i = 0; i < KONAMI_GV_CDDA_READ_AHEAD_SECTORS && s_konami_gv_cdda_read_lba < s_konami_gv_cdda_end_lba; i++)
+    {
+      if (!KonamiGVCDROMQueueCDDASector(s_konami_gv_cdda_read_lba))
+      {
+        s_konami_gv_cdda_playing = false;
+        s_konami_gv_cdda_paused = false;
+        s_konami_gv_cdda_completed = false;
+
+        s_konami_gv_cdda_event->Deactivate();
+        return;
+      }
+
+      s_konami_gv_cdda_read_lba++;
+    }
+
     s_konami_gv_cdda_event->Reset();
     s_konami_gv_cdda_event->Activate();
   }
   else
   {
+    if (s_konami_gv_cdda_paused)
+      return;
+
+    s_konami_gv_cdda_paused = true;
+
     s_konami_gv_cdda_event->Deactivate();
+
     g_cdrom.ClearExternalCDAudioFrames();
+
+    // Refill from the current logical playback position when resumed
+    // instead of skipping the sectors that were discarded above.
+    s_konami_gv_cdda_read_lba = s_konami_gv_cdda_lba;
   }
 }
 
