@@ -453,6 +453,91 @@ static bool ExtractKonamiGVEepromFromZip(const std::string& zip_path, std::strin
   return true;
 }
 
+static bool PrepareKonamiGVSharpFirstBoot(std::string_view set_name)
+{
+  if (set_name != "kdeadeye")
+    return true;
+
+  static constexpr size_t SHARP_FLASH_SIZE = 0x80000;
+
+  const std::string nvram_dir = "nvram" FS_OSPATH_SEPARATOR_STR + std::string(set_name);
+  const std::string eeprom_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "eeprom";
+  const std::string flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
+
+  bool needs_blank_flash = true;
+
+  if (const std::optional<std::vector<u8>> existing = FileSystem::ReadBinaryFile(flash_path.c_str());
+      existing.has_value() && existing->size() == SHARP_FLASH_SIZE)
+  {
+    bool all_ff = true;
+    bool all_zero = true;
+
+    for (const u8 value : *existing)
+    {
+      if (value != 0xFF)
+        all_ff = false;
+
+      if (value != 0x00)
+        all_zero = false;
+    }
+
+    // A non-empty flash already contains initialized game data.
+    if (!all_ff && !all_zero)
+      return true;
+
+    // Keep an existing correctly sized erased image.
+    needs_blank_flash = !all_ff;
+  }
+
+  if (set_name == "kdeadeye")
+  {
+    std::optional<std::vector<u8>> eeprom = FileSystem::ReadBinaryFile(eeprom_path.c_str());
+
+    if (!eeprom.has_value() || eeprom->size() != 0x80)
+    {
+      Log_ErrorPrintf("KonamiGV: cannot prepare Dead Eye Sharp flash because EEPROM '%s' is missing or invalid",
+                      eeprom_path.c_str());
+      return false;
+    }
+
+    // Dead Eye enters its real Sharp flash initialization routine when this
+    // EEPROM word is in the verified first-boot state. The game restores the
+    // normal persistent value after flash programming completes.
+    if ((*eeprom)[2] == 0x56 && (*eeprom)[3] == 0x47)
+    {
+      std::swap((*eeprom)[2], (*eeprom)[3]);
+
+      if (!FileSystem::WriteBinaryFile(eeprom_path.c_str(), eeprom->data(), eeprom->size()))
+      {
+        Log_ErrorPrintf("KonamiGV: failed preparing Dead Eye EEPROM '%s' for Sharp flash initialization",
+                        eeprom_path.c_str());
+        return false;
+      }
+
+      Log_InfoPrintf("KonamiGV: prepared Dead Eye EEPROM for first-run Sharp flash initialization");
+    }
+    else if ((*eeprom)[2] != 0x47 || (*eeprom)[3] != 0x56)
+    {
+      Log_WarningPrintf("KonamiGV: Dead Eye EEPROM '%s' has unexpected first-boot state %02X%02X", eeprom_path.c_str(),
+                        (*eeprom)[2], (*eeprom)[3]);
+    }
+  }
+
+  if (needs_blank_flash)
+  {
+    std::vector<u8> blank_flash(SHARP_FLASH_SIZE, 0xFF);
+
+    if (!FileSystem::WriteBinaryFile(flash_path.c_str(), blank_flash.data(), blank_flash.size()))
+    {
+      Log_ErrorPrintf("KonamiGV: failed creating erased Sharp flash '%s'", flash_path.c_str());
+      return false;
+    }
+  }
+
+  Log_InfoPrintf("KonamiGV: prepared erased Sharp flash '%s'", flash_path.c_str());
+  return true;
+}
+
 static bool ResolveKonamiGVMameZipPath(std::string* path)
 {
   if (!path || path->empty())
@@ -501,7 +586,14 @@ static bool ResolveKonamiGVMameZipPath(std::string* path)
   const std::string chd_path = chd_files.front().FileName;
 
   if (!ExtractKonamiGVEepromFromZip(*path, file_title))
+  {
     Log_WarningPrintf("KonamiGV: EEPROM extraction failed for '%s'; continuing with CHD boot", path->c_str());
+  }
+  else if (!PrepareKonamiGVSharpFirstBoot(file_title))
+  {
+    Log_WarningPrintf("KonamiGV: Sharp flash first-run preparation failed for '%s'; continuing with CHD boot",
+                      path->c_str());
+  }
 
   Log_InfoPrintf("KonamiGV: resolved MAME zip '%s' to CHD '%s'", path->c_str(), chd_path.c_str());
   *path = chd_path;
