@@ -23,6 +23,7 @@
 #include "host_interface.h"
 #include "host_interface_progress_callback.h"
 #include "interrupt_controller.h"
+#include "konami.h"
 #include "libcrypt_game_codes.h"
 #include "mdec.h"
 #include "memory_card.h"
@@ -1784,6 +1785,9 @@ void RunFrame()
     DoRunahead();
 
   DoRunFrame();
+
+  if (KonamiConsumeAutomaticResetRequest())
+    Reset();
 
   s_next_frame_time += s_frame_period;
 

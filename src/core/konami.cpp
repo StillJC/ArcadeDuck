@@ -116,6 +116,56 @@ enum KonamiGVSharpFlashMode : u8
 static KonamiGVSharpFlashMode GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
 static u16 GVSharpFlashStatus = 0x0080;
 
+enum class KonamiGVBtChampFirstBootState : u8
+{
+  Inactive,
+  WaitingForValidationEnd,
+  WaitingForValidationRestart,
+  ResetRequested,
+  HoldingTest
+};
+
+static KonamiGVBtChampFirstBootState GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
+
+static bool KonamiGVSharpFlashIsErased()
+{
+  for (const u8 value : GVSharpFlash)
+  {
+    if (value != 0xFF)
+      return false;
+  }
+
+  return true;
+}
+
+static void KonamiGVBtChampObserveBlankFlashRead(u32 size, u32 relative_offset, u32 value)
+{
+  if (size != 2 || value != 0xFFFF)
+    return;
+
+  switch (GVBtChampFirstBootState)
+  {
+    case KonamiGVBtChampFirstBootState::WaitingForValidationEnd:
+      if (relative_offset == 0x000007A6)
+      {
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::WaitingForValidationRestart;
+      }
+      break;
+
+    case KonamiGVBtChampFirstBootState::WaitingForValidationRestart:
+      if (relative_offset == 0x00000008)
+      {
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::ResetRequested;
+
+        Log_InfoPrintf("KonamiGV: Beat the Champ blank flash validation completed; queued automatic recovery reset");
+      }
+      break;
+
+    default:
+      break;
+  }
+}
+
 static bool KonamiGVSharpFlashLoadFile(const std::string& path)
 {
   for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
@@ -224,6 +274,8 @@ void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value)
       break;
   }
 
+  KonamiGVBtChampObserveBlankFlashRead(Size, relative_offset, Value);
+
   if (gv_sharp_flash_read_debug_count < 1000)
   {
     if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
@@ -331,6 +383,13 @@ if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
         GVSharpFlash[(block_start + i) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = 0xFF;
 
       gv_sharp_flash_erase_count++;
+
+      if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::HoldingTest)
+      {
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
+
+        Log_InfoPrintf("KonamiGV: Beat the Champ recovery entered flash initialization; released automatic Test input");
+      }
 
       if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
       {
@@ -775,6 +834,18 @@ bool KonamiUsesDirectGVFlash()
   return code == "kdeadeye" || code == "btchamp";
 }
 
+bool KonamiConsumeAutomaticResetRequest()
+{
+  if (GVBtChampFirstBootState != KonamiGVBtChampFirstBootState::ResetRequested)
+    return false;
+
+  GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::HoldingTest;
+
+  Log_InfoPrintf("KonamiGV: starting automatic Beat the Champ first-run flash recovery");
+
+  return true;
+}
+
 void KonamiInit(void)
 {
   if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -853,6 +924,7 @@ void KonamiInit(void)
   GVSharpFlashPath.clear();
   GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
   GVSharpFlashStatus = 0x0080;
+  GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
   GVFujitsuFlashAddress = 0;
 
   for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
@@ -868,6 +940,13 @@ void KonamiInit(void)
   {
     KonamiGVSharpFlashLoadFile(gv_sharp_flash_path);
     GVSharpFlashPath = gv_sharp_flash_path;
+
+    if (game_name == "btchamp" && KonamiGVSharpFlashIsErased())
+    {
+      GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::WaitingForValidationEnd;
+
+      Log_InfoPrintf("KonamiGV: armed automatic Beat the Champ first-run flash recovery");
+    }
 
     if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
@@ -1343,6 +1422,9 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 void KonamiP1Read(u32 Size, u32 Offset, u32& Value)
 {
   Value = CurrentButtons[0];
+
+  if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::HoldingTest)
+    Value &= ~(1U << 12);
 
   if (EepromDo)
     Value |= (1 << 13);
