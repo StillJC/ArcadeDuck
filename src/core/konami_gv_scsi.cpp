@@ -427,29 +427,18 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
       }
       case 0x43:
       {
-        // READ TOC. Return a minimal fake TOC with track 1 data and track 2 audio.
-        std::memset(Ram + Address, 0, 12);
+        const u32 response_size =
+          static_cast<u32>(std::min<size_t>(ReadSize, KonamiGVScsiExpectedTransferLength(ScsiCommand)));
 
-        Ram[Address + 0] = 0x00;
-        Ram[Address + 1] = 0x1A;
-        Ram[Address + 2] = 0x01;
-        Ram[Address + 3] = (System::GetRunningCode() == "btchamp") ? 0x0C : 0x02;
-
-        Ram[Address + 4] = 0x00;
-        Ram[Address + 5] = 0x14;
-        Ram[Address + 6] = 0x01;
-        Ram[Address + 7] = 0x00;
-
-        Ram[Address + 8] = 0x00;
-        Ram[Address + 9] = 0x00;
-        Ram[Address + 10] = 0x00;
-        Ram[Address + 11] = 0x00;
+        const u32 response_length = KonamiGVCDROMReadTOC(ScsiCommand, Ram + Address, response_size);
 
         if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
         {
-          std::fprintf(fp, "SCSI READ TOC response address=0x%08X length=12 first=1 last=2\n", Address);
+          std::fprintf(fp, "SCSI READ TOC response address=0x%08X requested=%u returned=%u\n", Address, response_size,
+                       response_length);
           std::fclose(fp);
         }
+
         break;
       }
       case 0x28:
