@@ -524,17 +524,18 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         break;
       case 0x42:
       {
-        // READ SUB-CHANNEL. Match the earlier KDeadEye branch stub that got the title/display path moving.
-        const u8 response[16] = {0x00, 0x11, 0x00, 0x0C, 0x01, 0x00, 0x02, 0x01,
-                                 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
+        const u32 response_size =
+          static_cast<u32>(std::min<size_t>(ReadSize, KonamiGVScsiExpectedTransferLength(ScsiCommand)));
 
-        const size_t copy_size = std::min<size_t>(ReadSize, sizeof(response));
-        std::memcpy(Ram + Address, response, copy_size);
+        const u32 response_length = KonamiGVCDROMReadSubChannel(ScsiCommand, Ram + Address, response_size);
 
         if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
         {
-          std::fprintf(fp, "SCSI READ SUBCHANNEL OLD STUB copy=%u status_byte=%02X track=%u index=%u\n",
-                       static_cast<u32>(copy_size), response[1], response[6], response[7]);
+          std::fprintf(fp,
+                       "SCSI READ SUBCHANNEL response address=0x%08X requested=%u returned=%u "
+                       "status=0x%02X track=%u index=%u\n",
+                       Address, response_size, response_length, response_length > 1 ? Ram[Address + 1] : 0,
+                       response_length > 6 ? Ram[Address + 6] : 0, response_length > 7 ? Ram[Address + 7] : 0);
           std::fclose(fp);
         }
 
@@ -650,37 +651,51 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               break;
 
             case 0x48: // PLAY AUDIO TRACK/INDEX
-            case 0x4B: // PAUSE/RESUME
             {
-              if (KonamiIsKDeadEye() || System::GetRunningCode() == "btchamp")
+              const bool started =
+                KonamiGVCDROMPlayAudioTrackIndex(ScsiCommand[4], ScsiCommand[5], ScsiCommand[7], ScsiCommand[8]);
+
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
+              ScsiRegs[REG_INTSTATE] = 0x04U;
+
+              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
               {
-                ScsiAudioPlaying = false;
-                ScsiAudioPaused = false;
-
-                ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
-                ScsiRegs[REG_INTSTATE] = 0x04U;
-
-                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-                {
-                  std::fprintf(fp, "SCSI AUDIO STUB cmd=%02X no-op success game=%s\n", ScsiCommand[0],
-                               System::GetRunningCode().c_str());
-                  std::fclose(fp);
-                }
-
-                KonamiGVScsiAssertInterrupt();
-                break;
+                std::fprintf(fp, "SCSI PLAY AUDIO start=%u/%u end=%u/%u result=%s\n", ScsiCommand[4], ScsiCommand[5],
+                             ScsiCommand[7], ScsiCommand[8], started ? "started" : "rejected");
+                std::fclose(fp);
               }
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
+
               break;
             }
+
+            case 0x4B: // PAUSE/RESUME
+            {
+              const bool resume = (ScsiCommand[8] & 0x01) != 0;
+
+              KonamiGVCDROMPauseAudio(resume);
+
+              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
+              ScsiRegs[REG_INTSTATE] = 0x04U;
+
+              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+              {
+                std::fprintf(fp, "SCSI PAUSE/RESUME resume=%u\n", resume ? 1U : 0U);
+                std::fclose(fp);
+              }
+
+              break;
+            }
+
             case 0x28:
               ScsiSectorLba = (ScsiFifo[3] << 24) | (ScsiFifo[4] << 16) | (ScsiFifo[5] << 8) | ScsiFifo[6];
               ScsiIsRead = true;
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
               break;
           }
+
           KonamiGVScsiAssertInterrupt();
           break;
+
         case 0x44:
           break;
         case 0x10:
