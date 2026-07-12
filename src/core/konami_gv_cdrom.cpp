@@ -457,6 +457,17 @@ void KonamiGVCDROMSetAudioOutput(u8 output, u8 channel, u8 volume)
   s_konami_gv_cdda_output_volume[output] = volume;
 }
 
+bool KonamiGVCDROMGetAudioOutput(u8 output, u8* channel, u8* volume)
+{
+  if (output >= 4 || !channel || !volume)
+    return false;
+
+  *channel = s_konami_gv_cdda_output_channel[output];
+  *volume = s_konami_gv_cdda_output_volume[output];
+
+  return true;
+}
+
 static s32 KonamiGVCDROMSelectAudioChannel(u8 channel, s16 input_left, s16 input_right)
 {
   switch (channel)

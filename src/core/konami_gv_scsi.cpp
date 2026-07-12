@@ -455,33 +455,32 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
       }
       case 0x1A:
       {
-        // MODE SENSE(6). Dead Eye requests page 0x0E, CD audio control.
-        // Return a minimal valid mode page instead of all zeroes.
+        // MODE SENSE(6). Return CD Audio Control page 0x0E using
+        // the GV CD-ROM layer's current output routing and volume state.
         std::memset(Ram + Address, 0, 28);
 
-        Ram[Address + 0] = 0x12; // mode data length: bytes after this field
+        Ram[Address + 0] = 0x1B; // mode data length: bytes after this field
         Ram[Address + 1] = 0x00; // medium type
         Ram[Address + 2] = 0x00; // device-specific parameter
         Ram[Address + 3] = 0x00; // block descriptor length
 
         Ram[Address + 4] = 0x0E; // page code: CD audio control
-        Ram[Address + 5] = 0x0E; // page length
+        Ram[Address + 5] = 0x16; // page length
 
-        // Conservative/default CD audio control values.
         Ram[Address + 6] = 0x04;
-        Ram[Address + 7] = 0x00;
-        Ram[Address + 8] = 0x00;
-        Ram[Address + 9] = 0x00;
-        Ram[Address + 10] = 0x00;
-        Ram[Address + 11] = 0x00;
-        Ram[Address + 12] = 0x00;
-        Ram[Address + 13] = 0x00;
-        Ram[Address + 14] = 0x00;
-        Ram[Address + 15] = 0x00;
-        Ram[Address + 16] = 0x00;
-        Ram[Address + 17] = 0x00;
-        Ram[Address + 18] = 0x00;
-        Ram[Address + 19] = 0x00;
+
+        for (u8 output = 0; output < 4; output++)
+        {
+          u8 channel = 0;
+          u8 volume = 0;
+
+          KonamiGVCDROMGetAudioOutput(output, &channel, &volume);
+
+          const u32 output_offset = Address + 20 + (output * 2);
+
+          Ram[output_offset + 0] = channel;
+          Ram[output_offset + 1] = volume;
+        }
 
         if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
         {

@@ -20,4 +20,6 @@ void KonamiGVCDROMPauseAudio(bool resume);
 
 void KonamiGVCDROMSetAudioOutput(u8 output, u8 channel, u8 volume);
 
+bool KonamiGVCDROMGetAudioOutput(u8 output, u8* channel, u8* volume);
+
 void KonamiGVCDROMMixAudioFrame(s16 input_left, s16 input_right, s32* output_left, s32* output_right);
