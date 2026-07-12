@@ -921,15 +921,15 @@ ALWAYS_INLINE static TickCount DoBIOSAccess(u32 offset, u32& value)
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     template<MemoryAccessType type, MemoryAccessSize size>
-    static ALWAYS_INLINE TickCount DoKDeadEyeFlashAccess(u32 offset, u32& value)
+    static ALWAYS_INLINE TickCount DoGVSharpFlashAccess(u32 offset, u32& value)
     {
       if constexpr (type == MemoryAccessType::Read)
       {
-        KonamiKDeadEyeFlashRead(1U << static_cast<u32>(size), offset, value);
+        KonamiGVSharpFlashRead(1U << static_cast<u32>(size), offset, value);
       }
       else
       {
-        KonamiKDeadEyeFlashWrite(1U << static_cast<u32>(size), offset, value);
+        KonamiGVSharpFlashWrite(1U << static_cast<u32>(size), offset, value);
       }
 
       return m_exp1_access_time[static_cast<u32>(size)];
@@ -1835,7 +1835,7 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     // Direct GV flash window used by KDeadEye and Beat the Champ.
     if (KonamiUsesDirectGVFlash() && address >= 0x1F380000 && address <= 0x1F3FFFFF)
     {
-      return DoKDeadEyeFlashAccess<type, size>(address & EXP1_MASK, value);
+      return DoGVSharpFlashAccess<type, size>(address & EXP1_MASK, value);
     }
 
     if (address >= 0x1F100000 && address <= 0x1F100003)

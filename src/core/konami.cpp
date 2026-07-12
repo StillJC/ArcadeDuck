@@ -87,41 +87,41 @@ static constexpr u32 KONAMI_GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT =
 static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_01_LBA = 202;
 static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA = 2250;
 
-static constexpr u32 KDEADEYE_FLASH_SIZE = 0x80000;
-static constexpr u32 KDEADEYE_FLASH_SECTOR_SIZE = 0x10000;
+static constexpr u32 KONAMI_GV_SHARP_FLASH_SIZE = 0x80000;
+static constexpr u32 KONAMI_GV_SHARP_FLASH_SECTOR_SIZE = 0x10000;
 
 static u8 GVFujitsuFlash[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT][KONAMI_GV_FUJITSU_FLASH_SIZE];
 static u32 GVFujitsuFlashAddress;
 
-static u8 KDeadEyeFlash[KDEADEYE_FLASH_SIZE];
+static u8 GVSharpFlash[KONAMI_GV_SHARP_FLASH_SIZE];
 
 // The Sharp flash chip exists on supported GV hardware even when no
 // persisted flash file exists yet.
-static bool KDeadEyeFlashPresent = false;
+static bool GVSharpFlashPresent = false;
 
 // Tracks only whether nvram/<set>/flash was successfully loaded.
-static bool KDeadEyeFlashFileLoaded = false;
+static bool GVSharpFlashFileLoaded = false;
 
-static bool KDeadEyeFlashDirty = false;
-static std::string KDeadEyeFlashPath;
+static bool GVSharpFlashDirty = false;
+static std::string GVSharpFlashPath;
 
-enum KonamiKDeadEyeFlashMode : u8
+enum KonamiGVSharpFlashMode : u8
 {
-  KDEADEYE_FLASH_MODE_READ_ARRAY,
-  KDEADEYE_FLASH_MODE_READ_STATUS,
-  KDEADEYE_FLASH_MODE_PROGRAM,
-  KDEADEYE_FLASH_MODE_ERASE_SETUP
+  KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY,
+  KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS,
+  KONAMI_GV_SHARP_FLASH_MODE_PROGRAM,
+  KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP
 };
 
-static KonamiKDeadEyeFlashMode KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-static u16 KDeadEyeFlashStatus = 0x0080;
+static KonamiGVSharpFlashMode GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+static u16 GVSharpFlashStatus = 0x0080;
 
-static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
+static bool KonamiGVSharpFlashLoadFile(const std::string& path)
 {
-  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
-    KDeadEyeFlash[i] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
+    GVSharpFlash[i] = 0xFF;
 
-  KDeadEyeFlashFileLoaded = false;
+  GVSharpFlashFileLoaded = false;
 
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
   if (!fp)
@@ -131,63 +131,63 @@ static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
   const long size = std::ftell(fp);
   std::fseek(fp, 0, SEEK_SET);
 
-  if (size != static_cast<long>(KDEADEYE_FLASH_SIZE))
+  if (size != static_cast<long>(KONAMI_GV_SHARP_FLASH_SIZE))
   {
     std::fclose(fp);
     return false;
   }
 
-  const size_t read = std::fread(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  const size_t read = std::fread(GVSharpFlash, 1, KONAMI_GV_SHARP_FLASH_SIZE, fp);
   std::fclose(fp);
 
-  KDeadEyeFlashFileLoaded = (read == KDEADEYE_FLASH_SIZE);
-  return KDeadEyeFlashFileLoaded;
+  GVSharpFlashFileLoaded = (read == KONAMI_GV_SHARP_FLASH_SIZE);
+  return GVSharpFlashFileLoaded;
 }
 
-static void KonamiSaveKDeadEyeFlashFile()
+static void KonamiGVSharpFlashSaveFile()
 {
-  if (!KDeadEyeFlashPresent || !KDeadEyeFlashDirty || KDeadEyeFlashPath.empty())
+  if (!GVSharpFlashPresent || !GVSharpFlashDirty || GVSharpFlashPath.empty())
     return;
 
-  std::FILE* fp = FileSystem::OpenCFile(KDeadEyeFlashPath.c_str(), "wb");
+  std::FILE* fp = FileSystem::OpenCFile(GVSharpFlashPath.c_str(), "wb");
   if (!fp)
     return;
 
-  std::fwrite(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  std::fwrite(GVSharpFlash, 1, KONAMI_GV_SHARP_FLASH_SIZE, fp);
   std::fclose(fp);
 
-  KDeadEyeFlashDirty = false;
+  GVSharpFlashDirty = false;
 }
 
-static u16 KonamiKDeadEyeSingleFlashRead16(u32 relative_offset)
+static u16 KonamiGVSharpFlashReadArray16(u32 relative_offset)
 {
-  relative_offset &= (KDEADEYE_FLASH_SIZE - 1);
+  relative_offset &= (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
   const u32 high_offset = relative_offset & ~1U;
-  const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+  const u32 low_offset = (high_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
-  return static_cast<u16>((KDeadEyeFlash[high_offset] << 8) | KDeadEyeFlash[low_offset]);
+  return static_cast<u16>((GVSharpFlash[high_offset] << 8) | GVSharpFlash[low_offset]);
 }
 
-static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
+static u16 KonamiGVSharpFlashRead16(u32 relative_offset)
 {
-  if (!KDeadEyeFlashPresent)
+  if (!GVSharpFlashPresent)
     return 0xFFFF;
 
-  return KonamiKDeadEyeSingleFlashRead16(relative_offset);
+  return KonamiGVSharpFlashReadArray16(relative_offset);
 }
 
-void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
+void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int kdeadeye_flash_read_debug_count = 0;
+  static int gv_sharp_flash_read_debug_count = 0;
 
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
 
-  if (KDeadEyeFlashPresent && KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_READ_STATUS)
+  if (GVSharpFlashPresent && GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS)
   {
   // The Sharp LH28F400 is a 16-bit flash device.
   // Its ready status is 0x0080, not 0x8080.
-  Value = KDeadEyeFlashStatus;
+  Value = GVSharpFlashStatus;
 
   if (Size == 4)
     Value |= Value << 16;
@@ -199,8 +199,8 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     case 1:
     {
-      if (KDeadEyeFlashPresent)
-        Value = KDeadEyeFlash[relative_offset & (KDEADEYE_FLASH_SIZE - 1)];
+      if (GVSharpFlashPresent)
+        Value = GVSharpFlash[relative_offset & (KONAMI_GV_SHARP_FLASH_SIZE - 1)];
       else
         Value = 0xFF;
 
@@ -208,13 +208,13 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
     }
 
     case 2:
-      Value = KonamiKDeadEyeFlashRead16(relative_offset);
+      Value = KonamiGVSharpFlashRead16(relative_offset);
       break;
 
     case 4:
     {
-      const u16 low = KonamiKDeadEyeFlashRead16(relative_offset);
-      const u16 high = KonamiKDeadEyeFlashRead16(relative_offset + 2);
+      const u16 low = KonamiGVSharpFlashRead16(relative_offset);
+      const u16 high = KonamiGVSharpFlashRead16(relative_offset + 2);
       Value = static_cast<u32>(low) | (static_cast<u32>(high) << 16);
       break;
     }
@@ -224,132 +224,132 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
       break;
   }
 
-  if (kdeadeye_flash_read_debug_count < 1000)
+  if (gv_sharp_flash_read_debug_count < 1000)
   {
     if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X present=%u file_loaded=%u value=0x%08X\n", Size,
-                   Offset, relative_offset, KDeadEyeFlashPresent ? 1 : 0, KDeadEyeFlashFileLoaded ? 1 : 0, Value);
+                   Offset, relative_offset, GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0, Value);
       std::fclose(fp);
     }
 
-    kdeadeye_flash_read_debug_count++;
+    gv_sharp_flash_read_debug_count++;
   }
 }
 
-void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
+void KonamiGVSharpFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int kdeadeye_flash_write_debug_count = 0;
-  static u32 kdeadeye_flash_program_count = 0;
-  static u32 kdeadeye_flash_erase_count = 0;
+  static int gv_sharp_flash_write_debug_count = 0;
+  static u32 gv_sharp_flash_program_count = 0;
+  static u32 gv_sharp_flash_erase_count = 0;
 
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
-  const u32 byte_offset = relative_offset & (KDEADEYE_FLASH_SIZE - 1);
+  const u32 byte_offset = relative_offset & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
   const u16 command = static_cast<u16>(Value & 0xFF);
 
-  if (kdeadeye_flash_write_debug_count < 1000)
+  if (gv_sharp_flash_write_debug_count < 1000)
   {
     if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X present=%u file_loaded=%u mode=%u value=0x%08X\n",
-                   Size, Offset, relative_offset, KDeadEyeFlashPresent ? 1 : 0, KDeadEyeFlashFileLoaded ? 1 : 0,
-                   static_cast<u32>(KDeadEyeFlashMode), Value);
+                   Size, Offset, relative_offset, GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0,
+                   static_cast<u32>(GVSharpFlashMode), Value);
       std::fclose(fp);
     }
 
-    kdeadeye_flash_write_debug_count++;
+    gv_sharp_flash_write_debug_count++;
   }
 
-  if (!KDeadEyeFlashPresent)
+  if (!GVSharpFlashPresent)
     return;
 
-if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
+if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
   {
     switch (Size)
     {
       case 1:
-        KDeadEyeFlash[byte_offset] = static_cast<u8>(Value & 0xFF);
+        GVSharpFlash[byte_offset] = static_cast<u8>(Value & 0xFF);
         break;
 
       case 2:
       {
         const u32 high_offset = byte_offset & ~1U;
-        const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+        const u32 low_offset = (high_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
-        KDeadEyeFlash[high_offset] = static_cast<u8>((Value >> 8) & 0xFF);
-        KDeadEyeFlash[low_offset] = static_cast<u8>(Value & 0xFF);
+        GVSharpFlash[high_offset] = static_cast<u8>((Value >> 8) & 0xFF);
+        GVSharpFlash[low_offset] = static_cast<u8>(Value & 0xFF);
         break;
       }
 
       case 4:
       {
         const u32 first_offset = byte_offset & ~1U;
-        const u32 second_offset = (first_offset + 2) & (KDEADEYE_FLASH_SIZE - 1);
+        const u32 second_offset = (first_offset + 2) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
         const u16 low_word = static_cast<u16>(Value & 0xFFFF);
         const u16 high_word = static_cast<u16>((Value >> 16) & 0xFFFF);
 
-        KDeadEyeFlash[first_offset] = static_cast<u8>((low_word >> 8) & 0xFF);
+        GVSharpFlash[first_offset] = static_cast<u8>((low_word >> 8) & 0xFF);
 
-        KDeadEyeFlash[(first_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(low_word & 0xFF);
+        GVSharpFlash[(first_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = static_cast<u8>(low_word & 0xFF);
 
-        KDeadEyeFlash[second_offset] = static_cast<u8>((high_word >> 8) & 0xFF);
+        GVSharpFlash[second_offset] = static_cast<u8>((high_word >> 8) & 0xFF);
 
-        KDeadEyeFlash[(second_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(high_word & 0xFF);
+        GVSharpFlash[(second_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = static_cast<u8>(high_word & 0xFF);
         break;
       }
     }
 
-    kdeadeye_flash_program_count++;
+    gv_sharp_flash_program_count++;
 
-    if (kdeadeye_flash_program_count <= 16 || (kdeadeye_flash_program_count % 256) == 0)
+    if (gv_sharp_flash_program_count <= 16 || (gv_sharp_flash_program_count % 256) == 0)
     {
       if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
       {
         std::fprintf(fp,
                      "PROGRAM count=%u offset=0x%08X byte_offset=0x%08X "
                      "size=%u value=0x%08X\n",
-                     kdeadeye_flash_program_count, Offset, byte_offset, Size, Value);
+                     gv_sharp_flash_program_count, Offset, byte_offset, Size, Value);
 
         std::fclose(fp);
       }
     }
 
-    KDeadEyeFlashDirty = true;
-    KDeadEyeFlashStatus = 0x0080;
-    KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+    GVSharpFlashDirty = true;
+    GVSharpFlashStatus = 0x0080;
+    GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     return;
   }
 
-  if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_ERASE_SETUP)
+  if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP)
   {
     if (command == 0xD0)
     {
-      const u32 block_start = byte_offset & ~(KDEADEYE_FLASH_SECTOR_SIZE - 1);
+      const u32 block_start = byte_offset & ~(KONAMI_GV_SHARP_FLASH_SECTOR_SIZE - 1);
 
-      for (u32 i = 0; i < KDEADEYE_FLASH_SECTOR_SIZE; i++)
-        KDeadEyeFlash[(block_start + i) & (KDEADEYE_FLASH_SIZE - 1)] = 0xFF;
+      for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SECTOR_SIZE; i++)
+        GVSharpFlash[(block_start + i) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = 0xFF;
 
-      kdeadeye_flash_erase_count++;
+      gv_sharp_flash_erase_count++;
 
       if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
       {
         std::fprintf(fp,
                      "ERASE count=%u offset=0x%08X "
                      "byte_offset=0x%08X block_start=0x%08X\n",
-                     kdeadeye_flash_erase_count, Offset, byte_offset, block_start);
+                     gv_sharp_flash_erase_count, Offset, byte_offset, block_start);
 
         std::fclose(fp);
       }
 
-      KDeadEyeFlashDirty = true;
-      KDeadEyeFlashStatus = 0x0080;
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashDirty = true;
+      GVSharpFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     }
     else
     {
-      KDeadEyeFlashStatus = 0x00B0;
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x00B0;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     }
 
     return;
@@ -359,56 +359,56 @@ if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
   {
     case 0xFF:
       // Read array / reset.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x70:
       // Read status register.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
       break;
 
     case 0x50:
       // Clear status register.
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x40:
     case 0x10:
       // Program next write.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_PROGRAM;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_PROGRAM;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x20:
       // Erase setup. Next write should be 0xD0.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_ERASE_SETUP;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0xB0:
       // Suspend not currently needed; report ready.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0xD0:
       // Resume/confirm without erase setup. Treat as ready.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     default:
-      if (kdeadeye_flash_write_debug_count < 1000)
+      if (gv_sharp_flash_write_debug_count < 1000)
       {
         if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
         {
-          std::fprintf(fp, "UNKNOWN KDeadEye flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
+          std::fprintf(fp, "UNKNOWN GV Sharp flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
                        command, Value);
           std::fclose(fp);
         }
 
-        kdeadeye_flash_write_debug_count++;
+        gv_sharp_flash_write_debug_count++;
       }
 
       break;
@@ -821,7 +821,7 @@ void KonamiInit(void)
   const std::string flash1_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash1";
   const std::string flash2_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash2";
   const std::string flash3_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash3";
-  const std::string kdeadeye_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
+  const std::string gv_sharp_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
 
   // Empty flash chips should read as erased flash, not zero-filled RAM.
   for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
@@ -844,15 +844,15 @@ void KonamiInit(void)
   EepromWriteShift = 0;
   EepromWriteBits = 0;
 
-  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
-    KDeadEyeFlash[i] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
+    GVSharpFlash[i] = 0xFF;
 
-  KDeadEyeFlashPresent = KonamiUsesDirectGVFlash();
-  KDeadEyeFlashFileLoaded = false;
-  KDeadEyeFlashDirty = false;
-  KDeadEyeFlashPath.clear();
-  KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-  KDeadEyeFlashStatus = 0x0080;
+  GVSharpFlashPresent = KonamiUsesDirectGVFlash();
+  GVSharpFlashFileLoaded = false;
+  GVSharpFlashDirty = false;
+  GVSharpFlashPath.clear();
+  GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+  GVSharpFlashStatus = 0x0080;
   GVFujitsuFlashAddress = 0;
 
   for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
@@ -866,13 +866,13 @@ void KonamiInit(void)
 
   if (KonamiUsesDirectGVFlash())
   {
-    KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path);
-    KDeadEyeFlashPath = kdeadeye_flash_path;
+    KonamiGVSharpFlashLoadFile(gv_sharp_flash_path);
+    GVSharpFlashPath = gv_sharp_flash_path;
 
     if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
     {
-      std::fprintf(fp, "Initialized direct GV Sharp flash: %s present=%u file_loaded=%u\n", kdeadeye_flash_path.c_str(),
-                   KDeadEyeFlashPresent ? 1 : 0, KDeadEyeFlashFileLoaded ? 1 : 0);
+      std::fprintf(fp, "Initialized direct GV Sharp flash: %s present=%u file_loaded=%u\n", gv_sharp_flash_path.c_str(),
+                   GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0);
       std::fclose(fp);
     }
   }
@@ -911,7 +911,7 @@ void KonamiInit(void)
 
 void KonamiTerm(void)
 {
-  KonamiSaveKDeadEyeFlashFile();
+  KonamiGVSharpFlashSaveFile();
 
   if (EepromFp)
   {
