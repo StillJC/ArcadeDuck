@@ -99,9 +99,6 @@ static u8 GVSharpFlash[KONAMI_GV_SHARP_FLASH_SIZE];
 // persisted flash file exists yet.
 static bool GVSharpFlashPresent = false;
 
-// Tracks only whether nvram/<set>/flash was successfully loaded.
-static bool GVSharpFlashFileLoaded = false;
-
 static bool GVSharpFlashDirty = false;
 static std::string GVSharpFlashPath;
 
@@ -171,8 +168,6 @@ static bool KonamiGVSharpFlashLoadFile(const std::string& path)
   for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
     GVSharpFlash[i] = 0xFF;
 
-  GVSharpFlashFileLoaded = false;
-
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
   if (!fp)
     return false;
@@ -190,8 +185,7 @@ static bool KonamiGVSharpFlashLoadFile(const std::string& path)
   const size_t read = std::fread(GVSharpFlash, 1, KONAMI_GV_SHARP_FLASH_SIZE, fp);
   std::fclose(fp);
 
-  GVSharpFlashFileLoaded = (read == KONAMI_GV_SHARP_FLASH_SIZE);
-  return GVSharpFlashFileLoaded;
+  return (read == KONAMI_GV_SHARP_FLASH_SIZE);
 }
 
 static void KonamiGVSharpFlashSaveFile()
@@ -229,8 +223,6 @@ static u16 KonamiGVSharpFlashRead16(u32 relative_offset)
 
 void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int gv_sharp_flash_read_debug_count = 0;
-
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
 
   if (GVSharpFlashPresent && GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS)
@@ -275,42 +267,13 @@ void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value)
   }
 
   KonamiGVBtChampObserveBlankFlashRead(Size, relative_offset, Value);
-
-  if (gv_sharp_flash_read_debug_count < 1000)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X present=%u file_loaded=%u value=0x%08X\n", Size,
-                   Offset, relative_offset, GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0, Value);
-      std::fclose(fp);
-    }
-
-    gv_sharp_flash_read_debug_count++;
-  }
 }
 
 void KonamiGVSharpFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int gv_sharp_flash_write_debug_count = 0;
-  static u32 gv_sharp_flash_program_count = 0;
-  static u32 gv_sharp_flash_erase_count = 0;
-
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
   const u32 byte_offset = relative_offset & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
   const u16 command = static_cast<u16>(Value & 0xFF);
-
-  if (gv_sharp_flash_write_debug_count < 1000)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X present=%u file_loaded=%u mode=%u value=0x%08X\n",
-                   Size, Offset, relative_offset, GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0,
-                   static_cast<u32>(GVSharpFlashMode), Value);
-      std::fclose(fp);
-    }
-
-    gv_sharp_flash_write_debug_count++;
-  }
 
   if (!GVSharpFlashPresent)
     return;
@@ -352,21 +315,6 @@ if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
       }
     }
 
-    gv_sharp_flash_program_count++;
-
-    if (gv_sharp_flash_program_count <= 16 || (gv_sharp_flash_program_count % 256) == 0)
-    {
-      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "PROGRAM count=%u offset=0x%08X byte_offset=0x%08X "
-                     "size=%u value=0x%08X\n",
-                     gv_sharp_flash_program_count, Offset, byte_offset, Size, Value);
-
-        std::fclose(fp);
-      }
-    }
-
     GVSharpFlashDirty = true;
     GVSharpFlashStatus = 0x0080;
     GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
@@ -382,23 +330,11 @@ if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
       for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SECTOR_SIZE; i++)
         GVSharpFlash[(block_start + i) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = 0xFF;
 
-      gv_sharp_flash_erase_count++;
-
       if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::HoldingTest)
       {
         GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
 
         Log_InfoPrintf("KonamiGV: Beat the Champ recovery entered flash initialization; released automatic Test input");
-      }
-
-      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "ERASE count=%u offset=0x%08X "
-                     "byte_offset=0x%08X block_start=0x%08X\n",
-                     gv_sharp_flash_erase_count, Offset, byte_offset, block_start);
-
-        std::fclose(fp);
       }
 
       GVSharpFlashDirty = true;
@@ -457,19 +393,7 @@ if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
       GVSharpFlashStatus = 0x0080;
       break;
 
-    default:
-      if (gv_sharp_flash_write_debug_count < 1000)
-      {
-        if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "UNKNOWN GV Sharp flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
-                       command, Value);
-          std::fclose(fp);
-        }
-
-        gv_sharp_flash_write_debug_count++;
-      }
-
+default:
       break;
   }
 }
@@ -919,7 +843,6 @@ void KonamiInit(void)
     GVSharpFlash[i] = 0xFF;
 
   GVSharpFlashPresent = KonamiUsesDirectGVFlash();
-  GVSharpFlashFileLoaded = false;
   GVSharpFlashDirty = false;
   GVSharpFlashPath.clear();
   GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
@@ -947,14 +870,8 @@ void KonamiInit(void)
 
       Log_InfoPrintf("KonamiGV: armed automatic Beat the Champ first-run flash recovery");
     }
-
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "Initialized direct GV Sharp flash: %s present=%u file_loaded=%u\n", gv_sharp_flash_path.c_str(),
-                   GVSharpFlashPresent ? 1 : 0, GVSharpFlashFileLoaded ? 1 : 0);
-      std::fclose(fp);
-    }
   }
+
   else if (game_name == "simpbowl")
   {
     KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
