@@ -1,4 +1,5 @@
 #include "konami_gv_scsi.h"
+#include "konami_gv_cdrom.h"
 
 #include "bus.h"
 #include "cdrom.h"
@@ -252,6 +253,8 @@ static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_l
 
 void KonamiGVScsiInitialize()
 {
+  KonamiGVCDROMInitialize();
+
   if (!ScsiIrqEvent)
   {
     ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
@@ -270,6 +273,7 @@ void KonamiGVScsiInitialize()
 
 void KonamiGVScsiShutdown()
 {
+  KonamiGVCDROMShutdown();
 }
 
 static void KonamiGVScsiAssertInterrupt()
@@ -284,28 +288,7 @@ void KonamiScsiIrqDeassert(void)
 
 static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
 {
-  const CDImage* media = g_cdrom.GetMedia();
-  CDImage* image = const_cast<CDImage*>(media);
-  if (!image)
-    return false;
-
-  if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
-    return false;
-
-  if (System::GetRunningCode() == "btchamp")
-  {
-    u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
-
-    if (image->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
-      return false;
-
-    // Beat the Champ's GV CHD presents its useful 2048-byte payload at the
-    // beginning of DuckStation's raw-sector buffer.
-    std::memcpy(sector, raw_sector, CDImage::DATA_SECTOR_SIZE);
-    return true;
-  }
-
-  return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
+  return KonamiGVCDROMReadDataSector(lba, sector);
 }
 
 // Legacy SCSI DMA / fake command execution.

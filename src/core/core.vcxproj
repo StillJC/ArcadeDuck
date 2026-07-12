@@ -51,6 +51,7 @@
     <ClCompile Include="host_interface_progress_callback.cpp" />
     <ClCompile Include="interrupt_controller.cpp" />
     <ClCompile Include="konami.cpp" />
+    <ClCompile Include="konami_gv_cdrom.cpp" />
     <ClCompile Include="konami_gv_scsi.cpp" />
     <ClCompile Include="libcrypt_game_codes.cpp" />
     <ClCompile Include="mdec.cpp" />
@@ -120,6 +121,7 @@
     <ClInclude Include="host_interface_progress_callback.h" />
     <ClInclude Include="interrupt_controller.h" />
     <ClInclude Include="konami.h" />
+    <ClInclude Include="konami_gv_cdrom.h" />
     <ClInclude Include="konami_gv_scsi.h" />
     <ClInclude Include="libcrypt_game_codes.h" />
     <ClInclude Include="mdec.h" />
