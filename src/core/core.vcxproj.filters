@@ -59,6 +59,7 @@
     <ClCompile Include="multitap.cpp" />
     <ClCompile Include="gpu_hw_d3d12.cpp" />
     <ClCompile Include="konami.cpp" />
+    <ClCompile Include="konami_gv_scsi.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="types.h" />
@@ -122,5 +123,6 @@
     <ClInclude Include="gpu_hw_d3d12.h" />
     <ClInclude Include="gdb_protocol.h" />
     <ClInclude Include="konami.h" />
+    <ClInclude Include="konami_gv_scsi.h" />
   </ItemGroup>
 </Project>
