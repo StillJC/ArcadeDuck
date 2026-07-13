@@ -107,6 +107,7 @@ void CDROM::Initialize()
 
 void CDROM::Shutdown()
 {
+  m_external_cdda_fifo.Clear();
   m_command_event.reset();
   m_command_second_response_event.reset();
   m_drive_event.reset();
@@ -154,6 +155,7 @@ void CDROM::Reset()
   m_next_cd_audio_volume_matrix[1][1] = 0x80;
   m_cd_audio_volume_matrix = m_next_cd_audio_volume_matrix;
   ResetAudioDecoder();
+  m_external_cdda_fifo.Clear();
 
   m_param_fifo.Clear();
   m_response_fifo.Clear();
@@ -195,6 +197,7 @@ void CDROM::SoftReset(TickCount ticks_late)
   m_last_cdda_report_frame_nibble = 0xFF;
 
   ResetAudioDecoder();
+  m_external_cdda_fifo.Clear();
 
   m_param_fifo.Clear();
   m_async_response_fifo.Clear();
