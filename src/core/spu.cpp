@@ -1868,8 +1868,11 @@ void SPU::Execute(TickCount ticks)
       right_sum += reverb_out_right;
 
       // Apply main volume after clamping. A maximum volume should not overflow here because both are 16-bit values.
-      *(output_frame++) = static_cast<s16>(ApplyVolume(Clamp16(left_sum), m_main_volume_left.current_level) * 4);
-      *(output_frame++) = static_cast<s16>(ApplyVolume(Clamp16(right_sum), m_main_volume_right.current_level) * 4);
+      *(output_frame++) =
+        static_cast<s16>(Clamp16(ApplyVolume(Clamp16(left_sum), m_main_volume_left.current_level) * 4));
+
+      *(output_frame++) =
+        static_cast<s16>(Clamp16(ApplyVolume(Clamp16(right_sum), m_main_volume_right.current_level) * 4));
       m_main_volume_left.Tick();
       m_main_volume_right.Tick();
 
