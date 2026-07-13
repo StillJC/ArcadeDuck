@@ -1,12 +1,8 @@
 #include "konami_gv_cdrom.h"
-
 #include "cdrom.h"
 #include "system.h"
 #include "timing_event.h"
-
 #include "common/cd_image.h"
-
-#include <cstdio>
 #include <cstring>
 #include <memory>
 
@@ -402,18 +398,6 @@ bool KonamiGVCDROMPlayAudioTrackIndex(u8 start_track, u8 start_index, u8 end_tra
     }
 
     s_konami_gv_cdda_read_lba++;
-  }
-
-  // DEBUG CODE
-  if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-  {
-    const u32 sector_count = static_cast<u32>(s_konami_gv_cdda_end_lba - s_konami_gv_cdda_lba);
-
-    std::fprintf(fp, "CDDA RANGE start_lba=%u end_lba=%u sectors=%u duration=%.2f seconds\n",
-                 static_cast<u32>(s_konami_gv_cdda_lba), static_cast<u32>(s_konami_gv_cdda_end_lba), sector_count,
-                 static_cast<double>(sector_count) / static_cast<double>(CDImage::FRAMES_PER_SECOND));
-
-    std::fclose(fp);
   }
 
   s_konami_gv_cdda_completed = false;
