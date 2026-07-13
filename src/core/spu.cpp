@@ -1869,8 +1869,11 @@ void SPU::Execute(TickCount ticks)
       s32 external_cdda_mix_left = 0;
       s32 external_cdda_mix_right = 0;
 
-      KonamiGVCDROMMixAudioFrame(external_cdda_left, external_cdda_right, &external_cdda_mix_left,
-                                 &external_cdda_mix_right);
+      if (!g_settings.cdrom_mute_cd_audio)
+      {
+        KonamiGVCDROMMixAudioFrame(external_cdda_left, external_cdda_right, &external_cdda_mix_left,
+                                   &external_cdda_mix_right);
+      }
 
       // DEBUG CODE
       static bool gv_cdda_debug_started = false;
