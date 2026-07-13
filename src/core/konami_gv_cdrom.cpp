@@ -180,18 +180,33 @@ bool KonamiGVCDROMReadDataSector(u32 lba, u8* sector)
   if (!s_konami_gv_cdrom_media->Seek(1, static_cast<CDImage::LBA>(lba)))
     return false;
 
+  u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
+
+  if (s_konami_gv_cdrom_media->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
+    return false;
+
   if (System::GetRunningCode() == "btchamp")
   {
-    u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
-
-    if (s_konami_gv_cdrom_media->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
-      return false;
-
     // Beat the Champ's GV CHD presents its useful 2048-byte payload at the
     // beginning of DuckStation's raw-sector buffer.
     std::memcpy(sector, raw_sector, CDImage::DATA_SECTOR_SIZE);
     return true;
   }
+
+  static constexpr u8 mode1_sync[12] = {0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00};
+
+  // Standard Mode 1 sectors place the 2048-byte user-data area after
+  // the 16-byte sync, address, and mode header.
+  if (std::memcmp(raw_sector, mode1_sync, sizeof(mode1_sync)) == 0 && raw_sector[15] == 0x01)
+  {
+    std::memcpy(sector, raw_sector + 16, CDImage::DATA_SECTOR_SIZE);
+
+    return true;
+  }
+
+  // Preserve the existing cooked-sector path for any other layout.
+  if (!s_konami_gv_cdrom_media->Seek(1, static_cast<CDImage::LBA>(lba)))
+    return false;
 
   return s_konami_gv_cdrom_media->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
 }
