@@ -420,10 +420,14 @@ void CDROM::PushExternalCDAudioFrames(const u32* frames, u32 frame_count)
 
   g_spu.GeneratePendingSamples();
 
-  const u32 frames_to_push = std::min<u32>(frame_count, m_external_cdda_fifo.GetSpace());
+  const u32 remaining_space = m_external_cdda_fifo.GetSpace();
 
-  if (frames_to_push > 0)
-    m_external_cdda_fifo.PushRange(frames, frames_to_push);
+  if (remaining_space < frame_count)
+  {
+    m_external_cdda_fifo.Remove(frame_count - remaining_space);
+  }
+
+  m_external_cdda_fifo.PushRange(frames, frame_count);
 }
 
 void CDROM::ClearExternalCDAudioFrames()
