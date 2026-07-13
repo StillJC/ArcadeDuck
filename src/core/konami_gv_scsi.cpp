@@ -94,6 +94,8 @@ struct KonamiGVNCR53CF96State
   u8 command_queue[2];
   u8 command_queue_count;
 
+  u8 interrupt_status;
+
   u32 transfer_count;
   u32 transfer_counter;
   u32 transfer_counter_mask;
@@ -131,8 +133,13 @@ static u32& ScsiSectorLba = ScsiController.sector_lba;
 
 static constexpr u8 NCR53CF96_FIFO_CAPACITY = 16;
 
+static constexpr u8 NCR53CF96_STATUS_VALID_GROUP_CODE = 0x08;
 static constexpr u8 NCR53CF96_STATUS_TERMINAL_COUNT = 0x10;
+static constexpr u8 NCR53CF96_STATUS_PARITY_ERROR = 0x20;
 static constexpr u8 NCR53CF96_STATUS_GROSS_ERROR = 0x40;
+static constexpr u8 NCR53CF96_STATUS_INTERRUPT = 0x80;
+
+static constexpr u8 NCR53CF96_INTERRUPT_FUNCTION_COMPLETE = 0x08;
 
 static constexpr u8 NCR53CF96_COMMAND_NOP = 0x00;
 static constexpr u8 NCR53CF96_COMMAND_FLUSH_FIFO = 0x01;
@@ -418,8 +425,8 @@ static void KonamiGVTraceScsiCommand()
                ScsiCommand[2], ScsiCommand[3], ScsiCommand[4], ScsiCommand[5], ScsiCommand[6], ScsiCommand[7],
                ScsiCommand[8], ScsiCommand[9], ScsiCommand[10], ScsiCommand[11], KonamiGVScsiCommandName(command),
                command, KonamiGVScsiTransferDirection(command), KonamiGVScsiExpectedTransferLength(ScsiCommand),
-               KonamiGVScsiTransferCounter(), ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE],
-               ScsiRegs[REG_FIFOSTATE]);
+               KonamiGVScsiTransferCounter(), ScsiRegs[REG_STATUS], ScsiController.interrupt_status,
+               ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
 
   switch (command)
   {
@@ -482,13 +489,13 @@ static void KonamiGVScsiResetController()
   ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
   ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
 }
-static void KonamiGVScsiAssertInterrupt();
+static void KonamiGVScsiAssertInterrupt(u8 Cause = NCR53CF96_INTERRUPT_FUNCTION_COMPLETE);
 static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
 {
   if (ScsiIrqEvent)
     ScsiIrqEvent->Deactivate();
 
-    KonamiGVScsiAssertInterrupt();
+  KonamiGVScsiAssertInterrupt();
 }
 
 void KonamiGVScsiInitialize()
@@ -512,9 +519,44 @@ void KonamiGVScsiShutdown()
   KonamiGVCDROMShutdown();
 }
 
-static void KonamiGVScsiAssertInterrupt()
+static void KonamiGVScsiAssertInterrupt(u8 Cause)
 {
+  ScsiController.interrupt_status |= Cause;
+  ScsiController.irq = true;
+
+  ScsiRegs[REG_STATUS] |= NCR53CF96_STATUS_INTERRUPT;
+
   g_interrupt_controller.InterruptRequest(InterruptController::IRQ::IRQ10);
+}
+
+static u8 KonamiGVScsiReadStatus()
+{
+  // Status bit 7 reflects the controller's actual interrupt-output state.
+  return static_cast<u8>((ScsiRegs[REG_STATUS] & ~NCR53CF96_STATUS_INTERRUPT) |
+                         (ScsiController.irq ? NCR53CF96_STATUS_INTERRUPT : 0));
+}
+
+static u8 KonamiGVScsiReadInterruptStatus()
+{
+  const u8 Value = ScsiController.interrupt_status;
+
+  if (Value != 0)
+  {
+    // Reading the Interrupt register acknowledges the pending controller
+    // interrupt and clears the latched Status/Sequence information.
+    ScsiController.interrupt_status = 0;
+    ScsiController.sequence_step = 0;
+    ScsiController.irq = false;
+
+    ScsiRegs[REG_STATUS] &= ~(NCR53CF96_STATUS_INTERRUPT | NCR53CF96_STATUS_GROSS_ERROR |
+                              NCR53CF96_STATUS_PARITY_ERROR | NCR53CF96_STATUS_VALID_GROUP_CODE);
+
+    ScsiRegs[REG_INTSTATE] = 0;
+
+    CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
+  }
+
+  return Value;
 }
 
 void KonamiScsiIrqDeassert(void)
@@ -786,12 +828,16 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
       Value = KonamiGVScsiReadCommand();
       break;
 
-    case REG_FIFOSTATE:
-      Value = KonamiGVScsiReadFIFOFlags();
+    case REG_STATUS:
+      Value = KonamiGVScsiReadStatus();
       break;
 
     case REG_IRQSTATE:
-      ScsiRegs[REG_STATUS] &= ~0x80U;
+      Value = KonamiGVScsiReadInterruptStatus();
+      break;
+
+    case REG_FIFOSTATE:
+      Value = KonamiGVScsiReadFIFOFlags();
       break;
   }
 }
@@ -825,7 +871,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       switch (ActiveCommand & 0x7FU)
       {
         case NCR53CF96_COMMAND_NOP:
-          ScsiRegs[REG_IRQSTATE] = 8;
           break;
 
         case NCR53CF96_COMMAND_FLUSH_FIFO:
@@ -836,8 +881,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           // Preserve the current legacy reset response for this checkpoint.
           // Full Reset Chip behavior will be connected separately.
           KonamiGVScsiClearFIFO();
-          ScsiRegs[REG_IRQSTATE] = 8;
-          ScsiRegs[REG_STATUS] |= 0x80;
           KonamiGVScsiAssertInterrupt();
           break;
         case 0x03:
@@ -947,7 +990,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           [[fallthrough]]; // ?? Why ??
 
         case 0x12:
-          ScsiRegs[REG_STATUS] |= 0x80U;
           ScsiRegs[REG_INTSTATE] = 0x06U;
           break;
 
