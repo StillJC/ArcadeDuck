@@ -74,7 +74,9 @@ static void KonamiGVCDROMCDDASectorEvent(void*, TickCount, TickCount)
 
   if (s_konami_gv_cdda_lba >= s_konami_gv_cdda_end_lba)
   {
-    s_konami_gv_cdda_lba = s_konami_gv_cdda_end_lba;
+    // The end LBA is exclusive. Keep subchannel position on the
+    // final sector that was actually played.
+    s_konami_gv_cdda_lba = s_konami_gv_cdda_end_lba - 1;
 
     s_konami_gv_cdda_playing = false;
     s_konami_gv_cdda_paused = false;
