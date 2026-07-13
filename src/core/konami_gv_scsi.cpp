@@ -308,21 +308,6 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
 
-  // DEBUG CODE
-  // Avoid synchronous logging for high-frequency READ SUB-CHANNEL polling.
-  if (ScsiCommand[0] != 0x42)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
-    {
-    std::fprintf(fp,
-                 "SCSI DMA ENTER pc=0x%08X control=0x%08X address=0x%08X value=0x%08X "
-                 "cmd=0x%02X read_size_initial=%zu status=0x%02X irq=0x%02X int=0x%02X fifo_state=0x%02X\n",
-                 CPU::g_state.current_instruction_pc, ControlBits, Address, Value, ScsiCommand[0], ReadSize,
-                 ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
-      std::fclose(fp);
-    }
-  }
-
   // Some Konami GV READ10 transfers use a DMA block count of 0.
   // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
   // we can recover the intended byte count directly from the command's sector count.
@@ -507,78 +492,16 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         break;
       }
       case 0x28:
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI READ10 start_lba=%u read_size=%zu address=0x%08X\n", ScsiSectorLba, ReadSize, Address);
-          std::fclose(fp);
-        }
-
         while (ReadSize >= 2048)
         {
           if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
           {
-            static int read10_data_debug_count = 0;
-
-            if (read10_data_debug_count < 20000)
-            {
-              u32 checksum = 0;
-
-              for (u32 i = 0; i < 2048; i++)
-                checksum = (checksum + Sector[i]) & 0xFFFFFFFFU;
-
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-              {
-                std::fprintf(fp,
-                             "SCSI READ10 DATA count=%d lba=%u sectors=%u address=0x%08X first=%02X %02X %02X %02X "
-                             "checksum=0x%08X\n",
-                             read10_data_debug_count, ScsiSectorLba,
-                             (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8], Address, Sector[0], Sector[1],
-                             Sector[2], Sector[3], checksum);
-                std::fclose(fp);
-              }
-
-              read10_data_debug_count++;
-            }
-
             std::memcpy(Ram + Address, Sector, 2048);
             CPU::CodeCache::InvalidateCodePages(Address, 2048 / sizeof(u32));
-
-            if (Address <= 0x00056D2C && (Address + 2048) > 0x00056D2C)
-            {
-              const u32 target_offset = 0x00056D2C - Address;
-              const u32 word_before = static_cast<u32>(Sector[target_offset - 4]) |
-                                      (static_cast<u32>(Sector[target_offset - 3]) << 8) |
-                                      (static_cast<u32>(Sector[target_offset - 2]) << 16) |
-                                      (static_cast<u32>(Sector[target_offset - 1]) << 24);
-              const u32 word_at = static_cast<u32>(Sector[target_offset + 0]) |
-                                  (static_cast<u32>(Sector[target_offset + 1]) << 8) |
-                                  (static_cast<u32>(Sector[target_offset + 2]) << 16) |
-                                  (static_cast<u32>(Sector[target_offset + 3]) << 24);
-              const u32 word_after = static_cast<u32>(Sector[target_offset + 4]) |
-                                     (static_cast<u32>(Sector[target_offset + 5]) << 8) |
-                                     (static_cast<u32>(Sector[target_offset + 6]) << 16) |
-                                     (static_cast<u32>(Sector[target_offset + 7]) << 24);
-
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-              {
-                std::fprintf(fp,
-                             "SCSI TARGET EPC LOAD lba=%u address=0x%08X target_offset=0x%X "
-                             "before=0x%08X at=0x%08X after=0x%08X\n",
-                             ScsiSectorLba, Address, target_offset, word_before, word_at, word_after);
-                std::fclose(fp);
-              }
-            }
           }
           else
           {
             std::memset(Ram + Address, 0, 2048);
-
-            if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-            {
-              std::fprintf(fp, "SCSI READ10 failed mounted sector read lba=%u address=0x%08X\n", ScsiSectorLba,
-                           Address);
-              std::fclose(fp);
-            }
           }
 
           ScsiSectorLba++;
@@ -592,23 +515,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
         const u32 response_size =
           static_cast<u32>(std::min<size_t>(ReadSize, KonamiGVScsiExpectedTransferLength(ScsiCommand)));
 
-        const u32 response_length = KonamiGVCDROMReadSubChannel(ScsiCommand, Ram + Address, response_size);
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp,
-                       "SCSI READ SUBCHANNEL response address=0x%08X requested=%u returned=%u "
-                       "status=0x%02X track=%u index=%u "
-                       "absolute=%02X %02X %02X %02X "
-                       "relative=%02X %02X %02X %02X\n",
-                       Address, response_size, response_length, response_length > 1 ? Ram[Address + 1] : 0,
-                       response_length > 6 ? Ram[Address + 6] : 0, response_length > 7 ? Ram[Address + 7] : 0,
-                       response_length > 11 ? Ram[Address + 8] : 0, response_length > 11 ? Ram[Address + 9] : 0,
-                       response_length > 11 ? Ram[Address + 10] : 0, response_length > 11 ? Ram[Address + 11] : 0,
-                       response_length > 15 ? Ram[Address + 12] : 0, response_length > 15 ? Ram[Address + 13] : 0,
-                       response_length > 15 ? Ram[Address + 14] : 0, response_length > 15 ? Ram[Address + 15] : 0);
-          std::fclose(fp);
-        }
+        KonamiGVCDROMReadSubChannel(ScsiCommand, Ram + Address, response_size);
         break;
       }
       default:
