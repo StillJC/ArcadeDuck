@@ -63,17 +63,180 @@ enum
   REG_DATAALIGN       // data alignment (write only)
 };
 
-static u8 ScsiRegs[16];
-static u8 ScsiFifo[16];
-static u8 ScsiFifoPtr;
-static u8 ScsiCommand[12];
-static bool ScsiIsRead;
-static u32 ScsiSectorLba;
-static bool ScsiAudioPlaying;
-static bool ScsiAudioPaused;
-static u8 ScsiAudioTrack;
-static u8 ScsiAudioIndex;
-static u32 ScsiAudioRelativeLba;
+enum class KonamiGVNCR53CF96Mode : u8
+{
+  Disconnected,
+  Target,
+  Initiator
+};
+
+enum class KonamiGVNCR53CF96DmaDirection : u8
+{
+  None,
+  DeviceToHost,
+  HostToDevice
+};
+
+struct KonamiGVNCR53CF96State
+{
+  // Existing legacy register/FIFO/CDB state.
+  // These remain connected to the current command path until each controller
+  // behavior is replaced in later checkpoints.
+  u8 registers[16];
+  u8 fifo[16];
+  u8 fifo_count;
+  u8 cdb[12];
+  bool data_in;
+  u32 sector_lba;
+
+  // NCR53CF96 controller foundation.
+  u8 command_queue[2];
+  u8 command_queue_count;
+
+  u32 transfer_count;
+  u32 transfer_counter;
+  u32 transfer_counter_mask;
+
+  u8 sequence_step;
+  u8 clock_factor;
+  u8 sync_period;
+  u8 sync_offset;
+
+  u8 destination_id;
+  u8 selection_timeout;
+
+  u32 controller_state;
+  u8 transfer_phase;
+
+  KonamiGVNCR53CF96Mode mode;
+  KonamiGVNCR53CF96DmaDirection dma_direction;
+
+  bool dma_command;
+  bool irq;
+  bool drq;
+};
+
+static KonamiGVNCR53CF96State ScsiController;
+
+// Temporary compatibility aliases.
+//
+// These preserve the existing legacy command/response behavior while its state
+// is migrated into ScsiController one checkpoint at a time.
+static u8 (&ScsiRegs)[16] = ScsiController.registers;
+static u8 (&ScsiFifo)[16] = ScsiController.fifo;
+static u8 (&ScsiCommand)[12] = ScsiController.cdb;
+static bool& ScsiIsRead = ScsiController.data_in;
+static u32& ScsiSectorLba = ScsiController.sector_lba;
+
+static constexpr u8 NCR53CF96_FIFO_CAPACITY = 16;
+static constexpr u8 NCR53CF96_STATUS_TERMINAL_COUNT = 0x10;
+static constexpr u8 NCR53CF96_CONFIG2_FEATURES_ENABLE = 0x08;
+
+static constexpr u32 NCR53CF96_FAMILY_ID = 0x04;
+static constexpr u32 NCR53CF96_REVISION_LEVEL = 0x02;
+
+static u8 KonamiGVScsiReadTransferCounter(u8 Register)
+{
+  switch (Register)
+  {
+    case REG_XFERCNTLOW:
+      return static_cast<u8>(ScsiController.transfer_counter);
+
+    case REG_XFERCNTMID:
+      return static_cast<u8>(ScsiController.transfer_counter >> 8);
+
+    case REG_XFERCNTHI:
+      return static_cast<u8>(ScsiController.transfer_counter >> 16);
+
+    default:
+      return 0;
+  }
+}
+
+static void KonamiGVScsiWriteTransferCount(u8 Register, u8 Value)
+{
+  switch (Register)
+  {
+    case REG_XFERCNTLOW:
+      ScsiController.transfer_count = (ScsiController.transfer_count & 0x00FFFF00U) | static_cast<u32>(Value);
+      break;
+
+    case REG_XFERCNTMID:
+      ScsiController.transfer_count = (ScsiController.transfer_count & 0x00FF00FFU) | (static_cast<u32>(Value) << 8);
+      break;
+
+    case REG_XFERCNTHI:
+      ScsiController.transfer_count = (ScsiController.transfer_count & 0x0000FFFFU) | (static_cast<u32>(Value) << 16);
+      break;
+
+    default:
+      break;
+  }
+}
+
+static void KonamiGVScsiLoadTransferCounter(bool DmaCommand)
+{
+  ScsiController.dma_command = DmaCommand;
+
+  if (!DmaCommand)
+  {
+    ScsiController.transfer_counter = 0;
+    return;
+  }
+
+  ScsiController.transfer_counter = ScsiController.transfer_count & ScsiController.transfer_counter_mask;
+
+  // Terminal Count is cleared when a DMA command loads the active counter,
+  // not merely when software writes the transfer-count registers.
+  ScsiRegs[REG_STATUS] &= ~NCR53CF96_STATUS_TERMINAL_COUNT;
+
+  // Match the 53CF94/96 identification behavior modeled by MAME.
+  // With SCSI-2 Features disabled, the next DMA counter load can expose
+  // the controller family and revision through the 24-bit counter.
+  if ((ScsiRegs[REG_CTRL2] & NCR53CF96_CONFIG2_FEATURES_ENABLE) == 0)
+  {
+    ScsiController.transfer_count = (1U << 23) | (NCR53CF96_FAMILY_ID << 19) | (NCR53CF96_REVISION_LEVEL << 16) |
+                                    (ScsiController.transfer_count & 0x0000FFFFU);
+  }
+}
+
+static u8 KonamiGVScsiReadFIFO()
+{
+  if (ScsiController.fifo_count == 0)
+    return 0;
+
+  const u8 Value = ScsiController.fifo[0];
+
+  ScsiController.fifo_count--;
+
+  if (ScsiController.fifo_count != 0)
+  {
+    std::memmove(ScsiController.fifo, ScsiController.fifo + 1, ScsiController.fifo_count);
+  }
+
+  return Value;
+}
+
+static void KonamiGVScsiWriteFIFO(u8 Value)
+{
+  if (ScsiController.fifo_count >= NCR53CF96_FIFO_CAPACITY)
+    return;
+
+  ScsiController.fifo[ScsiController.fifo_count] = Value;
+  ScsiController.fifo_count++;
+}
+
+static void KonamiGVScsiClearFIFO()
+{
+  // Clearing the FIFO changes its valid byte count. The backing bytes are
+  // intentionally retained for the temporary legacy command extraction path.
+  ScsiController.fifo_count = 0;
+}
+
+static u8 KonamiGVScsiReadFIFOFlags()
+{
+  return ScsiController.fifo_count & 0x1FU;
+}
 
 // DEBUG CODE
 // Readable trace helpers for the legacy Konami GV SCSI shim.
@@ -165,8 +328,7 @@ static u32 KonamiGVScsiExpectedTransferLength(const u8* cdb)
 
 static u32 KonamiGVScsiTransferCounter()
 {
-  return static_cast<u32>(ScsiRegs[REG_XFERCNTLOW]) | (static_cast<u32>(ScsiRegs[REG_XFERCNTMID]) << 8) |
-         (static_cast<u32>(ScsiRegs[REG_XFERCNTHI]) << 16);
+  return ScsiController.transfer_counter;
 }
 
 static void KonamiGVTraceScsiCommand()
@@ -248,6 +410,18 @@ static void KonamiGVTraceScsiCommand()
 }
 
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
+static void KonamiGVScsiResetController()
+{
+  ScsiController = {};
+
+  // NCR53CF96 reset defaults used as the foundation for the new controller.
+  ScsiController.transfer_counter_mask = 0xFFFF;
+  ScsiController.clock_factor = 2;
+  ScsiController.sync_period = 5;
+
+  ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
+  ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
+}
 static void KonamiGVScsiAssertInterrupt();
 static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
 {
@@ -270,11 +444,7 @@ void KonamiGVScsiInitialize()
     ScsiIrqEvent->Deactivate();
   }
 
-  ScsiAudioPlaying = false;
-  ScsiAudioPaused = false;
-  ScsiAudioTrack = 1;
-  ScsiAudioIndex = 1;
-  ScsiAudioRelativeLba = 0;
+  KonamiGVScsiResetController();
 }
 
 void KonamiGVScsiShutdown()
@@ -542,9 +712,20 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
 
   switch (Register)
   {
-    case REG_FIFO:
-      Value = 0;
+    case REG_XFERCNTLOW:
+    case REG_XFERCNTMID:
+    case REG_XFERCNTHI:
+      Value = KonamiGVScsiReadTransferCounter(Register);
       break;
+
+    case REG_FIFO:
+      Value = KonamiGVScsiReadFIFO();
+      break;
+
+    case REG_FIFOSTATE:
+      Value = KonamiGVScsiReadFIFOFlags();
+      break;
+
     case REG_IRQSTATE:
       ScsiRegs[REG_STATUS] &= ~0x80U;
       break;
@@ -560,17 +741,21 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
     case REG_XFERCNTLOW:
     case REG_XFERCNTMID:
     case REG_XFERCNTHI:
-      ScsiRegs[REG_STATUS] &= ~0x10;
+      KonamiGVScsiWriteTransferCount(Register, static_cast<u8>(Value));
       break;
     case REG_FIFO:
-      ScsiFifo[ScsiFifoPtr++] = (u8)Value;
-      if (ScsiFifoPtr > 15)
-      {
-        ScsiFifoPtr = 15;
-      }
+      KonamiGVScsiWriteFIFO(static_cast<u8>(Value));
+      break;
+    case REG_CTRL2:
+      ScsiController.transfer_counter_mask = (Value & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
       break;
     case REG_COMMAND:
-      ScsiFifoPtr = 0;
+      // The current legacy command path consumes the queued FIFO payload
+      // synchronously. Proper command-driven FIFO draining will replace this
+      // during the NCR command/phase sequencing checkpoints.
+      KonamiGVScsiClearFIFO();
+
+      KonamiGVScsiLoadTransferCounter((Value & 0x80U) != 0);
 
       switch (Value & 0x7F)
       {
