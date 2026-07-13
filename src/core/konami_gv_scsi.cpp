@@ -85,6 +85,7 @@ struct KonamiGVNCR53CF96State
   u8 registers[16];
   u8 fifo[16];
   u8 fifo_count;
+  u8 identify_message;
   u8 cdb[12];
   bool data_in;
   u32 sector_lba;
@@ -129,7 +130,15 @@ static bool& ScsiIsRead = ScsiController.data_in;
 static u32& ScsiSectorLba = ScsiController.sector_lba;
 
 static constexpr u8 NCR53CF96_FIFO_CAPACITY = 16;
+
 static constexpr u8 NCR53CF96_STATUS_TERMINAL_COUNT = 0x10;
+static constexpr u8 NCR53CF96_STATUS_GROSS_ERROR = 0x40;
+
+static constexpr u8 NCR53CF96_COMMAND_NOP = 0x00;
+static constexpr u8 NCR53CF96_COMMAND_FLUSH_FIFO = 0x01;
+static constexpr u8 NCR53CF96_COMMAND_RESET_CHIP = 0x02;
+static constexpr u8 NCR53CF96_COMMAND_RESET_BUS = 0x03;
+static constexpr u8 NCR53CF96_COMMAND_SELECT_WITH_ATN = 0x42;
 static constexpr u8 NCR53CF96_CONFIG2_FEATURES_ENABLE = 0x08;
 
 static constexpr u32 NCR53CF96_FAMILY_ID = 0x04;
@@ -228,14 +237,65 @@ static void KonamiGVScsiWriteFIFO(u8 Value)
 
 static void KonamiGVScsiClearFIFO()
 {
-  // Clearing the FIFO changes its valid byte count. The backing bytes are
-  // intentionally retained for the temporary legacy command extraction path.
   ScsiController.fifo_count = 0;
 }
 
 static u8 KonamiGVScsiReadFIFOFlags()
 {
   return ScsiController.fifo_count & 0x1FU;
+}
+
+static u8 KonamiGVScsiReadCommand()
+{
+  return ScsiController.command_queue[0];
+}
+
+static bool KonamiGVScsiQueueCommand(u8 Value)
+{
+  const u8 Command = Value & 0x7FU;
+
+  // Reset commands execute from the front of the command register.
+  if (Command == NCR53CF96_COMMAND_RESET_CHIP || Command == NCR53CF96_COMMAND_RESET_BUS)
+    ScsiController.command_queue_count = 0;
+
+  if (ScsiController.command_queue_count >= 2)
+  {
+    ScsiRegs[REG_STATUS] |= NCR53CF96_STATUS_GROSS_ERROR;
+    return false;
+  }
+
+  ScsiController.command_queue[ScsiController.command_queue_count] = Value;
+  ScsiController.command_queue_count++;
+
+  // The current legacy controller executes commands synchronously, so only
+  // the command at the front of the queue starts during this checkpoint.
+  return ScsiController.command_queue_count == 1;
+}
+
+static void KonamiGVScsiCompleteCommand()
+{
+  if (ScsiController.command_queue_count == 0)
+    return;
+
+  ScsiController.command_queue_count--;
+
+  if (ScsiController.command_queue_count != 0)
+    ScsiController.command_queue[0] = ScsiController.command_queue[1];
+}
+
+static void KonamiGVScsiConsumeSelectionFIFO()
+{
+  std::memset(ScsiController.cdb, 0, sizeof(ScsiController.cdb));
+
+  ScsiController.identify_message = (ScsiController.fifo_count != 0) ? ScsiController.fifo[0] : 0;
+
+  const u32 CdbSize =
+    (ScsiController.fifo_count > 1) ? std::min<u32>(sizeof(ScsiController.cdb), ScsiController.fifo_count - 1) : 0;
+
+  if (CdbSize != 0)
+    std::memcpy(ScsiController.cdb, ScsiController.fifo + 1, CdbSize);
+
+  KonamiGVScsiClearFIFO();
 }
 
 // DEBUG CODE
@@ -722,6 +782,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
       Value = KonamiGVScsiReadFIFO();
       break;
 
+    case REG_COMMAND:
+      Value = KonamiGVScsiReadCommand();
+      break;
+
     case REG_FIFOSTATE:
       Value = KonamiGVScsiReadFIFOFlags();
       break;
@@ -750,19 +814,28 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       ScsiController.transfer_counter_mask = (Value & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
       break;
     case REG_COMMAND:
-      // The current legacy command path consumes the queued FIFO payload
-      // synchronously. Proper command-driven FIFO draining will replace this
-      // during the NCR command/phase sequencing checkpoints.
-      KonamiGVScsiClearFIFO();
+    {
+      if (!KonamiGVScsiQueueCommand(static_cast<u8>(Value)))
+        break;
 
-      KonamiGVScsiLoadTransferCounter((Value & 0x80U) != 0);
+      const u8 ActiveCommand = ScsiController.command_queue[0];
 
-      switch (Value & 0x7F)
+      KonamiGVScsiLoadTransferCounter((ActiveCommand & 0x80U) != 0);
+
+      switch (ActiveCommand & 0x7FU)
       {
-        case 0x00:
+        case NCR53CF96_COMMAND_NOP:
           ScsiRegs[REG_IRQSTATE] = 8;
           break;
-        case 0x02:
+
+        case NCR53CF96_COMMAND_FLUSH_FIFO:
+          KonamiGVScsiClearFIFO();
+          break;
+
+        case NCR53CF96_COMMAND_RESET_CHIP:
+          // Preserve the current legacy reset response for this checkpoint.
+          // Full Reset Chip behavior will be connected separately.
+          KonamiGVScsiClearFIFO();
           ScsiRegs[REG_IRQSTATE] = 8;
           ScsiRegs[REG_STATUS] |= 0x80;
           KonamiGVScsiAssertInterrupt();
@@ -771,8 +844,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           ScsiRegs[REG_INTSTATE] = 0x04;
           KonamiGVScsiAssertInterrupt();
           break;
-        case 0x42:
-          if (ScsiFifo[1] == 0 || ScsiFifo[1] == 0x48 || ScsiFifo[1] == 0x4B)
+        case NCR53CF96_COMMAND_SELECT_WITH_ATN:
+          KonamiGVScsiConsumeSelectionFIFO();
+
+          if (ScsiCommand[0] == 0 || ScsiCommand[0] == 0x48 || ScsiCommand[0] == 0x4B)
           {
             ScsiRegs[REG_INTSTATE] = 0x06;
           }
@@ -781,15 +856,9 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             ScsiRegs[REG_INTSTATE] = 0x04;
           }
 
-          for (int i = 0; i < 12; i++)
-          {
-            ScsiCommand[i] = ScsiFifo[1 + i];
-          }
-
           // DEBUG CODE
           KonamiGVTraceScsiCommand();
 
-          ScsiIsRead = false;
           ScsiIsRead = false;
           switch (ScsiCommand[0])
           {
@@ -849,7 +918,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             }
 
             case 0x28:
-              ScsiSectorLba = (ScsiFifo[3] << 24) | (ScsiFifo[4] << 16) | (ScsiFifo[5] << 8) | ScsiFifo[6];
+              ScsiSectorLba = (static_cast<u32>(ScsiCommand[2]) << 24) | (static_cast<u32>(ScsiCommand[3]) << 16) |
+                              (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
               ScsiIsRead = true;
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
               break;
@@ -885,7 +955,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           // Log_WarningPrintf("Unknown command %02X!", value);
           break;
       }
+
+      KonamiGVScsiCompleteCommand();
       break;
+    }
   }
   if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE)
   {
