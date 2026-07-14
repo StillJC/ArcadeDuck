@@ -539,10 +539,6 @@ static u8 KonamiGVScsiReadStatus()
 static void KonamiGVScsiSetSequenceStep(u8 Value)
 {
   ScsiController.sequence_step = Value & 0x07U;
-
-  // Preserve compatibility with the remaining legacy trace and command path
-  // while Sequence Step ownership moves into ScsiController.
-  ScsiRegs[REG_INTSTATE] = ScsiController.sequence_step;
 }
 
 static u8 KonamiGVScsiReadInterruptStatus()
