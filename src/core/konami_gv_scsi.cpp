@@ -95,6 +95,7 @@ struct KonamiGVNCR53CF96State
   u8 command_queue_count;
 
   u8 interrupt_status;
+  u8 config1;
   u8 config2;
 
   u32 transfer_count;
@@ -848,6 +849,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
       Value = KonamiGVScsiReadFIFOFlags();
       break;
 
+    case REG_CTRL1:
+      Value = ScsiController.config1;
+      break;
+
     case REG_CTRL2:
       Value = ScsiController.config2;
       break;
@@ -887,6 +892,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
     case REG_CLOCKFCTR:
       ScsiController.clock_factor = static_cast<u8>(Value & 0x07U);
+      break;
+
+    case REG_CTRL1:
+      ScsiController.config1 = static_cast<u8>(Value);
       break;
 
     case REG_CTRL2:
