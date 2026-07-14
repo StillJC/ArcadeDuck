@@ -162,10 +162,6 @@ static constexpr u32 NCR53CF96_REVISION_LEVEL = 0x02;
 static void KonamiGVScsiWriteStatus(u8 Value)
 {
   ScsiController.status = Value;
-
-  // Preserve the legacy backing-register mirror while Status ownership moves
-  // into ScsiController.
-  ScsiRegs[REG_STATUS] = Value;
 }
 
 static void KonamiGVScsiSetStatusBits(u8 Bits)
