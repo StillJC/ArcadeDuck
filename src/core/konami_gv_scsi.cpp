@@ -95,6 +95,7 @@ struct KonamiGVNCR53CF96State
   u8 command_queue_count;
 
   u8 interrupt_status;
+  u8 config2;
 
   u32 transfer_count;
   u32 transfer_counter;
@@ -209,7 +210,7 @@ static void KonamiGVScsiLoadTransferCounter(bool DmaCommand)
   // Match the 53CF94/96 identification behavior modeled by MAME.
   // With SCSI-2 Features disabled, the next DMA counter load can expose
   // the controller family and revision through the 24-bit counter.
-  if ((ScsiRegs[REG_CTRL2] & NCR53CF96_CONFIG2_FEATURES_ENABLE) == 0)
+  if ((ScsiController.config2 & NCR53CF96_CONFIG2_FEATURES_ENABLE) == 0)
   {
     ScsiController.transfer_count = (1U << 23) | (NCR53CF96_FAMILY_ID << 19) | (NCR53CF96_REVISION_LEVEL << 16) |
                                     (ScsiController.transfer_count & 0x0000FFFFU);
@@ -846,6 +847,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
     case REG_FIFOSTATE:
       Value = KonamiGVScsiReadFIFOFlags();
       break;
+
+    case REG_CTRL2:
+      Value = ScsiController.config2;
+      break;
   }
 }
 
@@ -885,7 +890,9 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       break;
 
     case REG_CTRL2:
-      ScsiController.transfer_counter_mask = (Value & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
+      ScsiController.config2 = static_cast<u8>(Value);
+      ScsiController.transfer_counter_mask =
+        (ScsiController.config2 & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
       break;
     case REG_COMMAND:
     {
