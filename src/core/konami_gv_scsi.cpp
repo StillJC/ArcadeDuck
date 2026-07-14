@@ -503,6 +503,7 @@ static void KonamiGVTraceScsiCommand()
 }
 
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
+
 static void KonamiGVScsiResetController()
 {
   ScsiController = {};
@@ -515,6 +516,65 @@ static void KonamiGVScsiResetController()
   ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
   ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
 }
+
+static void KonamiGVScsiResetChip()
+{
+  // Destination ID and selection timeout are not changed by controller reset.
+  const u8 DestinationId = ScsiController.destination_id;
+  const u8 SelectionTimeout = ScsiController.selection_timeout;
+
+  // Config 1 retains only the controller's encoded SCSI ID.
+  const u8 Config1Id = ScsiController.config1 & 0x07U;
+
+  if (ScsiIrqEvent)
+    ScsiIrqEvent->Deactivate();
+
+  std::memset(ScsiController.fifo, 0, sizeof(ScsiController.fifo));
+  ScsiController.fifo_count = 0;
+
+  ScsiController.identify_message = 0;
+  std::memset(ScsiController.cdb, 0, sizeof(ScsiController.cdb));
+  ScsiController.data_in = false;
+  ScsiController.sector_lba = 0;
+
+  std::memset(ScsiController.command_queue, 0, sizeof(ScsiController.command_queue));
+  ScsiController.command_queue_count = 0;
+
+  ScsiController.status = 0;
+  ScsiController.interrupt_status = 0;
+
+  ScsiController.config1 = Config1Id;
+  ScsiController.config2 = 0;
+  ScsiController.config3 = 0;
+  ScsiController.config4 = 0;
+  ScsiController.fifo_alignment = 0;
+  ScsiController.test_mode = false;
+
+  ScsiController.transfer_count = 0;
+  ScsiController.transfer_counter = 0;
+  ScsiController.transfer_counter_mask = 0x0000FFFFU;
+
+  ScsiController.sequence_step = 0;
+  ScsiController.clock_factor = 2;
+  ScsiController.sync_period = 5;
+  ScsiController.sync_offset = 0;
+
+  ScsiController.destination_id = DestinationId;
+  ScsiController.selection_timeout = SelectionTimeout;
+
+  ScsiController.controller_state = 0;
+  ScsiController.transfer_phase = 0;
+
+  ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
+  ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
+
+  ScsiController.dma_command = false;
+  ScsiController.irq = false;
+  ScsiController.drq = false;
+
+  CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
+}
+
 static void KonamiGVScsiAssertInterrupt(u8 Cause = NCR53CF96_INTERRUPT_FUNCTION_COMPLETE);
 static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
 {
@@ -982,10 +1042,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           break;
 
         case NCR53CF96_COMMAND_RESET_CHIP:
-          // Preserve the current legacy reset response for this checkpoint.
-          // Full Reset Chip behavior will be connected separately.
-          KonamiGVScsiClearFIFO();
-          KonamiGVScsiAssertInterrupt();
+          KonamiGVScsiResetChip();
           break;
         case 0x03:
           KonamiGVScsiSetSequenceStep(0x04);
