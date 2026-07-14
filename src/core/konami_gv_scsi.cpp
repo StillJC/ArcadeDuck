@@ -536,6 +536,15 @@ static u8 KonamiGVScsiReadStatus()
                          (ScsiController.irq ? NCR53CF96_STATUS_INTERRUPT : 0));
 }
 
+static void KonamiGVScsiSetSequenceStep(u8 Value)
+{
+  ScsiController.sequence_step = Value & 0x07U;
+
+  // Preserve compatibility with the remaining legacy trace and command path
+  // while Sequence Step ownership moves into ScsiController.
+  ScsiRegs[REG_INTSTATE] = ScsiController.sequence_step;
+}
+
 static u8 KonamiGVScsiReadInterruptStatus()
 {
   const u8 Value = ScsiController.interrupt_status;
@@ -545,13 +554,11 @@ static u8 KonamiGVScsiReadInterruptStatus()
     // Reading the Interrupt register acknowledges the pending controller
     // interrupt and clears the latched Status/Sequence information.
     ScsiController.interrupt_status = 0;
-    ScsiController.sequence_step = 0;
+    KonamiGVScsiSetSequenceStep(0);
     ScsiController.irq = false;
 
     ScsiRegs[REG_STATUS] &= ~(NCR53CF96_STATUS_INTERRUPT | NCR53CF96_STATUS_GROSS_ERROR |
                               NCR53CF96_STATUS_PARITY_ERROR | NCR53CF96_STATUS_VALID_GROUP_CODE);
-
-    ScsiRegs[REG_INTSTATE] = 0;
 
     CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
   }
@@ -905,7 +912,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           KonamiGVScsiAssertInterrupt();
           break;
         case 0x03:
-          ScsiRegs[REG_INTSTATE] = 0x04;
+          KonamiGVScsiSetSequenceStep(0x04);
           KonamiGVScsiAssertInterrupt();
           break;
         case NCR53CF96_COMMAND_SELECT_WITH_ATN:
@@ -913,11 +920,11 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
           if (ScsiCommand[0] == 0 || ScsiCommand[0] == 0x48 || ScsiCommand[0] == 0x4B)
           {
-            ScsiRegs[REG_INTSTATE] = 0x06;
+            KonamiGVScsiSetSequenceStep(0x06);
           }
           else
           {
-            ScsiRegs[REG_INTSTATE] = 0x04;
+            KonamiGVScsiSetSequenceStep(0x04);
           }
 
           // DEBUG CODE
@@ -951,7 +958,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
                 KonamiGVCDROMPlayAudioTrackIndex(ScsiCommand[4], ScsiCommand[5], ScsiCommand[7], ScsiCommand[8]);
 
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
-              ScsiRegs[REG_INTSTATE] = 0x04U;
+              KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
               {
@@ -970,7 +977,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               KonamiGVCDROMPauseAudio(resume);
 
               ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
-              ScsiRegs[REG_INTSTATE] = 0x04U;
+              KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
               {
@@ -998,7 +1005,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           if (Value & 0x80U)
           {
             ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 3;
-            ScsiRegs[REG_INTSTATE] = 0x00;
+            KonamiGVScsiSetSequenceStep(0x00);
             KonamiGVScsiAssertInterrupt();
             break;
           }
@@ -1007,11 +1014,11 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
         case 0x11:
           KonamiGVScsiAssertInterrupt();
           ScsiRegs[REG_STATUS] &= ~0x87;
-          ScsiRegs[REG_INTSTATE] = 0x00;
+          KonamiGVScsiSetSequenceStep(0x00);
           [[fallthrough]]; // ?? Why ??
 
         case 0x12:
-          ScsiRegs[REG_INTSTATE] = 0x06U;
+          KonamiGVScsiSetSequenceStep(0x06U);
           KonamiGVScsiAssertInterrupt();
           break;
 
