@@ -146,6 +146,9 @@ static constexpr u8 NCR53CF96_STATUS_GROSS_ERROR = 0x40;
 static constexpr u8 NCR53CF96_STATUS_INTERRUPT = 0x80;
 
 static constexpr u8 NCR53CF96_INTERRUPT_FUNCTION_COMPLETE = 0x08;
+static constexpr u8 NCR53CF96_INTERRUPT_SCSI_RESET = 0x80;
+
+static constexpr u8 NCR53CF96_CONFIG1_DISABLE_RESET_INTERRUPT = 0x40;
 
 static constexpr u8 NCR53CF96_COMMAND_NOP = 0x00;
 static constexpr u8 NCR53CF96_COMMAND_FLUSH_FIFO = 0x01;
@@ -156,6 +159,9 @@ static constexpr u8 NCR53CF96_CONFIG2_FEATURES_ENABLE = 0x08;
 
 static constexpr u32 NCR53CF96_FAMILY_ID = 0x04;
 static constexpr u32 NCR53CF96_REVISION_LEVEL = 0x02;
+
+static constexpr u32 NCR53CF96_CLOCK_HZ = 16'000'000U;
+static constexpr u32 NCR53CF96_RESET_BUS_DELAY_CYCLES = 130U;
 
 static void KonamiGVScsiWriteStatus(u8 Value)
 {
@@ -503,10 +509,12 @@ static void KonamiGVTraceScsiCommand()
 }
 
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
+static bool ScsiBusResetPending;
 
 static void KonamiGVScsiResetController()
 {
   ScsiController = {};
+  ScsiBusResetPending = false;
 
   // NCR53CF96 reset defaults used as the foundation for the new controller.
   ScsiController.transfer_counter_mask = 0xFFFF;
@@ -528,6 +536,8 @@ static void KonamiGVScsiResetChip()
 
   if (ScsiIrqEvent)
     ScsiIrqEvent->Deactivate();
+
+  ScsiBusResetPending = false;
 
   std::memset(ScsiController.fifo, 0, sizeof(ScsiController.fifo));
   ScsiController.fifo_count = 0;
@@ -576,10 +586,49 @@ static void KonamiGVScsiResetChip()
 }
 
 static void KonamiGVScsiAssertInterrupt(u8 Cause = NCR53CF96_INTERRUPT_FUNCTION_COMPLETE);
+
+static TickCount KonamiGVScsiGetResetBusDelayTicks()
+{
+  const u32 ClockFactor = (ScsiController.clock_factor != 0) ? ScsiController.clock_factor : 8U;
+
+  const u64 DeviceClocks = static_cast<u64>(NCR53CF96_RESET_BUS_DELAY_CYCLES) * static_cast<u64>(ClockFactor);
+
+  const u64 SystemTicks =
+    ((DeviceClocks * static_cast<u64>(System::MASTER_CLOCK)) + NCR53CF96_CLOCK_HZ - 1U) / NCR53CF96_CLOCK_HZ;
+
+  return System::ScaleTicksToOverclock(static_cast<TickCount>(SystemTicks));
+}
+
+static void KonamiGVScsiCompleteBusReset()
+{
+  ScsiBusResetPending = false;
+
+  std::memset(ScsiController.command_queue, 0, sizeof(ScsiController.command_queue));
+  ScsiController.command_queue_count = 0;
+
+  ScsiController.controller_state = 0;
+  ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
+
+  ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
+  ScsiController.dma_command = false;
+  ScsiController.drq = false;
+
+  KonamiGVScsiSetPhase(0);
+
+  if ((ScsiController.config1 & NCR53CF96_CONFIG1_DISABLE_RESET_INTERRUPT) == 0)
+    KonamiGVScsiAssertInterrupt(NCR53CF96_INTERRUPT_SCSI_RESET);
+}
+
 static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
 {
   if (ScsiIrqEvent)
     ScsiIrqEvent->Deactivate();
+
+  if (ScsiBusResetPending)
+  {
+    KonamiGVScsiCompleteBusReset();
+    return;
+  }
 
   KonamiGVScsiAssertInterrupt();
 }
@@ -1044,10 +1093,21 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
         case NCR53CF96_COMMAND_RESET_CHIP:
           KonamiGVScsiResetChip();
           break;
-        case 0x03:
-          KonamiGVScsiSetSequenceStep(0x04);
-          KonamiGVScsiAssertInterrupt();
-          break;
+        case NCR53CF96_COMMAND_RESET_BUS:
+          ScsiBusResetPending = true;
+
+          if (ScsiIrqEvent)
+          {
+            ScsiIrqEvent->Schedule(KonamiGVScsiGetResetBusDelayTicks());
+          }
+          else
+          {
+            KonamiGVScsiCompleteBusReset();
+          }
+
+          // Reset SCSI Bus remains at the front of the command queue until
+          // delayed reset completion clears the queue.
+          return;
         case NCR53CF96_COMMAND_SELECT_WITH_ATN:
           KonamiGVScsiConsumeSelectionFIFO();
 
