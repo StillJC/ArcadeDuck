@@ -98,6 +98,7 @@ struct KonamiGVNCR53CF96State
   u8 config1;
   u8 config2;
   u8 config3;
+  u8 config4;
 
   u32 transfer_count;
   u32 transfer_counter;
@@ -861,6 +862,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
     case REG_CTRL3:
       Value = ScsiController.config3;
       break;
+
+    case REG_CTRL4:
+      Value = ScsiController.config4;
+      break;
   }
 }
 
@@ -911,6 +916,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
     case REG_CTRL3:
       ScsiController.config3 = static_cast<u8>(Value);
+      break;
+
+    case REG_CTRL4:
+      ScsiController.config4 = static_cast<u8>(Value);
       break;
 
     case REG_COMMAND:
@@ -1058,7 +1067,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
     }
   }
   if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE &&
-      Register != REG_CTRL1 && Register != REG_CTRL2)
+      Register != REG_CTRL1 && Register != REG_CTRL2 && Register != REG_CTRL3 && Register != REG_CTRL4)
   {
     ScsiRegs[Register] = (uint8_t)Value;
   }
