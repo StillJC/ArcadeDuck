@@ -991,6 +991,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
         case 0x12:
           ScsiRegs[REG_INTSTATE] = 0x06U;
+          KonamiGVScsiAssertInterrupt();
           break;
 
         default:
