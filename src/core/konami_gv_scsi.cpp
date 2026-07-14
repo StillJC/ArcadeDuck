@@ -1048,7 +1048,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
     }
   }
   if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE &&
-      Register != REG_CTRL2)
+      Register != REG_CTRL1 && Register != REG_CTRL2)
   {
     ScsiRegs[Register] = (uint8_t)Value;
   }
