@@ -97,6 +97,7 @@ struct KonamiGVNCR53CF96State
   u8 interrupt_status;
   u8 config1;
   u8 config2;
+  u8 config3;
 
   u32 transfer_count;
   u32 transfer_counter;
@@ -856,6 +857,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
     case REG_CTRL2:
       Value = ScsiController.config2;
       break;
+
+    case REG_CTRL3:
+      Value = ScsiController.config3;
+      break;
   }
 }
 
@@ -903,6 +908,11 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       ScsiController.transfer_counter_mask =
         (ScsiController.config2 & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
       break;
+
+    case REG_CTRL3:
+      ScsiController.config3 = static_cast<u8>(Value);
+      break;
+
     case REG_COMMAND:
     {
       if (!KonamiGVScsiQueueCommand(static_cast<u8>(Value)))
