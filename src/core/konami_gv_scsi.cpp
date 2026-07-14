@@ -1,20 +1,18 @@
 #include "konami_gv_scsi.h"
 #include "konami_gv_cdrom.h"
-
 #include "bus.h"
 #include "cdrom.h"
 #include "cpu_code_cache.h"
 #include "cpu_core.h"
+#include "dma.h"
 #include "host_interface.h"
 #include "interrupt_controller.h"
 #include "konami.h"
 #include "system.h"
 #include "timing_event.h"
-
 #include "common/cd_image.h"
 #include "common/file_system.h"
 #include "common/log.h"
-
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -22,27 +20,8 @@
 #include <memory>
 #include <string>
 
-// Legacy Konami GV NCR53CF96/SCSI shim implementation.
-//
-// Existing SCSI behavior will be moved here from konami.cpp without functional
-// changes before the shim is replaced with the proper NCR53CF96/CD-ROM path.
+// Konami GV NCR53CF96/SCSI implementation.
 
-// Legacy Konami GV SCSI shim.
-//
-// This is currently a hand-written approximation of the NCR53CF96/CD-ROM path.
-// MAME models Konami GV as NCR53CF96 + NSCSI CD-ROM + PSX DMA channel 5.
-// These globals are the fake register/FIFO/command state used by the current shim.
-// Beat the Champ is exposing why this needs to become a real NCR53CF96-style path.
-//
-// Current call flow:
-//   bus.cpp 0x1F000000-0x1F00001F
-//     -> KonamiScsiRead()/KonamiScsiWrite()
-//     -> ScsiRegs/ScsiFifo/ScsiCommand
-//     -> KonamiDmaControlWrite()
-//     -> fake REQUEST SENSE / INQUIRY / MODE SENSE / READ10 / READ TOC responses.
-//
-// Do not add more game-specific SCSI hacks here unless they are temporary diagnostics.
-// Long-term target: replace this shim with a proper GV SCSI controller layer.
 enum
 {
   REG_XFERCNTLOW = 0, // read = current xfer count lo byte, write = set xfer count lo byte
@@ -79,9 +58,7 @@ enum class KonamiGVNCR53CF96DmaDirection : u8
 
 struct KonamiGVNCR53CF96State
 {
-  // Existing legacy FIFO/CDB state.
-  // These remain connected to the current command path until each controller
-  // behavior is replaced in later checkpoints.
+  // FIFO/CDB state.
   u8 fifo[16];
   u8 fifo_count;
   u8 identify_message;
@@ -127,10 +104,6 @@ struct KonamiGVNCR53CF96State
 
 static KonamiGVNCR53CF96State ScsiController;
 
-// Temporary compatibility aliases.
-//
-// These preserve the existing legacy command/response behavior while its state
-// is migrated into ScsiController one checkpoint at a time.
 static u8 (&ScsiFifo)[16] = ScsiController.fifo;
 static u8 (&ScsiCommand)[12] = ScsiController.cdb;
 static u32& ScsiSectorLba = ScsiController.sector_lba;
@@ -186,6 +159,15 @@ static void KonamiGVScsiSetPhase(u8 Phase)
 static void KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection Direction)
 {
   ScsiController.dma_direction = Direction;
+}
+
+static void KonamiGVScsiSetDRQ(bool State)
+{
+  ScsiController.drq = State;
+
+  // Always mirror the current NCR DRQ state to DMA5. DMA::Reset() clears its
+  // request state independently, so this must not early-return on a match.
+  g_dma.SetRequest(DMA::Channel::PIO, State);
 }
 
 static u8 KonamiGVScsiReadTransferCounter(u8 Register)
@@ -337,8 +319,6 @@ static bool KonamiGVScsiQueueCommand(u8 Value)
   ScsiController.command_queue[ScsiController.command_queue_count] = Value;
   ScsiController.command_queue_count++;
 
-  // The current legacy controller executes commands synchronously, so only
-  // the command at the front of the queue starts during this checkpoint.
   return ScsiController.command_queue_count == 1;
 }
 
@@ -369,9 +349,6 @@ static void KonamiGVScsiConsumeSelectionFIFO()
 }
 
 // DEBUG CODE
-// Readable trace helpers for the legacy Konami GV SCSI shim.
-// These functions are diagnostic only and must not change controller behavior.
-
 static const char* KonamiGVScsiCommandName(u8 command)
 {
   switch (command)
@@ -610,7 +587,7 @@ static void KonamiGVScsiResetChip()
 
   ScsiController.dma_command = false;
   ScsiController.irq = false;
-  ScsiController.drq = false;
+  KonamiGVScsiSetDRQ(false);
 
   CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
 }
@@ -641,7 +618,7 @@ static void KonamiGVScsiCompleteBusReset()
 
   ScsiController.dma_direction = KonamiGVNCR53CF96DmaDirection::None;
   ScsiController.dma_command = false;
-  ScsiController.drq = false;
+  KonamiGVScsiSetDRQ(false);
 
   KonamiGVScsiSetPhase(0);
 
@@ -975,6 +952,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   // is no longer marked active after command data has been copied.
   ControlBits &= 0xFFFF;
   KonamiGVScsiDecrementTransferCounter(DmaTransferSize);
+  KonamiGVScsiSetDRQ(false);
   KonamiGVScsiSetPhase(0);
   KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
 }
@@ -1161,6 +1139,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           // DEBUG CODE
           KonamiGVTraceScsiCommand();
 
+          KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
+
           switch (ScsiCommand[0])
           {
             case 0x03:
@@ -1168,11 +1148,15 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             case 0x1A:
             case 0x42:
             case 0x43:
+              KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::DeviceToHost);
               KonamiGVScsiSetPhase(1);
               break;
 
-            case 0x00:
             case 0x15:
+              KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::HostToDevice);
+              [[fallthrough]];
+
+            case 0x00:
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
               {
                 std::fprintf(fp, "SCSI simple command complete cmd=%02X status_phase=0\n", ScsiCommand[0]);
@@ -1221,11 +1205,15 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             }
 
             case 0x28:
+              KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::DeviceToHost);
               ScsiSectorLba = (static_cast<u32>(ScsiCommand[2]) << 24) | (static_cast<u32>(ScsiCommand[3]) << 16) |
                               (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
               KonamiGVScsiSetPhase(1);
               break;
           }
+
+          KonamiGVScsiSetDRQ(ScsiController.dma_command &&
+                             ScsiController.dma_direction != KonamiGVNCR53CF96DmaDirection::None);
 
           KonamiGVScsiAssertInterrupt();
           break;
