@@ -79,10 +79,9 @@ enum class KonamiGVNCR53CF96DmaDirection : u8
 
 struct KonamiGVNCR53CF96State
 {
-  // Existing legacy register/FIFO/CDB state.
+  // Existing legacy FIFO/CDB state.
   // These remain connected to the current command path until each controller
   // behavior is replaced in later checkpoints.
-  u8 registers[16];
   u8 fifo[16];
   u8 fifo_count;
   u8 identify_message;
@@ -133,7 +132,6 @@ static KonamiGVNCR53CF96State ScsiController;
 //
 // These preserve the existing legacy command/response behavior while its state
 // is migrated into ScsiController one checkpoint at a time.
-static u8 (&ScsiRegs)[16] = ScsiController.registers;
 static u8 (&ScsiFifo)[16] = ScsiController.fifo;
 static u8 (&ScsiCommand)[12] = ScsiController.cdb;
 static bool& ScsiIsRead = ScsiController.data_in;
@@ -841,7 +839,7 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
 {
   const u8 Register = (Offset & 0x1F) >> 1;
 
-  Value = ScsiRegs[Register];
+  Value = 0xFFU;
 
   switch (Register)
   {
@@ -1108,11 +1106,5 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       KonamiGVScsiCompleteCommand();
       break;
     }
-  }
-  if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE &&
-      Register != REG_CTRL1 && Register != REG_CLOCKFCTR && Register != REG_TESTMODE && Register != REG_CTRL2 &&
-      Register != REG_CTRL3 && Register != REG_CTRL4 && Register != REG_DATAALIGN)
-  {
-    ScsiRegs[Register] = (uint8_t)Value;
   }
 }
