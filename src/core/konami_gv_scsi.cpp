@@ -253,6 +253,32 @@ static void KonamiGVScsiLoadTransferCounter(bool DmaCommand)
   }
 }
 
+static void KonamiGVScsiDecrementTransferCounter(u32 Count)
+{
+  if (!ScsiController.dma_command || Count == 0)
+    return;
+
+  if ((ScsiController.status & NCR53CF96_STATUS_TERMINAL_COUNT) != 0)
+  {
+    ScsiController.transfer_counter = 0;
+    return;
+  }
+
+  // A loaded count of zero represents the controller's maximum transfer
+  // length: 0x10000 bytes in 16-bit mode or 0x1000000 bytes in 24-bit mode.
+  const u32 Remaining = (ScsiController.transfer_counter != 0) ? ScsiController.transfer_counter :
+                                                                 (ScsiController.transfer_counter_mask + 1U);
+
+  // The current GV path completes DMA in one synchronous bulk operation.
+  // Real hardware would stop issuing DRQ when Terminal Count is reached.
+  const u32 Transferred = std::min(Count, Remaining);
+
+  ScsiController.transfer_counter = (Remaining - Transferred) & ScsiController.transfer_counter_mask;
+
+  if (ScsiController.transfer_counter == 0)
+    KonamiGVScsiSetStatusBits(NCR53CF96_STATUS_TERMINAL_COUNT);
+}
+
 static u8 KonamiGVScsiReadFIFO()
 {
   if (ScsiController.fifo_count == 0)
@@ -736,6 +762,8 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
       ReadSize = static_cast<size_t>(read10_sector_count) * CDImage::DATA_SECTOR_SIZE;
   }
 
+  const u32 DmaTransferSize = static_cast<u32>(ReadSize);
+
   // MODE SELECT(6) transfers a parameter list from system RAM to the CD-ROM.
   if ((Value & 1) != 0 && ScsiCommand[0] == 0x15)
   {
@@ -946,6 +974,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   // currently completes the transfer synchronously, so make sure the DMA channel
   // is no longer marked active after command data has been copied.
   ControlBits &= 0xFFFF;
+  KonamiGVScsiDecrementTransferCounter(DmaTransferSize);
   KonamiGVScsiSetPhase(0);
   KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
 }
