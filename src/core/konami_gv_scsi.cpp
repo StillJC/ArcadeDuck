@@ -99,6 +99,9 @@ struct KonamiGVNCR53CF96State
   u8 config2;
   u8 config3;
   u8 config4;
+  u8 fifo_alignment;
+
+  bool test_mode;
 
   u32 transfer_count;
   u32 transfer_counter;
@@ -430,7 +433,7 @@ static void KonamiGVTraceScsiCommand()
                ScsiCommand[8], ScsiCommand[9], ScsiCommand[10], ScsiCommand[11], KonamiGVScsiCommandName(command),
                command, KonamiGVScsiTransferDirection(command), KonamiGVScsiExpectedTransferLength(ScsiCommand),
                KonamiGVScsiTransferCounter(), ScsiRegs[REG_STATUS], ScsiController.interrupt_status,
-               ScsiController.sequence_step, ScsiRegs[REG_FIFOSTATE]);
+               ScsiController.sequence_step, KonamiGVScsiReadFIFOFlags());
 
   switch (command)
   {
@@ -851,6 +854,12 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
       Value = KonamiGVScsiReadFIFOFlags();
       break;
 
+    case REG_CLOCKFCTR:
+    case REG_TESTMODE:
+    case REG_DATAALIGN:
+      Value = 0xFFU;
+      break;
+
     case REG_CTRL1:
       Value = ScsiController.config1;
       break;
@@ -904,8 +913,21 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
       ScsiController.clock_factor = static_cast<u8>(Value & 0x07U);
       break;
 
+    case REG_TESTMODE:
+      // NCR test operations are not implemented.
+      break;
+
+    case REG_DATAALIGN:
+      ScsiController.fifo_alignment = static_cast<u8>(Value);
+      break;
+
     case REG_CTRL1:
       ScsiController.config1 = static_cast<u8>(Value);
+
+      // Test mode remains latched until a controller reset.
+      if ((ScsiController.config1 & 0x08U) != 0)
+        ScsiController.test_mode = true;
+
       break;
 
     case REG_CTRL2:
@@ -1067,7 +1089,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
     }
   }
   if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE &&
-      Register != REG_CTRL1 && Register != REG_CTRL2 && Register != REG_CTRL3 && Register != REG_CTRL4)
+      Register != REG_CTRL1 && Register != REG_CLOCKFCTR && Register != REG_TESTMODE && Register != REG_CTRL2 &&
+      Register != REG_CTRL3 && Register != REG_CTRL4 && Register != REG_DATAALIGN)
   {
     ScsiRegs[Register] = (uint8_t)Value;
   }
