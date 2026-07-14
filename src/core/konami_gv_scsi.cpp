@@ -86,7 +86,6 @@ struct KonamiGVNCR53CF96State
   u8 fifo_count;
   u8 identify_message;
   u8 cdb[12];
-  bool data_in;
   u32 sector_lba;
 
   // NCR53CF96 controller foundation.
@@ -134,7 +133,6 @@ static KonamiGVNCR53CF96State ScsiController;
 // is migrated into ScsiController one checkpoint at a time.
 static u8 (&ScsiFifo)[16] = ScsiController.fifo;
 static u8 (&ScsiCommand)[12] = ScsiController.cdb;
-static bool& ScsiIsRead = ScsiController.data_in;
 static u32& ScsiSectorLba = ScsiController.sector_lba;
 
 static constexpr u8 NCR53CF96_FIFO_CAPACITY = 16;
@@ -180,7 +178,14 @@ static void KonamiGVScsiClearStatusBits(u8 Bits)
 
 static void KonamiGVScsiSetPhase(u8 Phase)
 {
-  KonamiGVScsiWriteStatus(static_cast<u8>((ScsiController.status & ~0x07U) | (Phase & 0x07U)));
+  ScsiController.transfer_phase = Phase & 0x07U;
+
+  KonamiGVScsiWriteStatus(static_cast<u8>((ScsiController.status & ~0x07U) | ScsiController.transfer_phase));
+}
+
+static void KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection Direction)
+{
+  ScsiController.dma_direction = Direction;
 }
 
 static u8 KonamiGVScsiReadTransferCounter(u8 Register)
@@ -544,7 +549,6 @@ static void KonamiGVScsiResetChip()
 
   ScsiController.identify_message = 0;
   std::memset(ScsiController.cdb, 0, sizeof(ScsiController.cdb));
-  ScsiController.data_in = false;
   ScsiController.sector_lba = 0;
 
   std::memset(ScsiController.command_queue, 0, sizeof(ScsiController.command_queue));
@@ -717,6 +721,9 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   size_t ReadSize = (ControlBits >> 16) * 4;
   u8* Ram = Bus::g_ram;
   static u8 Sector[2048];
+
+  KonamiGVScsiSetDmaDirection(((Value & 1U) != 0) ? KonamiGVNCR53CF96DmaDirection::HostToDevice :
+                                                    KonamiGVNCR53CF96DmaDirection::DeviceToHost);
 
   // Some Konami GV READ10 transfers use a DMA block count of 0.
   // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
@@ -940,6 +947,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   // is no longer marked active after command data has been copied.
   ControlBits &= 0xFFFF;
   KonamiGVScsiSetPhase(0);
+  KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
 }
 
 // SCSI
@@ -1110,6 +1118,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           return;
         case NCR53CF96_COMMAND_SELECT_WITH_ATN:
           KonamiGVScsiConsumeSelectionFIFO();
+          ScsiController.mode = KonamiGVNCR53CF96Mode::Initiator;
 
           if (ScsiCommand[0] == 0 || ScsiCommand[0] == 0x48 || ScsiCommand[0] == 0x4B)
           {
@@ -1123,7 +1132,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           // DEBUG CODE
           KonamiGVTraceScsiCommand();
 
-          ScsiIsRead = false;
           switch (ScsiCommand[0])
           {
             case 0x03:
@@ -1150,7 +1158,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               const bool started =
                 KonamiGVCDROMPlayAudioTrackIndex(ScsiCommand[4], ScsiCommand[5], ScsiCommand[7], ScsiCommand[8]);
 
-              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
+              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT);
+              KonamiGVScsiSetPhase(0);
               KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -1169,7 +1178,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
               KonamiGVCDROMPauseAudio(resume);
 
-              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
+              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT);
+              KonamiGVScsiSetPhase(0);
               KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -1184,7 +1194,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             case 0x28:
               ScsiSectorLba = (static_cast<u32>(ScsiCommand[2]) << 24) | (static_cast<u32>(ScsiCommand[3]) << 16) |
                               (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
-              ScsiIsRead = true;
               KonamiGVScsiSetPhase(1);
               break;
           }
@@ -1206,7 +1215,8 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
         case 0x11:
           KonamiGVScsiAssertInterrupt();
-          KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
+          KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT);
+          KonamiGVScsiSetPhase(0);
           KonamiGVScsiSetSequenceStep(0x00);
           [[fallthrough]]; // ?? Why ??
 
