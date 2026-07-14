@@ -8,14 +8,13 @@
 #include "cpu_core.h"
 #include "gpu.h"
 #include "interrupt_controller.h"
+#include "konami_gv_scsi.h"
 #include "mdec.h"
 #include "pad.h"
 #include "spu.h"
 #include "system.h"
 #ifdef WITH_IMGUI
 #include "imgui.h"
-#include "konami.h"
-
 #endif
 Log_SetChannel(DMA);
 
@@ -167,11 +166,6 @@ void DMA::WriteRegister(u32 offset, u32 value)
 
       case 0x08:
       {
-        if (channel_index == 5)
-        {
-          KonamiDmaControlWrite(state.block_control.bits, state.base_address, value);
-          return;
-        }
         // HACK: Due to running DMA in slices, we can't wait for the current halt time to finish before running the
         // first block of a new channel. This affects games like FF8, where they kick a SPU transfer while a GPU
         // transfer is happening, and the SPU transfer gets delayed until the GPU transfer unhalts and finishes, and
@@ -545,9 +539,12 @@ TickCount DMA::TransferMemoryToDevice(Channel channel, u32 address, u32 incremen
       g_mdec.DMAWrite(src_pointer, word_count);
       break;
 
+    case Channel::PIO:
+      KonamiGVScsiDmaWrite(src_pointer, word_count);
+      break;
+
     case Channel::CDROM:
     case Channel::MDECout:
-    case Channel::PIO:
     default:
       Log_ErrorPrintf("Unhandled DMA channel %u for device write", static_cast<u32>(channel));
       break;
@@ -604,6 +601,10 @@ TickCount DMA::TransferDeviceToMemory(Channel channel, u32 address, u32 incremen
 
     case Channel::MDECout:
       g_mdec.DMARead(dest_pointer, word_count);
+      break;
+
+    case Channel::PIO:
+      KonamiGVScsiDmaRead(dest_pointer, word_count);
       break;
 
     default:

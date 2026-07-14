@@ -11,7 +11,8 @@
 void KonamiGVScsiInitialize();
 void KonamiGVScsiShutdown();
 
-void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value);
+void KonamiGVScsiDmaRead(u32* Data, u32 WordCount);
+void KonamiGVScsiDmaWrite(const u32* Data, u32 WordCount);
 
 void KonamiScsiRead(u32 Size, u32 Offset, u32& Value);
 void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value);

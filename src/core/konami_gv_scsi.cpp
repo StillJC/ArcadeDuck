@@ -1,8 +1,6 @@
 #include "konami_gv_scsi.h"
 #include "konami_gv_cdrom.h"
-#include "bus.h"
 #include "cdrom.h"
-#include "cpu_code_cache.h"
 #include "cpu_core.h"
 #include "dma.h"
 #include "host_interface.h"
@@ -19,6 +17,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 
 // Konami GV NCR53CF96/SCSI implementation.
 
@@ -64,6 +63,9 @@ struct KonamiGVNCR53CF96State
   u8 identify_message;
   u8 cdb[12];
   u32 sector_lba;
+
+  std::vector<u8> dma_buffer;
+  u32 dma_buffer_offset;
 
   // NCR53CF96 controller foundation.
   u8 command_queue[2];
@@ -251,8 +253,7 @@ static void KonamiGVScsiDecrementTransferCounter(u32 Count)
   const u32 Remaining = (ScsiController.transfer_counter != 0) ? ScsiController.transfer_counter :
                                                                  (ScsiController.transfer_counter_mask + 1U);
 
-  // The current GV path completes DMA in one synchronous bulk operation.
-  // Real hardware would stop issuing DRQ when Terminal Count is reached.
+  // DMA callbacks stop NCR DRQ when Terminal Count is reached.
   const u32 Transferred = std::min(Count, Remaining);
 
   ScsiController.transfer_counter = (Remaining - Transferred) & ScsiController.transfer_counter_mask;
@@ -336,6 +337,9 @@ static void KonamiGVScsiCompleteCommand()
 static void KonamiGVScsiConsumeSelectionFIFO()
 {
   std::memset(ScsiController.cdb, 0, sizeof(ScsiController.cdb));
+
+  ScsiController.dma_buffer.clear();
+  ScsiController.dma_buffer_offset = 0;
 
   ScsiController.identify_message = (ScsiController.fifo_count != 0) ? ScsiController.fifo[0] : 0;
 
@@ -554,6 +558,9 @@ static void KonamiGVScsiResetChip()
   std::memset(ScsiController.cdb, 0, sizeof(ScsiController.cdb));
   ScsiController.sector_lba = 0;
 
+  ScsiController.dma_buffer.clear();
+  ScsiController.dma_buffer_offset = 0;
+
   std::memset(ScsiController.command_queue, 0, sizeof(ScsiController.command_queue));
   ScsiController.command_queue_count = 0;
 
@@ -612,6 +619,9 @@ static void KonamiGVScsiCompleteBusReset()
 
   std::memset(ScsiController.command_queue, 0, sizeof(ScsiController.command_queue));
   ScsiController.command_queue_count = 0;
+
+  ScsiController.dma_buffer.clear();
+  ScsiController.dma_buffer_offset = 0;
 
   ScsiController.controller_state = 0;
   ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
@@ -714,247 +724,317 @@ static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
   return KonamiGVCDROMReadDataSector(lba, sector);
 }
 
-// Legacy SCSI DMA / fake command execution.
-// This is where the current shim manually answers SCSI commands like
-// REQUEST SENSE, INQUIRY, MODE SENSE, READ10, READ TOC, and READ SUB-CHANNEL.
-// MAME does this through NCR53CF96 + NSCSI CD-ROM behavior instead.
+// NCR53CF96 DMA payload handling.
+//
+// The PSX DMA engine owns RAM addressing, block progress, channel completion,
+// and DMA interrupts. These callbacks only exchange payload bytes with the
+// emulated SCSI controller and update NCR transfer state.
 
-void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
+static void KonamiGVScsiProcessModeSelectData()
 {
-  size_t ReadSize = (ControlBits >> 16) * 4;
-  u8* Ram = Bus::g_ram;
-  static u8 Sector[2048];
+  const size_t ParameterLength = std::min<size_t>(ScsiController.dma_buffer.size(), ScsiCommand[4]);
 
-  KonamiGVScsiSetDmaDirection(((Value & 1U) != 0) ? KonamiGVNCR53CF96DmaDirection::HostToDevice :
-                                                    KonamiGVNCR53CF96DmaDirection::DeviceToHost);
+  if (ParameterLength == 0)
+    return;
 
-  // Some Konami GV READ10 transfers use a DMA block count of 0.
-  // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
-  // we can recover the intended byte count directly from the command's sector count.
-  if (ReadSize == 0 && ScsiCommand[0] == 0x28)
+  const u8* const ParameterData = ScsiController.dma_buffer.data();
+
+  // DEBUG CODE
+  if (std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab"))
   {
-    const u32 read10_sector_count = (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8];
+    std::fprintf(fp,
+                 "MODE_SELECT_PAYLOAD GAME=%s PC=0x%08X "
+                 "DMA_LENGTH=%zu CDB_LENGTH=%u DATA=",
+                 System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc,
+                 ScsiController.dma_buffer.size(), ScsiCommand[4]);
 
-    if (read10_sector_count != 0)
-      ReadSize = static_cast<size_t>(read10_sector_count) * CDImage::DATA_SECTOR_SIZE;
+    for (size_t i = 0; i < ParameterLength; i++)
+      std::fprintf(fp, "%02X%s", ParameterData[i], (i + 1 < ParameterLength) ? " " : "");
+
+    std::fprintf(fp, "\n");
+    std::fclose(fp);
   }
 
-  const u32 DmaTransferSize = static_cast<u32>(ReadSize);
+  if (ParameterLength < 4)
+    return;
 
-  // MODE SELECT(6) transfers a parameter list from system RAM to the CD-ROM.
-  if ((Value & 1) != 0 && ScsiCommand[0] == 0x15)
+  const size_t BlockDescriptorLength = ParameterData[3];
+  size_t PageOffset = 4 + BlockDescriptorLength;
+
+  while ((PageOffset + 2) <= ParameterLength)
   {
-    const size_t parameter_length = std::min<size_t>(ReadSize, ScsiCommand[4]);
+    const u8 PageCode = ParameterData[PageOffset] & 0x3FU;
+    const size_t PageLength = ParameterData[PageOffset + 1];
+    const size_t PageSize = 2 + PageLength;
 
-    const u8* const parameter_data = Ram + Address;
+    if ((PageOffset + PageSize) > ParameterLength)
+      break;
 
-    // DEBUG CODE
-    if (std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab"))
+    if (PageCode == 0x0E && PageLength >= 0x0E)
     {
-      std::fprintf(fp,
-                   "MODE_SELECT_PAYLOAD GAME=%s PC=0x%08X "
-                   "ADDRESS=0x%08X DMA_LENGTH=%zu CDB_LENGTH=%u DATA=",
-                   System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Address, ReadSize,
-                   ScsiCommand[4]);
+      const size_t AudioOutputOffset = PageOffset + 16;
 
-      for (size_t i = 0; i < parameter_length; i++)
+      if ((AudioOutputOffset + 8) > ParameterLength)
+        break;
+
+      for (u8 Output = 0; Output < 4; Output++)
       {
-        std::fprintf(fp, "%02X%s", parameter_data[i], (i + 1 < parameter_length) ? " " : "");
+        const size_t OutputOffset = AudioOutputOffset + (Output * 2);
+
+        KonamiGVCDROMSetAudioOutput(Output, ParameterData[OutputOffset], ParameterData[OutputOffset + 1]);
       }
 
-      std::fprintf(fp, "\n");
-      std::fclose(fp);
+      // DEBUG CODE
+      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+      {
+        std::fprintf(fp,
+                     "SCSI MODE SELECT CDDA "
+                     "out0=%u/%u out1=%u/%u "
+                     "out2=%u/%u out3=%u/%u\n",
+                     ParameterData[AudioOutputOffset + 0] & 0x0F, ParameterData[AudioOutputOffset + 1],
+                     ParameterData[AudioOutputOffset + 2] & 0x0F, ParameterData[AudioOutputOffset + 3],
+                     ParameterData[AudioOutputOffset + 4] & 0x0F, ParameterData[AudioOutputOffset + 5],
+                     ParameterData[AudioOutputOffset + 6] & 0x0F, ParameterData[AudioOutputOffset + 7]);
+
+        std::fclose(fp);
+      }
+
+      break;
     }
 
-    if (parameter_length >= 4)
+    PageOffset += PageSize;
+  }
+}
+
+static void KonamiGVScsiPrepareDmaTransfer()
+{
+  const u32 TransferLength = KonamiGVScsiExpectedTransferLength(ScsiCommand);
+
+  ScsiController.dma_buffer.assign(TransferLength, 0);
+  ScsiController.dma_buffer_offset = 0;
+
+  if (ScsiController.dma_direction != KonamiGVNCR53CF96DmaDirection::DeviceToHost || TransferLength == 0)
+    return;
+
+  switch (ScsiCommand[0])
+  {
+    case 0x03:
     {
-      const size_t block_descriptor_length = parameter_data[3];
+      // REQUEST SENSE. Return a valid fixed-format "no sense / no error" packet.
+      if (ScsiController.dma_buffer.size() > 0)
+        ScsiController.dma_buffer[0] = 0x70;
 
-      size_t page_offset = 4 + block_descriptor_length;
+      if (ScsiController.dma_buffer.size() > 2)
+        ScsiController.dma_buffer[2] = 0x00;
 
-      while ((page_offset + 2) <= parameter_length)
+      if (ScsiController.dma_buffer.size() > 7)
+        ScsiController.dma_buffer[7] = 0x0A;
+
+      // DEBUG CODE
+      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
       {
-        const u8 page_code = parameter_data[page_offset] & 0x3F;
+        std::fprintf(fp, "SCSI REQUEST SENSE response length=%u\n", TransferLength);
+        std::fclose(fp);
+      }
 
-        const size_t page_length = parameter_data[page_offset + 1];
+      break;
+    }
 
-        const size_t page_size = 2 + page_length;
+    case 0x12:
+    {
+      // INQUIRY. Return a minimal valid CD-ROM device identity.
+      if (ScsiController.dma_buffer.size() > 0)
+        ScsiController.dma_buffer[0] = 0x05;
 
-        if ((page_offset + page_size) > parameter_length)
+      if (ScsiController.dma_buffer.size() > 1)
+        ScsiController.dma_buffer[1] = 0x80;
+
+      if (ScsiController.dma_buffer.size() > 2)
+        ScsiController.dma_buffer[2] = 0x02;
+
+      if (ScsiController.dma_buffer.size() > 3)
+        ScsiController.dma_buffer[3] = 0x02;
+
+      if (ScsiController.dma_buffer.size() > 4)
+        ScsiController.dma_buffer[4] = 0x1B;
+
+      if (ScsiController.dma_buffer.size() > 8)
+      {
+        const size_t CopyLength = std::min<size_t>(8, ScsiController.dma_buffer.size() - 8);
+        std::memcpy(ScsiController.dma_buffer.data() + 8, "KONAMI  ", CopyLength);
+      }
+
+      if (ScsiController.dma_buffer.size() > 16)
+      {
+        const size_t CopyLength = std::min<size_t>(16, ScsiController.dma_buffer.size() - 16);
+        std::memcpy(ScsiController.dma_buffer.data() + 16, "GV CD-ROM       ", CopyLength);
+      }
+
+      // DEBUG CODE
+      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "SCSI INQUIRY response length=%u\n", TransferLength);
+        std::fclose(fp);
+      }
+
+      break;
+    }
+
+    case 0x1A:
+    {
+      // MODE SENSE(6). Return CD Audio Control page 0x0E using
+      // the GV CD-ROM layer's current output routing and volume state.
+      if (ScsiController.dma_buffer.size() > 0)
+        ScsiController.dma_buffer[0] = 0x1B;
+
+      if (ScsiController.dma_buffer.size() > 4)
+        ScsiController.dma_buffer[4] = 0x0E;
+
+      if (ScsiController.dma_buffer.size() > 5)
+        ScsiController.dma_buffer[5] = 0x16;
+
+      if (ScsiController.dma_buffer.size() > 6)
+        ScsiController.dma_buffer[6] = 0x04;
+
+      for (u8 Output = 0; Output < 4; Output++)
+      {
+        u8 Channel = 0;
+        u8 Volume = 0;
+
+        KonamiGVCDROMGetAudioOutput(Output, &Channel, &Volume);
+
+        const size_t OutputOffset = 20 + (Output * 2);
+
+        if ((OutputOffset + 1) >= ScsiController.dma_buffer.size())
           break;
 
-        if (page_code == 0x0E && page_length >= 0x0E)
-        {
-          const size_t audio_output_offset = page_offset + 16;
-
-          if ((audio_output_offset + 8) > parameter_length)
-            break;
-
-          for (u8 output = 0; output < 4; output++)
-          {
-            const size_t output_offset = audio_output_offset + (output * 2);
-
-            KonamiGVCDROMSetAudioOutput(output, parameter_data[output_offset], parameter_data[output_offset + 1]);
-          }
-
-          // DEBUG CODE
-          if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-          {
-            std::fprintf(fp,
-                         "SCSI MODE SELECT CDDA "
-                         "out0=%u/%u out1=%u/%u "
-                         "out2=%u/%u out3=%u/%u\n",
-                         parameter_data[audio_output_offset + 0] & 0x0F, parameter_data[audio_output_offset + 1],
-                         parameter_data[audio_output_offset + 2] & 0x0F, parameter_data[audio_output_offset + 3],
-                         parameter_data[audio_output_offset + 4] & 0x0F, parameter_data[audio_output_offset + 5],
-                         parameter_data[audio_output_offset + 6] & 0x0F, parameter_data[audio_output_offset + 7]);
-
-            std::fclose(fp);
-          }
-          break;
-        }
-
-        page_offset += page_size;
+        ScsiController.dma_buffer[OutputOffset + 0] = Channel;
+        ScsiController.dma_buffer[OutputOffset + 1] = Volume;
       }
-    }
-  }
 
-  if ((Value & 1) == 0)
-  {
-    switch (ScsiCommand[0])
+      // DEBUG CODE
+      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "SCSI MODE SENSE response length=%u\n", TransferLength);
+        std::fclose(fp);
+      }
+
+      break;
+    }
+
+    case 0x28:
     {
-      case 0x03:
-        // REQUEST SENSE. Return a valid fixed-format "no sense / no error" packet.
-        std::memset(Ram + Address, 0, 12);
+      std::array<u8, CDImage::DATA_SECTOR_SIZE> Sector = {};
 
-        Ram[Address + 0] = 0x70; // fixed-format current error response
-        Ram[Address + 2] = 0x00; // sense key: no sense
-        Ram[Address + 7] = 0x0A; // additional sense length
+      size_t BufferOffset = 0;
 
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI REQUEST SENSE response address=0x%08X response=0x%02X sense=0x%02X length=%u\n",
-                       Address, Ram[Address + 0], Ram[Address + 2], Ram[Address + 7]);
-          std::fclose(fp);
-        }
-        break;
-      case 0x12:
+      while (BufferOffset < ScsiController.dma_buffer.size())
       {
-        // INQUIRY. Return a minimal valid CD-ROM device identity.
-        std::memset(Ram + Address, 0, 32);
+        const size_t SectorBytes =
+          std::min<size_t>(CDImage::DATA_SECTOR_SIZE, ScsiController.dma_buffer.size() - BufferOffset);
 
-        Ram[Address + 0] = 0x05; // peripheral device type: CD/DVD device
-        Ram[Address + 1] = 0x80; // removable media
-        Ram[Address + 2] = 0x02; // ISO/ECMA/ANSI version-ish
-        Ram[Address + 3] = 0x02; // response data format
-        Ram[Address + 4] = 0x1B; // additional length for 32-byte response
-
-        std::memcpy(Ram + Address + 8, "KONAMI  ", 8);
-        std::memcpy(Ram + Address + 16, "GV CD-ROM       ", 16);
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+        if (KonamiReadMountedDataSector(ScsiSectorLba, Sector.data()))
         {
-          std::fprintf(fp, "SCSI INQUIRY response address=0x%08X type=0x%02X removable=0x%02X length=%u\n", Address,
-                       Ram[Address + 0], Ram[Address + 1], Ram[Address + 4]);
-          std::fclose(fp);
+          std::memcpy(ScsiController.dma_buffer.data() + BufferOffset, Sector.data(), SectorBytes);
         }
-        break;
+
+        ScsiSectorLba++;
+        BufferOffset += SectorBytes;
       }
-      case 0x1A:
-      {
-        // MODE SENSE(6). Return CD Audio Control page 0x0E using
-        // the GV CD-ROM layer's current output routing and volume state.
-        std::memset(Ram + Address, 0, 28);
 
-        Ram[Address + 0] = 0x1B; // mode data length: bytes after this field
-        Ram[Address + 1] = 0x00; // medium type
-        Ram[Address + 2] = 0x00; // device-specific parameter
-        Ram[Address + 3] = 0x00; // block descriptor length
-
-        Ram[Address + 4] = 0x0E; // page code: CD audio control
-        Ram[Address + 5] = 0x16; // page length
-
-        Ram[Address + 6] = 0x04;
-
-        for (u8 output = 0; output < 4; output++)
-        {
-          u8 channel = 0;
-          u8 volume = 0;
-
-          KonamiGVCDROMGetAudioOutput(output, &channel, &volume);
-
-          const u32 output_offset = Address + 20 + (output * 2);
-
-          Ram[output_offset + 0] = channel;
-          Ram[output_offset + 1] = volume;
-        }
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI MODE SENSE response address=0x%08X page=0x%02X length=%u mode_length=%u\n", Address,
-                       Ram[Address + 4], Ram[Address + 5], Ram[Address + 0]);
-          std::fclose(fp);
-        }
-        break;
-      }
-      case 0x43:
-      {
-        const u32 response_size =
-          static_cast<u32>(std::min<size_t>(ReadSize, KonamiGVScsiExpectedTransferLength(ScsiCommand)));
-
-        const u32 response_length = KonamiGVCDROMReadTOC(ScsiCommand, Ram + Address, response_size);
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI READ TOC response address=0x%08X requested=%u returned=%u\n", Address, response_size,
-                       response_length);
-          std::fclose(fp);
-        }
-
-        break;
-      }
-      case 0x28:
-        while (ReadSize >= 2048)
-        {
-          if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
-          {
-            std::memcpy(Ram + Address, Sector, 2048);
-            CPU::CodeCache::InvalidateCodePages(Address, 2048 / sizeof(u32));
-          }
-          else
-          {
-            std::memset(Ram + Address, 0, 2048);
-          }
-
-          ScsiSectorLba++;
-          Address += 2048;
-          ReadSize -= 2048;
-        }
-        ControlBits &= 0xFFFF;
-        break;
-      case 0x42:
-      {
-        const u32 response_size =
-          static_cast<u32>(std::min<size_t>(ReadSize, KonamiGVScsiExpectedTransferLength(ScsiCommand)));
-
-        KonamiGVCDROMReadSubChannel(ScsiCommand, Ram + Address, response_size);
-        break;
-      }
-      default:
-        // Log_WarningPrintf("Unimplemented SCSI command %02X", ScsiCmd[0]);
-        break;
+      break;
     }
-  }
 
-  // End the fake SCSI DMA transfer.
-  // MAME drives this through NCR53CF96 DRQ + PSX DMA channel 5; our legacy shim
-  // currently completes the transfer synchronously, so make sure the DMA channel
-  // is no longer marked active after command data has been copied.
-  ControlBits &= 0xFFFF;
-  KonamiGVScsiDecrementTransferCounter(DmaTransferSize);
+    case 0x42:
+      KonamiGVCDROMReadSubChannel(ScsiCommand, ScsiController.dma_buffer.data(), TransferLength);
+      break;
+
+    case 0x43:
+    {
+      const u32 ResponseLength = KonamiGVCDROMReadTOC(ScsiCommand, ScsiController.dma_buffer.data(), TransferLength);
+
+      // DEBUG CODE
+      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+      {
+        std::fprintf(fp, "SCSI READ TOC response requested=%u returned=%u\n", TransferLength, ResponseLength);
+        std::fclose(fp);
+      }
+
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+static void KonamiGVScsiCompleteDmaTransfer()
+{
+  if (ScsiController.dma_direction == KonamiGVNCR53CF96DmaDirection::HostToDevice && ScsiCommand[0] == 0x15)
+    KonamiGVScsiProcessModeSelectData();
+
   KonamiGVScsiSetDRQ(false);
-  KonamiGVScsiSetPhase(0);
   KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
+
+  KonamiGVScsiSetPhase(3);
+  KonamiGVScsiSetSequenceStep(0x00U);
+
+  ScsiController.dma_buffer.clear();
+  ScsiController.dma_buffer_offset = 0;
+
+  KonamiGVScsiAssertInterrupt();
+}
+
+void KonamiGVScsiDmaRead(u32* Data, u32 WordCount)
+{
+  if (WordCount == 0)
+    return;
+
+  const u32 ByteCount = WordCount * sizeof(u32);
+
+  std::memset(Data, 0, ByteCount);
+
+  if (ScsiController.dma_direction == KonamiGVNCR53CF96DmaDirection::DeviceToHost &&
+      ScsiController.dma_buffer_offset < ScsiController.dma_buffer.size())
+  {
+    const size_t AvailableBytes = ScsiController.dma_buffer.size() - ScsiController.dma_buffer_offset;
+
+    const size_t CopyBytes = std::min<size_t>(ByteCount, AvailableBytes);
+
+    std::memcpy(Data, ScsiController.dma_buffer.data() + ScsiController.dma_buffer_offset, CopyBytes);
+  }
+
+  ScsiController.dma_buffer_offset += ByteCount;
+
+  KonamiGVScsiDecrementTransferCounter(ByteCount);
+
+  if ((ScsiController.status & NCR53CF96_STATUS_TERMINAL_COUNT) != 0)
+    KonamiGVScsiCompleteDmaTransfer();
+}
+
+void KonamiGVScsiDmaWrite(const u32* Data, u32 WordCount)
+{
+  if (WordCount == 0)
+    return;
+
+  const u32 ByteCount = WordCount * sizeof(u32);
+
+  if (ScsiController.dma_direction == KonamiGVNCR53CF96DmaDirection::HostToDevice &&
+      ScsiController.dma_buffer_offset < ScsiController.dma_buffer.size())
+  {
+    const size_t AvailableBytes = ScsiController.dma_buffer.size() - ScsiController.dma_buffer_offset;
+
+    const size_t CopyBytes = std::min<size_t>(ByteCount, AvailableBytes);
+
+    std::memcpy(ScsiController.dma_buffer.data() + ScsiController.dma_buffer_offset, Data, CopyBytes);
+  }
+
+  ScsiController.dma_buffer_offset += ByteCount;
+
+  KonamiGVScsiDecrementTransferCounter(ByteCount);
+
+  if ((ScsiController.status & NCR53CF96_STATUS_TERMINAL_COUNT) != 0)
+    KonamiGVScsiCompleteDmaTransfer();
 }
 
 // SCSI
@@ -1221,11 +1301,24 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
         case 0x44:
           break;
         case 0x10:
-          if (Value & 0x80U)
+          if ((ActiveCommand & 0x80U) != 0)
           {
-            KonamiGVScsiSetPhase(3);
-            KonamiGVScsiSetSequenceStep(0x00);
-            KonamiGVScsiAssertInterrupt();
+            if (ScsiController.dma_direction == KonamiGVNCR53CF96DmaDirection::None)
+            {
+              KonamiGVScsiSetPhase(3);
+              KonamiGVScsiSetSequenceStep(0x00);
+              KonamiGVScsiAssertInterrupt();
+            }
+            else
+            {
+              KonamiGVScsiPrepareDmaTransfer();
+
+              if (ScsiController.dma_buffer.empty())
+                KonamiGVScsiCompleteDmaTransfer();
+              else
+                KonamiGVScsiSetDRQ(true);
+            }
+
             break;
           }
           [[fallthrough]];
