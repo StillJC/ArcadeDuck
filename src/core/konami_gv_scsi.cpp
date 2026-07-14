@@ -426,7 +426,7 @@ static void KonamiGVTraceScsiCommand()
                ScsiCommand[8], ScsiCommand[9], ScsiCommand[10], ScsiCommand[11], KonamiGVScsiCommandName(command),
                command, KonamiGVScsiTransferDirection(command), KonamiGVScsiExpectedTransferLength(ScsiCommand),
                KonamiGVScsiTransferCounter(), ScsiRegs[REG_STATUS], ScsiController.interrupt_status,
-               ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
+               ScsiController.sequence_step, ScsiRegs[REG_FIFOSTATE]);
 
   switch (command)
   {
@@ -841,6 +841,10 @@ void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
 
     case REG_IRQSTATE:
       Value = KonamiGVScsiReadInterruptStatus();
+      break;
+
+    case REG_INTSTATE:
+      Value = ScsiController.sequence_step;
       break;
 
     case REG_FIFOSTATE:
