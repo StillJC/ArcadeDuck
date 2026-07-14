@@ -94,6 +94,7 @@ struct KonamiGVNCR53CF96State
   u8 command_queue[2];
   u8 command_queue_count;
 
+  u8 status;
   u8 interrupt_status;
   u8 config1;
   u8 config2;
@@ -158,6 +159,30 @@ static constexpr u8 NCR53CF96_CONFIG2_FEATURES_ENABLE = 0x08;
 static constexpr u32 NCR53CF96_FAMILY_ID = 0x04;
 static constexpr u32 NCR53CF96_REVISION_LEVEL = 0x02;
 
+static void KonamiGVScsiWriteStatus(u8 Value)
+{
+  ScsiController.status = Value;
+
+  // Preserve the legacy backing-register mirror while Status ownership moves
+  // into ScsiController.
+  ScsiRegs[REG_STATUS] = Value;
+}
+
+static void KonamiGVScsiSetStatusBits(u8 Bits)
+{
+  KonamiGVScsiWriteStatus(ScsiController.status | Bits);
+}
+
+static void KonamiGVScsiClearStatusBits(u8 Bits)
+{
+  KonamiGVScsiWriteStatus(ScsiController.status & ~Bits);
+}
+
+static void KonamiGVScsiSetPhase(u8 Phase)
+{
+  KonamiGVScsiWriteStatus(static_cast<u8>((ScsiController.status & ~0x07U) | (Phase & 0x07U)));
+}
+
 static u8 KonamiGVScsiReadTransferCounter(u8 Register)
 {
   switch (Register)
@@ -211,7 +236,7 @@ static void KonamiGVScsiLoadTransferCounter(bool DmaCommand)
 
   // Terminal Count is cleared when a DMA command loads the active counter,
   // not merely when software writes the transfer-count registers.
-  ScsiRegs[REG_STATUS] &= ~NCR53CF96_STATUS_TERMINAL_COUNT;
+  KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_TERMINAL_COUNT);
 
   // Match the 53CF94/96 identification behavior modeled by MAME.
   // With SCSI-2 Features disabled, the next DMA counter load can expose
@@ -274,7 +299,7 @@ static bool KonamiGVScsiQueueCommand(u8 Value)
 
   if (ScsiController.command_queue_count >= 2)
   {
-    ScsiRegs[REG_STATUS] |= NCR53CF96_STATUS_GROSS_ERROR;
+    KonamiGVScsiSetStatusBits(NCR53CF96_STATUS_GROSS_ERROR);
     return false;
   }
 
@@ -432,7 +457,7 @@ static void KonamiGVTraceScsiCommand()
                ScsiCommand[2], ScsiCommand[3], ScsiCommand[4], ScsiCommand[5], ScsiCommand[6], ScsiCommand[7],
                ScsiCommand[8], ScsiCommand[9], ScsiCommand[10], ScsiCommand[11], KonamiGVScsiCommandName(command),
                command, KonamiGVScsiTransferDirection(command), KonamiGVScsiExpectedTransferLength(ScsiCommand),
-               KonamiGVScsiTransferCounter(), ScsiRegs[REG_STATUS], ScsiController.interrupt_status,
+               KonamiGVScsiTransferCounter(), ScsiController.status, ScsiController.interrupt_status,
                ScsiController.sequence_step, KonamiGVScsiReadFIFOFlags());
 
   switch (command)
@@ -531,7 +556,7 @@ static void KonamiGVScsiAssertInterrupt(u8 Cause)
   ScsiController.interrupt_status |= Cause;
   ScsiController.irq = true;
 
-  ScsiRegs[REG_STATUS] |= NCR53CF96_STATUS_INTERRUPT;
+  KonamiGVScsiSetStatusBits(NCR53CF96_STATUS_INTERRUPT);
 
   g_interrupt_controller.InterruptRequest(InterruptController::IRQ::IRQ10);
 }
@@ -539,7 +564,7 @@ static void KonamiGVScsiAssertInterrupt(u8 Cause)
 static u8 KonamiGVScsiReadStatus()
 {
   // Status bit 7 reflects the controller's actual interrupt-output state.
-  return static_cast<u8>((ScsiRegs[REG_STATUS] & ~NCR53CF96_STATUS_INTERRUPT) |
+  return static_cast<u8>((ScsiController.status & ~NCR53CF96_STATUS_INTERRUPT) |
                          (ScsiController.irq ? NCR53CF96_STATUS_INTERRUPT : 0));
 }
 
@@ -560,8 +585,8 @@ static u8 KonamiGVScsiReadInterruptStatus()
     KonamiGVScsiSetSequenceStep(0);
     ScsiController.irq = false;
 
-    ScsiRegs[REG_STATUS] &= ~(NCR53CF96_STATUS_INTERRUPT | NCR53CF96_STATUS_GROSS_ERROR |
-                              NCR53CF96_STATUS_PARITY_ERROR | NCR53CF96_STATUS_VALID_GROUP_CODE);
+    KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | NCR53CF96_STATUS_GROSS_ERROR |
+                                NCR53CF96_STATUS_PARITY_ERROR | NCR53CF96_STATUS_VALID_GROUP_CODE);
 
     CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
   }
@@ -811,7 +836,7 @@ void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
   // currently completes the transfer synchronously, so make sure the DMA channel
   // is no longer marked active after command data has been copied.
   ControlBits &= 0xFFFF;
-  ScsiRegs[REG_STATUS] &= ~0x07U;
+  KonamiGVScsiSetPhase(0);
 }
 
 // SCSI
@@ -995,7 +1020,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             case 0x1A:
             case 0x42:
             case 0x43:
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
+              KonamiGVScsiSetPhase(1);
               break;
 
             case 0x00:
@@ -1006,7 +1031,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
                 std::fclose(fp);
               }
 
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
+              KonamiGVScsiSetPhase(0);
               break;
 
             case 0x48: // PLAY AUDIO TRACK/INDEX
@@ -1014,7 +1039,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               const bool started =
                 KonamiGVCDROMPlayAudioTrackIndex(ScsiCommand[4], ScsiCommand[5], ScsiCommand[7], ScsiCommand[8]);
 
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
+              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
               KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -1033,7 +1058,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
               KonamiGVCDROMPauseAudio(resume);
 
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
+              KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
               KonamiGVScsiSetSequenceStep(0x04U);
 
               if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
@@ -1049,7 +1074,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               ScsiSectorLba = (static_cast<u32>(ScsiCommand[2]) << 24) | (static_cast<u32>(ScsiCommand[3]) << 16) |
                               (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
               ScsiIsRead = true;
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
+              KonamiGVScsiSetPhase(1);
               break;
           }
 
@@ -1061,7 +1086,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
         case 0x10:
           if (Value & 0x80U)
           {
-            ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 3;
+            KonamiGVScsiSetPhase(3);
             KonamiGVScsiSetSequenceStep(0x00);
             KonamiGVScsiAssertInterrupt();
             break;
@@ -1070,7 +1095,7 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
 
         case 0x11:
           KonamiGVScsiAssertInterrupt();
-          ScsiRegs[REG_STATUS] &= ~0x87;
+          KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT | 0x07U);
           KonamiGVScsiSetSequenceStep(0x00);
           [[fallthrough]]; // ?? Why ??
 
