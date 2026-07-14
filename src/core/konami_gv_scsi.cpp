@@ -856,6 +856,27 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
     case REG_FIFO:
       KonamiGVScsiWriteFIFO(static_cast<u8>(Value));
       break;
+
+    case REG_STATUS:
+      ScsiController.destination_id = static_cast<u8>(Value & 0x07U);
+      break;
+
+    case REG_IRQSTATE:
+      ScsiController.selection_timeout = static_cast<u8>(Value);
+      break;
+
+    case REG_INTSTATE:
+      ScsiController.sync_period = static_cast<u8>(Value & 0x1FU);
+      break;
+
+    case REG_FIFOSTATE:
+      ScsiController.sync_offset = static_cast<u8>(Value & 0x0FU);
+      break;
+
+    case REG_CLOCKFCTR:
+      ScsiController.clock_factor = static_cast<u8>(Value & 0x07U);
+      break;
+
     case REG_CTRL2:
       ScsiController.transfer_counter_mask = (Value & NCR53CF96_CONFIG2_FEATURES_ENABLE) ? 0x00FFFFFFU : 0x0000FFFFU;
       break;
