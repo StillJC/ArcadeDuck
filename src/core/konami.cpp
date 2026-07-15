@@ -71,6 +71,12 @@ enum class KonamiGVBtChampFirstBootState : u8
 
 static KonamiGVBtChampFirstBootState GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
 
+// Konami GV watchdog.
+// The exact hardware timeout is not documented, so use a conservative
+// two-second provisional timeout until hardware timing is better established.
+static constexpr u32 KONAMI_GV_WATCHDOG_TIMEOUT_FRAMES = 120;
+static u32 KonamiGVWatchdogFramesRemaining = 0;
+
 static bool KonamiGVSharpFlashIsErased()
 {
   for (const u8 value : GVSharpFlash)
@@ -653,20 +659,40 @@ bool KonamiUsesDirectGVFlash()
   return code == "kdeadeye" || code == "btchamp";
 }
 
+void KonamiGVWatchdogWrite()
+{
+  KonamiGVWatchdogFramesRemaining = KONAMI_GV_WATCHDOG_TIMEOUT_FRAMES;
+}
+
 bool KonamiConsumeAutomaticResetRequest()
 {
-  if (GVBtChampFirstBootState != KonamiGVBtChampFirstBootState::ResetRequested)
+  if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::ResetRequested)
+  {
+    GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::HoldingTest;
+    KonamiGVWatchdogFramesRemaining = 0;
+
+    Log_InfoPrintf("KonamiGV: starting automatic Beat the Champ first-run flash recovery");
+
+    return true;
+  }
+
+  if (KonamiGVWatchdogFramesRemaining == 0)
     return false;
 
-  GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::HoldingTest;
+  KonamiGVWatchdogFramesRemaining--;
 
-  Log_InfoPrintf("KonamiGV: starting automatic Beat the Champ first-run flash recovery");
+  if (KonamiGVWatchdogFramesRemaining != 0)
+    return false;
+
+  Log_InfoPrintf("KonamiGV: watchdog expired; resetting system");
 
   return true;
 }
 
 void KonamiInit(void)
 {
+  KonamiGVWatchdogFramesRemaining = 0;
+
   if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
   {
     std::fprintf(fp, "KONAMI INIT CALLED\n");

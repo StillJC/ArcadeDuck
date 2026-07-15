@@ -1982,8 +1982,11 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     {
       return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
     }
-    if (address == 0x1F780000)
+    if (address >= 0x1F780000 && address <= 0x1F780003)
     {
+      if constexpr (type == MemoryAccessType::Write)
+        KonamiGVWatchdogWrite();
+
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     if (KonamiIsKDeadEye())

@@ -25,6 +25,7 @@ void KonamiGVSharpFlashWrite(u32 Size, u32 Offset, u32 Value);
 bool KonamiIsKDeadEye();
 bool KonamiUsesDirectGVFlash();
 bool KonamiConsumeAutomaticResetRequest();
+void KonamiGVWatchdogWrite();
 
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value);
 void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value);
