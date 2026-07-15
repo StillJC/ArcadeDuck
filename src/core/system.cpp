@@ -107,6 +107,8 @@ static u32 s_internal_frame_number = 1;
 static std::string s_running_game_path;
 static std::string s_running_game_code;
 static std::string s_running_game_title;
+static std::string s_arcadeduck_mame_set_name;
+static bool s_running_konami_gv = false;
 
 static float s_throttle_frequency = 60.0f;
 static float s_target_speed = 1.0f;
@@ -252,6 +254,16 @@ const std::string& GetRunningCode()
 const std::string& GetRunningTitle()
 {
   return s_running_game_title;
+}
+
+const std::string& GetArcadeDuckMameSetName()
+{
+  return s_arcadeduck_mame_set_name;
+}
+
+bool IsKonamiGV()
+{
+  return s_running_konami_gv;
 }
 
 float GetFPS()
@@ -1298,6 +1310,8 @@ void Shutdown()
   s_running_game_code.clear();
   s_running_game_path.clear();
   s_running_game_title.clear();
+  s_arcadeduck_mame_set_name.clear();
+  s_running_konami_gv = false;
   s_cheat_list.reset();
   s_state = State::Shutdown;
 
@@ -2418,14 +2432,18 @@ void UpdateRunningGame(const char* path, CDImage* image)
   s_running_game_path.clear();
   s_running_game_code.clear();
   s_running_game_title.clear();
+  s_arcadeduck_mame_set_name.clear();
+  s_running_konami_gv = false;
 
-    if (path && std::strlen(path) > 0)
+  if (path && std::strlen(path) > 0)
   {
     s_running_game_path = path;
     g_host_interface->GetGameInfo(path, image, &s_running_game_code, &s_running_game_title);
 
     if (const std::string mame_set_name = GetKonamiGVMameSetNameFromResolvedCHDPath(path); !mame_set_name.empty())
     {
+      s_arcadeduck_mame_set_name = mame_set_name;
+      s_running_konami_gv = true;
       s_running_game_code = mame_set_name;
       s_running_game_title = mame_set_name;
     }

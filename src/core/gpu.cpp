@@ -484,6 +484,9 @@ float GPU::ComputeVerticalFrequency() const
 
 float GPU::GetDisplayAspectRatio() const
 {
+  if (System::IsKonamiGV())
+    return 4.0f / 3.0f;
+
   if (g_settings.display_force_4_3_for_24bit && m_GPUSTAT.display_area_color_depth_24)
   {
     return 4.0f / 3.0f;
@@ -589,7 +592,7 @@ void GPU::UpdateCRTCConfig()
 void GPU::UpdateCRTCDisplayParameters()
 {
   CRTCState& cs = m_crtc_state;
-  const DisplayCropMode crop_mode = g_settings.display_crop_mode;
+  const DisplayCropMode crop_mode = System::IsKonamiGV() ? DisplayCropMode::Overscan : g_settings.display_crop_mode;
 
   const u16 horizontal_total = m_GPUSTAT.pal_mode ? PAL_TICKS_PER_LINE : NTSC_TICKS_PER_LINE;
   const u16 vertical_total = m_GPUSTAT.pal_mode ? PAL_TOTAL_LINES : NTSC_TOTAL_LINES;
@@ -670,10 +673,20 @@ void GPU::UpdateCRTCDisplayParameters()
       std::clamp<u16>(cs.horizontal_visible_start, NTSC_HORIZONTAL_ACTIVE_START, NTSC_HORIZONTAL_ACTIVE_END);
     cs.horizontal_visible_end =
       std::clamp<u16>(cs.horizontal_visible_end, cs.horizontal_visible_start, NTSC_HORIZONTAL_ACTIVE_END);
-    cs.vertical_visible_start =
-      std::clamp<u16>(cs.vertical_visible_start, NTSC_VERTICAL_ACTIVE_START, NTSC_VERTICAL_ACTIVE_END);
-    cs.vertical_visible_end =
-      std::clamp<u16>(cs.vertical_visible_end, cs.vertical_visible_start, NTSC_VERTICAL_ACTIVE_END);
+    if (System::IsKonamiGV())
+    {
+      // Konami GV uses its programmed display range directly, including during
+      // the BIOS and EEPROM loading screens.
+      cs.vertical_visible_start = vertical_display_start;
+      cs.vertical_visible_end = vertical_display_end;
+    }
+    else
+    {
+      cs.vertical_visible_start =
+        std::clamp<u16>(cs.vertical_visible_start, NTSC_VERTICAL_ACTIVE_START, NTSC_VERTICAL_ACTIVE_END);
+      cs.vertical_visible_end =
+        std::clamp<u16>(cs.vertical_visible_end, cs.vertical_visible_start, NTSC_VERTICAL_ACTIVE_END);
+    }
   }
 
   // If force-progressive is enabled, we only double the height in 480i mode. This way non-interleaved 480i framebuffers
