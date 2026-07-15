@@ -1959,11 +1959,42 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
         return m_exp1_access_time[static_cast<u32>(size)];
       }
 
-      if (address >= 0x1F680000 && address <= 0x1F6800FF)
+      if (address >= 0x1F680000 && address < 0x1F680100)
       {
         LogKDeadEyeRegAccess("UNKNOWN");
       }
     }
+
+    if constexpr (type == MemoryAccessType::Read)
+    {
+      if (address >= 0x1F680080 && address < 0x1F680082)
+      {
+        const std::string& game_name = System::GetRunningCode();
+
+        if (game_name == "tmosh" || game_name == "tmoshs" || game_name == "tmoshsp" || game_name == "tmoshspa")
+        {
+          KonamiTokimekiSerialRead(1U << static_cast<u32>(size), address & EXP1_MASK, value);
+
+          return m_exp1_access_time[static_cast<u32>(size)];
+        }
+      }
+    }
+
+    if constexpr (type == MemoryAccessType::Write)
+    {
+      if (address >= 0x1F680090 && address < 0x1F680092)
+      {
+        const std::string& game_name = System::GetRunningCode();
+
+        if (game_name == "tmosh" || game_name == "tmoshs" || game_name == "tmoshsp" || game_name == "tmoshspa")
+        {
+          KonamiTokimekiSerialWrite(1U << static_cast<u32>(size), address & EXP1_MASK, value);
+
+          return m_exp1_access_time[static_cast<u32>(size)];
+        }
+      }
+    }
+
     if (address >= 0x1F680080 && address < 0x1F680090)
     {
       const std::string& game_name = System::GetRunningCode();

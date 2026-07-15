@@ -23,6 +23,22 @@ Log_SetChannel(Konami);
 // Buttons
 static u32 CurrentButtons[2];
 
+// Tokimeki Memorial daughterboard
+static bool TokimekiDeviceCheckEnabled = false;
+static u16 TokimekiDeviceCheckValue = 0;
+static bool TokimekiDeviceCheckClock = false;
+static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES = 45;
+
+static bool TokimekiHeartbeatSignal = true;
+static u32 TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
+static constexpr u8 TOKIMEKI_DEFAULT_GSR_VALUE = 0x20;
+static u8 TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
+static u8 TokimekiSerialValue = 0;
+static u8 TokimekiSerialLength = 0;
+static bool TokimekiSerialClock = false;
+static u8 TokimekiSerialSensorId = 0;
+static u16 TokimekiSerialSensorData = 0;
+
 // Konami GV flash state
 static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SIZE = 0x200000;
 static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE = 0x10000;
@@ -666,6 +682,18 @@ void KonamiGVWatchdogWrite()
 
 bool KonamiConsumeAutomaticResetRequest()
 {
+  if (TokimekiDeviceCheckEnabled)
+  {
+    if (TokimekiHeartbeatFramesRemaining > 0)
+      TokimekiHeartbeatFramesRemaining--;
+
+    if (TokimekiHeartbeatFramesRemaining == 0)
+    {
+      TokimekiHeartbeatSignal = false;
+      TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
+    }
+  }
+
   if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::ResetRequested)
   {
     GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::HoldingTest;
@@ -707,6 +735,33 @@ void KonamiInit(void)
   //   kdeadeye.zip -> nvram/kdeadeye
   //   btchamp.zip  -> nvram/btchamp
   const std::string& game_name = System::GetRunningCode();
+
+  TokimekiDeviceCheckEnabled = false;
+  TokimekiDeviceCheckValue = 0;
+  TokimekiDeviceCheckClock = false;
+  TokimekiHeartbeatSignal = true;
+  TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
+  TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
+  TokimekiSerialValue = 0;
+  TokimekiSerialLength = 0;
+  TokimekiSerialClock = false;
+  TokimekiSerialSensorId = 0;
+  TokimekiSerialSensorData = 0;
+
+  if (game_name == "tmosh")
+  {
+    TokimekiDeviceCheckEnabled = true;
+  }
+  else if (game_name == "tmoshs")
+  {
+    TokimekiDeviceCheckEnabled = true;
+    TokimekiDeviceCheckValue = 0xF073;
+  }
+  else if (game_name == "tmoshsp" || game_name == "tmoshspa")
+  {
+    TokimekiDeviceCheckEnabled = true;
+    TokimekiDeviceCheckValue = 0xF0BA;
+  }
 
   if (game_name.empty())
   {
@@ -852,11 +907,76 @@ void KonamiP1Write(u32 Size, u32 Offset, u32 Value)
 void KonamiP2Read(u32 Size, u32 Offset, u32& Value)
 {
   Value = CurrentButtons[1];
+
+  if (TokimekiDeviceCheckEnabled)
+  {
+    Value &= ~0x00000400U;
+    Value |= static_cast<u32>((TokimekiDeviceCheckValue >> 15) & 1U) << 10;
+  }
 }
 
 void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
 {
   // Ignored
+}
+
+void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value)
+{
+  Value = TokimekiHeartbeatSignal ? 0x0004U : 0x0000U;
+  TokimekiHeartbeatSignal = true;
+
+  if (TokimekiSerialSensorId != 0)
+  {
+    Value |= static_cast<u32>((TokimekiSerialSensorData >> 8) & 1U) << 3;
+  }
+}
+
+void KonamiTokimekiSerialWrite(u32 Size, u32 Offset, u32 Value)
+{
+  const bool new_serial_clock = (Value & 0x20U) != 0;
+
+  if ((Value & 0x02U) != 0)
+  {
+    TokimekiSerialSensorData = 0;
+    TokimekiSerialSensorId = 0;
+    TokimekiSerialValue = 0;
+    TokimekiSerialLength = 0;
+  }
+  else if (!TokimekiSerialClock && new_serial_clock)
+  {
+    if (TokimekiSerialLength < 5)
+    {
+      const u8 serial_bit = static_cast<u8>((Value >> 4) & 1U);
+
+      TokimekiSerialValue |= static_cast<u8>(serial_bit << (4 - TokimekiSerialLength));
+
+      if (TokimekiSerialLength == 4)
+      {
+        TokimekiSerialSensorId = TokimekiSerialValue;
+
+        switch (TokimekiSerialSensorId)
+        {
+          case 0x1A:
+            TokimekiSerialSensorData = TokimekiGSRValue;
+            break;
+
+          case 0x18:
+          case 0x19:
+          default:
+            TokimekiSerialSensorData = 0;
+            break;
+        }
+      }
+    }
+    else if (TokimekiSerialLength >= 6)
+    {
+      TokimekiSerialSensorData <<= 1;
+    }
+
+    TokimekiSerialLength++;
+  }
+
+  TokimekiSerialClock = new_serial_clock;
 }
 
 // Konami GV Fujitsu flash
@@ -1113,6 +1233,16 @@ static void KonamiSerialEepromWrite(u32 Value)
   const bool new_di = (Value & 0x01) != 0;
   const bool new_cs = (Value & 0x02) != 0;
   const bool new_clk = (Value & 0x04) != 0;
+
+  const bool new_device_check_clock = (Value & 0x10) != 0;
+
+  if (TokimekiDeviceCheckEnabled && !TokimekiDeviceCheckClock && new_device_check_clock)
+  {
+    TokimekiDeviceCheckValue = static_cast<u16>((TokimekiDeviceCheckValue << 1) | (TokimekiDeviceCheckValue >> 15));
+  }
+
+  TokimekiDeviceCheckClock = new_device_check_clock;
+
   static u32 eeprom_edge_debug_count = 0;
 
   const bool cs_changed = (EepromCs != new_cs);

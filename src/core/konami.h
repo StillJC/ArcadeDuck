@@ -47,6 +47,9 @@ void KonamiLightgunSetShootOffscreen(u32 Player, bool Pressed);
 void KonamiButtonsSet(u32 Player, u32 Buttons);
 void KonamiArcadeButtonSet(u32 Player, u32 ButtonMask, bool Pressed);
 
+void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value);
+void KonamiTokimekiSerialWrite(u32 Size, u32 Offset, u32 Value);
+
 void KonamiTrackballSetXY(u16 X, u16 Y);
 void KonamiTrackballAddDelta(u32 Player, s32 X, s32 Y);
 void KonamiTrackballAddDelta(s32 X, s32 Y);
