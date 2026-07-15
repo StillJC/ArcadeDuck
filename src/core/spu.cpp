@@ -8,6 +8,7 @@
 #include "dma.h"
 #include "host_interface.h"
 #include "interrupt_controller.h"
+#include "konami_gv_cdrom.h"
 #include "system.h"
 #ifdef WITH_IMGUI
 #include "imgui.h"
@@ -1825,6 +1826,7 @@ void SPU::Execute(TickCount ticks)
 
       // Mix in CD audio.
       const auto [cd_audio_left, cd_audio_right] = g_cdrom.GetAudioFrame();
+
       if (m_SPUCNT.cd_audio_enable)
       {
         const s32 cd_audio_volume_left = ApplyVolume(s32(cd_audio_left), m_cd_audio_volume_left);
@@ -1840,6 +1842,22 @@ void SPU::Execute(TickCount ticks)
         }
       }
 
+      // Konami GV CDDA uses the arcade board's external audio path rather
+      // than the PlayStation CD-audio enable and volume registers.
+      const auto [external_cdda_left, external_cdda_right] = g_cdrom.GetExternalCDAudioFrame();
+
+      s32 external_cdda_mix_left = 0;
+      s32 external_cdda_mix_right = 0;
+
+      if (!g_settings.cdrom_mute_cd_audio)
+      {
+        KonamiGVCDROMMixAudioFrame(external_cdda_left, external_cdda_right, &external_cdda_mix_left,
+                                   &external_cdda_mix_right);
+      }
+
+      left_sum += external_cdda_mix_left;
+      right_sum += external_cdda_mix_right;
+
       // Compute reverb.
       s32 reverb_out_left, reverb_out_right;
       ProcessReverb(static_cast<s16>(Clamp16(reverb_in_left)), static_cast<s16>(Clamp16(reverb_in_right)),
@@ -1850,8 +1868,11 @@ void SPU::Execute(TickCount ticks)
       right_sum += reverb_out_right;
 
       // Apply main volume after clamping. A maximum volume should not overflow here because both are 16-bit values.
-      *(output_frame++) = static_cast<s16>(ApplyVolume(Clamp16(left_sum), m_main_volume_left.current_level) * 4);
-      *(output_frame++) = static_cast<s16>(ApplyVolume(Clamp16(right_sum), m_main_volume_right.current_level) * 4);
+      *(output_frame++) =
+        static_cast<s16>(Clamp16(ApplyVolume(Clamp16(left_sum), m_main_volume_left.current_level) * 4));
+
+      *(output_frame++) =
+        static_cast<s16>(Clamp16(ApplyVolume(Clamp16(right_sum), m_main_volume_right.current_level) * 4));
       m_main_volume_left.Tick();
       m_main_volume_right.Tick();
 
