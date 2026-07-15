@@ -1324,13 +1324,16 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           [[fallthrough]];
 
         case 0x11:
-          KonamiGVScsiAssertInterrupt();
-          KonamiGVScsiClearStatusBits(NCR53CF96_STATUS_INTERRUPT);
+          // Initiator Command Complete. The simplified GV target path has
+          // already consumed the status/message response, so expose the
+          // final command-complete state with one Function Complete IRQ.
           KonamiGVScsiSetPhase(0);
-          KonamiGVScsiSetSequenceStep(0x00);
-          [[fallthrough]]; // ?? Why ??
+          KonamiGVScsiSetSequenceStep(0x06U);
+          KonamiGVScsiAssertInterrupt();
+          break;
 
         case 0x12:
+          // Message Accepted completes independently from 0x11.
           KonamiGVScsiSetSequenceStep(0x06U);
           KonamiGVScsiAssertInterrupt();
           break;
