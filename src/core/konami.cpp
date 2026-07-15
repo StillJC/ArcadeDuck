@@ -27,17 +27,36 @@ static u32 CurrentButtons[2];
 static bool TokimekiDeviceCheckEnabled = false;
 static u16 TokimekiDeviceCheckValue = 0;
 static bool TokimekiDeviceCheckClock = false;
-static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES = 45;
-
-static bool TokimekiHeartbeatSignal = true;
-static u32 TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
+static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_RATE = 80;
+static constexpr u32 TOKIMEKI_HEARTBEAT_RATE_STEP = 10;
+static constexpr u32 TOKIMEKI_MAX_EXCITEMENT_LEVEL = 7;
 static constexpr u8 TOKIMEKI_DEFAULT_GSR_VALUE = 0x20;
+static constexpr u8 TOKIMEKI_MAX_GSR_VALUE = 0x80;
+
+static u32 TokimekiExcitementLevel = 0;
+static u32 TokimekiHeartbeatRate = TOKIMEKI_DEFAULT_HEARTBEAT_RATE;
+static bool TokimekiHeartbeatSignal = true;
+static u32 TokimekiHeartbeatFramesRemaining = 45;
 static u8 TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
 static u8 TokimekiSerialValue = 0;
 static u8 TokimekiSerialLength = 0;
 static bool TokimekiSerialClock = false;
 static u8 TokimekiSerialSensorId = 0;
 static u16 TokimekiSerialSensorData = 0;
+
+static u32 KonamiTokimekiGetHeartbeatPeriodFrames()
+{
+  return (3600U + TokimekiHeartbeatRate - 1U) / TokimekiHeartbeatRate;
+}
+
+static void KonamiTokimekiUpdateExcitementValues()
+{
+  TokimekiHeartbeatRate = TOKIMEKI_DEFAULT_HEARTBEAT_RATE + (TokimekiExcitementLevel * TOKIMEKI_HEARTBEAT_RATE_STEP);
+
+  TokimekiGSRValue = static_cast<u8>(
+    TOKIMEKI_DEFAULT_GSR_VALUE + (((TOKIMEKI_MAX_GSR_VALUE - TOKIMEKI_DEFAULT_GSR_VALUE) * TokimekiExcitementLevel) /
+                                  TOKIMEKI_MAX_EXCITEMENT_LEVEL));
+}
 
 // Konami GV flash state
 static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SIZE = 0x200000;
@@ -690,7 +709,7 @@ bool KonamiConsumeAutomaticResetRequest()
     if (TokimekiHeartbeatFramesRemaining == 0)
     {
       TokimekiHeartbeatSignal = false;
-      TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
+      TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
     }
   }
 
@@ -739,9 +758,11 @@ void KonamiInit(void)
   TokimekiDeviceCheckEnabled = false;
   TokimekiDeviceCheckValue = 0;
   TokimekiDeviceCheckClock = false;
+  TokimekiExcitementLevel = 0;
+  KonamiTokimekiUpdateExcitementValues();
+
   TokimekiHeartbeatSignal = true;
-  TokimekiHeartbeatFramesRemaining = TOKIMEKI_DEFAULT_HEARTBEAT_PERIOD_FRAMES;
-  TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
+  TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
   TokimekiSerialValue = 0;
   TokimekiSerialLength = 0;
   TokimekiSerialClock = false;
@@ -918,6 +939,32 @@ void KonamiP2Read(u32 Size, u32 Offset, u32& Value)
 void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
 {
   // Ignored
+}
+
+void KonamiTokimekiAdjustExcitement(s32 Direction)
+{
+  if (!TokimekiDeviceCheckEnabled || Direction == 0)
+    return;
+
+  const u32 previous_level = TokimekiExcitementLevel;
+
+  if (Direction > 0)
+  {
+    if (TokimekiExcitementLevel < TOKIMEKI_MAX_EXCITEMENT_LEVEL)
+      TokimekiExcitementLevel++;
+  }
+  else
+  {
+    if (TokimekiExcitementLevel > 0)
+      TokimekiExcitementLevel--;
+  }
+
+  if (TokimekiExcitementLevel == previous_level)
+    return;
+
+  KonamiTokimekiUpdateExcitementValues();
+
+  TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
 }
 
 void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value)
@@ -1743,17 +1790,11 @@ void KonamiButtonsSet(u32 Player, u32 Buttons)
 
   map_button(0x4000, 1 << 4); // Button 1 / Cross
   map_button(0x2000, 1 << 5); // Button 2 / Circle
-  map_button(0x8000, 1 << 6); // Button 3 / Square
-  map_button(0x1000, 1 << 7); // Button 4 / Triangle
+  map_button(0x0200, 1 << 6); // Button 3 / R2
+  map_button(0x8000, 1 << 7); // Button 4 / Square
 
   map_button(0x0008, 1 << 9);  // Start
   map_button(0x0001, 1 << 10); // Coin / Select
-
-  if (Player == 0)
-  {
-    map_button(0x0002, 1 << 11); // Service / L3
-    map_button(0x0004, 1 << 12); // Test / R3
-  }
 
   CurrentButtons[Player] = value;
 }

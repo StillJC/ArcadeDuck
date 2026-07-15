@@ -292,6 +292,7 @@ QString ControllerSettingsWidget::getTabTitleForPort(u32 index, MultitapMode) co
       break;
 
     case ControllerType::NeGcon:
+    case ControllerType::SpecialSensor:
       player_count = 1;
       break;
 
@@ -400,6 +401,10 @@ void ControllerSettingsWidget::createPortSettingsUi(int index, PortSettingsUI* u
   };
 
   add_controller_type(ControllerType::AnalogController);
+
+  if (index == 0)
+    add_controller_type(ControllerType::SpecialSensor);
+
   add_controller_type(ControllerType::NamcoGunCon);
   add_controller_type(ControllerType::PlayStationMouse);
   add_controller_type(ControllerType::NeGcon);

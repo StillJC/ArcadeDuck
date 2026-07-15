@@ -9,7 +9,7 @@
 #include <cmath>
 Log_SetChannel(AnalogController);
 
-AnalogController::AnalogController(u32 index) : m_index(index)
+AnalogController::AnalogController(u32 index, ControllerType type) : m_index(index), m_type(type)
 {
   m_axis_state.fill(0x80);
   Reset();
@@ -19,7 +19,7 @@ AnalogController::~AnalogController() = default;
 
 ControllerType AnalogController::GetType() const
 {
-  return ControllerType::AnalogController;
+  return m_type;
 }
 
 void AnalogController::Reset()
@@ -104,7 +104,8 @@ std::optional<s32> AnalogController::GetAxisCodeByName(std::string_view axis_nam
 
 std::optional<s32> AnalogController::GetButtonCodeByName(std::string_view button_name) const
 {
-  return StaticGetButtonCodeByName(button_name);
+  return (m_type == ControllerType::SpecialSensor) ? StaticGetSpecialSensorButtonCodeByName(button_name) :
+                                                     StaticGetButtonCodeByName(button_name);
 }
 
 float AnalogController::GetAxisState(s32 axis_code) const
@@ -163,6 +164,15 @@ void AnalogController::SetButtonState(Button button, bool pressed)
   }
 
   const u16 bit = u16(1) << static_cast<u8>(button);
+  const bool was_pressed = ((m_button_state & bit) == 0);
+
+  if (m_type == ControllerType::SpecialSensor && m_index == 0 && pressed && !was_pressed)
+  {
+    if (button == Button::L2)
+      KonamiTokimekiAdjustExcitement(-1);
+    else if (button == Button::L1)
+      KonamiTokimekiAdjustExcitement(1);
+  }
 
   if (pressed)
   {
@@ -702,6 +712,11 @@ std::unique_ptr<AnalogController> AnalogController::Create(u32 index)
   return std::make_unique<AnalogController>(index);
 }
 
+std::unique_ptr<AnalogController> AnalogController::CreateSpecialSensor(u32 index)
+{
+  return std::make_unique<AnalogController>(index, ControllerType::SpecialSensor);
+}
+
 std::optional<s32> AnalogController::StaticGetAxisCodeByName(std::string_view axis_name)
 {
 #define AXIS(name)                                                                                                     \
@@ -722,6 +737,26 @@ std::optional<s32> AnalogController::StaticGetAxisCodeByName(std::string_view ax
 
 std::optional<s32> AnalogController::StaticGetButtonCodeByName(std::string_view button_name)
 {
+    if (button_name == "Coin")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::Select)));
+
+  if (button_name == "B1")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::Cross)));
+
+  if (button_name == "B2")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::Circle)));
+
+  if (button_name == "B3")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::R2)));
+
+  if (button_name == "B4")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::Square)));
+
+  if (button_name == "B5")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::Triangle)));
+
+  if (button_name == "B6")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::R1)));
 #define BUTTON(name)                                                                                                   \
   if (button_name == #name)                                                                                            \
   {                                                                                                                    \
@@ -751,12 +786,20 @@ std::optional<s32> AnalogController::StaticGetButtonCodeByName(std::string_view 
 #undef BUTTON
 }
 
+std::optional<s32> AnalogController::StaticGetSpecialSensorButtonCodeByName(std::string_view button_name)
+{
+  if (button_name == "Excitement -")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::L2)));
+
+  if (button_name == "Excitement +")
+    return static_cast<s32>(ZeroExtend32(static_cast<u8>(Button::L1)));
+
+  return StaticGetButtonCodeByName(button_name);
+}
+
 Controller::AxisList AnalogController::StaticGetAxisNames()
 {
-  return {{TRANSLATABLE("AnalogController", "LeftX"), static_cast<s32>(Axis::LeftX), AxisType::Full},
-          {TRANSLATABLE("AnalogController", "LeftY"), static_cast<s32>(Axis::LeftY), AxisType::Full},
-          {TRANSLATABLE("AnalogController", "RightX"), static_cast<s32>(Axis::RightX), AxisType::Full},
-          {TRANSLATABLE("AnalogController", "RightY"), static_cast<s32>(Axis::RightY), AxisType::Full}};
+  return {};
 }
 
 Controller::ButtonList AnalogController::StaticGetButtonNames()
@@ -765,19 +808,26 @@ Controller::ButtonList AnalogController::StaticGetButtonNames()
           {TRANSLATABLE("AnalogController", "Down"), static_cast<s32>(Button::Down)},
           {TRANSLATABLE("AnalogController", "Left"), static_cast<s32>(Button::Left)},
           {TRANSLATABLE("AnalogController", "Right"), static_cast<s32>(Button::Right)},
-          {TRANSLATABLE("AnalogController", "Select"), static_cast<s32>(Button::Select)},
+          {TRANSLATABLE("AnalogController", "Coin"), static_cast<s32>(Button::Select)},
           {TRANSLATABLE("AnalogController", "Start"), static_cast<s32>(Button::Start)},
-          {TRANSLATABLE("AnalogController", "Triangle"), static_cast<s32>(Button::Triangle)},
-          {TRANSLATABLE("AnalogController", "Cross"), static_cast<s32>(Button::Cross)},
-          {TRANSLATABLE("AnalogController", "Circle"), static_cast<s32>(Button::Circle)},
-          {TRANSLATABLE("AnalogController", "Square"), static_cast<s32>(Button::Square)},
-          {TRANSLATABLE("AnalogController", "L1"), static_cast<s32>(Button::L1)},
-          {TRANSLATABLE("AnalogController", "L2"), static_cast<s32>(Button::L2)},
-          {TRANSLATABLE("AnalogController", "R1"), static_cast<s32>(Button::R1)},
-          {TRANSLATABLE("AnalogController", "R2"), static_cast<s32>(Button::R2)},
-          {TRANSLATABLE("AnalogController", "L3"), static_cast<s32>(Button::L3)},
-          {TRANSLATABLE("AnalogController", "R3"), static_cast<s32>(Button::R3)},
-          {TRANSLATABLE("AnalogController", "Analog"), static_cast<s32>(Button::Analog)}};
+          {TRANSLATABLE("AnalogController", "B1"), static_cast<s32>(Button::Cross)},
+          {TRANSLATABLE("AnalogController", "B2"), static_cast<s32>(Button::Circle)},
+          {TRANSLATABLE("AnalogController", "B3"), static_cast<s32>(Button::R2)},
+          {TRANSLATABLE("AnalogController", "B4"), static_cast<s32>(Button::Square)},
+          {TRANSLATABLE("AnalogController", "B5"), static_cast<s32>(Button::Triangle)},
+          {TRANSLATABLE("AnalogController", "B6"), static_cast<s32>(Button::R1)}};
+}
+
+Controller::ButtonList AnalogController::StaticGetSpecialSensorButtonNames()
+{
+  return {{TRANSLATABLE("AnalogController", "Up"), static_cast<s32>(Button::Up)},
+          {TRANSLATABLE("AnalogController", "Down"), static_cast<s32>(Button::Down)},
+          {TRANSLATABLE("AnalogController", "Left"), static_cast<s32>(Button::Left)},
+          {TRANSLATABLE("AnalogController", "Right"), static_cast<s32>(Button::Right)},
+          {TRANSLATABLE("AnalogController", "Coin"), static_cast<s32>(Button::Select)},
+          {TRANSLATABLE("AnalogController", "B1"), static_cast<s32>(Button::Cross)},
+          {TRANSLATABLE("AnalogController", "Excitement -"), static_cast<s32>(Button::L2)},
+          {TRANSLATABLE("AnalogController", "Excitement +"), static_cast<s32>(Button::L1)}};
 }
 
 u32 AnalogController::StaticGetVibrationMotorCount()

@@ -2123,11 +2123,14 @@ Controller* GetController(u32 slot)
 
 void UpdateControllers()
 {
+  const bool special_sensor_single_player = (g_settings.controller_types[0] == ControllerType::SpecialSensor);
+
   for (u32 i = 0; i < NUM_CONTROLLER_AND_CARD_PORTS; i++)
   {
     g_pad.SetController(i, nullptr);
 
-    const ControllerType type = g_settings.controller_types[i];
+    const ControllerType type =
+      (special_sensor_single_player && i > 0) ? ControllerType::None : g_settings.controller_types[i];
     if (type != ControllerType::None)
     {
       std::unique_ptr<Controller> controller = Controller::Create(type, i);

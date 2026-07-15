@@ -77,6 +77,9 @@ std::unique_ptr<Controller> Controller::Create(ControllerType type, u32 index)
     case ControllerType::AnalogController:
       return AnalogController::Create(index);
 
+    case ControllerType::SpecialSensor:
+      return AnalogController::CreateSpecialSensor(index);
+
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::Create(index);
 
@@ -115,6 +118,9 @@ Controller::AxisList Controller::GetAxisNames(ControllerType type)
     case ControllerType::AnalogController:
       return AnalogController::StaticGetAxisNames();
 
+    case ControllerType::SpecialSensor:
+      return AnalogController::StaticGetAxisNames();
+
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::StaticGetAxisNames();
 
@@ -142,6 +148,9 @@ Controller::ButtonList Controller::GetButtonNames(ControllerType type)
 
     case ControllerType::AnalogController:
       return AnalogController::StaticGetButtonNames();
+
+    case ControllerType::SpecialSensor:
+      return AnalogController::StaticGetSpecialSensorButtonNames();
 
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::StaticGetButtonNames();
@@ -171,6 +180,9 @@ u32 Controller::GetVibrationMotorCount(ControllerType type)
     case ControllerType::AnalogController:
       return AnalogController::StaticGetVibrationMotorCount();
 
+    case ControllerType::SpecialSensor:
+      return 0;
+
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::StaticGetVibrationMotorCount();
 
@@ -197,6 +209,9 @@ std::optional<s32> Controller::GetAxisCodeByName(ControllerType type, std::strin
       return DigitalController::StaticGetAxisCodeByName(axis_name);
 
     case ControllerType::AnalogController:
+      return AnalogController::StaticGetAxisCodeByName(axis_name);
+
+        case ControllerType::SpecialSensor:
       return AnalogController::StaticGetAxisCodeByName(axis_name);
 
     case ControllerType::AnalogJoystick:
@@ -227,6 +242,9 @@ std::optional<s32> Controller::GetButtonCodeByName(ControllerType type, std::str
     case ControllerType::AnalogController:
       return AnalogController::StaticGetButtonCodeByName(button_name);
 
+    case ControllerType::SpecialSensor:
+      return AnalogController::StaticGetSpecialSensorButtonCodeByName(button_name);
+
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::StaticGetButtonCodeByName(button_name);
 
@@ -254,6 +272,9 @@ Controller::SettingList Controller::GetSettings(ControllerType type)
 
     case ControllerType::AnalogController:
       return AnalogController::StaticGetSettings();
+
+    case ControllerType::SpecialSensor:
+      return {};
 
     case ControllerType::AnalogJoystick:
       return AnalogJoystick::StaticGetSettings();
