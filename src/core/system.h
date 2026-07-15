@@ -138,6 +138,7 @@ const std::string& GetRunningCode();
 const std::string& GetRunningTitle();
 const std::string& GetArcadeDuckMameSetName();
 bool IsKonamiGV();
+bool IsKonamiGQ();
 
 float GetFPS();
 float GetVPS();

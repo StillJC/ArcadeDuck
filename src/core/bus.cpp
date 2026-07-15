@@ -112,7 +112,7 @@ static constexpr auto m_fastmem_ram_mirrors =
 static std::tuple<TickCount, TickCount, TickCount> CalculateMemoryTiming(MEMDELAY mem_delay, COMDELAY common_delay);
 static void RecalculateMemoryTimings();
 
-static bool AllocateMemory(bool enable_8mb_ram);
+static bool AllocateMemory(u32 ram_size);
 static void ReleaseMemory();
 
 static void SetCodePageFastmemProtection(u32 page_index, bool writable);
@@ -129,9 +129,9 @@ static void SetCodePageFastmemProtection(u32 page_index, bool writable);
 #define FIXUP_WORD_WRITE_VALUE(size, offset, value)                                                                    \
   ((size == MemoryAccessSize::Word) ? (value) : ((value) << (((offset)&3u) * 8)))
 
-bool Initialize()
+bool Initialize(u32 ram_size)
 {
-  if (!AllocateMemory(g_settings.enable_8mb_ram))
+  if (!AllocateMemory(ram_size))
   {
     g_host_interface->ReportError("Failed to allocate memory");
     return false;
@@ -185,9 +185,8 @@ bool DoState(StateWrapper& sw)
   sw.DoEx(&ram_size, 52, static_cast<u32>(RAM_2MB_SIZE));
   if (ram_size != g_ram_size)
   {
-    const bool using_8mb_ram = (ram_size == RAM_8MB_SIZE);
     ReleaseMemory();
-    if (!AllocateMemory(using_8mb_ram))
+    if (!AllocateMemory(ram_size))
       return false;
 
     UpdateFastmemViews(m_fastmem_mode);
@@ -279,8 +278,33 @@ void RecalculateMemoryTimings()
                   m_spu_access_time[2] + 1);
 }
 
-bool AllocateMemory(bool enable_8mb_ram)
+bool AllocateMemory(u32 ram_size)
 {
+  u32 ram_mask = 0;
+  u32 ram_code_page_count = 0;
+
+  switch (ram_size)
+  {
+    case RAM_2MB_SIZE:
+      ram_mask = RAM_2MB_MASK;
+      ram_code_page_count = RAM_2MB_CODE_PAGE_COUNT;
+      break;
+
+    case RAM_4MB_SIZE:
+      ram_mask = RAM_4MB_MASK;
+      ram_code_page_count = RAM_4MB_CODE_PAGE_COUNT;
+      break;
+
+    case RAM_8MB_SIZE:
+      ram_mask = RAM_8MB_MASK;
+      ram_code_page_count = RAM_8MB_CODE_PAGE_COUNT;
+      break;
+
+    default:
+      Log_ErrorPrintf("Unsupported RAM size: %u bytes", ram_size);
+      return false;
+  }
+
   if (!m_memory_arena.Create(MEMORY_ARENA_SIZE, true, false))
   {
     Log_ErrorPrint("Failed to create memory arena");
@@ -288,8 +312,6 @@ bool AllocateMemory(bool enable_8mb_ram)
   }
 
   // Create the base views.
-  const u32 ram_size = enable_8mb_ram ? RAM_8MB_SIZE : RAM_2MB_SIZE;
-  const u32 ram_mask = enable_8mb_ram ? RAM_8MB_MASK : RAM_2MB_MASK;
   g_ram = static_cast<u8*>(m_memory_arena.CreateViewPtr(MEMORY_ARENA_RAM_OFFSET, ram_size, true, false));
   if (!g_ram)
   {
@@ -299,7 +321,7 @@ bool AllocateMemory(bool enable_8mb_ram)
 
   g_ram_mask = ram_mask;
   g_ram_size = ram_size;
-  m_ram_code_page_count = enable_8mb_ram ? RAM_8MB_CODE_PAGE_COUNT : RAM_2MB_CODE_PAGE_COUNT;
+  m_ram_code_page_count = ram_code_page_count;
 
   Log_InfoPrintf("RAM is %u bytes at %p", g_ram_size, g_ram);
   return true;
