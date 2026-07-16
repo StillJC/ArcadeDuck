@@ -129,6 +129,7 @@ enum class ControllerType
   NamcoGunCon,
   PlayStationMouse,
   NeGcon,
+  SpecialSensor,
   Count
 };
 

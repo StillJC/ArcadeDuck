@@ -899,13 +899,13 @@ const char* Settings::GetAudioBackendDisplayName(AudioBackend backend)
   return s_audio_backend_display_names[static_cast<int>(backend)];
 }
 
-static std::array<const char*, 7> s_controller_type_names = {
-  {"None", "DigitalController", "AnalogController", "AnalogJoystick", "NamcoGunCon", "PlayStationMouse", "NeGcon"}};
-static std::array<const char*, 7> s_controller_display_names = {
+static std::array<const char*, 8> s_controller_type_names = {
+    {"None", "DigitalController", "AnalogController", "AnalogJoystick", "NamcoGunCon", "PlayStationMouse", "NeGcon", "SpecialSensor"}};
+static std::array<const char*, 8> s_controller_display_names = {
   {TRANSLATABLE("ControllerType", "None"), TRANSLATABLE("ControllerType", "Planned Controller 1"),
    TRANSLATABLE("ControllerType", "Arcade"), TRANSLATABLE("ControllerType", "Planned Controller 2"),
    TRANSLATABLE("ControllerType", "Lightgun"), TRANSLATABLE("ControllerType", "Trackball"),
-   TRANSLATABLE("ControllerType", "Racing")}};
+   TRANSLATABLE("ControllerType", "Racing"), TRANSLATABLE("ControllerType", "Special Sensor")}};
 
 std::optional<ControllerType> Settings::ParseControllerTypeName(const char* str)
 {

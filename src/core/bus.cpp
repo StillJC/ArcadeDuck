@@ -921,29 +921,29 @@ ALWAYS_INLINE static TickCount DoBIOSAccess(u32 offset, u32& value)
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     template<MemoryAccessType type, MemoryAccessSize size>
-    static ALWAYS_INLINE TickCount DoKDeadEyeFlashAccess(u32 offset, u32& value)
+    static ALWAYS_INLINE TickCount DoGVSharpFlashAccess(u32 offset, u32& value)
     {
       if constexpr (type == MemoryAccessType::Read)
       {
-        KonamiKDeadEyeFlashRead(1U << static_cast<u32>(size), offset, value);
+        KonamiGVSharpFlashRead(1U << static_cast<u32>(size), offset, value);
       }
       else
       {
-        KonamiKDeadEyeFlashWrite(1U << static_cast<u32>(size), offset, value);
+        KonamiGVSharpFlashWrite(1U << static_cast<u32>(size), offset, value);
       }
 
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     template<MemoryAccessType type, MemoryAccessSize size>
-    static ALWAYS_INLINE TickCount DoFlashAccess(u32 offset, u32& value)
+    static ALWAYS_INLINE TickCount DoGVFujitsuFlashAccess(u32 offset, u32& value)
     {
       if constexpr (type == MemoryAccessType::Read)
       {
-        KonamiFlashRead(1U << (u32)size, offset, value);
+        KonamiGVFujitsuFlashRead(1U << (u32)size, offset, value);
       }
       else
       {
-        KonamiFlashWrite(1U << (u32)size, offset, value);
+        KonamiGVFujitsuFlashWrite(1U << (u32)size, offset, value);
       }
       return m_exp1_access_time[static_cast<u32>(size)];
     }
@@ -1835,7 +1835,7 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     // Direct GV flash window used by KDeadEye and Beat the Champ.
     if (KonamiUsesDirectGVFlash() && address >= 0x1F380000 && address <= 0x1F3FFFFF)
     {
-      return DoKDeadEyeFlashAccess<type, size>(address & EXP1_MASK, value);
+      return DoGVSharpFlashAccess<type, size>(address & EXP1_MASK, value);
     }
 
     if (address >= 0x1F100000 && address <= 0x1F100003)
@@ -1959,11 +1959,42 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
         return m_exp1_access_time[static_cast<u32>(size)];
       }
 
-      if (address >= 0x1F680000 && address <= 0x1F6800FF)
+      if (address >= 0x1F680000 && address < 0x1F680100)
       {
         LogKDeadEyeRegAccess("UNKNOWN");
       }
     }
+
+    if constexpr (type == MemoryAccessType::Read)
+    {
+      if (address >= 0x1F680080 && address < 0x1F680082)
+      {
+        const std::string& game_name = System::GetRunningCode();
+
+        if (game_name == "tmosh" || game_name == "tmoshs" || game_name == "tmoshsp" || game_name == "tmoshspa")
+        {
+          KonamiTokimekiSerialRead(1U << static_cast<u32>(size), address & EXP1_MASK, value);
+
+          return m_exp1_access_time[static_cast<u32>(size)];
+        }
+      }
+    }
+
+    if constexpr (type == MemoryAccessType::Write)
+    {
+      if (address >= 0x1F680090 && address < 0x1F680092)
+      {
+        const std::string& game_name = System::GetRunningCode();
+
+        if (game_name == "tmosh" || game_name == "tmoshs" || game_name == "tmoshsp" || game_name == "tmoshspa")
+        {
+          KonamiTokimekiSerialWrite(1U << static_cast<u32>(size), address & EXP1_MASK, value);
+
+          return m_exp1_access_time[static_cast<u32>(size)];
+        }
+      }
+    }
+
     if (address >= 0x1F680080 && address < 0x1F680090)
     {
       const std::string& game_name = System::GetRunningCode();
@@ -1972,7 +2003,7 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
         return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
 
       if (game_name == "simpbowl")
-        return DoFlashAccess<type, size>(address & EXP1_MASK, value);
+        return DoGVFujitsuFlashAccess<type, size>(address & EXP1_MASK, value);
     }
     if (address >= 0x1F180000 && address < 0x1F180100)
     {
@@ -1982,8 +2013,11 @@ static ALWAYS_INLINE TickCount DoMemoryAccess(VirtualMemoryAddress address, u32&
     {
       return DoTrackballAccess<type, size>(address & EXP1_MASK, value);
     }
-    if (address == 0x1F780000)
+    if (address >= 0x1F780000 && address <= 0x1F780003)
     {
+      if constexpr (type == MemoryAccessType::Write)
+        KonamiGVWatchdogWrite();
+
       return m_exp1_access_time[static_cast<u32>(size)];
     }
     if (KonamiIsKDeadEye())

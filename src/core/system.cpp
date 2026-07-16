@@ -23,6 +23,7 @@
 #include "host_interface.h"
 #include "host_interface_progress_callback.h"
 #include "interrupt_controller.h"
+#include "konami.h"
 #include "libcrypt_game_codes.h"
 #include "mdec.h"
 #include "memory_card.h"
@@ -106,6 +107,8 @@ static u32 s_internal_frame_number = 1;
 static std::string s_running_game_path;
 static std::string s_running_game_code;
 static std::string s_running_game_title;
+static std::string s_arcadeduck_mame_set_name;
+static bool s_running_konami_gv = false;
 
 static float s_throttle_frequency = 60.0f;
 static float s_target_speed = 1.0f;
@@ -251,6 +254,16 @@ const std::string& GetRunningCode()
 const std::string& GetRunningTitle()
 {
   return s_running_game_title;
+}
+
+const std::string& GetArcadeDuckMameSetName()
+{
+  return s_arcadeduck_mame_set_name;
+}
+
+bool IsKonamiGV()
+{
+  return s_running_konami_gv;
 }
 
 float GetFPS()
@@ -453,6 +466,91 @@ static bool ExtractKonamiGVEepromFromZip(const std::string& zip_path, std::strin
   return true;
 }
 
+static bool PrepareKonamiGVSharpFirstBoot(std::string_view set_name)
+{
+  if (set_name != "kdeadeye")
+    return true;
+
+  static constexpr size_t SHARP_FLASH_SIZE = 0x80000;
+
+  const std::string nvram_dir = "nvram" FS_OSPATH_SEPARATOR_STR + std::string(set_name);
+  const std::string eeprom_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "eeprom";
+  const std::string flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
+
+  bool needs_blank_flash = true;
+
+  if (const std::optional<std::vector<u8>> existing = FileSystem::ReadBinaryFile(flash_path.c_str());
+      existing.has_value() && existing->size() == SHARP_FLASH_SIZE)
+  {
+    bool all_ff = true;
+    bool all_zero = true;
+
+    for (const u8 value : *existing)
+    {
+      if (value != 0xFF)
+        all_ff = false;
+
+      if (value != 0x00)
+        all_zero = false;
+    }
+
+    // A non-empty flash already contains initialized game data.
+    if (!all_ff && !all_zero)
+      return true;
+
+    // Keep an existing correctly sized erased image.
+    needs_blank_flash = !all_ff;
+  }
+
+  if (set_name == "kdeadeye")
+  {
+    std::optional<std::vector<u8>> eeprom = FileSystem::ReadBinaryFile(eeprom_path.c_str());
+
+    if (!eeprom.has_value() || eeprom->size() != 0x80)
+    {
+      Log_ErrorPrintf("KonamiGV: cannot prepare Dead Eye Sharp flash because EEPROM '%s' is missing or invalid",
+                      eeprom_path.c_str());
+      return false;
+    }
+
+    // Dead Eye enters its real Sharp flash initialization routine when this
+    // EEPROM word is in the verified first-boot state. The game restores the
+    // normal persistent value after flash programming completes.
+    if ((*eeprom)[2] == 0x56 && (*eeprom)[3] == 0x47)
+    {
+      std::swap((*eeprom)[2], (*eeprom)[3]);
+
+      if (!FileSystem::WriteBinaryFile(eeprom_path.c_str(), eeprom->data(), eeprom->size()))
+      {
+        Log_ErrorPrintf("KonamiGV: failed preparing Dead Eye EEPROM '%s' for Sharp flash initialization",
+                        eeprom_path.c_str());
+        return false;
+      }
+
+      Log_InfoPrintf("KonamiGV: prepared Dead Eye EEPROM for first-run Sharp flash initialization");
+    }
+    else if ((*eeprom)[2] != 0x47 || (*eeprom)[3] != 0x56)
+    {
+      Log_WarningPrintf("KonamiGV: Dead Eye EEPROM '%s' has unexpected first-boot state %02X%02X", eeprom_path.c_str(),
+                        (*eeprom)[2], (*eeprom)[3]);
+    }
+  }
+
+  if (needs_blank_flash)
+  {
+    std::vector<u8> blank_flash(SHARP_FLASH_SIZE, 0xFF);
+
+    if (!FileSystem::WriteBinaryFile(flash_path.c_str(), blank_flash.data(), blank_flash.size()))
+    {
+      Log_ErrorPrintf("KonamiGV: failed creating erased Sharp flash '%s'", flash_path.c_str());
+      return false;
+    }
+  }
+
+  Log_InfoPrintf("KonamiGV: prepared erased Sharp flash '%s'", flash_path.c_str());
+  return true;
+}
+
 static bool ResolveKonamiGVMameZipPath(std::string* path)
 {
   if (!path || path->empty())
@@ -501,7 +599,14 @@ static bool ResolveKonamiGVMameZipPath(std::string* path)
   const std::string chd_path = chd_files.front().FileName;
 
   if (!ExtractKonamiGVEepromFromZip(*path, file_title))
+  {
     Log_WarningPrintf("KonamiGV: EEPROM extraction failed for '%s'; continuing with CHD boot", path->c_str());
+  }
+  else if (!PrepareKonamiGVSharpFirstBoot(file_title))
+  {
+    Log_WarningPrintf("KonamiGV: Sharp flash first-run preparation failed for '%s'; continuing with CHD boot",
+                      path->c_str());
+  }
 
   Log_InfoPrintf("KonamiGV: resolved MAME zip '%s' to CHD '%s'", path->c_str(), chd_path.c_str());
   *path = chd_path;
@@ -1205,6 +1310,8 @@ void Shutdown()
   s_running_game_code.clear();
   s_running_game_path.clear();
   s_running_game_title.clear();
+  s_arcadeduck_mame_set_name.clear();
+  s_running_konami_gv = false;
   s_cheat_list.reset();
   s_state = State::Shutdown;
 
@@ -1693,6 +1800,11 @@ void RunFrame()
 
   DoRunFrame();
 
+  KonamiTokimekiProcessFrame();
+
+  if (KonamiConsumeAutomaticResetRequest())
+    Reset();
+
   s_next_frame_time += s_frame_period;
 
   if (s_memory_saves_enabled)
@@ -2013,11 +2125,14 @@ Controller* GetController(u32 slot)
 
 void UpdateControllers()
 {
+  const bool special_sensor_single_player = (g_settings.controller_types[0] == ControllerType::SpecialSensor);
+
   for (u32 i = 0; i < NUM_CONTROLLER_AND_CARD_PORTS; i++)
   {
     g_pad.SetController(i, nullptr);
 
-    const ControllerType type = g_settings.controller_types[i];
+    const ControllerType type =
+      (special_sensor_single_player && i > 0) ? ControllerType::None : g_settings.controller_types[i];
     if (type != ControllerType::None)
     {
       std::unique_ptr<Controller> controller = Controller::Create(type, i);
@@ -2322,14 +2437,18 @@ void UpdateRunningGame(const char* path, CDImage* image)
   s_running_game_path.clear();
   s_running_game_code.clear();
   s_running_game_title.clear();
+  s_arcadeduck_mame_set_name.clear();
+  s_running_konami_gv = false;
 
-    if (path && std::strlen(path) > 0)
+  if (path && std::strlen(path) > 0)
   {
     s_running_game_path = path;
     g_host_interface->GetGameInfo(path, image, &s_running_game_code, &s_running_game_title);
 
     if (const std::string mame_set_name = GetKonamiGVMameSetNameFromResolvedCHDPath(path); !mame_set_name.empty())
     {
+      s_arcadeduck_mame_set_name = mame_set_name;
+      s_running_konami_gv = true;
       s_running_game_code = mame_set_name;
       s_running_game_title = mame_set_name;
     }

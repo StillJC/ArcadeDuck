@@ -1,112 +1,401 @@
 #include "bus.h"
-#include "cdrom.h"
 #include "common/cd_image.h"
 #include "common/file_system.h"
+#include "common/image.h"
 #include "common/log.h"
-#include "cpu_code_cache.h"
 #include "cpu_core.h"
 #include "host_display.h"
 #include "host_interface.h"
-#include "interrupt_controller.h"
 #include "konami.h"
+#include "konami_gv_scsi.h"
 #include "system.h"
 #include "timers.h"
 #include "timing_event.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <stdio.h>
+#include <string>
 #include <vector>
 
 Log_SetChannel(Konami);
 
-// Legacy Konami GV SCSI shim.
-//
-// This is currently a hand-written approximation of the NCR53CF96/CD-ROM path.
-// MAME models Konami GV as NCR53CF96 + NSCSI CD-ROM + PSX DMA channel 5.
-// These globals are the fake register/FIFO/command state used by the current shim.
-// Beat the Champ is exposing why this needs to become a real NCR53CF96-style path.
-//
-// Current call flow:
-//   bus.cpp 0x1F000000-0x1F00001F
-//     -> KonamiScsiRead()/KonamiScsiWrite()
-//     -> ScsiRegs/ScsiFifo/ScsiCommand
-//     -> KonamiDmaControlWrite()
-//     -> fake REQUEST SENSE / INQUIRY / MODE SENSE / READ10 / READ TOC responses.
-//
-// Do not add more game-specific SCSI hacks here unless they are temporary diagnostics.
-// Long-term target: replace this shim with a proper GV SCSI controller layer.
-enum
-{
-  REG_XFERCNTLOW = 0, // read = current xfer count lo byte, write = set xfer count lo byte
-  REG_XFERCNTMID,     // read = current xfer count mid byte, write = set xfer count mid byte
-  REG_FIFO,           // read/write = FIFO
-  REG_COMMAND,        // read/write = command
-  REG_STATUS,         // read = status, write = destination SCSI ID (4)
-  REG_IRQSTATE,       // read = IRQ status, write = timeout         (5)
-  REG_INTSTATE,       // read = internal state, write = sync xfer period (6)
-  REG_FIFOSTATE,      // read = FIFO status, write = sync offset
-  REG_CTRL1,          // read/write = control 1
-  REG_CLOCKFCTR,      // clock factor (write only)
-  REG_TESTMODE,       // test mode (write only)
-  REG_CTRL2,          // read/write = control 2
-  REG_CTRL3,          // read/write = control 3
-  REG_CTRL4,          // read/write = control 4
-  REG_XFERCNTHI,      // read = current xfer count hi byte, write = set xfer count hi byte
-  REG_DATAALIGN       // data alignment (write only)
-};
-
-static u8 ScsiRegs[16];
-static u8 ScsiFifo[16];
-static u8 ScsiFifoPtr;
-static u8 ScsiCommand[12];
-static bool ScsiIsRead;
-static u32 ScsiSectorLba;
-static bool ScsiAudioPlaying;
-static bool ScsiAudioPaused;
-static u8 ScsiAudioTrack;
-static u8 ScsiAudioIndex;
-static u32 ScsiAudioRelativeLba;
-
-static std::unique_ptr<TimingEvent> ScsiIrqEvent;
-
 // Buttons
 static u32 CurrentButtons[2];
 
-// FLASH
-static constexpr u32 FLASH_SIZE = 0x200000;
-static constexpr u32 FLASH_SECTOR_SIZE = 0x10000;
+// Tokimeki Memorial daughterboard
+static bool TokimekiDeviceCheckEnabled = false;
+static u16 TokimekiDeviceCheckValue = 0;
+static bool TokimekiDeviceCheckClock = false;
+static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_RATE = 70;
+static constexpr u32 TOKIMEKI_HEARTBEAT_RATE_STEP = 5;
+static constexpr u32 TOKIMEKI_HEARTBEAT_PULSE_FRAMES = 4;
+static constexpr u32 TOKIMEKI_MAX_EXCITEMENT_LEVEL = 7;
+static constexpr u8 TOKIMEKI_DEFAULT_GSR_VALUE = 0x20;
+static constexpr u8 TOKIMEKI_MAX_GSR_VALUE = 0x80;
 
-static constexpr u32 KDEADEYE_FLASH_SIZE = 0x80000;
+static u32 TokimekiExcitementLevel = 0;
+static u32 TokimekiHeartbeatRate = TOKIMEKI_DEFAULT_HEARTBEAT_RATE;
 
-static u8 Flash[4][FLASH_SIZE];
-static u32 FlashAddress;
+// Heartbeat input is active-low: false means that the pulse is active.
+static bool TokimekiHeartbeatSignal = true;
+static u32 TokimekiHeartbeatFramesRemaining = 0;
+static u32 TokimekiHeartbeatPulseFramesRemaining = 0;
+static u8 TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
+static u8 TokimekiSerialValue = 0;
+static u8 TokimekiSerialLength = 0;
+static bool TokimekiSerialClock = false;
+static u8 TokimekiSerialSensorId = 0;
+static u16 TokimekiSerialSensorData = 0;
 
-static u8 KDeadEyeFlash[KDEADEYE_FLASH_SIZE];
-static bool KDeadEyeFlashValid = false;
-static bool KDeadEyeFlashDirty = false;
-static std::string KDeadEyeFlashPath;
-
-enum KonamiKDeadEyeFlashMode : u8
+static u32 KonamiTokimekiGetHeartbeatPeriodFrames()
 {
-  KDEADEYE_FLASH_MODE_READ_ARRAY,
-  KDEADEYE_FLASH_MODE_READ_STATUS,
-  KDEADEYE_FLASH_MODE_PROGRAM,
-  KDEADEYE_FLASH_MODE_ERASE_SETUP
+  return (3600U + TokimekiHeartbeatRate - 1U) / TokimekiHeartbeatRate;
+}
+
+static void KonamiTokimekiUpdateExcitementValues()
+{
+  TokimekiHeartbeatRate = TOKIMEKI_DEFAULT_HEARTBEAT_RATE + (TokimekiExcitementLevel * TOKIMEKI_HEARTBEAT_RATE_STEP);
+
+  TokimekiGSRValue = static_cast<u8>(
+    TOKIMEKI_DEFAULT_GSR_VALUE + (((TOKIMEKI_MAX_GSR_VALUE - TOKIMEKI_DEFAULT_GSR_VALUE) * TokimekiExcitementLevel) /
+                                  TOKIMEKI_MAX_EXCITEMENT_LEVEL));
+}
+
+// Tokimeki video printer protocol state.
+static constexpr u32 TOKIMEKI_PRINTER_BUSY_FRAMES = 60;
+static constexpr u32 TOKIMEKI_PRINTER_TIMER_DIVIDER = 8;
+static constexpr u32 TOKIMEKI_PRINTER_TRANSFER_START_MIN_TICKS = 9000;
+static constexpr u32 TOKIMEKI_PRINTER_ONE_MIN_TICKS = 4000;
+static constexpr u32 TOKIMEKI_PRINTER_ONE_MAX_TICKS = 5600;
+static bool TokimekiPrinterBit = false;
+static u8 TokimekiPrinterData[6] = {};
+static u8 TokimekiPrinterCurrentBit = 0;
+static u8 TokimekiPrinterCurrentByte = 0;
+static u32 TokimekiPrinterPulseStartTicks = 0;
+static bool TokimekiPrinterIsPrinting = false;
+static u32 TokimekiPrinterBusyFramesRemaining = 0;
+
+// Captured video frame held by the emulated printer.
+static constexpr u32 TOKIMEKI_PRINTER_CAPTURE_WIDTH = 640;
+static constexpr u32 TOKIMEKI_PRINTER_CAPTURE_HEIGHT = 480;
+static bool TokimekiPrinterCapturePending = false;
+static std::vector<u32> TokimekiPrinterCapturedFrame;
+
+// Final printer page. The Plus versions assemble sixteen captures in a
+// four-by-four sticker layout; earlier versions use one centered image.
+static constexpr u32 TOKIMEKI_PRINTER_PAGE_WIDTH = 800;
+static constexpr u32 TOKIMEKI_PRINTER_PAGE_HEIGHT = 600;
+static constexpr u32 TOKIMEKI_PRINTER_STICKER_COLUMNS = 4;
+static constexpr u32 TOKIMEKI_PRINTER_STICKER_ROWS = 4;
+
+static bool TokimekiPrinterManualLayout = false;
+static u32 TokimekiPrinterCurrentImage = 0;
+static std::vector<u32> TokimekiPrinterPage;
+static bool TokimekiPrinterSavePending = false;
+
+static u32 KonamiTokimekiGetCurrentTicks()
+{
+  return TimingEvents::GetGlobalTickCounter() + CPU::GetPendingTicks();
+}
+
+static void KonamiTokimekiCopyCapturedFrameToPage()
+{
+  const size_t expected_frame_size =
+    static_cast<size_t>(TOKIMEKI_PRINTER_CAPTURE_WIDTH) * TOKIMEKI_PRINTER_CAPTURE_HEIGHT;
+  const size_t expected_page_size = static_cast<size_t>(TOKIMEKI_PRINTER_PAGE_WIDTH) * TOKIMEKI_PRINTER_PAGE_HEIGHT;
+
+  if (TokimekiPrinterCapturedFrame.size() != expected_frame_size || TokimekiPrinterPage.size() != expected_page_size)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot compose an invalid capture or page buffer");
+    return;
+  }
+
+  if (!TokimekiPrinterManualLayout)
+  {
+    std::fill(TokimekiPrinterPage.begin(), TokimekiPrinterPage.end(), 0xFFFFFFFFU);
+
+    const u32 destination_x = (TOKIMEKI_PRINTER_PAGE_WIDTH - TOKIMEKI_PRINTER_CAPTURE_WIDTH) / 2;
+    const u32 destination_y = (TOKIMEKI_PRINTER_PAGE_HEIGHT - TOKIMEKI_PRINTER_CAPTURE_HEIGHT) / 2;
+
+    for (u32 y = 0; y < TOKIMEKI_PRINTER_CAPTURE_HEIGHT; y++)
+    {
+      const u32* const source = &TokimekiPrinterCapturedFrame[static_cast<size_t>(y) * TOKIMEKI_PRINTER_CAPTURE_WIDTH];
+      u32* const destination =
+        &TokimekiPrinterPage[static_cast<size_t>(destination_y + y) * TOKIMEKI_PRINTER_PAGE_WIDTH + destination_x];
+
+      std::copy_n(source, TOKIMEKI_PRINTER_CAPTURE_WIDTH, destination);
+    }
+
+    Log_InfoPrintf("KonamiGV: Tokimeki printer stored centered page image");
+    return;
+  }
+
+  // Match MAME's crop and 4x4 sticker-sheet geometry.
+  static constexpr u32 CROP_LEFT = 1;
+  static constexpr u32 CROP_TOP = 40;
+  static constexpr u32 CROP_RIGHT = 19;
+  static constexpr u32 CROP_BOTTOM = 16;
+  static constexpr u32 INNER_PADDING_X = 6;
+  static constexpr u32 INNER_PADDING_Y = 5;
+  static constexpr u32 WIDTH_MARGIN = 163;
+  static constexpr u32 HEIGHT_MARGIN = 161;
+
+  static constexpr u32 SOURCE_WIDTH = TOKIMEKI_PRINTER_CAPTURE_WIDTH - CROP_LEFT - CROP_RIGHT;
+  static constexpr u32 SOURCE_HEIGHT = TOKIMEKI_PRINTER_CAPTURE_HEIGHT - CROP_TOP - CROP_BOTTOM;
+  static constexpr u32 DESTINATION_WIDTH =
+    (TOKIMEKI_PRINTER_PAGE_WIDTH - WIDTH_MARGIN - (INNER_PADDING_X * (TOKIMEKI_PRINTER_STICKER_COLUMNS - 1))) /
+    TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  static constexpr u32 DESTINATION_HEIGHT =
+    (TOKIMEKI_PRINTER_PAGE_HEIGHT - HEIGHT_MARGIN - (INNER_PADDING_Y * (TOKIMEKI_PRINTER_STICKER_ROWS - 1))) /
+    TOKIMEKI_PRINTER_STICKER_ROWS;
+  static constexpr u32 MAX_IMAGES = TOKIMEKI_PRINTER_STICKER_COLUMNS * TOKIMEKI_PRINTER_STICKER_ROWS;
+
+  if (TokimekiPrinterCurrentImage >= MAX_IMAGES)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer ignored sticker image beyond page capacity");
+    return;
+  }
+
+  const u32 column = TokimekiPrinterCurrentImage % TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  const u32 row = TokimekiPrinterCurrentImage / TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  const u32 destination_x = (WIDTH_MARGIN / 2) + (column * (DESTINATION_WIDTH + INNER_PADDING_X));
+  const u32 destination_y = (HEIGHT_MARGIN / 2) + (row * (DESTINATION_HEIGHT + INNER_PADDING_Y));
+
+  for (u32 y = 0; y < DESTINATION_HEIGHT; y++)
+  {
+    const u32 source_y = CROP_TOP + ((y * SOURCE_HEIGHT) / DESTINATION_HEIGHT);
+
+    for (u32 x = 0; x < DESTINATION_WIDTH; x++)
+    {
+      const u32 source_x = CROP_LEFT + ((x * SOURCE_WIDTH) / DESTINATION_WIDTH);
+
+      TokimekiPrinterPage[static_cast<size_t>(destination_y + y) * TOKIMEKI_PRINTER_PAGE_WIDTH + destination_x + x] =
+        TokimekiPrinterCapturedFrame[static_cast<size_t>(source_y) * TOKIMEKI_PRINTER_CAPTURE_WIDTH + source_x];
+    }
+  }
+
+  TokimekiPrinterCurrentImage++;
+
+  Log_InfoPrintf("KonamiGV: Tokimeki printer stored sticker image %u of %u", TokimekiPrinterCurrentImage, MAX_IMAGES);
+}
+
+static void KonamiTokimekiSavePage()
+{
+  TokimekiPrinterSavePending = false;
+
+  const size_t expected_page_size = static_cast<size_t>(TOKIMEKI_PRINTER_PAGE_WIDTH) * TOKIMEKI_PRINTER_PAGE_HEIGHT;
+
+  if (TokimekiPrinterPage.size() != expected_page_size)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot save an invalid page buffer");
+    return;
+  }
+
+  if (!g_host_interface)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot save because no host interface is available");
+    return;
+  }
+
+  const std::string& game_code = System::GetRunningCode();
+  const char* const game_directory = game_code.empty() ? "unknown" : game_code.c_str();
+
+  const std::string prints_root = g_host_interface->GetUserDirectoryRelativePath("prints");
+  const std::string prints_directory =
+    g_host_interface->GetUserDirectoryRelativePath("prints" FS_OSPATH_SEPARATOR_STR "%s", game_directory);
+
+  if (!FileSystem::CreateDirectory(prints_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(prints_directory.c_str(), false))
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer failed to create print directory '%s'", prints_directory.c_str());
+    return;
+  }
+
+  const auto timestamp_value =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  const std::string timestamp = std::to_string(timestamp_value);
+
+  const std::string filename = g_host_interface->GetUserDirectoryRelativePath(
+    "prints" FS_OSPATH_SEPARATOR_STR "%s" FS_OSPATH_SEPARATOR_STR "%s_%s.png", game_directory, game_directory,
+    timestamp.c_str());
+
+  Common::RGBA8Image image;
+  image.SetPixels(TOKIMEKI_PRINTER_PAGE_WIDTH, TOKIMEKI_PRINTER_PAGE_HEIGHT, TokimekiPrinterPage.data());
+
+  if (!Common::WriteImageToFile(image, filename.c_str()))
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer failed to save page to '%s'", filename.c_str());
+    return;
+  }
+
+  Log_InfoPrintf("KonamiGV: Tokimeki printer saved page to '%s'", filename.c_str());
+}
+
+static void KonamiTokimekiHandlePrinterPacket()
+{
+  const bool repeated_command_matches =
+    TokimekiPrinterData[0] == TokimekiPrinterData[2] && TokimekiPrinterData[0] == TokimekiPrinterData[4] &&
+    TokimekiPrinterData[1] == TokimekiPrinterData[3] && TokimekiPrinterData[1] == TokimekiPrinterData[5];
+
+  if (!repeated_command_matches)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer rejected mismatched packet [%02X %02X %02X] [%02X %02X %02X]",
+                      TokimekiPrinterData[0], TokimekiPrinterData[2], TokimekiPrinterData[4], TokimekiPrinterData[1],
+                      TokimekiPrinterData[3], TokimekiPrinterData[5]);
+  }
+  else if (TokimekiPrinterData[1] != 0xF9)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer rejected command %02X with invalid second byte %02X",
+                      TokimekiPrinterData[0], TokimekiPrinterData[1]);
+  }
+  else
+  {
+    switch (TokimekiPrinterData[0])
+    {
+      case 0x10:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer memory-in command");
+        TokimekiPrinterCapturePending = true;
+        break;
+
+      case 0x11:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer print command");
+        TokimekiPrinterIsPrinting = true;
+        TokimekiPrinterBusyFramesRemaining = TOKIMEKI_PRINTER_BUSY_FRAMES;
+        TokimekiPrinterSavePending = true;
+        break;
+
+      case 0x17:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer source/reset command");
+        TokimekiPrinterCapturePending = false;
+        TokimekiPrinterSavePending = false;
+        TokimekiPrinterCapturedFrame.clear();
+        TokimekiPrinterCurrentImage = 0;
+        std::fill(TokimekiPrinterPage.begin(), TokimekiPrinterPage.end(), 0xFFFFFFFFU);
+        break;
+
+      // Controls for the physical printer's internal configuration menu.
+      // ArcadeDuck has no physical-printer OSD, so these are valid no-ops.
+      case 0x0B: // probable stop/cancel
+      case 0x62: // menu
+      case 0x63: // execute
+      case 0x64: // up
+      case 0x65: // down
+      case 0x66: // left
+      case 0x67: // right
+        break;
+
+      default:
+        Log_WarningPrintf("KonamiGV: Tokimeki printer unknown command %02X", TokimekiPrinterData[0]);
+        break;
+    }
+  }
+
+  TokimekiPrinterCurrentByte = 0;
+  TokimekiPrinterCurrentBit = 0;
+}
+
+// Konami GV flash state
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SIZE = 0x200000;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE = 0x10000;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT = 4;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR = 2;
+static constexpr u32 KONAMI_GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT =
+  (KONAMI_GV_FUJITSU_FLASH_SIZE * KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR) / CDImage::DATA_SECTOR_SIZE;
+
+static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_01_LBA = 202;
+static constexpr u32 KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA = 2250;
+
+static constexpr u32 KONAMI_GV_SHARP_FLASH_SIZE = 0x80000;
+static constexpr u32 KONAMI_GV_SHARP_FLASH_SECTOR_SIZE = 0x10000;
+
+static u8 GVFujitsuFlash[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT][KONAMI_GV_FUJITSU_FLASH_SIZE];
+static u32 GVFujitsuFlashAddress;
+
+static u8 GVSharpFlash[KONAMI_GV_SHARP_FLASH_SIZE];
+
+// The Sharp flash chip exists on supported GV hardware even when no
+// persisted flash file exists yet.
+static bool GVSharpFlashPresent = false;
+
+static bool GVSharpFlashDirty = false;
+static std::string GVSharpFlashPath;
+
+enum KonamiGVSharpFlashMode : u8
+{
+  KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY,
+  KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS,
+  KONAMI_GV_SHARP_FLASH_MODE_PROGRAM,
+  KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP
 };
 
-static KonamiKDeadEyeFlashMode KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-static u16 KDeadEyeFlashStatus = 0x0080;
+static KonamiGVSharpFlashMode GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+static u16 GVSharpFlashStatus = 0x0080;
 
-static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
+enum class KonamiGVBtChampFirstBootState : u8
 {
-  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
-    KDeadEyeFlash[i] = 0xFF;
+  Inactive,
+  WaitingForValidationEnd,
+  WaitingForValidationRestart,
+  ResetRequested,
+  HoldingTest
+};
 
-  KDeadEyeFlashValid = false;
+static KonamiGVBtChampFirstBootState GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
+
+// Konami GV watchdog.
+// The exact hardware timeout is not documented, so use a conservative
+// two-second provisional timeout until hardware timing is better established.
+static constexpr u32 KONAMI_GV_WATCHDOG_TIMEOUT_FRAMES = 120;
+static u32 KonamiGVWatchdogFramesRemaining = 0;
+
+static bool KonamiGVSharpFlashIsErased()
+{
+  for (const u8 value : GVSharpFlash)
+  {
+    if (value != 0xFF)
+      return false;
+  }
+
+  return true;
+}
+
+static void KonamiGVBtChampObserveBlankFlashRead(u32 size, u32 relative_offset, u32 value)
+{
+  if (size != 2 || value != 0xFFFF)
+    return;
+
+  switch (GVBtChampFirstBootState)
+  {
+    case KonamiGVBtChampFirstBootState::WaitingForValidationEnd:
+      if (relative_offset == 0x000007A6)
+      {
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::WaitingForValidationRestart;
+      }
+      break;
+
+    case KonamiGVBtChampFirstBootState::WaitingForValidationRestart:
+      if (relative_offset == 0x00000008)
+      {
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::ResetRequested;
+
+        Log_InfoPrintf("KonamiGV: Beat the Champ blank flash validation completed; queued automatic recovery reset");
+      }
+      break;
+
+    default:
+      break;
+  }
+}
+
+static bool KonamiGVSharpFlashLoadFile(const std::string& path)
+{
+  for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
+    GVSharpFlash[i] = 0xFF;
 
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
   if (!fp)
@@ -116,72 +405,60 @@ static bool KonamiLoadKDeadEyeFlashFile(const std::string& path)
   const long size = std::ftell(fp);
   std::fseek(fp, 0, SEEK_SET);
 
-  if (size != static_cast<long>(KDEADEYE_FLASH_SIZE))
+  if (size != static_cast<long>(KONAMI_GV_SHARP_FLASH_SIZE))
   {
     std::fclose(fp);
     return false;
   }
 
-  const size_t read = std::fread(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  const size_t read = std::fread(GVSharpFlash, 1, KONAMI_GV_SHARP_FLASH_SIZE, fp);
   std::fclose(fp);
 
-  KDeadEyeFlashValid = (read == KDEADEYE_FLASH_SIZE);
-  return KDeadEyeFlashValid;
+  return (read == KONAMI_GV_SHARP_FLASH_SIZE);
 }
 
-static void KonamiSaveKDeadEyeFlashFile()
+static void KonamiGVSharpFlashSaveFile()
 {
-  if (!KDeadEyeFlashValid || !KDeadEyeFlashDirty || KDeadEyeFlashPath.empty())
+  if (!GVSharpFlashPresent || !GVSharpFlashDirty || GVSharpFlashPath.empty())
     return;
 
-  std::FILE* fp = FileSystem::OpenCFile(KDeadEyeFlashPath.c_str(), "wb");
+  std::FILE* fp = FileSystem::OpenCFile(GVSharpFlashPath.c_str(), "wb");
   if (!fp)
     return;
 
-  std::fwrite(KDeadEyeFlash, 1, KDEADEYE_FLASH_SIZE, fp);
+  std::fwrite(GVSharpFlash, 1, KONAMI_GV_SHARP_FLASH_SIZE, fp);
   std::fclose(fp);
 
-  KDeadEyeFlashDirty = false;
+  GVSharpFlashDirty = false;
 }
 
-static u16 KonamiKDeadEyeSingleFlashRead16(u32 relative_offset)
+static u16 KonamiGVSharpFlashReadArray16(u32 relative_offset)
 {
-  relative_offset &= (KDEADEYE_FLASH_SIZE - 1);
+  relative_offset &= (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
   const u32 high_offset = relative_offset & ~1U;
-  const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+  const u32 low_offset = (high_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
-  return static_cast<u16>((KDeadEyeFlash[high_offset] << 8) | KDeadEyeFlash[low_offset]);
+  return static_cast<u16>((GVSharpFlash[high_offset] << 8) | GVSharpFlash[low_offset]);
 }
 
-static u16 KonamiKDeadEyeFallbackFlashRead16(u32 relative_offset)
+static u16 KonamiGVSharpFlashRead16(u32 relative_offset)
 {
-  const u32 word_offset = (relative_offset >> 1) & 0x3FFFFF;
-  const u32 chip = (word_offset >= FLASH_SIZE) ? 2 : 0;
-  const u32 chip_offset = word_offset & (FLASH_SIZE - 1);
+  if (!GVSharpFlashPresent)
+    return 0xFFFF;
 
-  return static_cast<u16>(Flash[chip][chip_offset] | (Flash[chip + 1][chip_offset] << 8));
+  return KonamiGVSharpFlashReadArray16(relative_offset);
 }
 
-static u16 KonamiKDeadEyeFlashRead16(u32 relative_offset)
+void KonamiGVSharpFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  if (KDeadEyeFlashValid)
-    return KonamiKDeadEyeSingleFlashRead16(relative_offset);
-
-  return KonamiKDeadEyeFallbackFlashRead16(relative_offset);
-}
-
-void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
-{
-  static int kdeadeye_flash_read_debug_count = 0;
-
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
 
-  if (KDeadEyeFlashValid && KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_READ_STATUS)
-{
+  if (GVSharpFlashPresent && GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS)
+  {
   // The Sharp LH28F400 is a 16-bit flash device.
   // Its ready status is 0x0080, not 0x8080.
-  Value = KDeadEyeFlashStatus;
+  Value = GVSharpFlashStatus;
 
   if (Size == 4)
     Value |= Value << 16;
@@ -193,25 +470,22 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     case 1:
     {
-      if (KDeadEyeFlashValid)
-        Value = KDeadEyeFlash[relative_offset & (KDEADEYE_FLASH_SIZE - 1)];
+      if (GVSharpFlashPresent)
+        Value = GVSharpFlash[relative_offset & (KONAMI_GV_SHARP_FLASH_SIZE - 1)];
       else
-      {
-        const u16 word = KonamiKDeadEyeFlashRead16(relative_offset);
-        Value = (relative_offset & 1) ? (word >> 8) : (word & 0xFF);
-      }
+        Value = 0xFF;
 
       break;
     }
 
     case 2:
-      Value = KonamiKDeadEyeFlashRead16(relative_offset);
+      Value = KonamiGVSharpFlashRead16(relative_offset);
       break;
 
     case 4:
     {
-      const u16 low = KonamiKDeadEyeFlashRead16(relative_offset);
-      const u16 high = KonamiKDeadEyeFlashRead16(relative_offset + 2);
+      const u16 low = KonamiGVSharpFlashRead16(relative_offset);
+      const u16 high = KonamiGVSharpFlashRead16(relative_offset + 2);
       Value = static_cast<u32>(low) | (static_cast<u32>(high) << 16);
       break;
     }
@@ -221,131 +495,85 @@ void KonamiKDeadEyeFlashRead(u32 Size, u32 Offset, u32& Value)
       break;
   }
 
-  if (kdeadeye_flash_read_debug_count < 1000)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "READ size=%u offset=0x%08X relative=0x%08X single=%u value=0x%08X\n", Size, Offset,
-                   relative_offset, KDeadEyeFlashValid ? 1 : 0, Value);
-      std::fclose(fp);
-    }
-
-    kdeadeye_flash_read_debug_count++;
-  }
+  KonamiGVBtChampObserveBlankFlashRead(Size, relative_offset, Value);
 }
 
-void KonamiKDeadEyeFlashWrite(u32 Size, u32 Offset, u32 Value)
+void KonamiGVSharpFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int kdeadeye_flash_write_debug_count = 0;
-  static u32 kdeadeye_flash_program_count = 0;
-  static u32 kdeadeye_flash_erase_count = 0;
-
   const u32 relative_offset = (Offset >= 0x00380000) ? (Offset - 0x00380000) : Offset;
-  const u32 byte_offset = relative_offset & (KDEADEYE_FLASH_SIZE - 1);
+  const u32 byte_offset = relative_offset & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
   const u16 command = static_cast<u16>(Value & 0xFF);
 
-  if (kdeadeye_flash_write_debug_count < 1000)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "WRITE size=%u offset=0x%08X relative=0x%08X single=%u mode=%u value=0x%08X\n", Size, Offset,
-                   relative_offset, KDeadEyeFlashValid ? 1 : 0, static_cast<u32>(KDeadEyeFlashMode), Value);
-      std::fclose(fp);
-    }
-
-    kdeadeye_flash_write_debug_count++;
-  }
-
-  if (!KDeadEyeFlashValid)
+  if (!GVSharpFlashPresent)
     return;
 
-if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
+if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_PROGRAM)
   {
     switch (Size)
     {
       case 1:
-        KDeadEyeFlash[byte_offset] = static_cast<u8>(Value & 0xFF);
+        GVSharpFlash[byte_offset] = static_cast<u8>(Value & 0xFF);
         break;
 
       case 2:
       {
         const u32 high_offset = byte_offset & ~1U;
-        const u32 low_offset = (high_offset + 1) & (KDEADEYE_FLASH_SIZE - 1);
+        const u32 low_offset = (high_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
-        KDeadEyeFlash[high_offset] = static_cast<u8>((Value >> 8) & 0xFF);
-        KDeadEyeFlash[low_offset] = static_cast<u8>(Value & 0xFF);
+        GVSharpFlash[high_offset] = static_cast<u8>((Value >> 8) & 0xFF);
+        GVSharpFlash[low_offset] = static_cast<u8>(Value & 0xFF);
         break;
       }
 
       case 4:
       {
         const u32 first_offset = byte_offset & ~1U;
-        const u32 second_offset = (first_offset + 2) & (KDEADEYE_FLASH_SIZE - 1);
+        const u32 second_offset = (first_offset + 2) & (KONAMI_GV_SHARP_FLASH_SIZE - 1);
 
         const u16 low_word = static_cast<u16>(Value & 0xFFFF);
         const u16 high_word = static_cast<u16>((Value >> 16) & 0xFFFF);
 
-        KDeadEyeFlash[first_offset] = static_cast<u8>((low_word >> 8) & 0xFF);
+        GVSharpFlash[first_offset] = static_cast<u8>((low_word >> 8) & 0xFF);
 
-        KDeadEyeFlash[(first_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(low_word & 0xFF);
+        GVSharpFlash[(first_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = static_cast<u8>(low_word & 0xFF);
 
-        KDeadEyeFlash[second_offset] = static_cast<u8>((high_word >> 8) & 0xFF);
+        GVSharpFlash[second_offset] = static_cast<u8>((high_word >> 8) & 0xFF);
 
-        KDeadEyeFlash[(second_offset + 1) & (KDEADEYE_FLASH_SIZE - 1)] = static_cast<u8>(high_word & 0xFF);
+        GVSharpFlash[(second_offset + 1) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = static_cast<u8>(high_word & 0xFF);
         break;
       }
     }
 
-    kdeadeye_flash_program_count++;
-
-    if (kdeadeye_flash_program_count <= 16 || (kdeadeye_flash_program_count % 256) == 0)
-    {
-      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "PROGRAM count=%u offset=0x%08X byte_offset=0x%08X "
-                     "size=%u value=0x%08X\n",
-                     kdeadeye_flash_program_count, Offset, byte_offset, Size, Value);
-
-        std::fclose(fp);
-      }
-    }
-
-    KDeadEyeFlashDirty = true;
-    KDeadEyeFlashStatus = 0x0080;
-    KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+    GVSharpFlashDirty = true;
+    GVSharpFlashStatus = 0x0080;
+    GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     return;
   }
 
-  if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_ERASE_SETUP)
+  if (GVSharpFlashMode == KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP)
   {
     if (command == 0xD0)
     {
-      const u32 block_start = byte_offset & ~(FLASH_SECTOR_SIZE - 1);
+      const u32 block_start = byte_offset & ~(KONAMI_GV_SHARP_FLASH_SECTOR_SIZE - 1);
 
-      for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
-        KDeadEyeFlash[(block_start + i) & (KDEADEYE_FLASH_SIZE - 1)] = 0xFF;
+      for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SECTOR_SIZE; i++)
+        GVSharpFlash[(block_start + i) & (KONAMI_GV_SHARP_FLASH_SIZE - 1)] = 0xFF;
 
-      kdeadeye_flash_erase_count++;
-
-      if (std::FILE* fp = std::fopen("konami_gv_direct_flash_progress_debug.txt", "ab"))
+      if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::HoldingTest)
       {
-        std::fprintf(fp,
-                     "ERASE count=%u offset=0x%08X "
-                     "byte_offset=0x%08X block_start=0x%08X\n",
-                     kdeadeye_flash_erase_count, Offset, byte_offset, block_start);
+        GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
 
-        std::fclose(fp);
+        Log_InfoPrintf("KonamiGV: Beat the Champ recovery entered flash initialization; released automatic Test input");
       }
 
-      KDeadEyeFlashDirty = true;
-      KDeadEyeFlashStatus = 0x0080;
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashDirty = true;
+      GVSharpFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     }
     else
     {
-      KDeadEyeFlashStatus = 0x00B0;
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x00B0;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
     }
 
     return;
@@ -355,75 +583,63 @@ if (KDeadEyeFlashMode == KDEADEYE_FLASH_MODE_PROGRAM)
   {
     case 0xFF:
       // Read array / reset.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x70:
       // Read status register.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
       break;
 
     case 0x50:
       // Clear status register.
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x40:
     case 0x10:
       // Program next write.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_PROGRAM;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_PROGRAM;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0x20:
       // Erase setup. Next write should be 0xD0.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_ERASE_SETUP;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_ERASE_SETUP;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0xB0:
       // Suspend not currently needed; report ready.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x0080;
       break;
 
     case 0xD0:
       // Resume/confirm without erase setup. Treat as ready.
-      KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_STATUS;
-      KDeadEyeFlashStatus = 0x0080;
+      GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_STATUS;
+      GVSharpFlashStatus = 0x0080;
       break;
 
-    default:
-      if (kdeadeye_flash_write_debug_count < 1000)
-      {
-        if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "UNKNOWN KDeadEye flash command offset=0x%08X command=0x%02X value=0x%08X\n", Offset,
-                       command, Value);
-          std::fclose(fp);
-        }
-
-        kdeadeye_flash_write_debug_count++;
-      }
-
+default:
       break;
   }
 }
-enum KonamiFlashMode : u8
+enum KonamiGVFujitsuFlashMode : u8
 {
-  KONAMI_FLASH_MODE_READ_ARRAY = 0,
-  KONAMI_FLASH_MODE_UNLOCK_1,
-  KONAMI_FLASH_MODE_UNLOCK_2,
-  KONAMI_FLASH_MODE_AUTOSELECT,
-  KONAMI_FLASH_MODE_PROGRAM,
-  KONAMI_FLASH_MODE_ERASE_UNLOCK_1,
-  KONAMI_FLASH_MODE_ERASE_UNLOCK_2,
-  KONAMI_FLASH_MODE_ERASE_SELECT
+  KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY = 0,
+  KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1,
+  KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2,
+  KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT,
+  KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2,
+  KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT
 };
 
-static KonamiFlashMode FlashModeState[4];
-static bool FlashDirty[4];
+static KonamiGVFujitsuFlashMode GVFujitsuFlashModeState[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT];
+static bool GVFujitsuFlashDirty[KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT];
 
 static std::FILE* EepromFp;
 static uint16_t Eeprom[64];
@@ -542,51 +758,23 @@ static bool LoadEepromFile(const char* Path)
   return true;
 }
 
-static bool LoadFlashFile(const char *Path, void *Buffer)
+static bool KonamiGVFujitsuFlashLoadFile(const char* path, void* buffer)
 {
-  std::FILE* fp;
-
-  fp = FileSystem::OpenCFile(Path, "rb");
+  std::FILE* fp = FileSystem::OpenCFile(path, "rb");
   if (!fp)
-  {
     return false;
-  }
-  if (fread(Buffer, 1, 0x200000, fp) != 0x200000)
-  {
-    return false;
-  }
-  fclose(fp);
 
+  if (std::fread(buffer, 1, KONAMI_GV_FUJITSU_FLASH_SIZE, fp) != KONAMI_GV_FUJITSU_FLASH_SIZE)
+  {
+    std::fclose(fp);
+    return false;
+  }
+
+  std::fclose(fp);
   return true;
 }
 
-static void AssertScsiInterrupt(void)
-{
-  g_interrupt_controller.InterruptRequest(InterruptController::IRQ::IRQ10);
-}
-
-static void ScsiIrqEventCallback(void* param, TickCount ticks, TickCount ticks_late)
-{
-  if (ScsiIrqEvent)
-    ScsiIrqEvent->Deactivate();
-
-  AssertScsiInterrupt();
-}
-
-static void QueueScsiInterruptTicks(TickCount ticks)
-{
-  if (!ScsiIrqEvent)
-  {
-    ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
-  }
-
-  if (ticks == 0)
-    AssertScsiInterrupt();
-  else
-    ScsiIrqEvent->Schedule(ticks);
-}
-
-static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
+static bool KonamiGVFujitsuFlashFileIsMissingOrErased(const std::string& path)
 {
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "rb");
   if (!fp)
@@ -596,21 +784,25 @@ static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
   const long size = std::ftell(fp);
   std::fseek(fp, 0, SEEK_SET);
 
-  if (size != static_cast<long>(FLASH_SIZE))
+  if (size != static_cast<long>(KONAMI_GV_FUJITSU_FLASH_SIZE))
   {
     std::fclose(fp);
     return true;
   }
 
-  u8 buffer[4096];
+u8 buffer[4096];
 
-  while (!std::feof(fp))
+  for (u32 offset = 0; offset < KONAMI_GV_FUJITSU_FLASH_SIZE; offset += sizeof(buffer))
   {
-    const size_t read = std::fread(buffer, 1, sizeof(buffer), fp);
-
-    for (size_t i = 0; i < read; i++)
+    if (std::fread(buffer, 1, sizeof(buffer), fp) != sizeof(buffer))
     {
-      if (buffer[i] != 0xFF)
+      std::fclose(fp);
+      return true;
+    }
+
+    for (u8 value : buffer)
+    {
+      if (value != 0xFF)
       {
         std::fclose(fp);
         return false;
@@ -622,33 +814,7 @@ static bool KonamiFlashFileIsMissingOrErased(const std::string& path)
   return true;
 }
 
-static bool KonamiReadMountedDataSector(u32 lba, u8* sector)
-{
-  const CDImage* media = g_cdrom.GetMedia();
-  CDImage* image = const_cast<CDImage*>(media);
-  if (!image)
-    return false;
-
-  if (!image->Seek(1, static_cast<CDImage::LBA>(lba)))
-    return false;
-
-  if (System::GetRunningCode() == "btchamp")
-  {
-    u8 raw_sector[CDImage::RAW_SECTOR_SIZE];
-
-    if (image->Read(CDImage::ReadMode::RawSector, 1, raw_sector) != 1)
-      return false;
-
-    // Beat the Champ's GV CHD presents its useful 2048-byte payload at the
-    // beginning of DuckStation's raw-sector buffer.
-    std::memcpy(sector, raw_sector, CDImage::DATA_SECTOR_SIZE);
-    return true;
-  }
-
-  return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
-}
-
-static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
+static bool KonamiGVFujitsuFlashReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
 {
   if (!image)
     return false;
@@ -659,7 +825,7 @@ static bool KonamiReadDataSectorFromImage(CDImage* image, u32 lba, u8* sector)
   return image->Read(CDImage::ReadMode::DataOnly, 1, sector) == 1;
 }
 
-static bool KonamiWriteFlashFile(const std::string& path, const std::vector<u8>& data)
+static bool KonamiGVFujitsuFlashWriteFile(const std::string& path, const std::vector<u8>& data)
 {
   std::FILE* fp = FileSystem::OpenCFile(path.c_str(), "wb");
   if (!fp)
@@ -670,20 +836,20 @@ static bool KonamiWriteFlashFile(const std::string& path, const std::vector<u8>&
   return ok;
 }
 
-static bool KonamiExtractFlashPairFromImage(CDImage* image, u32 start_lba, const std::string& low_path,
+static bool KonamiGVFujitsuFlashExtractPairFromImage(CDImage* image, u32 start_lba, const std::string& low_path,
                                             const std::string& high_path)
 {
-  std::vector<u8> low(FLASH_SIZE);
-  std::vector<u8> high(FLASH_SIZE);
+  std::vector<u8> low(KONAMI_GV_FUJITSU_FLASH_SIZE);
+  std::vector<u8> high(KONAMI_GV_FUJITSU_FLASH_SIZE);
 
   u8 sector[CDImage::DATA_SECTOR_SIZE];
   u32 output_offset = 0;
 
-  for (u32 sector_index = 0; sector_index < 2048; sector_index++)
+  for (u32 sector_index = 0; sector_index < KONAMI_GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT; sector_index++)
   {
     const u32 lba = start_lba + sector_index;
 
-    if (!KonamiReadDataSectorFromImage(image, lba, sector))
+    if (!KonamiGVFujitsuFlashReadDataSectorFromImage(image, lba, sector))
     {
       if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
       {
@@ -703,52 +869,7 @@ static bool KonamiExtractFlashPairFromImage(CDImage* image, u32 start_lba, const
     }
   }
 
-  return KonamiWriteFlashFile(low_path, low) && KonamiWriteFlashFile(high_path, high);
-}
-
-static bool KonamiExtractFlashPairFromIso(std::FILE* iso_fp, u32 iso_offset, const std::string& low_path,
-                                          const std::string& high_path)
-{
-  std::FILE* low_fp = FileSystem::OpenCFile(low_path.c_str(), "wb");
-  if (!low_fp)
-    return false;
-
-  std::FILE* high_fp = FileSystem::OpenCFile(high_path.c_str(), "wb");
-  if (!high_fp)
-  {
-    std::fclose(low_fp);
-    return false;
-  }
-
-  if (std::fseek(iso_fp, iso_offset, SEEK_SET) != 0)
-  {
-    std::fclose(low_fp);
-    std::fclose(high_fp);
-    return false;
-  }
-
-  for (u32 i = 0; i < FLASH_SIZE; i++)
-  {
-    const int low = std::fgetc(iso_fp);
-    const int high = std::fgetc(iso_fp);
-
-    if (low < 0 || high < 0)
-    {
-      std::fclose(low_fp);
-      std::fclose(high_fp);
-      return false;
-    }
-
-    const u8 low_byte = static_cast<u8>(low);
-    const u8 high_byte = static_cast<u8>(high);
-
-    std::fwrite(&low_byte, 1, 1, low_fp);
-    std::fwrite(&high_byte, 1, 1, high_fp);
-  }
-
-  std::fclose(low_fp);
-  std::fclose(high_fp);
-  return true;
+  return KonamiGVFujitsuFlashWriteFile(low_path, low) && KonamiGVFujitsuFlashWriteFile(high_path, high);
 }
 
 static void KonamiCreateParentDirectoryForFile(const std::string& path)
@@ -764,25 +885,12 @@ static void KonamiCreateParentDirectoryForFile(const std::string& path)
     FileSystem::CreateDirectory(directory.c_str(), false);
 }
 
-static bool KonamiImageIsRaw2048Iso(std::FILE* fp)
-{
-  if (std::fseek(fp, 0x8001, SEEK_SET) != 0)
-    return false;
-
-  char magic[5];
-  const bool is_iso = std::fread(magic, 1, sizeof(magic), fp) == sizeof(magic) && magic[0] == 'C' && magic[1] == 'D' &&
-                      magic[2] == '0' && magic[3] == '0' && magic[4] == '1';
-
-  std::fseek(fp, 0, SEEK_SET);
-  return is_iso;
-}
-
-static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, const std::string& flash1_path,
+static void KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(const std::string& flash0_path, const std::string& flash1_path,
                                                 const std::string& flash2_path, const std::string& flash3_path)
 {
   const bool needs_flash =
-    KonamiFlashFileIsMissingOrErased(flash0_path) || KonamiFlashFileIsMissingOrErased(flash1_path) ||
-    KonamiFlashFileIsMissingOrErased(flash2_path) || KonamiFlashFileIsMissingOrErased(flash3_path);
+    KonamiGVFujitsuFlashFileIsMissingOrErased(flash0_path) || KonamiGVFujitsuFlashFileIsMissingOrErased(flash1_path) ||
+    KonamiGVFujitsuFlashFileIsMissingOrErased(flash2_path) || KonamiGVFujitsuFlashFileIsMissingOrErased(flash3_path);
 
   if (!needs_flash)
     return;
@@ -807,8 +915,10 @@ static void KonamiGenerateSimpsonsFlashIfNeeded(const std::string& flash0_path, 
   // Simpsons Bowling stores the four 29F016A flash chips as two interleaved pairs on disc.
   // Pair 0/1 starts at ISO offset 0x00065000 = LBA 202.
   // Pair 2/3 starts at ISO offset 0x00465000 = LBA 2250.
-  const bool ok01 = KonamiExtractFlashPairFromImage(image.get(), 202, flash0_path, flash1_path);
-  const bool ok23 = KonamiExtractFlashPairFromImage(image.get(), 2250, flash2_path, flash3_path);
+  const bool ok01 = KonamiGVFujitsuFlashExtractPairFromImage(image.get(), KONAMI_GV_FUJITSU_SIMPSONS_PAIR_01_LBA,
+                                                             flash0_path, flash1_path);
+  const bool ok23 = KonamiGVFujitsuFlashExtractPairFromImage(image.get(), KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA,
+                                                             flash2_path, flash3_path);
 
   if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
   {
@@ -825,28 +935,119 @@ bool KonamiUsesDirectGVFlash()
   return code == "kdeadeye" || code == "btchamp";
 }
 
+void KonamiGVWatchdogWrite()
+{
+  KonamiGVWatchdogFramesRemaining = KONAMI_GV_WATCHDOG_TIMEOUT_FRAMES;
+}
+
+void KonamiTokimekiProcessFrame()
+{
+  if (!TokimekiPrinterCapturePending && !TokimekiPrinterSavePending)
+    return;
+
+  if (TokimekiPrinterCapturePending)
+  {
+    TokimekiPrinterCapturePending = false;
+
+    HostDisplay* const display = g_host_interface ? g_host_interface->GetDisplay() : nullptr;
+    if (!display)
+    {
+      Log_WarningPrintf("KonamiGV: Tokimeki printer capture failed because no host display is available");
+    }
+    else
+    {
+      std::vector<u32> captured_frame;
+      if (!display->WriteDisplayTextureToBuffer(&captured_frame, TOKIMEKI_PRINTER_CAPTURE_WIDTH,
+                                                TOKIMEKI_PRINTER_CAPTURE_HEIGHT, true))
+      {
+        Log_WarningPrintf("KonamiGV: Tokimeki printer failed to capture video frame");
+      }
+      else
+      {
+        TokimekiPrinterCapturedFrame.swap(captured_frame);
+
+        Log_InfoPrintf("KonamiGV: Tokimeki printer captured %ux%u video frame", TOKIMEKI_PRINTER_CAPTURE_WIDTH,
+                       TOKIMEKI_PRINTER_CAPTURE_HEIGHT);
+
+        KonamiTokimekiCopyCapturedFrameToPage();
+      }
+    }
+  }
+
+  if (TokimekiPrinterSavePending)
+    KonamiTokimekiSavePage();
+}
+
+bool KonamiConsumeAutomaticResetRequest()
+{
+  if (TokimekiDeviceCheckEnabled)
+  {
+    // End the active-low heartbeat pulse after its configured width.
+    if (TokimekiHeartbeatPulseFramesRemaining > 0)
+    {
+      TokimekiHeartbeatPulseFramesRemaining--;
+
+      if (TokimekiHeartbeatPulseFramesRemaining == 0)
+        TokimekiHeartbeatSignal = true;
+    }
+
+    // Count down to the next heartbeat.
+    if (TokimekiHeartbeatFramesRemaining > 0)
+      TokimekiHeartbeatFramesRemaining--;
+
+    if (TokimekiHeartbeatFramesRemaining == 0)
+    {
+      TokimekiHeartbeatSignal = false;
+      TokimekiHeartbeatPulseFramesRemaining = TOKIMEKI_HEARTBEAT_PULSE_FRAMES;
+      TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+    }
+
+    if (TokimekiPrinterBusyFramesRemaining > 0)
+    {
+      TokimekiPrinterBusyFramesRemaining--;
+
+      if (TokimekiPrinterBusyFramesRemaining == 0)
+      {
+        TokimekiPrinterIsPrinting = false;
+        Log_InfoPrintf("KonamiGV: Tokimeki printer finished printing");
+      }
+    }
+  }
+
+  if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::ResetRequested)
+  {
+    GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::HoldingTest;
+    KonamiGVWatchdogFramesRemaining = 0;
+
+    Log_InfoPrintf("KonamiGV: starting automatic Beat the Champ first-run flash recovery");
+
+    return true;
+  }
+
+  if (KonamiGVWatchdogFramesRemaining == 0)
+    return false;
+
+  KonamiGVWatchdogFramesRemaining--;
+
+  if (KonamiGVWatchdogFramesRemaining != 0)
+    return false;
+
+  Log_InfoPrintf("KonamiGV: watchdog expired; resetting system");
+
+  return true;
+}
+
 void KonamiInit(void)
 {
+  KonamiGVWatchdogFramesRemaining = 0;
+
   if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
   {
     std::fprintf(fp, "KONAMI INIT CALLED\n");
     std::fclose(fp);
   }
 
-  if (!ScsiIrqEvent)
-  {
-    ScsiIrqEvent = TimingEvents::CreateTimingEvent("Konami GV SCSI IRQ", 1, 1, ScsiIrqEventCallback, nullptr, false);
-  }
-  else
-  {
-    ScsiIrqEvent->Deactivate();
-  }
-
-  ScsiAudioPlaying = false;
-  ScsiAudioPaused = false;
-  ScsiAudioTrack = 1;
-  ScsiAudioIndex = 1;
-  ScsiAudioRelativeLba = 0;
+  KonamiGVScsiInitialize();
 
   // ArcadeDuck uses the active MAME set name for per-game NVRAM.
   // Example:
@@ -854,6 +1055,49 @@ void KonamiInit(void)
   //   kdeadeye.zip -> nvram/kdeadeye
   //   btchamp.zip  -> nvram/btchamp
   const std::string& game_name = System::GetRunningCode();
+
+  TokimekiDeviceCheckEnabled = false;
+  TokimekiDeviceCheckValue = 0;
+  TokimekiDeviceCheckClock = false;
+  TokimekiExcitementLevel = 0;
+  KonamiTokimekiUpdateExcitementValues();
+
+  TokimekiHeartbeatSignal = true;
+  TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+  TokimekiHeartbeatPulseFramesRemaining = 0;
+  TokimekiSerialValue = 0;
+  TokimekiSerialLength = 0;
+  TokimekiSerialClock = false;
+  TokimekiSerialSensorId = 0;
+  TokimekiSerialSensorData = 0;
+  TokimekiPrinterBit = false;
+  std::memset(TokimekiPrinterData, 0, sizeof(TokimekiPrinterData));
+  TokimekiPrinterCurrentBit = 0;
+  TokimekiPrinterCurrentByte = 0;
+  TokimekiPrinterPulseStartTicks = 0;
+  TokimekiPrinterIsPrinting = false;
+  TokimekiPrinterBusyFramesRemaining = 0;
+  TokimekiPrinterCapturePending = false;
+  TokimekiPrinterCapturedFrame.clear();
+  TokimekiPrinterManualLayout = (game_name == "tmoshsp" || game_name == "tmoshspa");
+  TokimekiPrinterCurrentImage = 0;
+  TokimekiPrinterPage.assign(TOKIMEKI_PRINTER_PAGE_WIDTH * TOKIMEKI_PRINTER_PAGE_HEIGHT, 0xFFFFFFFFU);
+  TokimekiPrinterSavePending = false;
+
+  if (game_name == "tmosh")
+  {
+    TokimekiDeviceCheckEnabled = true;
+  }
+  else if (game_name == "tmoshs")
+  {
+    TokimekiDeviceCheckEnabled = true;
+    TokimekiDeviceCheckValue = 0xF073;
+  }
+  else if (game_name == "tmoshsp" || game_name == "tmoshspa")
+  {
+    TokimekiDeviceCheckEnabled = true;
+    TokimekiDeviceCheckValue = 0xF0BA;
+  }
 
   if (game_name.empty())
   {
@@ -871,13 +1115,13 @@ void KonamiInit(void)
   const std::string flash1_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash1";
   const std::string flash2_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash2";
   const std::string flash3_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash3";
-  const std::string kdeadeye_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
+  const std::string gv_sharp_flash_path = nvram_dir + FS_OSPATH_SEPARATOR_STR "flash";
 
   // Empty flash chips should read as erased flash, not zero-filled RAM.
-  for (u32 chip = 0; chip < 4; chip++)
+  for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
   {
-    for (u32 i = 0; i < FLASH_SIZE; i++)
-      Flash[chip][i] = 0xFF;
+    for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SIZE; i++)
+      GVFujitsuFlash[chip][i] = 0xFF;
   }
 
   EepromDi = false;
@@ -894,20 +1138,21 @@ void KonamiInit(void)
   EepromWriteShift = 0;
   EepromWriteBits = 0;
 
-  for (u32 i = 0; i < KDEADEYE_FLASH_SIZE; i++)
-    KDeadEyeFlash[i] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_SHARP_FLASH_SIZE; i++)
+    GVSharpFlash[i] = 0xFF;
 
-  KDeadEyeFlashValid = false;
-  KDeadEyeFlashDirty = false;
-  KDeadEyeFlashPath.clear();
-  KDeadEyeFlashMode = KDEADEYE_FLASH_MODE_READ_ARRAY;
-  KDeadEyeFlashStatus = 0x0080;
-  FlashAddress = 0;
+  GVSharpFlashPresent = KonamiUsesDirectGVFlash();
+  GVSharpFlashDirty = false;
+  GVSharpFlashPath.clear();
+  GVSharpFlashMode = KONAMI_GV_SHARP_FLASH_MODE_READ_ARRAY;
+  GVSharpFlashStatus = 0x0080;
+  GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::Inactive;
+  GVFujitsuFlashAddress = 0;
 
-  for (u32 chip = 0; chip < 4; chip++)
+  for (u32 chip = 0; chip < KONAMI_GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
   {
-    FlashModeState[chip] = KONAMI_FLASH_MODE_READ_ARRAY;
-    FlashDirty[chip] = false;
+    GVFujitsuFlashModeState[chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
+    GVFujitsuFlashDirty[chip] = false;
   }
 
   if (!eeprom_path.empty())
@@ -915,24 +1160,25 @@ void KonamiInit(void)
 
   if (KonamiUsesDirectGVFlash())
   {
-    KonamiLoadKDeadEyeFlashFile(kdeadeye_flash_path);
-    KDeadEyeFlashPath = kdeadeye_flash_path;
+    KonamiGVSharpFlashLoadFile(gv_sharp_flash_path);
+    GVSharpFlashPath = gv_sharp_flash_path;
 
-    if (std::FILE* fp = std::fopen("konami_gv_direct_flash_debug.txt", "ab"))
+    if (game_name == "btchamp" && KonamiGVSharpFlashIsErased())
     {
-      std::fprintf(fp, "Loaded single direct GV flash file: %s valid=%u\n", kdeadeye_flash_path.c_str(),
-                   KDeadEyeFlashValid ? 1 : 0);
-      std::fclose(fp);
+      GVBtChampFirstBootState = KonamiGVBtChampFirstBootState::WaitingForValidationEnd;
+
+      Log_InfoPrintf("KonamiGV: armed automatic Beat the Champ first-run flash recovery");
     }
   }
+
   else if (game_name == "simpbowl")
   {
-    KonamiGenerateSimpsonsFlashIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
+    KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(flash0_path, flash1_path, flash2_path, flash3_path);
 
-    LoadFlashFile(flash0_path.c_str(), Flash[0]);
-    LoadFlashFile(flash1_path.c_str(), Flash[1]);
-    LoadFlashFile(flash2_path.c_str(), Flash[2]);
-    LoadFlashFile(flash3_path.c_str(), Flash[3]);
+    KonamiGVFujitsuFlashLoadFile(flash0_path.c_str(), GVFujitsuFlash[0]);
+    KonamiGVFujitsuFlashLoadFile(flash1_path.c_str(), GVFujitsuFlash[1]);
+    KonamiGVFujitsuFlashLoadFile(flash2_path.c_str(), GVFujitsuFlash[2]);
+    KonamiGVFujitsuFlashLoadFile(flash3_path.c_str(), GVFujitsuFlash[3]);
   }
 
   KonamiTrackballReset();
@@ -960,7 +1206,9 @@ void KonamiInit(void)
 
 void KonamiTerm(void)
 {
-  KonamiSaveKDeadEyeFlashFile();
+  KonamiGVScsiShutdown();
+
+  KonamiGVSharpFlashSaveFile();
 
   if (EepromFp)
   {
@@ -970,428 +1218,14 @@ void KonamiTerm(void)
   }
 }
 
-// Legacy SCSI DMA / fake command execution.
-// This is where the current shim manually answers SCSI commands like
-// REQUEST SENSE, INQUIRY, MODE SENSE, READ10, READ TOC, and READ SUB-CHANNEL.
-// MAME does this through NCR53CF96 + NSCSI CD-ROM behavior instead.
-
-void KonamiDmaControlWrite(u32& ControlBits, u32& Address, u32 Value)
-{
-  size_t ReadSize = (ControlBits >> 16) * 4;
-  u8* Ram = Bus::g_ram;
-  static u8 Sector[2048];
-
-  if (std::FILE* fp = std::fopen("konami_gv_scsi_dma_debug.txt", "ab"))
-  {
-    std::fprintf(fp,
-                 "SCSI DMA ENTER pc=0x%08X control=0x%08X address=0x%08X value=0x%08X "
-                 "cmd=0x%02X read_size_initial=%zu status=0x%02X irq=0x%02X int=0x%02X fifo_state=0x%02X\n",
-                 CPU::g_state.current_instruction_pc, ControlBits, Address, Value, ScsiCommand[0], ReadSize,
-                 ScsiRegs[REG_STATUS], ScsiRegs[REG_IRQSTATE], ScsiRegs[REG_INTSTATE], ScsiRegs[REG_FIFOSTATE]);
-    std::fclose(fp);
-  }
-
-  // Some Konami GV READ10 transfers use a DMA block count of 0.
-  // On PS1-style DMA, this can represent 0x10000 words, but for SCSI READ10
-  // we can recover the intended byte count directly from the command's sector count.
-  if (ReadSize == 0 && ScsiCommand[0] == 0x28)
-  {
-    const u32 read10_sector_count = (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8];
-
-    if (read10_sector_count != 0)
-      ReadSize = static_cast<size_t>(read10_sector_count) * CDImage::DATA_SECTOR_SIZE;
-  }
-    if ((Value & 1) == 0)
-  {
-    switch (ScsiCommand[0])
-    {
-      case 0x03:
-        // REQUEST SENSE. Return a valid fixed-format "no sense / no error" packet.
-        std::memset(Ram + Address, 0, 12);
-
-        Ram[Address + 0] = 0x70; // fixed-format current error response
-        Ram[Address + 2] = 0x00; // sense key: no sense
-        Ram[Address + 7] = 0x0A; // additional sense length
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI REQUEST SENSE response address=0x%08X response=0x%02X sense=0x%02X length=%u\n",
-                       Address, Ram[Address + 0], Ram[Address + 2], Ram[Address + 7]);
-          std::fclose(fp);
-        }
-        break;
-      case 0x12:
-      {
-        // INQUIRY. Return a minimal valid CD-ROM device identity.
-        std::memset(Ram + Address, 0, 32);
-
-        Ram[Address + 0] = 0x05; // peripheral device type: CD/DVD device
-        Ram[Address + 1] = 0x80; // removable media
-        Ram[Address + 2] = 0x02; // ISO/ECMA/ANSI version-ish
-        Ram[Address + 3] = 0x02; // response data format
-        Ram[Address + 4] = 0x1B; // additional length for 32-byte response
-
-        std::memcpy(Ram + Address + 8, "KONAMI  ", 8);
-        std::memcpy(Ram + Address + 16, "GV CD-ROM       ", 16);
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI INQUIRY response address=0x%08X type=0x%02X removable=0x%02X length=%u\n", Address,
-                       Ram[Address + 0], Ram[Address + 1], Ram[Address + 4]);
-          std::fclose(fp);
-        }
-        break;
-      }
-      case 0x1A:
-      {
-        // MODE SENSE(6). Dead Eye requests page 0x0E, CD audio control.
-        // Return a minimal valid mode page instead of all zeroes.
-        std::memset(Ram + Address, 0, 28);
-
-        Ram[Address + 0] = 0x12; // mode data length: bytes after this field
-        Ram[Address + 1] = 0x00; // medium type
-        Ram[Address + 2] = 0x00; // device-specific parameter
-        Ram[Address + 3] = 0x00; // block descriptor length
-
-        Ram[Address + 4] = 0x0E; // page code: CD audio control
-        Ram[Address + 5] = 0x0E; // page length
-
-        // Conservative/default CD audio control values.
-        Ram[Address + 6] = 0x04;
-        Ram[Address + 7] = 0x00;
-        Ram[Address + 8] = 0x00;
-        Ram[Address + 9] = 0x00;
-        Ram[Address + 10] = 0x00;
-        Ram[Address + 11] = 0x00;
-        Ram[Address + 12] = 0x00;
-        Ram[Address + 13] = 0x00;
-        Ram[Address + 14] = 0x00;
-        Ram[Address + 15] = 0x00;
-        Ram[Address + 16] = 0x00;
-        Ram[Address + 17] = 0x00;
-        Ram[Address + 18] = 0x00;
-        Ram[Address + 19] = 0x00;
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI MODE SENSE response address=0x%08X page=0x%02X length=%u mode_length=%u\n", Address,
-                       Ram[Address + 4], Ram[Address + 5], Ram[Address + 0]);
-          std::fclose(fp);
-        }
-        break;
-      }
-      case 0x43:
-      {
-        // READ TOC. Return a minimal fake TOC with track 1 data and track 2 audio.
-        std::memset(Ram + Address, 0, 12);
-
-        Ram[Address + 0] = 0x00;
-        Ram[Address + 1] = 0x1A;
-        Ram[Address + 2] = 0x01;
-        Ram[Address + 3] = (System::GetRunningCode() == "btchamp") ? 0x0C : 0x02;
-
-        Ram[Address + 4] = 0x00;
-        Ram[Address + 5] = 0x14;
-        Ram[Address + 6] = 0x01;
-        Ram[Address + 7] = 0x00;
-
-        Ram[Address + 8] = 0x00;
-        Ram[Address + 9] = 0x00;
-        Ram[Address + 10] = 0x00;
-        Ram[Address + 11] = 0x00;
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI READ TOC response address=0x%08X length=12 first=1 last=2\n", Address);
-          std::fclose(fp);
-        }
-        break;
-      }
-      case 0x28:
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI READ10 start_lba=%u read_size=%zu address=0x%08X\n", ScsiSectorLba, ReadSize, Address);
-          std::fclose(fp);
-        }
-
-          while (ReadSize >= 2048)
-        {
-            if (KonamiReadMountedDataSector(ScsiSectorLba, Sector))
-            {
-              static int read10_data_debug_count = 0;
-
-              if (read10_data_debug_count < 20000)
-              {
-                u32 checksum = 0;
-
-                for (u32 i = 0; i < 2048; i++)
-                  checksum = (checksum + Sector[i]) & 0xFFFFFFFFU;
-
-                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-                {
-                  std::fprintf(fp,
-                               "SCSI READ10 DATA count=%d lba=%u sectors=%u address=0x%08X first=%02X %02X %02X %02X "
-                               "checksum=0x%08X\n",
-                               read10_data_debug_count, ScsiSectorLba,
-                               (static_cast<u32>(ScsiCommand[7]) << 8) | ScsiCommand[8], Address, Sector[0], Sector[1],
-                               Sector[2], Sector[3], checksum);
-                  std::fclose(fp);
-                }
-
-                read10_data_debug_count++;
-              }
-
-              std::memcpy(Ram + Address, Sector, 2048);
-              CPU::CodeCache::InvalidateCodePages(Address, 2048 / sizeof(u32));
-
-              if (Address <= 0x00056D2C && (Address + 2048) > 0x00056D2C)
-              {
-                const u32 target_offset = 0x00056D2C - Address;
-                const u32 word_before = static_cast<u32>(Sector[target_offset - 4]) |
-                                        (static_cast<u32>(Sector[target_offset - 3]) << 8) |
-                                        (static_cast<u32>(Sector[target_offset - 2]) << 16) |
-                                        (static_cast<u32>(Sector[target_offset - 1]) << 24);
-                const u32 word_at = static_cast<u32>(Sector[target_offset + 0]) |
-                                    (static_cast<u32>(Sector[target_offset + 1]) << 8) |
-                                    (static_cast<u32>(Sector[target_offset + 2]) << 16) |
-                                    (static_cast<u32>(Sector[target_offset + 3]) << 24);
-                const u32 word_after = static_cast<u32>(Sector[target_offset + 4]) |
-                                       (static_cast<u32>(Sector[target_offset + 5]) << 8) |
-                                       (static_cast<u32>(Sector[target_offset + 6]) << 16) |
-                                       (static_cast<u32>(Sector[target_offset + 7]) << 24);
-
-                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-                {
-                  std::fprintf(fp,
-                               "SCSI TARGET EPC LOAD lba=%u address=0x%08X target_offset=0x%X "
-                               "before=0x%08X at=0x%08X after=0x%08X\n",
-                               ScsiSectorLba, Address, target_offset, word_before, word_at, word_after);
-                  std::fclose(fp);
-                }
-              }
-            }
-          else
-          {
-            std::memset(Ram + Address, 0, 2048);
-
-            if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-            {
-              std::fprintf(fp, "SCSI READ10 failed mounted sector read lba=%u address=0x%08X\n", ScsiSectorLba, Address);
-              std::fclose(fp);
-            }
-          }
-
-          ScsiSectorLba++;
-          Address += 2048;
-          ReadSize -= 2048;
-        }
-        ControlBits &= 0xFFFF;
-        break;
-      case 0x42:
-      {
-        // READ SUB-CHANNEL. Match the earlier KDeadEye branch stub that got the title/display path moving.
-        const u8 response[16] = {0x00, 0x11, 0x00, 0x0C, 0x01, 0x00, 0x02, 0x01,
-                                 0x00, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-        const size_t copy_size = std::min<size_t>(ReadSize, sizeof(response));
-        std::memcpy(Ram + Address, response, copy_size);
-
-        if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "SCSI READ SUBCHANNEL OLD STUB copy=%u status_byte=%02X track=%u index=%u\n",
-                       static_cast<u32>(copy_size), response[1], response[6], response[7]);
-          std::fclose(fp);
-        }
-
-        break;
-      }
-        default:
-        //Log_WarningPrintf("Unimplemented SCSI command %02X", ScsiCmd[0]);
-        break;
-    }
-  }
-
-  // End the fake SCSI DMA transfer.
-  // MAME drives this through NCR53CF96 DRQ + PSX DMA channel 5; our legacy shim
-  // currently completes the transfer synchronously, so make sure the DMA channel
-  // is no longer marked active after command data has been copied.
-  ControlBits &= 0xFFFF;
-  ScsiRegs[REG_STATUS] &= ~0x07U;
-}
-
-// SCSI
-
-void KonamiScsiRead(u32 Size, u32 Offset, u32& Value)
-{
-  const u8 Register = (Offset & 0x1F) >> 1;
-
-  Value = ScsiRegs[Register];
-
-  switch (Register)
-  {
-    case REG_FIFO:
-      Value = 0;
-      break;
-    case REG_IRQSTATE:
-      ScsiRegs[REG_STATUS] &= ~0x80U;
-      break;
-  }
-}
-
-void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
-{
-  const u8 Register = (Offset & 0x1F) >> 1;
-
-  switch (Register)
-  {
-    case REG_XFERCNTLOW:
-    case REG_XFERCNTMID:
-    case REG_XFERCNTHI:
-      ScsiRegs[REG_STATUS] &= ~0x10;
-      break;
-    case REG_FIFO:
-      ScsiFifo[ScsiFifoPtr++] = (u8)Value;
-      if (ScsiFifoPtr > 15)
-      {
-        ScsiFifoPtr = 15;
-      }
-      break;
-    case REG_COMMAND:
-      ScsiFifoPtr = 0;
-
-      switch (Value & 0x7F)
-      {
-        case 0x00:
-          ScsiRegs[REG_IRQSTATE] = 8;
-          break;
-        case 0x02:
-          ScsiRegs[REG_IRQSTATE] = 8;
-          ScsiRegs[REG_STATUS] |= 0x80;
-          AssertScsiInterrupt();
-          break;
-        case 0x03:
-          ScsiRegs[REG_INTSTATE] = 0x04;
-          AssertScsiInterrupt();
-          break;
-        case 0x42:
-          if (ScsiFifo[1] == 0 || ScsiFifo[1] == 0x48 || ScsiFifo[1] == 0x4B)
-          {
-            ScsiRegs[REG_INTSTATE] = 0x06;
-          }
-          else
-          {
-            ScsiRegs[REG_INTSTATE] = 0x04;
-          }
-
-          for (int i = 0; i < 12; i++)
-          {
-            ScsiCommand[i] = ScsiFifo[1 + i];
-          }
-
-          if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-          {
-            std::fprintf(fp, "SCSI cmd=%02X fifo=%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
-                         ScsiCommand[0], ScsiCommand[0], ScsiCommand[1], ScsiCommand[2], ScsiCommand[3], ScsiCommand[4],
-                         ScsiCommand[5], ScsiCommand[6], ScsiCommand[7], ScsiCommand[8], ScsiCommand[9],
-                         ScsiCommand[10], ScsiCommand[11]);
-            std::fclose(fp);
-          }
-
-          ScsiIsRead = false;
-          ScsiIsRead = false;
-          switch (ScsiCommand[0])
-          {
-            case 0x03:
-            case 0x12:
-            case 0x1A:
-            case 0x42:
-            case 0x43:
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
-              break;
-
-            case 0x00:
-            case 0x15:
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-              {
-                std::fprintf(fp, "SCSI simple command complete cmd=%02X status_phase=0\n", ScsiCommand[0]);
-                std::fclose(fp);
-              }
-
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
-              break;
-
-            case 0x48: // PLAY AUDIO TRACK/INDEX
-            case 0x4B: // PAUSE/RESUME
-            {
-              if (KonamiIsKDeadEye() || System::GetRunningCode() == "btchamp")
-              {
-                ScsiAudioPlaying = false;
-                ScsiAudioPaused = false;
-
-                ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x87U) | 0x00U;
-                ScsiRegs[REG_INTSTATE] = 0x04U;
-
-                if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-                {
-                  std::fprintf(fp, "SCSI AUDIO STUB cmd=%02X no-op success game=%s\n", ScsiCommand[0],
-                               System::GetRunningCode().c_str());
-                  std::fclose(fp);
-                }
-
-                AssertScsiInterrupt();
-                break;
-              }
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 0;
-              break;
-            }
-            case 0x28:
-              ScsiSectorLba = (ScsiFifo[3] << 24) | (ScsiFifo[4] << 16) | (ScsiFifo[5] << 8) | ScsiFifo[6];
-              ScsiIsRead = true;
-              ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 1;
-              break;
-          }
-          AssertScsiInterrupt();
-          break;
-        case 0x44:
-          break;
-        case 0x10:
-          if (Value & 0x80U)
-          {
-            ScsiRegs[REG_STATUS] = (ScsiRegs[REG_STATUS] & ~0x07) | 3;
-            ScsiRegs[REG_INTSTATE] = 0x00;
-            AssertScsiInterrupt();
-            break;
-          }
-          [[fallthrough]];
-
-        case 0x11:
-          AssertScsiInterrupt();
-          ScsiRegs[REG_STATUS] &= ~0x87;
-          ScsiRegs[REG_INTSTATE] = 0x00;
-          [[fallthrough]]; // ?? Why ??
-
-        case 0x12:
-          ScsiRegs[REG_STATUS] |= 0x80U;
-          ScsiRegs[REG_INTSTATE] = 0x06U;
-          break;
-
-        default:
-          // Log_WarningPrintf("Unknown command %02X!", value);
-          break;
-      }
-      break;
-  }
-  if (Register != REG_STATUS && Register != REG_INTSTATE && Register != REG_IRQSTATE && Register != REG_FIFOSTATE)
-  {
-    ScsiRegs[Register] = (uint8_t)Value;
-  }
-}
-
 // Player 1 controls
 
 void KonamiP1Read(u32 Size, u32 Offset, u32& Value)
 {
   Value = CurrentButtons[0];
+
+  if (GVBtChampFirstBootState == KonamiGVBtChampFirstBootState::HoldingTest)
+    Value &= ~(1U << 12);
 
   if (EepromDo)
     Value |= (1 << 13);
@@ -1409,6 +1243,12 @@ void KonamiP1Write(u32 Size, u32 Offset, u32 Value)
 void KonamiP2Read(u32 Size, u32 Offset, u32& Value)
 {
   Value = CurrentButtons[1];
+
+  if (TokimekiDeviceCheckEnabled)
+  {
+    Value &= ~0x00000400U;
+    Value |= static_cast<u32>((TokimekiDeviceCheckValue >> 15) & 1U) << 10;
+  }
 }
 
 void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
@@ -1416,28 +1256,164 @@ void KonamiP2Write(u32 Size, u32 Offset, u32 Value)
   // Ignored
 }
 
-// FLASH
+void KonamiTokimekiAdjustExcitement(s32 Direction)
+{
+  if (!TokimekiDeviceCheckEnabled || Direction == 0)
+    return;
 
-static bool KonamiFlashIsUnlockAAAddress(u32 Address)
+  const u32 previous_level = TokimekiExcitementLevel;
+
+  if (Direction > 0)
+  {
+    if (TokimekiExcitementLevel < TOKIMEKI_MAX_EXCITEMENT_LEVEL)
+      TokimekiExcitementLevel++;
+  }
+  else
+  {
+    if (TokimekiExcitementLevel > 0)
+      TokimekiExcitementLevel--;
+  }
+
+  if (TokimekiExcitementLevel == previous_level)
+    return;
+
+  KonamiTokimekiUpdateExcitementValues();
+
+  TokimekiHeartbeatSignal = true;
+  TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+  TokimekiHeartbeatPulseFramesRemaining = 0;
+}
+
+void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value)
+{
+  Value = TokimekiHeartbeatSignal ? 0x0004U : 0x0000U;
+
+  if (TokimekiSerialSensorId != 0)
+  {
+    Value |= static_cast<u32>((TokimekiSerialSensorData >> 8) & 1U) << 3;
+  }
+
+  if (TokimekiPrinterIsPrinting)
+    Value |= 0x0040U;
+}
+
+void KonamiTokimekiSerialWrite(u32 Size, u32 Offset, u32 Value)
+{
+  const bool new_printer_bit = (Value & 0x01U) != 0;
+
+  if (new_printer_bit && !TokimekiPrinterBit)
+  {
+    TokimekiPrinterPulseStartTicks = KonamiTokimekiGetCurrentTicks();
+  }
+  else if (!new_printer_bit && TokimekiPrinterBit)
+  {
+    const u32 elapsed_cpu_ticks = KonamiTokimekiGetCurrentTicks() - TokimekiPrinterPulseStartTicks;
+    const u32 printer_ticks = elapsed_cpu_ticks / TOKIMEKI_PRINTER_TIMER_DIVIDER;
+    if (printer_ticks >= TOKIMEKI_PRINTER_TRANSFER_START_MIN_TICKS)
+    {
+      // Start of a new data transfer.
+      TokimekiPrinterCurrentBit = 0;
+    }
+    else
+    {
+      const u8 printer_data_bit =
+        (printer_ticks >= TOKIMEKI_PRINTER_ONE_MIN_TICKS && printer_ticks <= TOKIMEKI_PRINTER_ONE_MAX_TICKS) ? 1 : 0;
+
+      if (TokimekiPrinterCurrentBit == 0)
+        TokimekiPrinterData[TokimekiPrinterCurrentByte] = 0;
+
+      TokimekiPrinterData[TokimekiPrinterCurrentByte] |= static_cast<u8>(printer_data_bit << TokimekiPrinterCurrentBit);
+
+      TokimekiPrinterCurrentBit++;
+
+      // The first byte contains seven bits.
+      if ((TokimekiPrinterCurrentByte & 1U) == 0 && TokimekiPrinterCurrentBit == 7)
+      {
+        TokimekiPrinterCurrentByte++;
+        TokimekiPrinterCurrentBit = 0;
+      }
+      // The second byte contains all eight bits and should decode as 0xF9.
+      else if ((TokimekiPrinterCurrentByte & 1U) != 0 && TokimekiPrinterCurrentBit == 8)
+      {
+        TokimekiPrinterCurrentByte++;
+        TokimekiPrinterCurrentBit = 0;
+      }
+    }
+
+    if (TokimekiPrinterCurrentByte >= 6)
+      KonamiTokimekiHandlePrinterPacket();
+  }
+
+  TokimekiPrinterBit = new_printer_bit;
+
+  const bool new_serial_clock = (Value & 0x20U) != 0;
+
+  if ((Value & 0x02U) != 0)
+  {
+    TokimekiSerialSensorData = 0;
+    TokimekiSerialSensorId = 0;
+    TokimekiSerialValue = 0;
+    TokimekiSerialLength = 0;
+  }
+  else if (!TokimekiSerialClock && new_serial_clock)
+  {
+    if (TokimekiSerialLength < 5)
+    {
+      const u8 serial_bit = static_cast<u8>((Value >> 4) & 1U);
+
+      TokimekiSerialValue |= static_cast<u8>(serial_bit << (4 - TokimekiSerialLength));
+
+      if (TokimekiSerialLength == 4)
+      {
+        TokimekiSerialSensorId = TokimekiSerialValue;
+
+        switch (TokimekiSerialSensorId)
+        {
+          case 0x1A:
+            TokimekiSerialSensorData = TokimekiGSRValue;
+            break;
+
+          case 0x18:
+          case 0x19:
+          default:
+            TokimekiSerialSensorData = 0;
+            break;
+        }
+      }
+    }
+    else if (TokimekiSerialLength >= 6)
+    {
+      TokimekiSerialSensorData <<= 1;
+    }
+
+    TokimekiSerialLength++;
+  }
+
+  TokimekiSerialClock = new_serial_clock;
+}
+
+// Konami GV Fujitsu flash
+
+static bool KonamiGVFujitsuFlashIsUnlockAAAddress(u32 Address)
 {
   return ((Address & 0x0FFF) == 0x0555) || ((Address & 0x0FFF) == 0x0AAA) || ((Address & 0xFFFF) == 0x5555);
 }
 
-static bool KonamiFlashIsUnlock55Address(u32 Address)
+static bool KonamiGVFujitsuFlashIsUnlock55Address(u32 Address)
 {
   return ((Address & 0xFFFF) == 0x02AA) || ((Address & 0xFFFF) == 0x2AAA) || ((Address & 0x0FFF) == 0x0555);
 }
 
-static bool KonamiFlashIsCommandAddress(u32 Address)
+static bool KonamiGVFujitsuFlashIsCommandAddress(u32 Address)
 {
   return ((Address & 0xFFFF) == 0x0555) || ((Address & 0xFFFF) == 0x5555) || ((Address & 0x0FFF) == 0x0AAA);
 }
 
-static u8 KonamiFlashChipRead(u8 Chip, u32 Address)
+static u8 KonamiGVFujitsuFlashChipRead(u8 Chip, u32 Address)
 {
-  Address &= (FLASH_SIZE - 1);
+  Address &= (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-  if (FlashModeState[Chip] == KONAMI_FLASH_MODE_AUTOSELECT)
+  if (GVFujitsuFlashModeState[Chip] == KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT)
   {
     switch (Address & 0xFF)
     {
@@ -1455,115 +1431,115 @@ static u8 KonamiFlashChipRead(u8 Chip, u32 Address)
     }
   }
 
-  return Flash[Chip][Address];
+  return GVFujitsuFlash[Chip][Address];
 }
 
-static void KonamiFlashEraseSector(u8 Chip, u32 Address)
+static void KonamiGVFujitsuFlashEraseSector(u8 Chip, u32 Address)
 {
-  const u32 SectorBase = Address & ~(FLASH_SECTOR_SIZE - 1);
+  const u32 SectorBase = Address & ~(KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE - 1);
 
-  for (u32 i = 0; i < FLASH_SECTOR_SIZE; i++)
-    Flash[Chip][(SectorBase + i) & (FLASH_SIZE - 1)] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SECTOR_SIZE; i++)
+    GVFujitsuFlash[Chip][(SectorBase + i) & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1)] = 0xFF;
 
-  FlashDirty[Chip] = true;
+  GVFujitsuFlashDirty[Chip] = true;
 }
 
-static void KonamiFlashEraseChip(u8 Chip)
+static void KonamiGVFujitsuFlashEraseChip(u8 Chip)
 {
-  for (u32 i = 0; i < FLASH_SIZE; i++)
-    Flash[Chip][i] = 0xFF;
+  for (u32 i = 0; i < KONAMI_GV_FUJITSU_FLASH_SIZE; i++)
+    GVFujitsuFlash[Chip][i] = 0xFF;
 
-  FlashDirty[Chip] = true;
+  GVFujitsuFlashDirty[Chip] = true;
 }
 
-static void KonamiFlashChipWrite(u8 Chip, u32 Address, u8 Data)
+static void KonamiGVFujitsuFlashChipWrite(u8 Chip, u32 Address, u8 Data)
 {
-  Address &= (FLASH_SIZE - 1);
+  Address &= (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
   // Reset/read-array command.
   if (Data == 0xF0 || Data == 0xFF)
   {
-    FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+    GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
     return;
   }
 
-  switch (FlashModeState[Chip])
+  switch (GVFujitsuFlashModeState[Chip])
   {
-    case KONAMI_FLASH_MODE_READ_ARRAY:
-    case KONAMI_FLASH_MODE_AUTOSELECT:
-      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_1;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY:
+    case KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT:
+      if (Data == 0xAA && KonamiGVFujitsuFlashIsUnlockAAAddress(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1;
       break;
 
-    case KONAMI_FLASH_MODE_UNLOCK_1:
-      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_UNLOCK_2;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_1:
+      if (Data == 0x55 && KonamiGVFujitsuFlashIsUnlock55Address(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_UNLOCK_2:
-      if (!KonamiFlashIsCommandAddress(Address))
+    case KONAMI_GV_FUJITSU_FLASH_MODE_UNLOCK_2:
+      if (!KonamiGVFujitsuFlashIsCommandAddress(Address))
       {
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
         break;
       }
 
       switch (Data)
       {
         case 0x90:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_AUTOSELECT;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_AUTOSELECT;
           break;
 
         case 0xA0:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_PROGRAM;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM;
           break;
 
         case 0x80:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_1;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1;
           break;
 
         default:
-          FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+          GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
           break;
       }
       break;
 
-    case KONAMI_FLASH_MODE_PROGRAM:
+    case KONAMI_GV_FUJITSU_FLASH_MODE_PROGRAM:
       // Real flash can clear bits from 1 to 0, not set 0 back to 1 without erase.
-      Flash[Chip][Address] &= Data;
-      FlashDirty[Chip] = true;
-      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      GVFujitsuFlash[Chip][Address] &= Data;
+      GVFujitsuFlashDirty[Chip] = true;
+      GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_UNLOCK_1:
-      if (Data == 0xAA && KonamiFlashIsUnlockAAAddress(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_UNLOCK_2;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_1:
+      if (Data == 0xAA && KonamiGVFujitsuFlashIsUnlockAAAddress(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_UNLOCK_2:
-      if (Data == 0x55 && KonamiFlashIsUnlock55Address(Address))
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_ERASE_SELECT;
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_UNLOCK_2:
+      if (Data == 0x55 && KonamiGVFujitsuFlashIsUnlock55Address(Address))
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT;
       else
-        FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+        GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
 
-    case KONAMI_FLASH_MODE_ERASE_SELECT:
-      if (Data == 0x10 && KonamiFlashIsCommandAddress(Address))
-        KonamiFlashEraseChip(Chip);
+    case KONAMI_GV_FUJITSU_FLASH_MODE_ERASE_SELECT:
+      if (Data == 0x10 && KonamiGVFujitsuFlashIsCommandAddress(Address))
+        KonamiGVFujitsuFlashEraseChip(Chip);
       else if (Data == 0x30)
-        KonamiFlashEraseSector(Chip, Address);
+        KonamiGVFujitsuFlashEraseSector(Chip, Address);
 
-      FlashModeState[Chip] = KONAMI_FLASH_MODE_READ_ARRAY;
+      GVFujitsuFlashModeState[Chip] = KONAMI_GV_FUJITSU_FLASH_MODE_READ_ARRAY;
       break;
   }
 }
 
-void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
+void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int flash_read_debug_count = 0;
+  static int gv_fujitsu_flash_read_debug_count = 0;
 
   const u32 raw_offset = Offset;
   Offset &= 0xF;
@@ -1572,32 +1548,33 @@ void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
   {
     case 0:
     {
-      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
-      const u32 address = FlashAddress & 0x1FFFFF;
+      const u8 chip =
+        (GVFujitsuFlashAddress >= KONAMI_GV_FUJITSU_FLASH_SIZE) ? KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = GVFujitsuFlashAddress & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-      const u8 low = KonamiFlashChipRead(chip, address);
-      const u8 high = KonamiFlashChipRead(chip + 1, address);
+      const u8 low = KonamiGVFujitsuFlashChipRead(chip, address);
+      const u8 high = KonamiGVFujitsuFlashChipRead(chip + 1, address);
 
       Value = static_cast<u32>(low) | (static_cast<u32>(high) << 8);
 
-      if (flash_read_debug_count < 500)
+      if (gv_fujitsu_flash_read_debug_count < 500)
       {
         if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
         {
           std::fprintf(fp, "FLASH READ raw_offset=0x%08X offset=0x%X address=0x%08X chip=%u value=0x%04X mode=%u/%u\n",
-                       raw_offset, Offset, FlashAddress, chip, Value & 0xFFFF, static_cast<u32>(FlashModeState[chip]),
-                       static_cast<u32>(FlashModeState[chip + 1]));
+                       raw_offset, Offset, GVFujitsuFlashAddress, chip, Value & 0xFFFF, static_cast<u32>(GVFujitsuFlashModeState[chip]),
+                       static_cast<u32>(GVFujitsuFlashModeState[chip + 1]));
           std::fclose(fp);
         }
-        flash_read_debug_count++;
+        gv_fujitsu_flash_read_debug_count++;
       }
 
-      FlashAddress++;
+      GVFujitsuFlashAddress++;
       break;
     }
 
     case 8:
-      FlashAddress |= 1;
+      GVFujitsuFlashAddress |= 1;
       Value = 0;
       break;
 
@@ -1607,49 +1584,50 @@ void KonamiFlashRead(u32 Size, u32 Offset, u32& Value)
   }
 }
 
-void KonamiFlashWrite(u32 Size, u32 Offset, u32 Value)
+void KonamiGVFujitsuFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int flash_write_debug_count = 0;
+  static int gv_fujitsu_flash_write_debug_count = 0;
 
   const u32 raw_offset = Offset;
   Offset &= 0xF;
 
-  if (flash_write_debug_count < 2000)
+  if (gv_fujitsu_flash_write_debug_count < 2000)
   {
     if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
     {
       std::fprintf(fp, "FLASH WRITE raw_offset=0x%08X offset=0x%X value=0x%04X old_address=0x%08X\n", raw_offset,
-                   Offset, Value & 0xFFFF, FlashAddress);
+                   Offset, Value & 0xFFFF, GVFujitsuFlashAddress);
       std::fclose(fp);
     }
-    flash_write_debug_count++;
+    gv_fujitsu_flash_write_debug_count++;
   }
 
   switch (Offset)
   {
     case 0:
     {
-      const u8 chip = (FlashAddress >= 0x200000) ? 2 : 0;
-      const u32 address = FlashAddress & 0x1FFFFF;
+      const u8 chip =
+        (GVFujitsuFlashAddress >= KONAMI_GV_FUJITSU_FLASH_SIZE) ? KONAMI_GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = GVFujitsuFlashAddress & (KONAMI_GV_FUJITSU_FLASH_SIZE - 1);
 
-      KonamiFlashChipWrite(chip, address, static_cast<u8>(Value & 0xFF));
-      KonamiFlashChipWrite(chip + 1, address, static_cast<u8>((Value >> 8) & 0xFF));
+      KonamiGVFujitsuFlashChipWrite(chip, address, static_cast<u8>(Value & 0xFF));
+      KonamiGVFujitsuFlashChipWrite(chip + 1, address, static_cast<u8>((Value >> 8) & 0xFF));
       break;
     }
 
     case 2:
-      FlashAddress = 0;
-      FlashAddress |= Value << 1;
+      GVFujitsuFlashAddress = 0;
+      GVFujitsuFlashAddress |= Value << 1;
       break;
 
     case 4:
-      FlashAddress &= 0xFF00FF;
-      FlashAddress |= Value << 8;
+      GVFujitsuFlashAddress &= 0xFF00FF;
+      GVFujitsuFlashAddress |= Value << 8;
       break;
 
     case 6:
-      FlashAddress &= 0x00FFFF;
-      FlashAddress |= Value << 15;
+      GVFujitsuFlashAddress &= 0x00FFFF;
+      GVFujitsuFlashAddress |= Value << 15;
       break;
   }
 }
@@ -1668,6 +1646,16 @@ static void KonamiSerialEepromWrite(u32 Value)
   const bool new_di = (Value & 0x01) != 0;
   const bool new_cs = (Value & 0x02) != 0;
   const bool new_clk = (Value & 0x04) != 0;
+
+  const bool new_device_check_clock = (Value & 0x10) != 0;
+
+  if (TokimekiDeviceCheckEnabled && !TokimekiDeviceCheckClock && new_device_check_clock)
+  {
+    TokimekiDeviceCheckValue = static_cast<u16>((TokimekiDeviceCheckValue << 1) | (TokimekiDeviceCheckValue >> 15));
+  }
+
+  TokimekiDeviceCheckClock = new_device_check_clock;
+
   static u32 eeprom_edge_debug_count = 0;
 
   const bool cs_changed = (EepromCs != new_cs);
@@ -2168,17 +2156,11 @@ void KonamiButtonsSet(u32 Player, u32 Buttons)
 
   map_button(0x4000, 1 << 4); // Button 1 / Cross
   map_button(0x2000, 1 << 5); // Button 2 / Circle
-  map_button(0x8000, 1 << 6); // Button 3 / Square
-  map_button(0x1000, 1 << 7); // Button 4 / Triangle
+  map_button(0x0200, 1 << 6); // Button 3 / R2
+  map_button(0x8000, 1 << 7); // Button 4 / Square
 
   map_button(0x0008, 1 << 9);  // Start
   map_button(0x0001, 1 << 10); // Coin / Select
-
-  if (Player == 0)
-  {
-    map_button(0x0002, 1 << 11); // Service / L3
-    map_button(0x0004, 1 << 12); // Test / R3
-  }
 
   CurrentButtons[Player] = value;
 }
@@ -2344,11 +2326,6 @@ void KonamiLightgunSetShootOffscreen(u32 Player, bool Pressed)
 }
 
 // Misc
-
-void KonamiScsiIrqDeassert(void)
-{
-  CPU::ClearExternalInterrupt((u8)InterruptController::IRQ::IRQ10);
-}
 
 void KonamiEepromFixup(void)
 {

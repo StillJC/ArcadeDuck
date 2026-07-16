@@ -41,14 +41,17 @@ public:
 
   static constexpr u8 NUM_MOTORS = 2;
 
-  AnalogController(u32 index);
+  AnalogController(u32 index, ControllerType type = ControllerType::AnalogController);
   ~AnalogController() override;
 
   static std::unique_ptr<AnalogController> Create(u32 index);
+  static std::unique_ptr<AnalogController> CreateSpecialSensor(u32 index);
   static std::optional<s32> StaticGetAxisCodeByName(std::string_view axis_name);
   static std::optional<s32> StaticGetButtonCodeByName(std::string_view button_name);
+  static std::optional<s32> StaticGetSpecialSensorButtonCodeByName(std::string_view button_name);
   static AxisList StaticGetAxisNames();
   static ButtonList StaticGetButtonNames();
+  static ButtonList StaticGetSpecialSensorButtonNames();
   static u32 StaticGetVibrationMotorCount();
   static SettingList StaticGetSettings();
 
@@ -120,6 +123,7 @@ private:
   void SetMotorStateForConfigIndex(int index, u8 value);
 
   u32 m_index;
+  ControllerType m_type;
 
   bool m_force_analog_on_reset = false;
   bool m_analog_dpad_in_digital_mode = false;

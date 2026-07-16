@@ -60,6 +60,23 @@ public:
     return std::tuple<s16, s16>(left_out, right_out);
   }
 
+  /// Adds externally supplied stereo CD audio frames to the external CDDA FIFO.
+  void PushExternalCDAudioFrames(const u32* frames, u32 frame_count);
+
+  /// Clears all externally supplied CDDA audio frames.
+  void ClearExternalCDAudioFrames();
+
+  /// Reads one externally supplied stereo CDDA frame.
+  ALWAYS_INLINE std::tuple<s16, s16> GetExternalCDAudioFrame()
+  {
+    const u32 frame = m_external_cdda_fifo.IsEmpty() ? 0u : m_external_cdda_fifo.Pop();
+
+    const s16 left = static_cast<s16>(Truncate16(frame));
+    const s16 right = static_cast<s16>(Truncate16(frame >> 16));
+
+    return std::tuple<s16, s16>(left, right);
+  }
+
 private:
   enum : u32
   {
@@ -403,6 +420,9 @@ private:
 
   // two 16-bit samples packed in 32-bits
   HeapFIFOQueue<u32, AUDIO_FIFO_SIZE> m_audio_fifo;
+
+  // Konami GV and other externally supplied CDDA audio.
+  HeapFIFOQueue<u32, AUDIO_FIFO_SIZE> m_external_cdda_fifo;
 };
 
 extern CDROM g_cdrom;
