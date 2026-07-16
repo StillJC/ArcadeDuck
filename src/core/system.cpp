@@ -2400,8 +2400,11 @@ void RemoveMedia()
   ClearMemorySaveStates();
 }
 
-static std::string GetKonamiGVMameSetNameFromResolvedCHDPath(const char* path)
+static std::string GetKonamiGVMameSetNameFromResolvedCHDPath(const char* path, std::string* out_zip_path = nullptr)
 {
+  if (out_zip_path)
+    out_zip_path->clear();
+
   if (!path || path[0] == '\0')
     return {};
 
@@ -2419,12 +2422,17 @@ static std::string GetKonamiGVMameSetNameFromResolvedCHDPath(const char* path)
     return {};
 
   const std::string set_name(path_view.substr(set_separator + 1, chd_separator - set_separator - 1));
+
   if (set_name.empty())
     return {};
 
   const std::string zip_path = std::string(path_view.substr(0, set_separator + 1)) + set_name + ".zip";
+
   if (!FileSystem::FileExists(zip_path.c_str()))
     return {};
+
+  if (out_zip_path)
+    *out_zip_path = zip_path;
 
   return set_name;
 }
@@ -2443,14 +2451,26 @@ void UpdateRunningGame(const char* path, CDImage* image)
   if (path && std::strlen(path) > 0)
   {
     s_running_game_path = path;
-    g_host_interface->GetGameInfo(path, image, &s_running_game_code, &s_running_game_title);
 
-    if (const std::string mame_set_name = GetKonamiGVMameSetNameFromResolvedCHDPath(path); !mame_set_name.empty())
+    std::string mame_zip_path;
+    const std::string mame_set_name = GetKonamiGVMameSetNameFromResolvedCHDPath(path, &mame_zip_path);
+
+    // The game list stores the original ZIP path, while booting uses
+    // the internally resolved CHD path.
+    g_host_interface->GetGameInfo(mame_set_name.empty() ? path : mame_zip_path.c_str(), image, &s_running_game_code,
+                                  &s_running_game_title);
+
+    if (!mame_set_name.empty())
     {
       s_arcadeduck_mame_set_name = mame_set_name;
       s_running_konami_gv = true;
+
+      // Keep the MAME set name as the stable internal identity.
       s_running_game_code = mame_set_name;
-      s_running_game_title = mame_set_name;
+
+      // Only fall back to the set name when no database title exists.
+      if (s_running_game_title.empty())
+        s_running_game_title = mame_set_name;
     }
     else if (image && image->HasSubImages() && g_settings.memory_card_use_playlist_title)
     {
