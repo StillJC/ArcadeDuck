@@ -50,6 +50,7 @@ void KonamiArcadeButtonSet(u32 Player, u32 ButtonMask, bool Pressed);
 void KonamiTokimekiAdjustExcitement(s32 Direction);
 void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value);
 void KonamiTokimekiSerialWrite(u32 Size, u32 Offset, u32 Value);
+void KonamiTokimekiProcessFrame();
 
 void KonamiTrackballSetXY(u16 X, u16 Y);
 void KonamiTrackballAddDelta(u32 Player, s32 X, s32 Y);

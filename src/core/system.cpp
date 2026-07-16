@@ -1800,6 +1800,8 @@ void RunFrame()
 
   DoRunFrame();
 
+  KonamiTokimekiProcessFrame();
+
   if (KonamiConsumeAutomaticResetRequest())
     Reset();
 

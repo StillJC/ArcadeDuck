@@ -1,6 +1,7 @@
 #include "bus.h"
 #include "common/cd_image.h"
 #include "common/file_system.h"
+#include "common/image.h"
 #include "common/log.h"
 #include "cpu_core.h"
 #include "host_display.h"
@@ -9,13 +10,16 @@
 #include "konami_gv_scsi.h"
 #include "system.h"
 #include "timers.h"
+#include "timing_event.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <stdio.h>
+#include <string>
 #include <vector>
 
 Log_SetChannel(Konami);
@@ -60,6 +64,239 @@ static void KonamiTokimekiUpdateExcitementValues()
   TokimekiGSRValue = static_cast<u8>(
     TOKIMEKI_DEFAULT_GSR_VALUE + (((TOKIMEKI_MAX_GSR_VALUE - TOKIMEKI_DEFAULT_GSR_VALUE) * TokimekiExcitementLevel) /
                                   TOKIMEKI_MAX_EXCITEMENT_LEVEL));
+}
+
+// Tokimeki video printer protocol state.
+static constexpr u32 TOKIMEKI_PRINTER_BUSY_FRAMES = 60;
+static constexpr u32 TOKIMEKI_PRINTER_TIMER_DIVIDER = 8;
+static constexpr u32 TOKIMEKI_PRINTER_TRANSFER_START_MIN_TICKS = 9000;
+static constexpr u32 TOKIMEKI_PRINTER_ONE_MIN_TICKS = 4000;
+static constexpr u32 TOKIMEKI_PRINTER_ONE_MAX_TICKS = 5600;
+static bool TokimekiPrinterBit = false;
+static u8 TokimekiPrinterData[6] = {};
+static u8 TokimekiPrinterCurrentBit = 0;
+static u8 TokimekiPrinterCurrentByte = 0;
+static u32 TokimekiPrinterPulseStartTicks = 0;
+static bool TokimekiPrinterIsPrinting = false;
+static u32 TokimekiPrinterBusyFramesRemaining = 0;
+
+// Captured video frame held by the emulated printer.
+static constexpr u32 TOKIMEKI_PRINTER_CAPTURE_WIDTH = 640;
+static constexpr u32 TOKIMEKI_PRINTER_CAPTURE_HEIGHT = 480;
+static bool TokimekiPrinterCapturePending = false;
+static std::vector<u32> TokimekiPrinterCapturedFrame;
+
+// Final printer page. The Plus versions assemble sixteen captures in a
+// four-by-four sticker layout; earlier versions use one centered image.
+static constexpr u32 TOKIMEKI_PRINTER_PAGE_WIDTH = 800;
+static constexpr u32 TOKIMEKI_PRINTER_PAGE_HEIGHT = 600;
+static constexpr u32 TOKIMEKI_PRINTER_STICKER_COLUMNS = 4;
+static constexpr u32 TOKIMEKI_PRINTER_STICKER_ROWS = 4;
+
+static bool TokimekiPrinterManualLayout = false;
+static u32 TokimekiPrinterCurrentImage = 0;
+static std::vector<u32> TokimekiPrinterPage;
+static bool TokimekiPrinterSavePending = false;
+
+static u32 KonamiTokimekiGetCurrentTicks()
+{
+  return TimingEvents::GetGlobalTickCounter() + CPU::GetPendingTicks();
+}
+
+static void KonamiTokimekiCopyCapturedFrameToPage()
+{
+  const size_t expected_frame_size =
+    static_cast<size_t>(TOKIMEKI_PRINTER_CAPTURE_WIDTH) * TOKIMEKI_PRINTER_CAPTURE_HEIGHT;
+  const size_t expected_page_size = static_cast<size_t>(TOKIMEKI_PRINTER_PAGE_WIDTH) * TOKIMEKI_PRINTER_PAGE_HEIGHT;
+
+  if (TokimekiPrinterCapturedFrame.size() != expected_frame_size || TokimekiPrinterPage.size() != expected_page_size)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot compose an invalid capture or page buffer");
+    return;
+  }
+
+  if (!TokimekiPrinterManualLayout)
+  {
+    std::fill(TokimekiPrinterPage.begin(), TokimekiPrinterPage.end(), 0xFFFFFFFFU);
+
+    const u32 destination_x = (TOKIMEKI_PRINTER_PAGE_WIDTH - TOKIMEKI_PRINTER_CAPTURE_WIDTH) / 2;
+    const u32 destination_y = (TOKIMEKI_PRINTER_PAGE_HEIGHT - TOKIMEKI_PRINTER_CAPTURE_HEIGHT) / 2;
+
+    for (u32 y = 0; y < TOKIMEKI_PRINTER_CAPTURE_HEIGHT; y++)
+    {
+      const u32* const source = &TokimekiPrinterCapturedFrame[static_cast<size_t>(y) * TOKIMEKI_PRINTER_CAPTURE_WIDTH];
+      u32* const destination =
+        &TokimekiPrinterPage[static_cast<size_t>(destination_y + y) * TOKIMEKI_PRINTER_PAGE_WIDTH + destination_x];
+
+      std::copy_n(source, TOKIMEKI_PRINTER_CAPTURE_WIDTH, destination);
+    }
+
+    Log_InfoPrintf("KonamiGV: Tokimeki printer stored centered page image");
+    return;
+  }
+
+  // Match MAME's crop and 4x4 sticker-sheet geometry.
+  static constexpr u32 CROP_LEFT = 1;
+  static constexpr u32 CROP_TOP = 40;
+  static constexpr u32 CROP_RIGHT = 19;
+  static constexpr u32 CROP_BOTTOM = 16;
+  static constexpr u32 INNER_PADDING_X = 6;
+  static constexpr u32 INNER_PADDING_Y = 5;
+  static constexpr u32 WIDTH_MARGIN = 163;
+  static constexpr u32 HEIGHT_MARGIN = 161;
+
+  static constexpr u32 SOURCE_WIDTH = TOKIMEKI_PRINTER_CAPTURE_WIDTH - CROP_LEFT - CROP_RIGHT;
+  static constexpr u32 SOURCE_HEIGHT = TOKIMEKI_PRINTER_CAPTURE_HEIGHT - CROP_TOP - CROP_BOTTOM;
+  static constexpr u32 DESTINATION_WIDTH =
+    (TOKIMEKI_PRINTER_PAGE_WIDTH - WIDTH_MARGIN - (INNER_PADDING_X * (TOKIMEKI_PRINTER_STICKER_COLUMNS - 1))) /
+    TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  static constexpr u32 DESTINATION_HEIGHT =
+    (TOKIMEKI_PRINTER_PAGE_HEIGHT - HEIGHT_MARGIN - (INNER_PADDING_Y * (TOKIMEKI_PRINTER_STICKER_ROWS - 1))) /
+    TOKIMEKI_PRINTER_STICKER_ROWS;
+  static constexpr u32 MAX_IMAGES = TOKIMEKI_PRINTER_STICKER_COLUMNS * TOKIMEKI_PRINTER_STICKER_ROWS;
+
+  if (TokimekiPrinterCurrentImage >= MAX_IMAGES)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer ignored sticker image beyond page capacity");
+    return;
+  }
+
+  const u32 column = TokimekiPrinterCurrentImage % TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  const u32 row = TokimekiPrinterCurrentImage / TOKIMEKI_PRINTER_STICKER_COLUMNS;
+  const u32 destination_x = (WIDTH_MARGIN / 2) + (column * (DESTINATION_WIDTH + INNER_PADDING_X));
+  const u32 destination_y = (HEIGHT_MARGIN / 2) + (row * (DESTINATION_HEIGHT + INNER_PADDING_Y));
+
+  for (u32 y = 0; y < DESTINATION_HEIGHT; y++)
+  {
+    const u32 source_y = CROP_TOP + ((y * SOURCE_HEIGHT) / DESTINATION_HEIGHT);
+
+    for (u32 x = 0; x < DESTINATION_WIDTH; x++)
+    {
+      const u32 source_x = CROP_LEFT + ((x * SOURCE_WIDTH) / DESTINATION_WIDTH);
+
+      TokimekiPrinterPage[static_cast<size_t>(destination_y + y) * TOKIMEKI_PRINTER_PAGE_WIDTH + destination_x + x] =
+        TokimekiPrinterCapturedFrame[static_cast<size_t>(source_y) * TOKIMEKI_PRINTER_CAPTURE_WIDTH + source_x];
+    }
+  }
+
+  TokimekiPrinterCurrentImage++;
+
+  Log_InfoPrintf("KonamiGV: Tokimeki printer stored sticker image %u of %u", TokimekiPrinterCurrentImage, MAX_IMAGES);
+}
+
+static void KonamiTokimekiSavePage()
+{
+  TokimekiPrinterSavePending = false;
+
+  const size_t expected_page_size = static_cast<size_t>(TOKIMEKI_PRINTER_PAGE_WIDTH) * TOKIMEKI_PRINTER_PAGE_HEIGHT;
+
+  if (TokimekiPrinterPage.size() != expected_page_size)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot save an invalid page buffer");
+    return;
+  }
+
+  if (!g_host_interface)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer cannot save because no host interface is available");
+    return;
+  }
+
+  const std::string& game_code = System::GetRunningCode();
+  const char* const game_directory = game_code.empty() ? "unknown" : game_code.c_str();
+
+  const std::string prints_root = g_host_interface->GetUserDirectoryRelativePath("prints");
+  const std::string prints_directory =
+    g_host_interface->GetUserDirectoryRelativePath("prints" FS_OSPATH_SEPARATOR_STR "%s", game_directory);
+
+  if (!FileSystem::CreateDirectory(prints_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(prints_directory.c_str(), false))
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer failed to create print directory '%s'", prints_directory.c_str());
+    return;
+  }
+
+  const auto timestamp_value =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  const std::string timestamp = std::to_string(timestamp_value);
+
+  const std::string filename = g_host_interface->GetUserDirectoryRelativePath(
+    "prints" FS_OSPATH_SEPARATOR_STR "%s" FS_OSPATH_SEPARATOR_STR "%s_%s.png", game_directory, game_directory,
+    timestamp.c_str());
+
+  Common::RGBA8Image image;
+  image.SetPixels(TOKIMEKI_PRINTER_PAGE_WIDTH, TOKIMEKI_PRINTER_PAGE_HEIGHT, TokimekiPrinterPage.data());
+
+  if (!Common::WriteImageToFile(image, filename.c_str()))
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer failed to save page to '%s'", filename.c_str());
+    return;
+  }
+
+  Log_InfoPrintf("KonamiGV: Tokimeki printer saved page to '%s'", filename.c_str());
+}
+
+static void KonamiTokimekiHandlePrinterPacket()
+{
+  const bool repeated_command_matches =
+    TokimekiPrinterData[0] == TokimekiPrinterData[2] && TokimekiPrinterData[0] == TokimekiPrinterData[4] &&
+    TokimekiPrinterData[1] == TokimekiPrinterData[3] && TokimekiPrinterData[1] == TokimekiPrinterData[5];
+
+  if (!repeated_command_matches)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer rejected mismatched packet [%02X %02X %02X] [%02X %02X %02X]",
+                      TokimekiPrinterData[0], TokimekiPrinterData[2], TokimekiPrinterData[4], TokimekiPrinterData[1],
+                      TokimekiPrinterData[3], TokimekiPrinterData[5]);
+  }
+  else if (TokimekiPrinterData[1] != 0xF9)
+  {
+    Log_WarningPrintf("KonamiGV: Tokimeki printer rejected command %02X with invalid second byte %02X",
+                      TokimekiPrinterData[0], TokimekiPrinterData[1]);
+  }
+  else
+  {
+    switch (TokimekiPrinterData[0])
+    {
+      case 0x10:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer memory-in command");
+        TokimekiPrinterCapturePending = true;
+        break;
+
+      case 0x11:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer print command");
+        TokimekiPrinterIsPrinting = true;
+        TokimekiPrinterBusyFramesRemaining = TOKIMEKI_PRINTER_BUSY_FRAMES;
+        TokimekiPrinterSavePending = true;
+        break;
+
+      case 0x17:
+        Log_InfoPrintf("KonamiGV: Tokimeki printer source/reset command");
+        TokimekiPrinterCapturePending = false;
+        TokimekiPrinterSavePending = false;
+        TokimekiPrinterCapturedFrame.clear();
+        TokimekiPrinterCurrentImage = 0;
+        std::fill(TokimekiPrinterPage.begin(), TokimekiPrinterPage.end(), 0xFFFFFFFFU);
+        break;
+
+      // Controls for the physical printer's internal configuration menu.
+      // ArcadeDuck has no physical-printer OSD, so these are valid no-ops.
+      case 0x0B: // probable stop/cancel
+      case 0x62: // menu
+      case 0x63: // execute
+      case 0x64: // up
+      case 0x65: // down
+      case 0x66: // left
+      case 0x67: // right
+        break;
+
+      default:
+        Log_WarningPrintf("KonamiGV: Tokimeki printer unknown command %02X", TokimekiPrinterData[0]);
+        break;
+    }
+  }
+
+  TokimekiPrinterCurrentByte = 0;
+  TokimekiPrinterCurrentBit = 0;
 }
 
 // Konami GV flash state
@@ -703,6 +940,44 @@ void KonamiGVWatchdogWrite()
   KonamiGVWatchdogFramesRemaining = KONAMI_GV_WATCHDOG_TIMEOUT_FRAMES;
 }
 
+void KonamiTokimekiProcessFrame()
+{
+  if (!TokimekiPrinterCapturePending && !TokimekiPrinterSavePending)
+    return;
+
+  if (TokimekiPrinterCapturePending)
+  {
+    TokimekiPrinterCapturePending = false;
+
+    HostDisplay* const display = g_host_interface ? g_host_interface->GetDisplay() : nullptr;
+    if (!display)
+    {
+      Log_WarningPrintf("KonamiGV: Tokimeki printer capture failed because no host display is available");
+    }
+    else
+    {
+      std::vector<u32> captured_frame;
+      if (!display->WriteDisplayTextureToBuffer(&captured_frame, TOKIMEKI_PRINTER_CAPTURE_WIDTH,
+                                                TOKIMEKI_PRINTER_CAPTURE_HEIGHT, true))
+      {
+        Log_WarningPrintf("KonamiGV: Tokimeki printer failed to capture video frame");
+      }
+      else
+      {
+        TokimekiPrinterCapturedFrame.swap(captured_frame);
+
+        Log_InfoPrintf("KonamiGV: Tokimeki printer captured %ux%u video frame", TOKIMEKI_PRINTER_CAPTURE_WIDTH,
+                       TOKIMEKI_PRINTER_CAPTURE_HEIGHT);
+
+        KonamiTokimekiCopyCapturedFrameToPage();
+      }
+    }
+  }
+
+  if (TokimekiPrinterSavePending)
+    KonamiTokimekiSavePage();
+}
+
 bool KonamiConsumeAutomaticResetRequest()
 {
   if (TokimekiDeviceCheckEnabled)
@@ -725,6 +1000,17 @@ bool KonamiConsumeAutomaticResetRequest()
       TokimekiHeartbeatSignal = false;
       TokimekiHeartbeatPulseFramesRemaining = TOKIMEKI_HEARTBEAT_PULSE_FRAMES;
       TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+    }
+
+    if (TokimekiPrinterBusyFramesRemaining > 0)
+    {
+      TokimekiPrinterBusyFramesRemaining--;
+
+      if (TokimekiPrinterBusyFramesRemaining == 0)
+      {
+        TokimekiPrinterIsPrinting = false;
+        Log_InfoPrintf("KonamiGV: Tokimeki printer finished printing");
+      }
     }
   }
 
@@ -784,6 +1070,19 @@ void KonamiInit(void)
   TokimekiSerialClock = false;
   TokimekiSerialSensorId = 0;
   TokimekiSerialSensorData = 0;
+  TokimekiPrinterBit = false;
+  std::memset(TokimekiPrinterData, 0, sizeof(TokimekiPrinterData));
+  TokimekiPrinterCurrentBit = 0;
+  TokimekiPrinterCurrentByte = 0;
+  TokimekiPrinterPulseStartTicks = 0;
+  TokimekiPrinterIsPrinting = false;
+  TokimekiPrinterBusyFramesRemaining = 0;
+  TokimekiPrinterCapturePending = false;
+  TokimekiPrinterCapturedFrame.clear();
+  TokimekiPrinterManualLayout = (game_name == "tmoshsp" || game_name == "tmoshspa");
+  TokimekiPrinterCurrentImage = 0;
+  TokimekiPrinterPage.assign(TOKIMEKI_PRINTER_PAGE_WIDTH * TOKIMEKI_PRINTER_PAGE_HEIGHT, 0xFFFFFFFFU);
+  TokimekiPrinterSavePending = false;
 
   if (game_name == "tmosh")
   {
@@ -993,10 +1292,60 @@ void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value)
   {
     Value |= static_cast<u32>((TokimekiSerialSensorData >> 8) & 1U) << 3;
   }
+
+  if (TokimekiPrinterIsPrinting)
+    Value |= 0x0040U;
 }
 
 void KonamiTokimekiSerialWrite(u32 Size, u32 Offset, u32 Value)
 {
+  const bool new_printer_bit = (Value & 0x01U) != 0;
+
+  if (new_printer_bit && !TokimekiPrinterBit)
+  {
+    TokimekiPrinterPulseStartTicks = KonamiTokimekiGetCurrentTicks();
+  }
+  else if (!new_printer_bit && TokimekiPrinterBit)
+  {
+    const u32 elapsed_cpu_ticks = KonamiTokimekiGetCurrentTicks() - TokimekiPrinterPulseStartTicks;
+    const u32 printer_ticks = elapsed_cpu_ticks / TOKIMEKI_PRINTER_TIMER_DIVIDER;
+    if (printer_ticks >= TOKIMEKI_PRINTER_TRANSFER_START_MIN_TICKS)
+    {
+      // Start of a new data transfer.
+      TokimekiPrinterCurrentBit = 0;
+    }
+    else
+    {
+      const u8 printer_data_bit =
+        (printer_ticks >= TOKIMEKI_PRINTER_ONE_MIN_TICKS && printer_ticks <= TOKIMEKI_PRINTER_ONE_MAX_TICKS) ? 1 : 0;
+
+      if (TokimekiPrinterCurrentBit == 0)
+        TokimekiPrinterData[TokimekiPrinterCurrentByte] = 0;
+
+      TokimekiPrinterData[TokimekiPrinterCurrentByte] |= static_cast<u8>(printer_data_bit << TokimekiPrinterCurrentBit);
+
+      TokimekiPrinterCurrentBit++;
+
+      // The first byte contains seven bits.
+      if ((TokimekiPrinterCurrentByte & 1U) == 0 && TokimekiPrinterCurrentBit == 7)
+      {
+        TokimekiPrinterCurrentByte++;
+        TokimekiPrinterCurrentBit = 0;
+      }
+      // The second byte contains all eight bits and should decode as 0xF9.
+      else if ((TokimekiPrinterCurrentByte & 1U) != 0 && TokimekiPrinterCurrentBit == 8)
+      {
+        TokimekiPrinterCurrentByte++;
+        TokimekiPrinterCurrentBit = 0;
+      }
+    }
+
+    if (TokimekiPrinterCurrentByte >= 6)
+      KonamiTokimekiHandlePrinterPacket();
+  }
+
+  TokimekiPrinterBit = new_printer_bit;
+
   const bool new_serial_clock = (Value & 0x20U) != 0;
 
   if ((Value & 0x02U) != 0)
