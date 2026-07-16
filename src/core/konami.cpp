@@ -27,16 +27,20 @@ static u32 CurrentButtons[2];
 static bool TokimekiDeviceCheckEnabled = false;
 static u16 TokimekiDeviceCheckValue = 0;
 static bool TokimekiDeviceCheckClock = false;
-static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_RATE = 80;
-static constexpr u32 TOKIMEKI_HEARTBEAT_RATE_STEP = 10;
+static constexpr u32 TOKIMEKI_DEFAULT_HEARTBEAT_RATE = 70;
+static constexpr u32 TOKIMEKI_HEARTBEAT_RATE_STEP = 5;
+static constexpr u32 TOKIMEKI_HEARTBEAT_PULSE_FRAMES = 4;
 static constexpr u32 TOKIMEKI_MAX_EXCITEMENT_LEVEL = 7;
 static constexpr u8 TOKIMEKI_DEFAULT_GSR_VALUE = 0x20;
 static constexpr u8 TOKIMEKI_MAX_GSR_VALUE = 0x80;
 
 static u32 TokimekiExcitementLevel = 0;
 static u32 TokimekiHeartbeatRate = TOKIMEKI_DEFAULT_HEARTBEAT_RATE;
+
+// Heartbeat input is active-low: false means that the pulse is active.
 static bool TokimekiHeartbeatSignal = true;
-static u32 TokimekiHeartbeatFramesRemaining = 45;
+static u32 TokimekiHeartbeatFramesRemaining = 0;
+static u32 TokimekiHeartbeatPulseFramesRemaining = 0;
 static u8 TokimekiGSRValue = TOKIMEKI_DEFAULT_GSR_VALUE;
 static u8 TokimekiSerialValue = 0;
 static u8 TokimekiSerialLength = 0;
@@ -703,12 +707,23 @@ bool KonamiConsumeAutomaticResetRequest()
 {
   if (TokimekiDeviceCheckEnabled)
   {
+    // End the active-low heartbeat pulse after its configured width.
+    if (TokimekiHeartbeatPulseFramesRemaining > 0)
+    {
+      TokimekiHeartbeatPulseFramesRemaining--;
+
+      if (TokimekiHeartbeatPulseFramesRemaining == 0)
+        TokimekiHeartbeatSignal = true;
+    }
+
+    // Count down to the next heartbeat.
     if (TokimekiHeartbeatFramesRemaining > 0)
       TokimekiHeartbeatFramesRemaining--;
 
     if (TokimekiHeartbeatFramesRemaining == 0)
     {
       TokimekiHeartbeatSignal = false;
+      TokimekiHeartbeatPulseFramesRemaining = TOKIMEKI_HEARTBEAT_PULSE_FRAMES;
       TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
     }
   }
@@ -763,6 +778,7 @@ void KonamiInit(void)
 
   TokimekiHeartbeatSignal = true;
   TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+  TokimekiHeartbeatPulseFramesRemaining = 0;
   TokimekiSerialValue = 0;
   TokimekiSerialLength = 0;
   TokimekiSerialClock = false;
@@ -964,13 +980,14 @@ void KonamiTokimekiAdjustExcitement(s32 Direction)
 
   KonamiTokimekiUpdateExcitementValues();
 
+  TokimekiHeartbeatSignal = true;
   TokimekiHeartbeatFramesRemaining = KonamiTokimekiGetHeartbeatPeriodFrames();
+  TokimekiHeartbeatPulseFramesRemaining = 0;
 }
 
 void KonamiTokimekiSerialRead(u32 Size, u32 Offset, u32& Value)
 {
   Value = TokimekiHeartbeatSignal ? 0x0004U : 0x0000U;
-  TokimekiHeartbeatSignal = true;
 
   if (TokimekiSerialSensorId != 0)
   {
