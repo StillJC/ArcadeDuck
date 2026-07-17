@@ -1,55 +1,64 @@
-<img width="1254" height="1254" alt="arcadeduck" src="https://github.com/user-attachments/assets/bde407af-90f7-49b3-b299-2ca7277913ef" />
+<img width="1254" height="1254" alt="ArcadeDuck logo" src="https://github.com/user-attachments/assets/bde407af-90f7-49b3-b299-2ca7277913ef" />
 
 # ArcadeDuck
 
-ArcadeDuck is a PlayStation-based arcade hardware emulator project built from DuckStation.
+ArcadeDuck is an arcade-focused emulator for hardware derived from the original PlayStation architecture.
 
-It started as a way to improve *The Simpsons Bowling* on a Windows PC. That seemed reasonable at the time. Unfortunately, it has since turned into an unhealthy obsession involving Konami GV, flash chips, EEPROMs, SCSI, lightguns, trackballs, and a growing suspicion that this may be a source of anxiety and stress for the rest of my life.
+It began as an attempt to improve *The Simpsons Bowling* on Windows. That was apparently not enough trouble, so it expanded into Konami GV, SCSI controllers, flash chips, EEPROMs, lightguns, trackballs, daughterboards, printers, and several other decisions made by arcade engineers in the 1990s.
 
-So, naturally, I’m making it worse.
+ArcadeDuck is **not** intended to replace DuckStation as a retail PlayStation emulator. DuckStation already does that job extremely well. ArcadeDuck is for the strange arcade boards built around similar hardware and all the extra machinery attached to them.
 
-ArcadeDuck is focused on arcade systems that used PS1-derived hardware, not retail PlayStation console emulation. DuckStation already does console PlayStation extremely well. ArcadeDuck is for the weird late-90s arcade boards with CD-ROM drives, mystery daughterboards, operator menus, and hardware decisions that feel like someone said “ship it” during a fire drill.
+## Current Status
 
-My sarcastic nature heavily influences everything I do. Consider yourself warned.
+ArcadeDuck is under active development and remains experimental.
 
-## The Goal
+The current focus is **Konami GV**. Implemented work includes:
 
-Load arcade ROM sets.  
-Boot arcade hardware.  
-Play arcade games.
+- MAME-style ROM ZIP and CHD loading
+- Automatic arcade BIOS selection
+- Arcade game-title identification
+- EEPROM, flash, and per-game NVRAM persistence
+- NCR53CF96 SCSI CD-ROM communication and DMA
+- Red Book CDDA playback
+- Joystick, trackball, and lightgun controls
+- *The Simpsons Bowling* flash and trackball daughterboard support
+- *Tokimeki Memorial Oshiete Your Heart* sensor heartbeat and printer support
+- Arcade-specific display geometry and 4:3 presentation
+- Removal or hiding of console-oriented setup where it does not belong
 
-No console-first setup.  
-No living-room PlayStation baggage.  
-No babysitting BIOS dropdowns like it’s 1998 and Windows just ate your sound card driver again.
+Most of the Konami GV library is now running. Current work is centered on the remaining SCSI-related blockers, full-library regression testing, display cleanup, and preparing a stable GV preview build.
 
-The end user experience will be simple:
-
-1. Put BIOS files in the BIOS folder.
-2. Put arcade ROM sets in the ROM folder.
-3. Scan games.
-4. Pick a game.
-5. Play the damn game.
-
-ArcadeDuck will handle system-specific BIOS selection, CHD paths, EEPROM, flash, NVRAM, and arcade board setup in the background wherever possible.
+Some things work. Some things almost work. Some things are waiting for a 1990s peripheral to stop being mysterious.
 
 ## Target Hardware
 
-ArcadeDuck is aimed at PS1-based arcade platforms, including:
+Planned hardware families include:
 
 - Konami GV
+- Konami GQ
 - Konami System 573
-- Sony ZN-1 / ZN-2
+- Sony ZN-1 and ZN-2
 - Namco System 11
 - Namco System 12
-- Other practical PS1-derived arcade hardware
+- Other practical PS1-derived arcade systems
 
-The current focus is Konami GV, especially normal arcade-control games like *The Simpsons Bowling*, *Dead Eye*, and *Beat the Champ*.
+Support will be added one hardware family at a time. ArcadeDuck is not trying to become every emulator at once. That way lies madness, and we already have enough SCSI.
 
-The weird printer, camera, heartbeat, sensor, and other “what the hell were they doing?” hardware is interesting, but it can wait. First priority is getting the main arcade experience solid before chasing every cursed daughterboard ever invented.
+## Intended User Experience
 
-## ROM Layout
+The goal is straightforward:
 
-ArcadeDuck is being built around a MAME-style arcade layout.
+1. Place the required BIOS files in the BIOS directory.
+2. Place MAME-style arcade sets in the ROM directory.
+3. Scan for games.
+4. Select a game.
+5. Play the damn game.
+
+ArcadeDuck should handle system-specific BIOS selection, CHD discovery, EEPROM, flash, NVRAM, and board configuration automatically wherever practical.
+
+## ROM and NVRAM Layout
+
+ArcadeDuck uses a MAME-style set layout:
 
 ```text
 roms/
@@ -58,7 +67,7 @@ roms/
     829uaa02.chd
 ```
 
-Per-game save data will live separately:
+Persistent board data is stored separately by set:
 
 ```text
 nvram/
@@ -70,75 +79,75 @@ nvram/
     flash3
 ```
 
-The emulator treats these as arcade sets, not loose console discs.
-
-## Current Work
-
-Current development is focused on:
-
-- MAME zip + CHD loading
-- Arcade BIOS boot flow
-- SCSI CD-ROM access where needed
-- EEPROM and flash/NVRAM persistence
-- Trackball and lightgun input
-- Redbook/CDDA audio
-- Arcade-focused UI cleanup
-
-The UI is moving away from console emulator language and toward arcade hardware language. PlayStation disc wording, manual region BIOS selection, memory card clutter, DVD/media leftovers, and other console-first assumptions are being hidden or removed where they do not belong.
-
-Internally, the PS1 core is still doing the heavy lifting. Externally, the user gets an arcade emulator.
-
-That is the whole point.
+These are treated as arcade machines, not as loose PlayStation discs wearing fake mustaches.
 
 ## Controls
 
-ArcadeDuck will use arcade-style input setups:
+ArcadeDuck supports arcade-oriented input configurations, including:
 
-- Joystick + buttons
-- Trackball
-- Lightgun
+- Joysticks and buttons
+- Coin, service, and test inputs
+- Trackballs
+- Lightguns
 - Analog controls
-- Coin / service / test inputs
-- Game-specific controls where needed
+- Game-specific cabinet hardware
 
-Trackballs will behave like trackballs, not like a mouse cursor having an identity crisis.
+Trackballs should behave like trackballs. Lightguns should support normal binding, multiple players, proper aiming, and off-screen reload without requiring hardcoded mouse nonsense.
 
-Lightguns will support proper aiming, multiple players, off-screen reload, and normal user binding instead of hardcoded mouse button nonsense.
+## Roadmap
 
-## Visual Style
+Development is proceeding in controlled stages:
 
-ArcadeDuck is meant to feel like the era these boards came from:
+1. Finish the remaining Konami GV blockers.
+2. Complete a full GV regression and presentation pass.
+3. Release a clean GV-focused preview build.
+4. Migrate the completed GV implementation to the final GPL-era DuckStation baseline.
+5. Stabilize the migrated code before reorganizing arcade hardware under `src/core/arcade/`.
+6. Continue with additional systems, beginning with the next selected hardware family.
 
-Late-90s arcade hardware.  
-Conversion cabinets.  
-CRT bezels.  
-Gunmetal panels.  
-PCB traces.  
-JAMMA labels.  
-SCSI cables.  
-CD-ROM drives that sound one bad seek away from retirement.
+One active implementation phase at a time. New hardware is exciting, but unfinished foundations are how future-me ends up throwing code into traffic.
 
-The visual direction is not modern neon gamer sludge, a spaceship dashboard, or a fake e-sports overlay.
+## Codebase Provenance
 
-It should feel chunky, specific, slightly ugly, and somehow cooler because of it.
+ArcadeDuck was initialized from a source import of [t-dollaz's Simpsons Bowling Baby Phoenix DuckStation](https://github.com/t-dollaz/simpsons-bowling-baby-phoenix-duckstation), an intermediate desktop-oriented modification of [Arcade1Up's DuckStation Simpsons Bowling port](https://github.com/Arcade1Up/duckstation-sb).
 
-## About the Project
+The immediate source lineage is:
 
-This is being built by someone learning as he goes, not pretending to be an emulator wizard.
+1. [DuckStation](https://github.com/stenzek/duckstation)
+2. [Arcade1Up/duckstation-sb](https://github.com/Arcade1Up/duckstation-sb)
+3. [t-dollaz/simpsons-bowling-baby-phoenix-duckstation](https://github.com/t-dollaz/simpsons-bowling-baby-phoenix-duckstation)
+4. ArcadeDuck
 
-I break things, test things, read code that occasionally looks like ancient curses, and use AI to double-check my fuck-ups before they become permanent architecture.
+The original Git ancestry was not preserved through that chain, so this is recorded as source provenance rather than direct fork ancestry.
 
-The goal is serious, even if the tone is not: build ArcadeDuck carefully, keep it arcade-first, and avoid creating a pile of hacks future-me wants to throw into traffic.
+Source-tree fingerprinting places ArcadeDuck's inherited DuckStation baseline in early-to-mid October 2021:
 
-## Status
+- Last confirmed included upstream commit: `a7096f033ecc` — October 2, 2021
+- First confirmed excluded upstream commit: `98a1d4fe990b` — October 20, 2021
 
-ArcadeDuck is experimental.
+The exact intervening upstream commit cannot currently be proven.
 
-Some things work.  
-Some things almost work.  
-Some things explode because a 1990s arcade board expected a very specific flash chip to respond in a very specific way and nobody told the emulator yet.
+ArcadeDuck is planned to migrate to the final GPL-era DuckStation baseline:
 
-That is the fun part, unfortunately.
+- Target commit: `25bc8a64803df7e702db66e0f11d7b7d0fdc99f2`
+- Upstream date: December 23, 2023
+
+ArcadeDuck does not and will not incorporate later non-GPL DuckStation source code.
+
+## Credits
+
+ArcadeDuck builds on work by:
+
+- The DuckStation developers and contributors
+- Arcade1Up's Simpsons Bowling DuckStation port contributors
+- [t-dollaz](https://github.com/t-dollaz) for the intermediate desktop/GV source project used to initialize ArcadeDuck
+- MAME developers whose hardware documentation and device implementations provide essential research references
+
+Existing copyright, attribution, and license notices remain with their respective source files and projects.
+
+## License
+
+ArcadeDuck is distributed under the GNU General Public License. See [LICENSE](LICENSE) for details.
 
 Use backups. Expect bugs. Verify your BIOS files.
 
