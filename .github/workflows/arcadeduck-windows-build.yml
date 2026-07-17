@@ -33,24 +33,39 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install aqtinstall
-          python -m aqt install-qt windows desktop $env:QT_VERSION $env:QT_INSTALL_ARCH -O C:\Qt
 
-          $qmake = Get-ChildItem -Path "C:\Qt" -Recurse -Filter qmake.exe | Select-Object -First 1
+          $qtBase = Join-Path $env:GITHUB_WORKSPACE "dep\msvc\qt"
+
+          python -m aqt install-qt `
+            windows desktop `
+            $env:QT_VERSION `
+            $env:QT_INSTALL_ARCH `
+            -O $qtBase
+
+          $qmake = Get-ChildItem `
+            -Path $qtBase `
+            -Recurse `
+            -Filter qmake.exe |
+            Select-Object -First 1
 
           if (-not $qmake) {
-            Get-ChildItem -Path "C:\Qt" -Recurse
-            throw "qmake.exe not found under C:\Qt"
+            Get-ChildItem -Path $qtBase -Recurse
+            throw "qmake.exe not found under $qtBase"
           }
 
-          $qtPath = $qmake.Directory.FullName
+          $qtRoot = $qmake.Directory.Parent.FullName
+          $qtBin = $qmake.Directory.FullName
 
-          echo "QTDIR=$qtPath" >> $env:GITHUB_ENV
-          echo "Qt6_DIR=$qtPath" >> $env:GITHUB_ENV
-          echo "$qtPath" >> $env:GITHUB_PATH
-          echo "$qtPath\bin" >> $env:GITHUB_PATH
+          "QTDIR=$qtRoot" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Append
 
-          Write-Host "Qt found at: $qtPath"
-          Write-Host "QTDIR set to: $qtPath"
+          "$qtBin" | Out-File `
+            -FilePath $env:GITHUB_PATH `
+            -Append
+
+          Write-Host "Qt root: $qtRoot"
+          Write-Host "Qt tools: $qtBin"
 
       - name: Find MSBuild
         shell: pwsh
