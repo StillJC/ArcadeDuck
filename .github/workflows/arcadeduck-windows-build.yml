@@ -1,8 +1,11 @@
-name: Windows Build and Release
+name: ArcadeDuck Windows Build
 
 on:
   workflow_dispatch:
+
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -11,7 +14,7 @@ permissions:
 
 jobs:
   build-windows:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-2022
 
     env:
       BUILD_CONFIGURATION: Release
@@ -84,50 +87,59 @@ jobs:
             /p:PreferredToolArchitecture=x64 `
             /p:QTDIR="$env:QTDIR"
 
-      - name: Package build
-        shell: pwsh
-        run: |
-          $packageRoot = "release-package"
-          $dist = "dist"
+    - name: Package ArcadeDuck
+      shell: pwsh
+      run: |
+        $packageRoot = "ArcadeDuck-windows-x64"
+        $dist = "dist"
 
-          Remove-Item $packageRoot, $dist -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $packageRoot | Out-Null
-          New-Item -ItemType Directory -Path $dist | Out-Null
+        Remove-Item $packageRoot, $dist -Recurse -Force -ErrorAction SilentlyContinue
 
-          if (Test-Path "bin\x64") {
-            Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
-          } else {
-            $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" | Select-Object -First 1
+        New-Item -ItemType Directory -Path $packageRoot | Out-Null
+        New-Item -ItemType Directory -Path $dist | Out-Null
 
-            if (-not $qtExe) {
-              throw "Could not find duckstation-qt-x64-Release.exe"
-            }
+        if (Test-Path "bin\x64") {
+          Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
+        } else {
+          $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" |
+            Select-Object -First 1
 
-            Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
+          if (-not $qtExe) {
+            throw "Could not find the ArcadeDuck Qt build output."
           }
 
-          Get-ChildItem $packageRoot -Recurse -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+          Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
+        }
 
-          New-Item -ItemType Directory -Path "$packageRoot\simpsons" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRoot\bios" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRoot\bezel" -Force | Out-Null
+        Get-ChildItem $packageRoot -Recurse `
+          -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key `
+          -ErrorAction SilentlyContinue |
+          Remove-Item -Force -ErrorAction SilentlyContinue
 
-          if (Test-Path README.md) {
-            Copy-Item README.md $packageRoot -Force
-          }
+        New-Item -ItemType Directory -Path "$packageRoot\roms" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$packageRoot\bios" -Force | Out-Null
+        New-Item -ItemType Directory -Path "$packageRoot\bezel" -Force | Out-Null
 
-          if (Test-Path LICENSE) {
-            Copy-Item LICENSE $packageRoot -Force
-          }
+        if (Test-Path README.md) {
+          Copy-Item README.md $packageRoot -Force
+        }
 
-          $zipName = "simpsons-bowling-duckstation-windows-x64.zip"
-          Compress-Archive -Path "$packageRoot\*" -DestinationPath "$dist\$zipName" -Force
+        if (Test-Path LICENSE) {
+          Copy-Item LICENSE $packageRoot -Force
+        }
 
-      - name: Upload build artifact
+        $zipName = "ArcadeDuck-windows-x64.zip"
+
+        Compress-Archive `
+          -Path "$packageRoot\*" `
+          -DestinationPath "$dist\$zipName" `
+          -Force
+
+      - name: Upload ArcadeDuck artifact
         uses: actions/upload-artifact@v4
         with:
-          name: simpsons-bowling-duckstation-windows-x64
-          path: dist/*.zip
+        name: ArcadeDuck-windows-x64
+        path: dist/ArcadeDuck-windows-x64.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -137,6 +149,6 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
 
-          gh release create $tag dist/*.zip `
-            --title $tag `
+          gh release create $tag dist/ArcadeDuck-windows-x64.zip `
+            --title "ArcadeDuck $tag" `
             --generate-notes
