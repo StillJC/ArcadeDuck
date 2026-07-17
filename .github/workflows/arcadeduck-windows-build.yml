@@ -87,68 +87,56 @@ jobs:
             /p:PreferredToolArchitecture=x64 `
             /p:QTDIR="$env:QTDIR"
 
-    - name: Package ArcadeDuck
-      shell: pwsh
-      run: |
-        $packageRoot = "ArcadeDuck-windows-x64"
-        $dist = "dist"
+      - name: Package ArcadeDuck
+        shell: pwsh
+        run: |
+          $packageRoot = "ArcadeDuck-windows-x64"
+          $dist = "dist"
 
-        Remove-Item $packageRoot, $dist -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $packageRoot, $dist -Recurse -Force -ErrorAction SilentlyContinue
 
-        New-Item -ItemType Directory -Path $packageRoot | Out-Null
-        New-Item -ItemType Directory -Path $dist | Out-Null
+          New-Item -ItemType Directory -Path $packageRoot | Out-Null
+          New-Item -ItemType Directory -Path $dist | Out-Null
 
-        if (Test-Path "bin\x64") {
-          Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
-        } else {
-          $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" |
-            Select-Object -First 1
+          if (Test-Path "bin\x64") {
+            Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
+          } else {
+            $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" |
+              Select-Object -First 1
 
-          if (-not $qtExe) {
-            throw "Could not find the ArcadeDuck Qt build output."
+            if (-not $qtExe) {
+              throw "Could not find the ArcadeDuck Qt build output."
+            }
+
+            Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
           }
 
-          Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
-        }
+          Get-ChildItem $packageRoot -Recurse `
+            -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key `
+            -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
 
-        Get-ChildItem $packageRoot -Recurse `
-          -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key `
-          -ErrorAction SilentlyContinue |
-          Remove-Item -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path "$packageRoot\roms" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageRoot\bios" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$packageRoot\bezel" -Force | Out-Null
 
-        New-Item -ItemType Directory -Path "$packageRoot\roms" -Force | Out-Null
-        New-Item -ItemType Directory -Path "$packageRoot\bios" -Force | Out-Null
-        New-Item -ItemType Directory -Path "$packageRoot\bezel" -Force | Out-Null
+          if (Test-Path README.md) {
+            Copy-Item README.md $packageRoot -Force
+          }
 
-        if (Test-Path README.md) {
-          Copy-Item README.md $packageRoot -Force
-        }
+          if (Test-Path LICENSE) {
+            Copy-Item LICENSE $packageRoot -Force
+          }
 
-        if (Test-Path LICENSE) {
-          Copy-Item LICENSE $packageRoot -Force
-        }
+          $zipName = "ArcadeDuck-windows-x64.zip"
 
-        $zipName = "ArcadeDuck-windows-x64.zip"
-
-        Compress-Archive `
-          -Path "$packageRoot\*" `
-          -DestinationPath "$dist\$zipName" `
-          -Force
+          Compress-Archive `
+            -Path "$packageRoot\*" `
+            -DestinationPath "$dist\$zipName" `
+            -Force
 
       - name: Upload ArcadeDuck artifact
         uses: actions/upload-artifact@v4
         with:
-        name: ArcadeDuck-windows-x64
-        path: dist/ArcadeDuck-windows-x64.zip
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "${{ github.ref_name }}"
-
-          gh release create $tag dist/ArcadeDuck-windows-x64.zip `
-            --title "ArcadeDuck $tag" `
-            --generate-notes
+          name: ArcadeDuck-windows-x64
+          path: dist/ArcadeDuck-windows-x64.zip
