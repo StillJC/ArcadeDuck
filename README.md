@@ -1,4 +1,5 @@
-<img width="1254" height="1254" alt="ArcadeDuck logo" src="https://github.com/user-attachments/assets/bde407af-90f7-49b3-b299-2ca7277913ef" />
+<img width="800" height="358" alt="arcadeduckbanner" src="https://github.com/user-attachments/assets/0ba3b928-5d72-4f01-831c-23d21a669306" />
+
 
 # ArcadeDuck
 
