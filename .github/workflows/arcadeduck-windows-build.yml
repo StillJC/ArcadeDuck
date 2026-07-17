@@ -99,8 +99,7 @@ jobs:
             /m `
             /p:Configuration=$env:BUILD_CONFIGURATION `
             /p:Platform=$env:BUILD_PLATFORM `
-            /p:PreferredToolArchitecture=x64 `
-            /p:QTDIR="$env:QTDIR"
+            /p:PreferredToolArchitecture=x64
 
       - name: Package ArcadeDuck
         shell: pwsh
