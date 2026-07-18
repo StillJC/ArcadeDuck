@@ -65,6 +65,8 @@ struct Entry
   std::optional<bool> display_linear_upscaling;
   std::optional<bool> display_integer_upscaling;
   std::optional<bool> display_force_4_3_for_24bit;
+  std::optional<bool> display_bezel_enabled;
+  std::string display_bezel_path;
   std::optional<u16> display_aspect_ratio_custom_numerator;
   std::optional<u16> display_aspect_ratio_custom_denominator;
   std::optional<u32> gpu_resolution_scale;
