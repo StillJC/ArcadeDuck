@@ -1,18 +1,35 @@
-<img width="800" height="358" alt="arcadeduckbanner" src="https://github.com/user-attachments/assets/0ba3b928-5d72-4f01-831c-23d21a669306" />
+<img width="800" height="358" alt="ArcadeDuck banner" src="https://github.com/user-attachments/assets/0ba3b928-5d72-4f01-831c-23d21a669306" />
 
 # ArcadeDuck
+
+**Proof of Concept Preview — Konami GV**
 
 ArcadeDuck is an arcade-focused emulator for hardware derived from the original PlayStation architecture.
 
 It began as an attempt to improve *The Simpsons Bowling* on Windows. That was apparently not enough trouble, so it expanded into Konami GV, SCSI controllers, flash chips, EEPROMs, lightguns, trackballs, daughterboards, printers, and several other decisions made by arcade engineers in the 1990s.
 
-ArcadeDuck is **not** intended to replace DuckStation as a retail PlayStation emulator. DuckStation already does that job extremely well. ArcadeDuck is for the strange arcade boards built around similar hardware and all the extra machinery attached to them.
+ArcadeDuck is **not** a replacement for DuckStation and is **not** intended to be a general PlayStation console emulator. DuckStation already handles retail PlayStation software extremely well. ArcadeDuck is for the unusual arcade boards built around related hardware and all the extra machinery attached to them.
 
-## Current Status
+## Preview Status
 
-ArcadeDuck is under active development and remains experimental.
+This release is a **proof of concept**, not an alpha or a long-term development build.
 
-The current focus is **Konami GV**. Implemented work includes:
+Its purpose is to demonstrate the current Konami GV implementation before that work is migrated to the final GPL-era DuckStation codebase. The inherited core is from 2021 and has known CPU timing and recompiler limitations.
+
+This preview is intentionally limited:
+
+- Konami GV is the only supported arcade family in this build.
+- The **Interpreter** CPU mode is the default and recommended setting.
+- The Recompiler remains available for testing, but is experimental and can cause boot, timing, or display-transition failures.
+- *Crazy Cross* currently uses a narrowly scoped Timer 1 compatibility workaround. It is temporary and will be removed and reinvestigated after the codebase migration.
+- Presentation and resolution transitions may not be perfect in every title or mode.
+- Reports will be collected for the migration and future implementation. Only critical proof-of-concept fixes are expected on this inherited branch.
+
+No ROMs, BIOS files, CHDs, keys, or other copyrighted game data are included.
+
+## Implemented Konami GV Features
+
+The current proof of concept includes:
 
 - MAME-style ROM ZIP and CHD loading
 - Automatic arcade BIOS selection
@@ -22,13 +39,123 @@ The current focus is **Konami GV**. Implemented work includes:
 - Red Book CDDA playback
 - Joystick, trackball, and lightgun controls
 - *The Simpsons Bowling* flash and trackball daughterboard support
-- *Tokimeki Memorial Oshiete Your Heart* sensor heartbeat and printer support
+- *Tokimeki Memorial Oshiete Your Heart* heartbeat and printer support
 - Arcade-specific display geometry and 4:3 presentation
+- Optional 16:9 stretching
+- Arcade-oriented input and cabinet controls
 - Removal or hiding of console-oriented setup where it does not belong
 
-Most of the Konami GV library is now running. Current work is centered on the remaining SCSI-related blockers, full-library regression testing, display cleanup, and preparing a stable GV preview build.
+## Tested Games
 
-Some things work. Some things almost work. Some things are waiting for a 1990s peripheral to stop being mysterious.
+The following MAME set names have been used for proof-of-concept regression testing:
+
+- `simpbowl`
+- `kdeadeye`
+- `btchamp`
+- `hyperath`
+- `powyak96`
+- `weddingr`
+- `lacrazyc`
+- `susume`
+- `tmosh`
+- `tmoshs`
+- `tmoshsp`
+- `tmoshspa`
+
+A listed game being tested does not mean every edge case, peripheral, or presentation mode is complete.
+
+## Quick Start
+
+1. Extract ArcadeDuck to its own directory.
+2. Place the required arcade BIOS files or supported BIOS ZIPs in `bios/`.
+3. Place MAME-style non-merged game ZIPs in `roms/`.
+4. Place each CHD in a subdirectory matching its set name.
+5. Launch `ArcadeDuck.exe`.
+6. Scan the ROM directory and start a game.
+
+The packaged build uses portable mode, so settings, logs, NVRAM, and generated board data remain within the ArcadeDuck directory.
+
+### Example ROM Layout
+
+```text
+roms/
+  simpbowl.zip
+  simpbowl/
+    829uaa02.chd
+```
+
+### Example Persistent Data Layout
+
+```text
+nvram/
+  simpbowl/
+    eeprom
+    flash0
+    flash1
+    flash2
+    flash3
+```
+
+ArcadeDuck treats these as arcade machines, not as loose PlayStation discs wearing fake mustaches.
+
+## CPU Mode
+
+The proof-of-concept build defaults to:
+
+```text
+CPU Execution Mode: Interpreter
+```
+
+This is intentional. In the inherited CPU core, the Recompiler can fail in titles that work correctly under the Interpreter. It remains selectable for comparison and testing, but it is not the recommended mode for this preview.
+
+Do not report a game as broken until it has been tested with the Interpreter.
+
+## Controls
+
+ArcadeDuck supports arcade-oriented input configurations, including:
+
+- Joysticks and buttons
+- Coin, service, and test inputs
+- Trackballs
+- Lightguns
+- Analog controls
+- Game-specific cabinet hardware
+
+The standard arcade button layout is:
+
+```text
+Button 1: Cross
+Button 2: Circle
+Button 3: R2
+Button 4: Square
+Button 5: Triangle
+Button 6: R1
+```
+
+Some games and cabinet devices require game-specific mappings.
+
+## Logs and Issue Reports
+
+The normal application log is:
+
+```text
+arcadeduck.log
+```
+
+When reporting a problem, include:
+
+- The MAME set name
+- Whether the ROM set is non-merged
+- The CHD filename
+- CPU execution mode
+- Renderer
+- ArcadeDuck build/tag
+- Relevant section of `arcadeduck.log`
+- Clear reproduction steps
+
+Do not upload ROMs, BIOS files, CHDs, keys, or other copyrighted game data.
+
+Issues, requests, and suggestions are welcome as reference material for the migration. This proof-of-concept branch is not the long-term development base, so reports may be documented without being fixed here.
 
 ## Target Hardware
 
@@ -42,68 +169,15 @@ Planned hardware families include:
 - Namco System 12
 - Other practical PS1-derived arcade systems
 
-Support will be added one hardware family at a time. ArcadeDuck is not trying to become every emulator at once. That way lies madness, and we already have enough SCSI.
+These are roadmap targets, not claims of support in the current preview.
 
-## Intended User Experience
+## Development Roadmap
 
-The goal is straightforward:
-
-1. Place the required BIOS files in the BIOS directory.
-2. Place MAME-style arcade sets in the ROM directory.
-3. Scan for games.
-4. Select a game.
-5. Play the damn game.
-
-ArcadeDuck should handle system-specific BIOS selection, CHD discovery, EEPROM, flash, NVRAM, and board configuration automatically wherever practical.
-
-## ROM and NVRAM Layout
-
-ArcadeDuck uses a MAME-style set layout:
-
-```text
-roms/
-  simpbowl.zip
-  simpbowl/
-    829uaa02.chd
-```
-
-Persistent board data is stored separately by set:
-
-```text
-nvram/
-  simpbowl/
-    eeprom
-    flash0
-    flash1
-    flash2
-    flash3
-```
-
-These are treated as arcade machines, not as loose PlayStation discs wearing fake mustaches.
-
-## Controls
-
-ArcadeDuck supports arcade-oriented input configurations, including:
-
-- Joysticks and buttons
-- Coin, service, and test inputs
-- Trackballs
-- Lightguns
-- Analog controls
-- Game-specific cabinet hardware
-
-Trackballs should behave like trackballs. Lightguns should support normal binding, multiple players, proper aiming, and off-screen reload without requiring hardcoded mouse nonsense.
-
-## Roadmap
-
-Development is proceeding in controlled stages:
-
-1. Finish the remaining Konami GV blockers.
-2. Complete a full GV regression and presentation pass.
-3. Release a clean GV-focused preview build.
-4. Migrate the completed GV implementation to the final GPL-era DuckStation baseline.
-5. Stabilize the migrated code before reorganizing arcade hardware under `src/core/arcade/`.
-6. Continue with additional systems, beginning with the next selected hardware family.
+1. Release and document the Konami GV proof of concept.
+2. Migrate the completed GV implementation to the final GPL-era DuckStation baseline.
+3. Fully regression-test and stabilize the migrated implementation.
+4. Reorganize arcade hardware under `src/core/arcade/` only after migration stability.
+5. Continue with additional arcade hardware families one system at a time.
 
 One active implementation phase at a time. New hardware is exciting, but unfinished foundations are how future-me ends up throwing code into traffic.
 
