@@ -8,6 +8,7 @@ on:
       - main
     tags:
       - "v*"
+      - "poc-preview-v*"
 
 permissions:
   contents: write
@@ -111,6 +112,20 @@ jobs:
           Copy-Item "$($qtExe.Directory.FullName)\*" $packageRoot -Recurse -Force
         }
 
+        # Remove build-only and locally generated files from the staged package.
+        Get-ChildItem $packageRoot -Recurse -File |
+          Where-Object {
+            $_.Extension -in @(".pdb", ".ilk", ".exp", ".lib") -or
+            $_.Name -match "^(Qt6.*d|q.*d)\.dll$" -or
+            $_.Name -like "common-tests*.exe" -or
+            $_.Name -like "updater*.exe" -or
+            $_.Name -like "duckstation*.exe" -or
+            $_.Name -eq "arcadeduck.log" -or
+            $_.Name -eq "settings.ini" -or
+            $_.Name -eq "gamesettings.ini"
+          } |
+          Remove-Item -Force
+
         Get-ChildItem $packageRoot -Recurse `
           -Include *.iso,*.chd,*.cue,*.bin,*.apk,*.rom,*.key `
           -ErrorAction SilentlyContinue |
@@ -142,7 +157,7 @@ jobs:
         path: dist/ArcadeDuck-windows-x64.zip
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
