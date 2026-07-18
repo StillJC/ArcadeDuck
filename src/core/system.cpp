@@ -1138,13 +1138,6 @@ bool Boot(const SystemBootParameters& params)
 
   // Enable tty by patching bios.
   const BIOS::Hash bios_hash = BIOS::GetHash(*bios_image);
-  const std::string konami_debug_path = g_host_interface->GetUserDirectoryRelativePath("konami_gv_debug.txt");
-if (std::FILE* konami_debug_fp = FileSystem::OpenCFile(konami_debug_path.c_str(), "ab"))
-{
-  std::fprintf(konami_debug_fp, "KonamiGV DEBUG: loaded BIOS hash %s\n", bios_hash.ToString().c_str());
-  std::fprintf(konami_debug_fp, "KonamiGV DEBUG: running path '%s'\n", params.filename.c_str());
-  std::fclose(konami_debug_fp);
-}
   if (g_settings.bios_patch_tty_enable)
     BIOS::PatchBIOSEnableTTY(Bus::g_bios, Bus::BIOS_SIZE, bios_hash);
 

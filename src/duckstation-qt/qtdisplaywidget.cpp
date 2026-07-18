@@ -1,5 +1,6 @@
 #include "qtdisplaywidget.h"
 #include "common/bitutils.h"
+#include "common/log.h"
 #include "qthostinterface.h"
 #include "qtutils.h"
 #if defined(_WIN32)
@@ -14,8 +15,6 @@
 #include <algorithm>
 #include <cmath>
 #if defined(_WIN32)
-#include <cstdarg>
-#include <cstdio>
 #include <vector>
 #endif
 
@@ -23,22 +22,7 @@
 #include <qpa/qplatformnativeinterface.h>
 #endif
 
-#if defined(_WIN32)
-static void QtRawMouseDebugPrintf(const char* fmt, ...)
-{
-  std::FILE* fp = std::fopen("raw_input_mouse_debug.txt", "ab");
-  if (!fp)
-    return;
-
-  va_list ap;
-  va_start(ap, fmt);
-  std::vfprintf(fp, fmt, ap);
-  va_end(ap);
-
-  std::fputc('\n', fp);
-  std::fclose(fp);
-}
-#endif
+Log_SetChannel(QtDisplayWidget);
 
 QtDisplayWidget::QtDisplayWidget(QWidget* parent) : QWidget(parent)
 {
@@ -49,11 +33,6 @@ QtDisplayWidget::QtDisplayWidget(QWidget* parent) : QWidget(parent)
   setAttribute(Qt::WA_PaintOnScreen, true);
   setFocusPolicy(Qt::StrongFocus);
   setMouseTracking(true);
-
-#if defined(_WIN32)
-  //registerRawInputMouse();
-  //logRawInputDevices();
-#endif
 }
 
 QtDisplayWidget::~QtDisplayWidget() = default;
@@ -69,11 +48,9 @@ void QtDisplayWidget::registerRawInputMouse()
 
   if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
   {
-    QtRawMouseDebugPrintf("RegisterRawInputDevices failed: error=%lu hwnd=%p", GetLastError(), rid.hwndTarget);
+    Log_WarningPrintf("Raw Input mouse registration failed: error=%lu", GetLastError());
     return;
   }
-
-  QtRawMouseDebugPrintf("RegisterRawInputDevices succeeded: hwnd=%p", rid.hwndTarget);
 }
 
 void QtDisplayWidget::logRawInputDevices()
@@ -81,7 +58,8 @@ void QtDisplayWidget::logRawInputDevices()
   UINT device_count = 0;
   if (GetRawInputDeviceList(nullptr, &device_count, sizeof(RAWINPUTDEVICELIST)) != 0 || device_count == 0)
   {
-    QtRawMouseDebugPrintf("GetRawInputDeviceList empty or failed: count=%u error=%lu", device_count, GetLastError());
+    Log_DevPrintf("Raw Input mouse device list is empty or unavailable: count=%u error=%lu", device_count,
+                  GetLastError());
     return;
   }
 
@@ -89,11 +67,11 @@ void QtDisplayWidget::logRawInputDevices()
   const UINT result = GetRawInputDeviceList(devices.data(), &device_count, sizeof(RAWINPUTDEVICELIST));
   if (result == static_cast<UINT>(-1))
   {
-    QtRawMouseDebugPrintf("GetRawInputDeviceList failed: error=%lu", GetLastError());
+    Log_WarningPrintf("Failed to enumerate Raw Input mouse devices: error=%lu", GetLastError());
     return;
   }
 
-  QtRawMouseDebugPrintf("Raw Input device count=%u", device_count);
+  Log_DevPrintf("Raw Input device count: %u", device_count);
 
   for (UINT i = 0; i < device_count; i++)
   {
@@ -112,14 +90,14 @@ void QtDisplayWidget::logRawInputDevices()
     UINT info_size = sizeof(info);
     if (GetRawInputDeviceInfoA(devices[i].hDevice, RIDI_DEVICEINFO, &info, &info_size) == static_cast<UINT>(-1))
     {
-      QtRawMouseDebugPrintf("Raw mouse %u: handle=%p name=%s info_error=%lu", i, devices[i].hDevice,
-                            name.empty() ? "" : name.data(), GetLastError());
+      Log_DevPrintf("Failed to query Raw Input mouse %u (%s): error=%lu", i,
+                    name.empty() ? "" : name.data(), GetLastError());
       continue;
     }
 
-    QtRawMouseDebugPrintf("Raw mouse %u: handle=%p id=%lu buttons=%lu rate=%lu has_hwheel=%lu name=%s", i,
-                          devices[i].hDevice, info.mouse.dwId, info.mouse.dwNumberOfButtons, info.mouse.dwSampleRate,
-                          info.mouse.fHasHorizontalWheel, name.empty() ? "" : name.data());
+    Log_DevPrintf("Raw Input mouse %u: id=%lu buttons=%lu rate=%lu horizontal_wheel=%lu name=%s", i,
+                  info.mouse.dwId, info.mouse.dwNumberOfButtons, info.mouse.dwSampleRate,
+                  info.mouse.fHasHorizontalWheel, name.empty() ? "" : name.data());
   }
 }
 
@@ -143,9 +121,6 @@ QString QtDisplayWidget::getRawMouseSettingValue(void* device_handle)
   }
 
   m_raw_mouse_positions.emplace_back(setting_value, QPoint(scaledWindowWidth() / 2, scaledWindowHeight() / 2));
-
-  QtRawMouseDebugPrintf("Raw mouse assigned: %s start_x=%d start_y=%d", setting_value.toUtf8().constData(),
-                        scaledWindowWidth() / 2, scaledWindowHeight() / 2);
 
   return setting_value;
 }
@@ -175,17 +150,13 @@ bool QtDisplayWidget::nativeEvent(const QByteArray& event_type, void* message, l
   if (GetRawInputData(reinterpret_cast<HRAWINPUT>(msg->lParam), RID_INPUT, data.data(), &data_size,
                       sizeof(RAWINPUTHEADER)) != data_size)
   {
-    QtRawMouseDebugPrintf("GetRawInputData failed: error=%lu", GetLastError());
+    Log_WarningPrintf("Failed to read Raw Input mouse data: error=%lu", GetLastError());
     return false;
   }
 
   const RAWINPUT* raw = reinterpret_cast<const RAWINPUT*>(data.data());
   if (raw->header.dwType == RIM_TYPEMOUSE)
   {
-    QtRawMouseDebugPrintf("WM_INPUT mouse: handle=%p flags=0x%04X buttons=0x%04X button_data=%u dx=%ld dy=%ld",
-                          raw->header.hDevice, raw->data.mouse.usFlags, raw->data.mouse.usButtonFlags,
-                          raw->data.mouse.usButtonData, raw->data.mouse.lLastX, raw->data.mouse.lLastY);
-
     const QString setting_value = getRawMouseSettingValue(raw->header.hDevice);
     if (setting_value.isEmpty())
       return false;

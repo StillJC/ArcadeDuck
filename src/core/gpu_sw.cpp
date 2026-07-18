@@ -7,7 +7,6 @@
 #include "host_display.h"
 #include "system.h"
 #include <algorithm>
-#include <cstdio>
 #include <chrono>
 #include <thread>
 Log_SetChannel(GPU_SW);
@@ -486,21 +485,6 @@ void GPU_SW::UpdateDisplay()
 {
   // fill display texture
   m_backend.Sync(true);
-
-  static int konami_display_debug_count = 0;
-
-  if (konami_display_debug_count < 300)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_display_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "UpdateDisplay disabled=%d stat_display_disable=%d width=%u height=%u\n",
-                   IsDisplayDisabled() ? 1 : 0, m_GPUSTAT.display_disable ? 1 : 0, m_crtc_state.display_vram_width,
-                   m_crtc_state.display_vram_height);
-      std::fclose(fp);
-    }
-
-    konami_display_debug_count++;
-  }
 
   if (!g_settings.debugging.show_vram)
   {
