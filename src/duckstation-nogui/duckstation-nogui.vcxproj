@@ -93,6 +93,9 @@
   </PropertyGroup>
   <Import Project="..\..\dep\msvc\vsprops\Win32Application.props" />
   <Import Project="..\frontend-common\frontend-common.props" />
+  <PropertyGroup>
+    <TargetName>ArcadeDuck-NoGUI</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <AdditionalDependencies>$(RootBuildDir)frontend-common\frontend-common.lib;%(AdditionalDependencies)</AdditionalDependencies>

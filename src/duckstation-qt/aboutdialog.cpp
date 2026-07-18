@@ -38,7 +38,8 @@ p, li { white-space: pre-wrap; }
 <p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><a href="https://github.com/StillJC/ArcadeDuck/blob/main/LICENSE"><span style=" text-decoration: underline; color:#0057ae;">%5</span></a> | <a href="https://github.com/StillJC/ArcadeDuck"><span style=" text-decoration: underline; color:#0057ae;">ArcadeDuck GitHub</span></a> | <a href="https://github.com/stenzek/duckstation"><span style=" text-decoration: underline; color:#0057ae;">DuckStation GitHub</span></a></p></body></html>
 )")
       .arg(tr(
-        "ArcadeDuck is a PlayStation-based arcade hardware emulator built from a heavily modified DuckStation base."))
+        "ArcadeDuck Proof of Concept Preview is a PlayStation-based arcade hardware emulator built from a heavily "
+        "modified DuckStation base."))
       .arg(tr("ArcadeDuck focuses on PS1-based arcade hardware support, arcade-oriented loading, input handling, and "
               "cabinet use."))
       .arg(tr("Original DuckStation Credits"))

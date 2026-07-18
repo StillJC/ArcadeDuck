@@ -33,7 +33,7 @@ NoGUIHostInterface::~NoGUIHostInterface() = default;
 
 const char* NoGUIHostInterface::GetFrontendName() const
 {
-  return "DuckStation NoGUI Frontend";
+  return "ArcadeDuck NoGUI Frontend";
 }
 
 bool NoGUIHostInterface::Initialize()

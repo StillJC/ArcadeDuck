@@ -101,7 +101,7 @@ jobs:
         if (Test-Path "bin\x64") {
           Copy-Item "bin\x64\*" $packageRoot -Recurse -Force
         } else {
-          $qtExe = Get-ChildItem -Recurse -Filter "duckstation-qt-x64-Release.exe" |
+          $qtExe = Get-ChildItem -Recurse -Filter "ArcadeDuck.exe" |
             Select-Object -First 1
 
           if (-not $qtExe) {

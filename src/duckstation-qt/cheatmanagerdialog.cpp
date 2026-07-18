@@ -717,7 +717,7 @@ void CheatManagerDialog::resetClicked()
   if (QMessageBox::question(
         this, tr("Confirm Reset"),
         tr(
-          "Are you sure you want to reset the cheat list? Any cheats not in the DuckStation database WILL BE LOST.")) !=
+          "Are you sure you want to reset the cheat list? Any cheats not in the ArcadeDuck database WILL BE LOST.")) !=
       QMessageBox::Yes)
   {
     return;

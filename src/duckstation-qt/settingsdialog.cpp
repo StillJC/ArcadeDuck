@@ -65,7 +65,7 @@ SettingsDialog::SettingsDialog(QtHostInterface* host_interface, QWidget* parent 
   m_ui.settingsContainer->insertWidget(static_cast<int>(Category::AchievementSettings), m_achievement_settings);
 #else
   QLabel* placeholder_label =
-    new QLabel(tr("This DuckStation build was not compiled with RetroAchievements support."), m_ui.settingsContainer);
+    new QLabel(tr("This ArcadeDuck build was not compiled with RetroAchievements support."), m_ui.settingsContainer);
   placeholder_label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
   m_ui.settingsContainer->insertWidget(static_cast<int>(Category::AchievementSettings), placeholder_label);
 #endif
@@ -95,7 +95,7 @@ void SettingsDialog::setCategoryHelpTexts()
        "console.<br><br>Mouse over an option for additional information.");
   m_category_help_text[static_cast<int>(Category::GameListSettings)] =
     tr("<strong>Game List Settings</strong><hr>The list above shows the directories which will be searched by "
-       "DuckStation to populate the game list. Search directories can be added, removed, and switched to "
+       "ArcadeDuck to populate the game list. Search directories can be added, removed, and switched to "
        "recursive/non-recursive.");
   m_category_help_text[static_cast<int>(Category::HotkeySettings)] = tr(
     "<strong>Hotkey Settings</strong><hr>Binding a hotkey allows you to trigger events such as a resetting or taking "

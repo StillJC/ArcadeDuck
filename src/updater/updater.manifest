@@ -3,10 +3,10 @@
 <assemblyIdentity
     version="1.0.0.0"
     processorArchitecture="*"
-    name="com.github.stenzek.duckstation.updater"
+    name="com.github.StillJC.ArcadeDuck.updater"
     type="win32"
 />
-<description>DuckStation Updater</description>
+<description>ArcadeDuck Updater</description>
 <dependency>
     <dependentAssembly>
         <assemblyIdentity

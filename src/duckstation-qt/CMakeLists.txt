@@ -167,13 +167,13 @@ endif()
 
 if(APPLE)
   include(BundleUtilities)
-  set(BUNDLE_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DuckStation.app)
+  set(BUNDLE_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ArcadeDuck.app)
 
   # Ask for an application bundle.
   set_target_properties(duckstation-qt PROPERTIES
     MACOSX_BUNDLE true
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
-    OUTPUT_NAME DuckStation
+    OUTPUT_NAME ArcadeDuck
     )
 
   # Copy qt.conf into the bundle

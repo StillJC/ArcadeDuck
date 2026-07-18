@@ -62,7 +62,7 @@ SDLHostInterface::~SDLHostInterface() = default;
 
 const char* SDLHostInterface::GetFrontendName() const
 {
-  return "DuckStation NoGUI Frontend";
+  return "ArcadeDuck NoGUI Frontend";
 }
 
 std::unique_ptr<SDLHostInterface> SDLHostInterface::Create()
@@ -151,7 +151,7 @@ bool SDLHostInterface::RequestRenderWindowSize(s32 new_window_width, s32 new_win
 
 ALWAYS_INLINE static TinyString GetWindowTitle()
 {
-  return TinyString::FromFormat("DuckStation - The Simpsons Bowling (GQ829 UAA)", g_scm_tag_str, g_scm_branch_str);
+  return TinyString::FromFormat("ArcadeDuck - Proof of Concept Preview");
 }
 
 bool SDLHostInterface::CreatePlatformWindow()

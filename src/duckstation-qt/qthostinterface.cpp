@@ -78,7 +78,7 @@ QtHostInterface::~QtHostInterface()
 
 const char* QtHostInterface::GetFrontendName() const
 {
-  return "DuckStation Qt Frontend";
+  return "ArcadeDuck Qt Frontend";
 }
 
 std::vector<std::pair<QString, QString>> QtHostInterface::getAvailableLanguageList()
