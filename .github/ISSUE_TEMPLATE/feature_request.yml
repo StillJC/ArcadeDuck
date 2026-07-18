@@ -1,0 +1,61 @@
+﻿name: Feature request or suggestion
+description: Suggest an improvement for ArcadeDuck
+title: "[Suggestion]: "
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggestions are welcome and will be compiled for future development planning.
+
+        The POC codebase is entering maintenance-only status. New features will generally be considered for the migrated codebase rather than added directly to the POC branch.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Game compatibility
+        - Arcade hardware emulation
+        - Controls or peripherals
+        - Video or presentation
+        - Bezel support
+        - User interface
+        - Frontend integration
+        - Packaging or installation
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggestion
+      description: Describe the proposed improvement.
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Why would this be useful?
+      description: Explain the problem it solves or how it improves the arcade experience.
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References or examples
+      description: Add links, hardware documentation, screenshots, videos, or examples from other projects when relevant.
+
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I understand that this suggestion may be deferred until after the codebase migration.
+          required: true

@@ -166,6 +166,18 @@ jobs:
             Copy-Item LICENSE $packageRoot -Force
           }
 
+          if (Test-Path NEWS.md) {
+            Copy-Item NEWS.md $packageRoot -Force
+          }
+
+          if (Test-Path COMPATIBILITY.md) {
+            Copy-Item COMPATIBILITY.md $packageRoot -Force
+          }
+
+          if (Test-Path KNOWN-ISSUES.md) {
+            Copy-Item KNOWN-ISSUES.md $packageRoot -Force
+          }
+
           $zipName = "ArcadeDuck-windows-x64.zip"
 
           Compress-Archive `

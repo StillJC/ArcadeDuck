@@ -876,7 +876,8 @@ void MainWindow::onGameListSetCoverImageRequested(const GameListEntry* entry)
 
 void MainWindow::onGameListSetBezelImageRequested(const GameListEntry* entry)
 {
-  (void)entry;
+  if (!entry)
+    return;
 
   const QString filename =
     QFileDialog::getOpenFileName(this, tr("Select Bezel Image"), QString(), tr("PNG Images (*.png)"));
@@ -884,12 +885,15 @@ void MainWindow::onGameListSetBezelImageRequested(const GameListEntry* entry)
   if (filename.isEmpty())
     return;
 
-  m_host_interface->SetBoolSettingValue("Display", "BezelEnabled", true);
-  m_host_interface->SetStringSettingValue("Display", "BezelPath", filename.toUtf8().constData());
-  m_host_interface->SetFloatSettingValue("Display", "BezelOpacity", 1.0f);
+  GameSettings::Entry settings = entry->settings;
+  settings.display_bezel_enabled = true;
+  settings.display_bezel_path = filename.toUtf8().constData();
+
+  m_host_interface->getGameList()->UpdateGameSettings(entry->path, entry->code, entry->title, settings, true);
   m_host_interface->applySettings();
 
-  reportMessage(tr("Bezel image set to '%1'.").arg(filename));
+  reportMessage(tr("Bezel image for '%1' set to '%2'.")
+                  .arg(QString::fromStdString(entry->title), filename));
 }
 
 void MainWindow::setupAdditionalUi()

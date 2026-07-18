@@ -1,0 +1,103 @@
+﻿name: Bug report
+description: Report a reproducible problem with the ArcadeDuck POC Preview
+title: "[Bug]: "
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing ArcadeDuck.
+
+        This POC codebase is entering maintenance-only status while development moves toward the newer GPL-era DuckStation codebase. Reports will still be reviewed and recorded, but larger fixes may be deferred to the migration.
+
+        Please check COMPATIBILITY.md and KNOWN-ISSUES.md before submitting.
+
+  - type: input
+    id: build
+    attributes:
+      label: ArcadeDuck build
+      description: Enter the release version or commit shown in ArcadeDuck.
+      placeholder: POC Preview 0.1 / commit hash
+    validations:
+      required: true
+
+  - type: input
+    id: mame_set
+    attributes:
+      label: MAME set
+      description: Enter the exact ROM set name.
+      placeholder: simpbowl
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cpu_mode
+    attributes:
+      label: CPU mode
+      description: Interpreter is the supported CPU mode for this preview.
+      options:
+        - Interpreter
+        - Recompiler
+        - Unknown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: launch_method
+    attributes:
+      label: Launch method
+      options:
+        - ArcadeDuck game list
+        - Command line or frontend
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: Describe what happened and what you expected to happen.
+      placeholder: Include the point during boot or gameplay where the problem occurs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the shortest reliable sequence that reproduces the problem.
+      placeholder: |
+        1. Launch the game
+        2. Insert a coin
+        3. Enter gameplay
+        4. The problem occurs
+    validations:
+      required: true
+
+  - type: textarea
+    id: system
+    attributes:
+      label: System information
+      description: Include Windows version, CPU, GPU, and controller or peripheral details when relevant.
+      placeholder: Windows 10, Ryzen 5 3400G, GTX 1050 Ti, Xbox controller
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Attach arcadeduck.log, screenshots, or short video when they help demonstrate the problem.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I tested with the default CPU Interpreter or clearly identified that I used the Recompiler.
+          required: true
+        - label: I checked the compatibility and known-issues documents.
+          required: true
+        - label: I understand that major fixes may be deferred to the migrated codebase.
+          required: true

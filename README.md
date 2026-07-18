@@ -32,7 +32,8 @@ No ROMs, BIOS files, CHDs, keys, or other copyrighted game data are included.
 The current proof of concept includes:
 
 - MAME-style ROM ZIP and CHD loading
-- Automatic arcade BIOS selection
+- Direct Konami GV BIOS loading from `bios/konamigv.zip`
+- Automatic arcade BIOS validation and selection
 - Arcade game-title identification
 - EEPROM, flash, and per-game NVRAM persistence
 - NCR53CF96 SCSI CD-ROM communication and DMA
@@ -42,6 +43,7 @@ The current proof of concept includes:
 - *Tokimeki Memorial Oshiete Your Heart* heartbeat and printer support
 - Arcade-specific display geometry and 4:3 presentation
 - Optional 16:9 stretching
+- Per-game bezel assignment and loading
 - Arcade-oriented input and cabinet controls
 - Removal or hiding of console-oriented setup where it does not belong
 
@@ -57,6 +59,8 @@ The following MAME set names have been used for proof-of-concept regression test
 - `weddingr`
 - `lacrazyc`
 - `susume`
+- `nagano98`
+- `naganoj`
 - `tmosh`
 - `tmoshs`
 - `tmoshsp`
@@ -67,7 +71,7 @@ A listed game being tested does not mean every edge case, peripheral, or present
 ## Quick Start
 
 1. Extract ArcadeDuck to its own directory.
-2. Place the required arcade BIOS files or supported BIOS ZIPs in `bios/`.
+2. Place `konamigv.zip` in `bios/`. The ZIP must contain `999a01.7e`.
 3. Place MAME-style non-merged game ZIPs in `roms/`.
 4. Place each CHD in a subdirectory matching its set name.
 5. Launch `ArcadeDuck.exe`.
@@ -171,6 +175,11 @@ Planned hardware families include:
 
 These are roadmap targets, not claims of support in the current preview.
 
+## POC Preview Documentation
+
+- [Konami GV compatibility](COMPATIBILITY.md)
+- [Known issues and limitations](KNOWN-ISSUES.md)
+- [Report a bug, compatibility result, or suggestion](https://github.com/StillJC/ArcadeDuck/issues/new/choose)
 ## Development Roadmap
 
 1. Release and document the Konami GV proof of concept.

@@ -1,0 +1,89 @@
+﻿name: Game compatibility report
+description: Report test results for a supported Konami GV game
+title: "[Compatibility]: "
+labels: []
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to provide additional compatibility results for the ArcadeDuck POC Preview.
+
+        Reports will help document the POC and guide development after the codebase migration.
+
+  - type: input
+    id: build
+    attributes:
+      label: ArcadeDuck build
+      placeholder: POC Preview 0.1 / commit hash
+    validations:
+      required: true
+
+  - type: input
+    id: mame_set
+    attributes:
+      label: MAME set
+      placeholder: simpbowl
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game title
+      placeholder: The Simpsons Bowling
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cpu_mode
+    attributes:
+      label: CPU mode
+      options:
+        - Interpreter
+        - Recompiler
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Compatibility status
+      options:
+        - Does not boot
+        - Boots with major problems
+        - Reaches attract mode
+        - Starts gameplay
+        - Playable with minor problems
+        - Playable without observed problems
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: Areas tested
+      options:
+        - label: Boot and attract mode
+        - label: Coin and start inputs
+        - label: Gameplay controls
+        - label: Audio and CD audio
+        - label: Service or test menu
+        - label: EEPROM or flash persistence
+        - label: Trackball or lightgun controls
+        - label: Per-game bezel
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Results and notes
+      description: Describe any graphical, audio, input, timing, or persistence problems.
+    validations:
+      required: true
+
+  - type: textarea
+    id: system
+    attributes:
+      label: System information
+      placeholder: Windows version, CPU, GPU, and controller or peripheral

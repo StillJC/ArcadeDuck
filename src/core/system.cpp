@@ -354,6 +354,7 @@ static bool ReadCurrentZipEntryToVector(unzFile zf, const std::string& zip_path,
     {
       Log_ErrorPrintf("KonamiGV: failed reading '%s' from MAME zip '%s'", entry_name, zip_path.c_str());
       unzCloseCurrentFile(zf);
+      data->clear();
       return false;
     }
 
@@ -363,8 +364,112 @@ static bool ReadCurrentZipEntryToVector(unzFile zf, const std::string& zip_path,
     data->insert(data->end(), buffer, buffer + bytes_read);
   }
 
-  unzCloseCurrentFile(zf);
+  if (unzCloseCurrentFile(zf) != UNZ_OK)
+  {
+    Log_ErrorPrintf("KonamiGV: CRC validation failed for '%s' inside MAME zip '%s'", entry_name, zip_path.c_str());
+    data->clear();
+    return false;
+  }
+
   return true;
+}
+
+static std::optional<BIOS::Image> LoadKonamiGVBIOSFromMameZip()
+{
+  static constexpr const char* BIOS_ZIP_NAME = "konamigv.zip";
+  static constexpr const char* BIOS_ENTRY_NAME = "999a01.7e";
+  static constexpr u32 BIOS_ENTRY_CRC = 0xad498d2d;
+
+  std::string zip_path = g_host_interface->GetBIOSDirectory();
+
+  if (!zip_path.empty() && zip_path.back() != '/' && zip_path.back() != '\\')
+    zip_path += FS_OSPATH_SEPARATOR_STR;
+
+  zip_path += BIOS_ZIP_NAME;
+
+  unzFile zf = MinizipHelpers::OpenUnzFile(zip_path.c_str());
+  if (!zf)
+  {
+    Log_ErrorPrintf("KonamiGV: failed to open BIOS zip '%s'", zip_path.c_str());
+    return std::nullopt;
+  }
+
+  if (unzGoToFirstFile(zf) != UNZ_OK)
+  {
+    Log_ErrorPrintf("KonamiGV: BIOS zip '%s' is empty or unreadable", zip_path.c_str());
+    unzClose(zf);
+    return std::nullopt;
+  }
+
+  for (;;)
+  {
+    unz_file_info file_info = {};
+    char zip_filename[512] = {};
+
+    if (unzGetCurrentFileInfo(zf, &file_info, zip_filename, sizeof(zip_filename), nullptr, 0, nullptr, 0) != UNZ_OK)
+    {
+      Log_ErrorPrintf("KonamiGV: failed reading file information from BIOS zip '%s'", zip_path.c_str());
+      unzClose(zf);
+      return std::nullopt;
+    }
+
+    zip_filename[sizeof(zip_filename) - 1] = '\0';
+
+    if (StringUtil::Strcasecmp(zip_filename, BIOS_ENTRY_NAME) == 0)
+    {
+      if (file_info.uncompressed_size != BIOS::BIOS_SIZE)
+      {
+        Log_ErrorPrintf("KonamiGV: BIOS '%s' has size %lu, expected %u", BIOS_ENTRY_NAME,
+                        static_cast<unsigned long>(file_info.uncompressed_size), BIOS::BIOS_SIZE);
+        unzClose(zf);
+        return std::nullopt;
+      }
+
+      if (static_cast<u32>(file_info.crc) != BIOS_ENTRY_CRC)
+      {
+        Log_ErrorPrintf("KonamiGV: BIOS '%s' has CRC %08x, expected %08x", BIOS_ENTRY_NAME,
+                        static_cast<unsigned int>(file_info.crc), BIOS_ENTRY_CRC);
+        unzClose(zf);
+        return std::nullopt;
+      }
+
+      BIOS::Image image;
+
+      if (!ReadCurrentZipEntryToVector(zf, zip_path, zip_filename, &image))
+      {
+        unzClose(zf);
+        return std::nullopt;
+      }
+
+      unzClose(zf);
+
+      if (image.size() != BIOS::BIOS_SIZE)
+      {
+        Log_ErrorPrintf("KonamiGV: extracted BIOS '%s' has unexpected size %zu", BIOS_ENTRY_NAME, image.size());
+        return std::nullopt;
+      }
+
+      Log_InfoPrintf("KonamiGV: loaded BIOS '%s' from '%s'", BIOS_ENTRY_NAME, zip_path.c_str());
+      return image;
+    }
+
+    const int next_result = unzGoToNextFile(zf);
+
+    if (next_result == UNZ_END_OF_LIST_OF_FILE)
+      break;
+
+    if (next_result != UNZ_OK)
+    {
+      Log_ErrorPrintf("KonamiGV: failed moving to the next file in BIOS zip '%s'", zip_path.c_str());
+      unzClose(zf);
+      return std::nullopt;
+    }
+  }
+
+  unzClose(zf);
+
+  Log_ErrorPrintf("KonamiGV: BIOS zip '%s' does not contain '%s'", zip_path.c_str(), BIOS_ENTRY_NAME);
+  return std::nullopt;
 }
 
 static bool ExtractKonamiGVEepromFromZip(const std::string& zip_path, std::string_view set_name)
@@ -1032,12 +1137,13 @@ bool Boot(const SystemBootParameters& params)
   std::unique_ptr<CDImage> media;
   bool exe_boot = false;
   bool psf_boot = false;
+  bool konami_gv_boot = false;
 
   std::string boot_filename = params.filename;
 
   if (!boot_filename.empty())
   {
-    ResolveKonamiGVMameZipPath(&boot_filename);
+    konami_gv_boot = ResolveKonamiGVMameZipPath(&boot_filename);
 
     exe_boot = IsExeFileName(boot_filename.c_str());
     psf_boot = (!exe_boot && IsPsfFileName(boot_filename.c_str()));
@@ -1094,12 +1200,25 @@ bool Boot(const SystemBootParameters& params)
   
   Log_InfoPrintf("Console Region: %s", Settings::GetConsoleRegionDisplayName(s_region));
 
-  // Load BIOS image.
-  std::optional<BIOS::Image> bios_image = g_host_interface->GetBIOSImage(s_region);
+  // Konami GV launches use the validated BIOS from bios/konamigv.zip.
+  // Normal console launches continue through DuckStation's regular BIOS resolver.
+  std::optional<BIOS::Image> bios_image =
+    konami_gv_boot ? LoadKonamiGVBIOSFromMameZip() : g_host_interface->GetBIOSImage(s_region);
+
   if (!bios_image)
   {
-    g_host_interface->ReportFormattedError(g_host_interface->TranslateString("System", "Failed to load %s BIOS."),
-                                           Settings::GetConsoleRegionName(s_region));
+    if (konami_gv_boot)
+    {
+      g_host_interface->ReportFormattedError(
+        "Konami GV BIOS not found or invalid. Place a valid 'konamigv.zip' containing "
+        "'999a01.7e' in the configured BIOS directory.");
+    }
+    else
+    {
+      g_host_interface->ReportFormattedError(g_host_interface->TranslateString("System", "Failed to load %s BIOS."),
+                                             Settings::GetConsoleRegionName(s_region));
+    }
+
     Shutdown();
     return false;
   }
