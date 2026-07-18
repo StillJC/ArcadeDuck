@@ -31,7 +31,7 @@ bool CubebAudioStream::OpenDevice()
   }
 #endif
 
-  int rv = cubeb_init(&m_cubeb_context, "DuckStation", nullptr);
+  int rv = cubeb_init(&m_cubeb_context, "ArcadeDuck", nullptr);
   if (rv != CUBEB_OK)
   {
     Log_ErrorPrintf("Could not initialize cubeb context: %d", rv);

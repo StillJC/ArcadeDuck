@@ -3,21 +3,20 @@
 #include "cdrom.h"
 #include "cpu_core.h"
 #include "dma.h"
-#include "host_interface.h"
 #include "interrupt_controller.h"
 #include "konami.h"
 #include "system.h"
 #include "timing_event.h"
 #include "common/cd_image.h"
-#include "common/file_system.h"
 #include "common/log.h"
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
+
+Log_SetChannel(KonamiGVScsi);
 
 // Konami GV NCR53CF96/SCSI implementation.
 
@@ -119,6 +118,8 @@ static constexpr u8 NCR53CF96_STATUS_GROSS_ERROR = 0x40;
 static constexpr u8 NCR53CF96_STATUS_INTERRUPT = 0x80;
 
 static constexpr u8 NCR53CF96_INTERRUPT_FUNCTION_COMPLETE = 0x08;
+static constexpr u8 NCR53CF96_INTERRUPT_BUS_SERVICE = 0x10;
+static constexpr u8 NCR53CF96_INTERRUPT_DISCONNECT = 0x20;
 static constexpr u8 NCR53CF96_INTERRUPT_SCSI_RESET = 0x80;
 
 static constexpr u8 NCR53CF96_CONFIG1_DISABLE_RESET_INTERRUPT = 0x40;
@@ -265,7 +266,9 @@ static void KonamiGVScsiDecrementTransferCounter(u32 Count)
 static u8 KonamiGVScsiReadFIFO()
 {
   if (ScsiController.fifo_count == 0)
+  {
     return 0;
+  }
 
   const u8 Value = ScsiController.fifo[0];
 
@@ -282,7 +285,10 @@ static u8 KonamiGVScsiReadFIFO()
 static void KonamiGVScsiWriteFIFO(u8 Value)
 {
   if (ScsiController.fifo_count >= NCR53CF96_FIFO_CAPACITY)
+  {
+    Log_WarningPrintf("Konami GV SCSI FIFO overflow while writing 0x%02X", Value);
     return;
+  }
 
   ScsiController.fifo[ScsiController.fifo_count] = Value;
   ScsiController.fifo_count++;
@@ -313,6 +319,7 @@ static bool KonamiGVScsiQueueCommand(u8 Value)
 
   if (ScsiController.command_queue_count >= 2)
   {
+    Log_WarningPrintf("Konami GV SCSI command queue overflow while queuing 0x%02X", Value);
     KonamiGVScsiSetStatusBits(NCR53CF96_STATUS_GROSS_ERROR);
     return false;
   }
@@ -352,66 +359,6 @@ static void KonamiGVScsiConsumeSelectionFIFO()
   KonamiGVScsiClearFIFO();
 }
 
-// DEBUG CODE
-static const char* KonamiGVScsiCommandName(u8 command)
-{
-  switch (command)
-  {
-    case 0x00:
-      return "TEST UNIT READY";
-
-    case 0x03:
-      return "REQUEST SENSE";
-
-    case 0x12:
-      return "INQUIRY";
-
-    case 0x15:
-      return "MODE SELECT(6)";
-
-    case 0x1A:
-      return "MODE SENSE(6)";
-
-    case 0x28:
-      return "READ(10)";
-
-    case 0x42:
-      return "READ SUB-CHANNEL";
-
-    case 0x43:
-      return "READ TOC";
-
-    case 0x48:
-      return "PLAY AUDIO TRACK/INDEX";
-
-    case 0x4B:
-      return "PAUSE/RESUME";
-
-    default:
-      return "UNKNOWN";
-  }
-}
-
-static const char* KonamiGVScsiTransferDirection(u8 command)
-{
-  switch (command)
-  {
-    case 0x03:
-    case 0x12:
-    case 0x1A:
-    case 0x28:
-    case 0x42:
-    case 0x43:
-      return "CD-ROM -> HOST";
-
-    case 0x15:
-      return "HOST -> CD-ROM";
-
-    default:
-      return "NONE";
-  }
-}
-
 static u32 KonamiGVScsiExpectedTransferLength(const u8* cdb)
 {
   switch (cdb[0])
@@ -435,89 +382,6 @@ static u32 KonamiGVScsiExpectedTransferLength(const u8* cdb)
     default:
       return 0;
   }
-}
-
-static u32 KonamiGVScsiTransferCounter()
-{
-  return ScsiController.transfer_counter;
-}
-
-static void KonamiGVTraceScsiCommand()
-{
-  // DEBUG CODE
-  // Beat the Champ polls READ SUB-CHANNEL thousands of times per second.
-  // Do not perform synchronous file logging for every poll.
-  if (ScsiCommand[0] == 0x42)
-    return;
-
-  std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab");
-  if (!fp)
-    return;
-
-  const u8 command = ScsiCommand[0];
-
-  std::fprintf(fp,
-               "\n"
-               "GAME=%s PC=0x%08X\n"
-               "CDB=%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n"
-               "COMMAND=%s (0x%02X)\n"
-               "DIRECTION=%s\n"
-               "EXPECTED_TRANSFER=%u\n"
-               "NCR_TRANSFER_COUNTER=%u\n"
-               "STATUS=0x%02X IRQ=0x%02X INT=0x%02X FIFO=0x%02X\n",
-               System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, ScsiCommand[0], ScsiCommand[1],
-               ScsiCommand[2], ScsiCommand[3], ScsiCommand[4], ScsiCommand[5], ScsiCommand[6], ScsiCommand[7],
-               ScsiCommand[8], ScsiCommand[9], ScsiCommand[10], ScsiCommand[11], KonamiGVScsiCommandName(command),
-               command, KonamiGVScsiTransferDirection(command), KonamiGVScsiExpectedTransferLength(ScsiCommand),
-               KonamiGVScsiTransferCounter(), ScsiController.status, ScsiController.interrupt_status,
-               ScsiController.sequence_step, KonamiGVScsiReadFIFOFlags());
-
-  switch (command)
-  {
-    case 0x28: // READ(10)
-    {
-      const u32 lba = (static_cast<u32>(ScsiCommand[2]) << 24) | (static_cast<u32>(ScsiCommand[3]) << 16) |
-                      (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
-
-      const u32 sector_count = (static_cast<u32>(ScsiCommand[7]) << 8) | static_cast<u32>(ScsiCommand[8]);
-
-      std::fprintf(fp, "READ10 LBA=%u SECTORS=%u\n", lba, sector_count);
-      break;
-    }
-
-    case 0x42: // READ SUB-CHANNEL
-    {
-      const u32 allocation_length = (static_cast<u32>(ScsiCommand[7]) << 8) | static_cast<u32>(ScsiCommand[8]);
-
-      std::fprintf(fp, "SUBCHANNEL MSF=%u SUBQ=%u FORMAT=0x%02X TRACK=%u ALLOCATION=%u\n",
-                   (ScsiCommand[1] & 0x02) ? 1U : 0U, (ScsiCommand[2] & 0x40) ? 1U : 0U, ScsiCommand[3], ScsiCommand[6],
-                   allocation_length);
-      break;
-    }
-
-    case 0x43: // READ TOC
-    {
-      const u32 allocation_length = (static_cast<u32>(ScsiCommand[7]) << 8) | static_cast<u32>(ScsiCommand[8]);
-
-      std::fprintf(fp, "TOC MSF=%u FORMAT=0x%02X START_TRACK=%u ALLOCATION=%u\n", (ScsiCommand[1] & 0x02) ? 1U : 0U,
-                   ScsiCommand[2] & 0x0F, ScsiCommand[6], allocation_length);
-      break;
-    }
-
-    case 0x48: // PLAY AUDIO TRACK/INDEX
-      std::fprintf(fp, "PLAY START_TRACK=%u START_INDEX=%u END_TRACK=%u END_INDEX=%u\n", ScsiCommand[4], ScsiCommand[5],
-                   ScsiCommand[7], ScsiCommand[8]);
-      break;
-
-    case 0x4B: // PAUSE/RESUME
-      std::fprintf(fp, "AUDIO RESUME=%u\n", (ScsiCommand[8] & 0x01) ? 1U : 0U);
-      break;
-
-    default:
-      break;
-  }
-
-  std::fclose(fp);
 }
 
 static std::unique_ptr<TimingEvent> ScsiIrqEvent;
@@ -709,6 +573,9 @@ static u8 KonamiGVScsiReadInterruptStatus()
                                 NCR53CF96_STATUS_PARITY_ERROR | NCR53CF96_STATUS_VALID_GROUP_CODE);
 
     CPU::ClearExternalInterrupt(static_cast<u8>(InterruptController::IRQ::IRQ10));
+
+    KonamiGVScsiCompleteCommand();
+
   }
 
   return Value;
@@ -739,22 +606,6 @@ static void KonamiGVScsiProcessModeSelectData()
 
   const u8* const ParameterData = ScsiController.dma_buffer.data();
 
-  // DEBUG CODE
-  if (std::FILE* fp = std::fopen("konami_gv_scsi_trace.txt", "ab"))
-  {
-    std::fprintf(fp,
-                 "MODE_SELECT_PAYLOAD GAME=%s PC=0x%08X "
-                 "DMA_LENGTH=%zu CDB_LENGTH=%u DATA=",
-                 System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc,
-                 ScsiController.dma_buffer.size(), ScsiCommand[4]);
-
-    for (size_t i = 0; i < ParameterLength; i++)
-      std::fprintf(fp, "%02X%s", ParameterData[i], (i + 1 < ParameterLength) ? " " : "");
-
-    std::fprintf(fp, "\n");
-    std::fclose(fp);
-  }
-
   if (ParameterLength < 4)
     return;
 
@@ -782,21 +633,6 @@ static void KonamiGVScsiProcessModeSelectData()
         const size_t OutputOffset = AudioOutputOffset + (Output * 2);
 
         KonamiGVCDROMSetAudioOutput(Output, ParameterData[OutputOffset], ParameterData[OutputOffset + 1]);
-      }
-
-      // DEBUG CODE
-      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "SCSI MODE SELECT CDDA "
-                     "out0=%u/%u out1=%u/%u "
-                     "out2=%u/%u out3=%u/%u\n",
-                     ParameterData[AudioOutputOffset + 0] & 0x0F, ParameterData[AudioOutputOffset + 1],
-                     ParameterData[AudioOutputOffset + 2] & 0x0F, ParameterData[AudioOutputOffset + 3],
-                     ParameterData[AudioOutputOffset + 4] & 0x0F, ParameterData[AudioOutputOffset + 5],
-                     ParameterData[AudioOutputOffset + 6] & 0x0F, ParameterData[AudioOutputOffset + 7]);
-
-        std::fclose(fp);
       }
 
       break;
@@ -830,12 +666,6 @@ static void KonamiGVScsiPrepareDmaTransfer()
       if (ScsiController.dma_buffer.size() > 7)
         ScsiController.dma_buffer[7] = 0x0A;
 
-      // DEBUG CODE
-      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "SCSI REQUEST SENSE response length=%u\n", TransferLength);
-        std::fclose(fp);
-      }
 
       break;
     }
@@ -870,12 +700,6 @@ static void KonamiGVScsiPrepareDmaTransfer()
         std::memcpy(ScsiController.dma_buffer.data() + 16, "GV CD-ROM       ", CopyLength);
       }
 
-      // DEBUG CODE
-      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "SCSI INQUIRY response length=%u\n", TransferLength);
-        std::fclose(fp);
-      }
 
       break;
     }
@@ -912,12 +736,6 @@ static void KonamiGVScsiPrepareDmaTransfer()
         ScsiController.dma_buffer[OutputOffset + 1] = Volume;
       }
 
-      // DEBUG CODE
-      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "SCSI MODE SENSE response length=%u\n", TransferLength);
-        std::fclose(fp);
-      }
 
       break;
     }
@@ -927,15 +745,24 @@ static void KonamiGVScsiPrepareDmaTransfer()
       std::array<u8, CDImage::DATA_SECTOR_SIZE> Sector = {};
 
       size_t BufferOffset = 0;
+      bool ReadErrorLogged = false;
 
       while (BufferOffset < ScsiController.dma_buffer.size())
       {
         const size_t SectorBytes =
           std::min<size_t>(CDImage::DATA_SECTOR_SIZE, ScsiController.dma_buffer.size() - BufferOffset);
 
-        if (KonamiReadMountedDataSector(ScsiSectorLba, Sector.data()))
+        const u32 SectorLba = ScsiSectorLba;
+
+        if (KonamiReadMountedDataSector(SectorLba, Sector.data()))
         {
           std::memcpy(ScsiController.dma_buffer.data() + BufferOffset, Sector.data(), SectorBytes);
+        }
+        else if (!ReadErrorLogged)
+        {
+          Log_ErrorPrintf("Konami GV SCSI failed to read data sector LBA %u for %s", SectorLba,
+                          System::GetRunningCode().c_str());
+          ReadErrorLogged = true;
         }
 
         ScsiSectorLba++;
@@ -950,18 +777,8 @@ static void KonamiGVScsiPrepareDmaTransfer()
       break;
 
     case 0x43:
-    {
-      const u32 ResponseLength = KonamiGVCDROMReadTOC(ScsiCommand, ScsiController.dma_buffer.data(), TransferLength);
-
-      // DEBUG CODE
-      if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "SCSI READ TOC response requested=%u returned=%u\n", TransferLength, ResponseLength);
-        std::fclose(fp);
-      }
-
+      KonamiGVCDROMReadTOC(ScsiCommand, ScsiController.dma_buffer.data(), TransferLength);
       break;
-    }
 
     default:
       break;
@@ -974,6 +791,7 @@ static void KonamiGVScsiCompleteDmaTransfer()
     KonamiGVScsiProcessModeSelectData();
 
   KonamiGVScsiSetDRQ(false);
+
   KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
 
   KonamiGVScsiSetPhase(3);
@@ -982,7 +800,8 @@ static void KonamiGVScsiCompleteDmaTransfer()
   ScsiController.dma_buffer.clear();
   ScsiController.dma_buffer_offset = 0;
 
-  KonamiGVScsiAssertInterrupt();
+  KonamiGVScsiAssertInterrupt(NCR53CF96_INTERRUPT_BUS_SERVICE);
+
 }
 
 void KonamiGVScsiDmaRead(u32* Data, u32 WordCount)
@@ -1216,9 +1035,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
             KonamiGVScsiSetSequenceStep(0x04);
           }
 
-          // DEBUG CODE
-          KonamiGVTraceScsiCommand();
-
           KonamiGVScsiSetDmaDirection(KonamiGVNCR53CF96DmaDirection::None);
 
           switch (ScsiCommand[0])
@@ -1237,12 +1053,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               [[fallthrough]];
 
             case 0x00:
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-              {
-                std::fprintf(fp, "SCSI simple command complete cmd=%02X status_phase=0\n", ScsiCommand[0]);
-                std::fclose(fp);
-              }
-
               KonamiGVScsiSetPhase(0);
               break;
 
@@ -1255,11 +1065,10 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               KonamiGVScsiSetPhase(0);
               KonamiGVScsiSetSequenceStep(0x04U);
 
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
+              if (!started)
               {
-                std::fprintf(fp, "SCSI PLAY AUDIO start=%u/%u end=%u/%u result=%s\n", ScsiCommand[4], ScsiCommand[5],
-                             ScsiCommand[7], ScsiCommand[8], started ? "started" : "rejected");
-                std::fclose(fp);
+                Log_WarningPrintf("Konami GV SCSI rejected PLAY AUDIO request %u/%u through %u/%u", ScsiCommand[4],
+                                  ScsiCommand[5], ScsiCommand[7], ScsiCommand[8]);
               }
 
               break;
@@ -1275,12 +1084,6 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               KonamiGVScsiSetPhase(0);
               KonamiGVScsiSetSequenceStep(0x04U);
 
-              if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-              {
-                std::fprintf(fp, "SCSI PAUSE/RESUME resume=%u\n", resume ? 1U : 0U);
-                std::fclose(fp);
-              }
-
               break;
             }
 
@@ -1290,12 +1093,19 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
                               (static_cast<u32>(ScsiCommand[4]) << 8) | static_cast<u32>(ScsiCommand[5]);
               KonamiGVScsiSetPhase(1);
               break;
+
+            default:
+              Log_WarningPrintf("Konami GV SCSI received unsupported CDB 0x%02X for %s", ScsiCommand[0],
+                                System::GetRunningCode().c_str());
+              break;
           }
 
           KonamiGVScsiSetDRQ(ScsiController.dma_command &&
                              ScsiController.dma_direction != KonamiGVNCR53CF96DmaDirection::None);
 
-          KonamiGVScsiAssertInterrupt();
+          KonamiGVScsiAssertInterrupt(NCR53CF96_INTERRUPT_FUNCTION_COMPLETE |
+                                       NCR53CF96_INTERRUPT_BUS_SERVICE);
+
           break;
 
         case 0x44:
@@ -1314,9 +1124,13 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
               KonamiGVScsiPrepareDmaTransfer();
 
               if (ScsiController.dma_buffer.empty())
+              {
                 KonamiGVScsiCompleteDmaTransfer();
+              }
               else
+              {
                 KonamiGVScsiSetDRQ(true);
+              }
             }
 
             break;
@@ -1327,23 +1141,36 @@ void KonamiScsiWrite(u32 Size, u32 Offset, u32 Value)
           // Initiator Command Complete. The simplified GV target path has
           // already consumed the status/message response, so expose the
           // final command-complete state with one Function Complete IRQ.
-          KonamiGVScsiSetPhase(0);
+          KonamiGVScsiSetPhase(7);
           KonamiGVScsiSetSequenceStep(0x06U);
+
+          // Return the target's final SCSI status and message-in bytes.
+          KonamiGVScsiClearFIFO();
+          KonamiGVScsiWriteFIFO(0x00U); // GOOD status
+          KonamiGVScsiWriteFIFO(0x00U); // COMMAND COMPLETE message
+
           KonamiGVScsiAssertInterrupt();
+
           break;
 
         case 0x12:
           // Message Accepted completes independently from 0x11.
-          KonamiGVScsiSetSequenceStep(0x06U);
-          KonamiGVScsiAssertInterrupt();
+          KonamiGVScsiSetSequenceStep(0x02U);
+          KonamiGVScsiSetPhase(0);
+          ScsiController.mode = KonamiGVNCR53CF96Mode::Disconnected;
+
+          KonamiGVScsiAssertInterrupt(NCR53CF96_INTERRUPT_BUS_SERVICE);
+
           break;
 
         default:
-          // Log_WarningPrintf("Unknown command %02X!", value);
+          Log_WarningPrintf("Konami GV SCSI received unknown controller command 0x%02X", ActiveCommand);
           break;
       }
 
-      KonamiGVScsiCompleteCommand();
+      // Commands which raise IRQ or DRQ remain active until completion is acknowledged.
+      if (!ScsiController.irq && !ScsiController.drq)
+        KonamiGVScsiCompleteCommand();
       break;
     }
   }

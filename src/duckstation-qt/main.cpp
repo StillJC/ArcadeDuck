@@ -89,7 +89,7 @@ int main(int argc, char* argv[])
   if (!host_interface->Initialize())
   {
     host_interface->Shutdown();
-    QMessageBox::critical(nullptr, QObject::tr("DuckStation Error"),
+    QMessageBox::critical(nullptr, QObject::tr("ArcadeDuck Error"),
                           QObject::tr("Failed to initialize host interface. Cannot continue."), QMessageBox::Ok);
     return EXIT_FAILURE;
   }

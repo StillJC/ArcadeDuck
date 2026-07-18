@@ -110,13 +110,6 @@ static QString GetRawMouseSiblingDeviceDisplayName(const QString& device_name)
     if (display_name.isEmpty())
       display_name = GetSetupAPIDeviceProperty(device_info_set, &device_info_data, SPDRP_DEVICEDESC);
 
-    if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "RAW MOUSE SIBLING instance=%ls display=%ls\n", instance_id.toStdWString().c_str(),
-                   display_name.toStdWString().c_str());
-      std::fclose(fp);
-    }
-
     if (!IsGenericRawMouseDeviceName(display_name))
     {
       best_display_name = display_name;

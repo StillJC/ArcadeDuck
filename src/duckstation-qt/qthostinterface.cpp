@@ -78,7 +78,7 @@ QtHostInterface::~QtHostInterface()
 
 const char* QtHostInterface::GetFrontendName() const
 {
-  return "DuckStation Qt Frontend";
+  return "ArcadeDuck Qt Frontend";
 }
 
 std::vector<std::pair<QString, QString>> QtHostInterface::getAvailableLanguageList()
@@ -409,23 +409,8 @@ void QtHostInterface::setMainWindow(MainWindow* window)
     rid.dwFlags = RIDEV_INPUTSINK;
     rid.hwndTarget = reinterpret_cast<HWND>(m_main_window->winId());
 
-    if (RegisterRawInputDevices(&rid, 1, sizeof(rid)))
-    {
-      if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "MAIN WINDOW RAW INPUT registered hwnd=%p\n", rid.hwndTarget);
-        std::fclose(fp);
-      }
-    }
-    else
-    {
-      if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "MAIN WINDOW RAW INPUT registration failed error=%lu hwnd=%p\n", GetLastError(),
-                     rid.hwndTarget);
-        std::fclose(fp);
-      }
-    }
+    if (!RegisterRawInputDevices(&rid, 1, sizeof(rid)))
+      Log_WarningPrintf("Raw Input lightgun registration failed: error=%lu", GetLastError());
   }
 #endif
 }
@@ -713,15 +698,6 @@ bool QtHostInterface::nativeEventFilter(const QByteArray& event_type, void* mess
 std::optional<std::string>
 QtHostInterface::GetLastRawLightgunButtonBindingForController(const std::string& section_name)
 {
-  if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
-  {
-    std::fprintf(fp, "BIND CHECK section=%s valid=%d pressed=%d device=%s button=%d age=%f\n", section_name.c_str(),
-                 s_last_raw_lightgun_button.valid ? 1 : 0, s_last_raw_lightgun_button.pressed ? 1 : 0,
-                 s_last_raw_lightgun_button.device_name.c_str(), s_last_raw_lightgun_button.button,
-                 s_last_raw_lightgun_button.valid ? (ImGui::GetTime() - s_last_raw_lightgun_button.event_time) : -1.0);
-    std::fclose(fp);
-  }
-
   if (!s_last_raw_lightgun_button.valid)
     return std::nullopt;
 
@@ -865,12 +841,6 @@ void QtHostInterface::onDisplayWindowRawMouseButtonEvent(const QString& device_n
 
   const std::string raw_device_name = device_name.toStdString();
   s_last_raw_lightgun_button = {true, raw_device_name, button, pressed, ImGui::GetTime()};
-  if (std::FILE* fp = std::fopen("raw_lightgun_bind_debug.txt", "ab"))
-  {
-    std::fprintf(fp, "RAW BUTTON device=%s button=%d pressed=%d time=%f\n", raw_device_name.c_str(), button,
-                 pressed ? 1 : 0, ImGui::GetTime());
-    std::fclose(fp);
-  }
   const std::string player1_type = GetStringSettingValue("Controller1", "Type", "");
 
   const std::string player2_type = GetStringSettingValue("Controller2", "Type", "");

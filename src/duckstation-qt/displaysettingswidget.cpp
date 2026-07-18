@@ -121,7 +121,7 @@ DisplaySettingsWidget::DisplaySettingsWidget(QtHostInterface* host_interface, QW
                                 "Internal resolution screenshots can be very large at high rendering scales."));
   dialog->registerWidgetHelp(
     m_ui.vsync, tr("VSync"), tr("Checked"),
-    tr("Enable this option to match DuckStation's refresh rate with your current monitor or screen. "
+    tr("Enable this option to match ArcadeDuck's refresh rate with your current monitor or screen. "
        "VSync is automatically disabled when it is not possible (e.g. running at non-100% speed)."));
   dialog->registerWidgetHelp(m_ui.displayAllFrames, tr("Optimal Frame Pacing"), tr("Unchecked"),
                              tr("Enable this option will ensure every frame the console renders is displayed to the "

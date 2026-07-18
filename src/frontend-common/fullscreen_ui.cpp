@@ -1174,7 +1174,7 @@ static void DrawAchievementsLoginWindow()
     ImGui::TextWrapped("Please enter user name and password for retroachievements.org.");
     ImGui::NewLine();
     ImGui::TextWrapped(
-      "Your password will not be saved in DuckStation, an access token will be generated and used instead.");
+      "Your password will not be saved in ArcadeDuck, an access token will be generated and used instead.");
 
     ImGui::NewLine();
 
@@ -2347,7 +2347,7 @@ void DrawSettingsWindow()
 
         MenuHeading("Settings");
         if (ToggleButtonForNonSetting(ICON_FA_TROPHY "  Enable RetroAchievements",
-                                      "When enabled and logged in, DuckStation will scan for achievements on startup.",
+                                      "When enabled and logged in, ArcadeDuck will scan for achievements on startup.",
                                       "Cheevos", "Enabled", false))
         {
           settings_changed = true;
@@ -2363,12 +2363,12 @@ void DrawSettingsWindow()
           "Cheevos", "RichPresence", true);
         settings_changed |=
           ToggleButtonForNonSetting(ICON_FA_STETHOSCOPE "  Test Mode",
-                                    "When enabled, DuckStation will assume all achievements are locked and not "
+                                    "When enabled, ArcadeDuck will assume all achievements are locked and not "
                                     "send any unlock notifications to the server.",
                                     "Cheevos", "TestMode", false);
         settings_changed |=
           ToggleButtonForNonSetting(ICON_FA_MEDAL "  Test Unofficial Achievements",
-                                    "When enabled, DuckStation will list achievements from unofficial sets. These "
+                                    "When enabled, ArcadeDuck will list achievements from unofficial sets. These "
                                     "achievements are not tracked by RetroAchievements.",
                                     "Cheevos", "UnofficialTestMode", false);
         settings_changed |= ToggleButtonForNonSetting(ICON_FA_COMPACT_DISC "  Use First Disc From Playlist",
@@ -2485,7 +2485,7 @@ void DrawSettingsWindow()
                                          &s_settings_copy.log_to_console);
         settings_changed |= ToggleButton("Log To Debug Console", "Logs messages to the debug console where supported.",
                                          &s_settings_copy.log_to_debug);
-        settings_changed |= ToggleButton("Log To File", "Logs messages to duckstation.log in the user directory.",
+        settings_changed |= ToggleButton("Log To File", "Logs messages to arcadeduck.log in the user directory.",
                                          &s_settings_copy.log_to_file);
 
         MenuHeading("Debugging Settings");
@@ -3341,21 +3341,22 @@ void DrawAboutWindow()
 {
   ImGui::SetNextWindowSize(LayoutScale(1000.0f, 500.0f));
   ImGui::SetNextWindowPos(ImGui::GetIO().DisplaySize * 0.5f, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  ImGui::OpenPopup("About DuckStation");
+  ImGui::OpenPopup("About ArcadeDuck");
 
   ImGui::PushFont(g_large_font);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, LayoutScale(10.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, LayoutScale(10.0f, 10.0f));
 
-  if (ImGui::BeginPopupModal("About DuckStation", &s_about_window_open,
+  if (ImGui::BeginPopupModal("About ArcadeDuck", &s_about_window_open,
                              ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize))
   {
-    ImGui::TextWrapped("DuckStation is a free and open-source simulator/emulator of the Sony PlayStation(TM) console, "
-                       "focusing on playability, speed, and long-term maintainability.");
+    ImGui::TextWrapped("ArcadeDuck is a free and open-source emulator for PlayStation-based arcade hardware. "
+                       "This Proof of Concept Preview demonstrates the current Konami GV implementation.");
     ImGui::NewLine();
-    ImGui::TextWrapped("Contributor List: https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md");
+    ImGui::TextWrapped("ArcadeDuck is built from a heavily modified DuckStation base. Original DuckStation credits: "
+                       "https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md");
     ImGui::NewLine();
-    ImGui::TextWrapped("Duck icon by icons8 (https://icons8.com/icon/74847/platforms.undefined.short-title)");
+    ImGui::TextWrapped("ArcadeDuck project: https://github.com/StillJC/ArcadeDuck");
     ImGui::NewLine();
     ImGui::TextWrapped("\"PlayStation\" and \"PSX\" are registered trademarks of Sony Interactive Entertainment Europe "
                        "Limited. This software is not affiliated in any way with Sony Interactive Entertainment.");
@@ -3366,18 +3367,13 @@ void DrawAboutWindow()
     if (ActiveButton(ICON_FA_GLOBE "  GitHub Repository", false))
     {
       s_host_interface->RunLater(
-        []() { s_host_interface->ReportError("Go to https://github.com/stenzek/duckstation/"); });
+        []() { s_host_interface->ReportError("Go to https://github.com/StillJC/ArcadeDuck"); });
     }
     if (ActiveButton(ICON_FA_BUG "  Issue Tracker", false))
     {
       s_host_interface->RunLater(
-        []() { s_host_interface->ReportError("Go to https://github.com/stenzek/duckstation/issues"); });
+        []() { s_host_interface->ReportError("Go to https://github.com/StillJC/ArcadeDuck/issues"); });
     }
-    if (ActiveButton(ICON_FA_COMMENT "  Discord Server", false))
-    {
-      s_host_interface->RunLater([]() { s_host_interface->ReportError("Go to https://discord.gg/Buktv3t"); });
-    }
-
     if (ActiveButton(ICON_FA_WINDOW_CLOSE "  Close", false))
     {
       ImGui::CloseCurrentPopup();

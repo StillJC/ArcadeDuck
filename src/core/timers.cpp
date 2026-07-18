@@ -1,4 +1,5 @@
 #include "timers.h"
+#include "cpu_core.h"
 #include "common/log.h"
 #include "common/state_wrapper.h"
 #include "gpu.h"
@@ -7,6 +8,7 @@
 #ifdef WITH_IMGUI
 #include "imgui.h"
 #endif
+
 Log_SetChannel(Timers);
 
 Timers g_timers;
@@ -215,6 +217,26 @@ u32 Timers::ReadRegister(u32 offset)
       }
 
       m_sysclk_event->InvokeEarly();
+
+      // Temporary PoC compatibility workaround for Crazy Cross.
+      // Remove and retest after migration to the final GPL CPU core.
+      if (timer_index == 1 && System::GetRunningCode() == "lacrazyc" && CPU::g_state.regs.r[31] == 0x8002A6F8U)
+      {
+        u32 previous_counter = 0;
+
+        if (CPU::SafeReadMemoryWord(0x8009A414U, &previous_counter))
+        {
+          static bool workaround_logged = false;
+          if (!workaround_logged)
+          {
+            Log_WarningPrintf(
+              "ArcadeDuck PoC: applying the temporary Crazy Cross Timer 1 compatibility workaround");
+            workaround_logged = true;
+          }
+
+          return previous_counter & 0xFFFFU;
+        }
+      }
 
       return cs.counter;
     }

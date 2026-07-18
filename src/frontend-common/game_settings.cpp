@@ -1133,7 +1133,7 @@ void Database::SetEntry(const std::string& code, const std::string& name, const 
     {
       // write file comment so simpleini doesn't get confused
       if (!did_exist)
-        std::fputs("# DuckStation Game Settings\n\n", fp.get());
+        std::fputs("# ArcadeDuck Game Settings\n\n", fp.get());
 
       SI_Error err = ini.SaveFile(fp.get());
       if (err != SI_OK)

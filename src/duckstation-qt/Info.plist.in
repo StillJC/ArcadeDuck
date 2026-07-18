@@ -24,11 +24,11 @@
         </dict>
     </array>
     <key>CFBundleExecutable</key>
-    <string>DuckStation</string>
+    <string>ArcadeDuck</string>
     <key>CFBundleIconFile</key>
     <string>DuckStation.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.github.stenzek.duckstation</string>
+    <string>com.github.StillJC.ArcadeDuck</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundlePackageType</key>

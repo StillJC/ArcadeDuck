@@ -332,6 +332,9 @@
   <Import Project="..\..\dep\msvc\vsprops\Win32Application.props" />
   <Import Project="..\..\dep\msvc\vsprops\QtCompile.props" />
   <Import Project="..\frontend-common\frontend-common.props" />
+  <PropertyGroup>
+    <TargetName>ArcadeDuck</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <AdditionalDependencies>$(RootBuildDir)frontend-common\frontend-common.lib;setupapi.lib;cfgmgr32.lib;%(AdditionalDependencies)</AdditionalDependencies>

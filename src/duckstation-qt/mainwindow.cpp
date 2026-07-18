@@ -88,6 +88,9 @@ void MainWindow::initializeAndShow()
   setIconThemeFromSettings();
 
   m_ui.setupUi(this);
+  // The inherited menu points to DuckStation's Discord server. Hide it until
+  // ArcadeDuck has a permanent public invite.
+  m_ui.actionDiscordServer->setVisible(false);
   setupAdditionalUi();
   setStyleFromSettings();
   connectSignals();
@@ -100,7 +103,7 @@ void MainWindow::initializeAndShow()
 
 void MainWindow::reportError(const QString& message)
 {
-  QMessageBox::critical(this, tr("DuckStation"), message, QMessageBox::Ok);
+  QMessageBox::critical(this, tr("ArcadeDuck"), message, QMessageBox::Ok);
   focusDisplayWidget();
 }
 
@@ -111,7 +114,7 @@ void MainWindow::reportMessage(const QString& message)
 
 bool MainWindow::confirmMessage(const QString& message)
 {
-  const int result = QMessageBox::question(this, tr("DuckStation"), message);
+  const int result = QMessageBox::question(this, tr("ArcadeDuck"), message);
   focusDisplayWidget();
 
   return (result == QMessageBox::Yes);
@@ -712,7 +715,7 @@ void MainWindow::onViewGamePropertiesActionTriggered()
   const GameListEntry* entry = m_host_interface->getGameList()->GetEntryForPath(path.c_str());
   if (!entry)
   {
-    QMessageBox::critical(this, tr("DuckStation"),
+    QMessageBox::critical(this, tr("ArcadeDuck"),
                           tr("Could not find a game list entry for the currently running file. Please make sure this "
                              "file is in a location scanned by the game list."));
     return;
@@ -723,12 +726,12 @@ void MainWindow::onViewGamePropertiesActionTriggered()
 
 void MainWindow::onGitHubRepositoryActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://github.com/stenzek/duckstation/");
+  QtUtils::OpenURL(this, "https://github.com/StillJC/ArcadeDuck");
 }
 
 void MainWindow::onIssueTrackerActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://github.com/stenzek/duckstation/issues");
+  QtUtils::OpenURL(this, "https://github.com/StillJC/ArcadeDuck/issues");
 }
 
 void MainWindow::onDiscordServerActionTriggered()
@@ -1867,40 +1870,15 @@ void MainWindow::onToolsOpenDataDirectoryTriggered()
 
 void MainWindow::checkForUpdates(bool display_message)
 {
-  if (!AutoUpdaterDialog::isSupported())
+  // The inherited updater targets official DuckStation releases. It must not
+  // run from ArcadeDuck builds.
+  if (display_message)
   {
-    if (display_message)
-    {
-      QMessageBox mbox(this);
-      mbox.setWindowTitle(tr("Updater Error"));
-      mbox.setTextFormat(Qt::RichText);
-
-      QString message;
-#ifdef _WIN32
-      message =
-        tr("<p>Sorry, you are trying to update a DuckStation version which is not an official GitHub release. To "
-           "prevent incompatibilities, the auto-updater is only enabled on official builds.</p>"
-           "<p>To obtain an official build, please follow the instructions under \"Downloading and Running\" at the "
-           "link below:</p>"
-           "<p><a href=\"https://github.com/stenzek/duckstation/\">https://github.com/stenzek/duckstation/</a></p>");
-#else
-      message = tr("Automatic updating is not supported on the current platform.");
-#endif
-
-      mbox.setText(message);
-      mbox.setIcon(QMessageBox::Critical);
-      mbox.exec();
-    }
-
-    return;
+    QMessageBox::information(
+      this, tr("ArcadeDuck Updates"),
+      tr("Automatic updates are not available in the ArcadeDuck Proof of Concept Preview. "
+         "Future builds will be published through the ArcadeDuck GitHub releases page."));
   }
-
-  if (m_auto_updater_dialog)
-    return;
-
-  m_auto_updater_dialog = new AutoUpdaterDialog(m_host_interface, this);
-  connect(m_auto_updater_dialog, &AutoUpdaterDialog::updateCheckCompleted, this, &MainWindow::onUpdateCheckComplete);
-  m_auto_updater_dialog->queueUpdateCheck(display_message);
 }
 
 void MainWindow::onUpdateCheckComplete()

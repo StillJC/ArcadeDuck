@@ -710,21 +710,10 @@ static struct {
 
 static bool LoadEepromFile(const char* Path)
 {
-  if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
-  {
-    std::fprintf(fp, "LoadEepromFile path='%s'\n", Path ? Path : "(null)");
-    std::fclose(fp);
-  }
-
   EepromFp = FileSystem::OpenCFile(Path, "r+b");
   if (!EepromFp)
   {
-    if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "LoadEepromFile FAILED open\n");
-      std::fclose(fp);
-    }
-
+    Log_ErrorPrintf("Konami GV: failed to open EEPROM file '%s'", Path ? Path : "(null)");
     return false;
   }
 
@@ -732,27 +721,13 @@ static bool LoadEepromFile(const char* Path)
 
   if (std::fread(raw, 1, sizeof(raw), EepromFp) != sizeof(raw))
   {
-    if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "LoadEepromFile FAILED read\n");
-      std::fclose(fp);
-    }
-
+    Log_ErrorPrintf("Konami GV: failed to read EEPROM file '%s'", Path ? Path : "(null)");
     return false;
   }
 
   for (u32 i = 0; i < 64; i++)
   {
     Eeprom[i] = (static_cast<u16>(raw[(i * 2) + 0]) << 8) | static_cast<u16>(raw[(i * 2) + 1]);
-  }
-
-  if (std::FILE* fp = std::fopen("konami_gv_eeprom_debug.txt", "ab"))
-  {
-    std::fprintf(fp, "LoadEepromFile OK first_words:");
-    for (int i = 0; i < 16; i++)
-      std::fprintf(fp, " %04X", Eeprom[i]);
-    std::fprintf(fp, "\n");
-    std::fclose(fp);
   }
 
   return true;
@@ -851,13 +826,8 @@ static bool KonamiGVFujitsuFlashExtractPairFromImage(CDImage* image, u32 start_l
 
     if (!KonamiGVFujitsuFlashReadDataSectorFromImage(image, lba, sector))
     {
-      if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
-      {
-        std::fprintf(fp, "FAILED flash sector read start_lba=%u sector_index=%u lba=%u\n", start_lba, sector_index,
-                     lba);
-        std::fclose(fp);
-      }
-
+      Log_ErrorPrintf("Konami GV: failed to read Simpsons Bowling flash sector (start LBA %u, sector %u, LBA %u)",
+                      start_lba, sector_index, lba);
       return false;
     }
 
@@ -900,15 +870,11 @@ static void KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(const std::string& flas
   KonamiCreateParentDirectoryForFile(flash2_path);
   KonamiCreateParentDirectoryForFile(flash3_path);
 
-    auto image = CDImage::Open(System::GetRunningPath().c_str(), nullptr);
+  auto image = CDImage::Open(System::GetRunningPath().c_str(), nullptr);
   if (!image)
   {
-    if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "FAILED opening running image for flash extraction: %s\n", System::GetRunningPath().c_str());
-      std::fclose(fp);
-    }
-
+    Log_ErrorPrintf("Konami GV: failed to open mounted image '%s' for Simpsons Bowling flash extraction",
+                    System::GetRunningPath().c_str());
     return;
   }
 
@@ -920,10 +886,14 @@ static void KonamiGVFujitsuFlashGenerateSimpsonsIfNeeded(const std::string& flas
   const bool ok23 = KonamiGVFujitsuFlashExtractPairFromImage(image.get(), KONAMI_GV_FUJITSU_SIMPSONS_PAIR_23_LBA,
                                                              flash2_path, flash3_path);
 
-  if (std::FILE* fp = std::fopen("konami_gv_flash_extract_debug.txt", "ab"))
+  if (ok01 && ok23)
   {
-    std::fprintf(fp, "Generated Simpsons flash from mounted disc: pair01=%u pair23=%u\n", ok01 ? 1 : 0, ok23 ? 1 : 0);
-    std::fclose(fp);
+    Log_InfoPrintf("Konami GV: generated Simpsons Bowling flash from the mounted disc");
+  }
+  else
+  {
+    Log_ErrorPrintf("Konami GV: failed to generate Simpsons Bowling flash (pair 0/1: %s, pair 2/3: %s)",
+                    ok01 ? "ok" : "failed", ok23 ? "ok" : "failed");
   }
 }
 
@@ -1040,12 +1010,6 @@ bool KonamiConsumeAutomaticResetRequest()
 void KonamiInit(void)
 {
   KonamiGVWatchdogFramesRemaining = 0;
-
-  if (std::FILE* fp = std::fopen("konami_gv_scsi_debug.txt", "ab"))
-  {
-    std::fprintf(fp, "KONAMI INIT CALLED\n");
-    std::fclose(fp);
-  }
 
   KonamiGVScsiInitialize();
 
@@ -1539,9 +1503,6 @@ static void KonamiGVFujitsuFlashChipWrite(u8 Chip, u32 Address, u8 Data)
 
 void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int gv_fujitsu_flash_read_debug_count = 0;
-
-  const u32 raw_offset = Offset;
   Offset &= 0xF;
 
   switch (Offset)
@@ -1556,18 +1517,6 @@ void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value)
       const u8 high = KonamiGVFujitsuFlashChipRead(chip + 1, address);
 
       Value = static_cast<u32>(low) | (static_cast<u32>(high) << 8);
-
-      if (gv_fujitsu_flash_read_debug_count < 500)
-      {
-        if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
-        {
-          std::fprintf(fp, "FLASH READ raw_offset=0x%08X offset=0x%X address=0x%08X chip=%u value=0x%04X mode=%u/%u\n",
-                       raw_offset, Offset, GVFujitsuFlashAddress, chip, Value & 0xFFFF, static_cast<u32>(GVFujitsuFlashModeState[chip]),
-                       static_cast<u32>(GVFujitsuFlashModeState[chip + 1]));
-          std::fclose(fp);
-        }
-        gv_fujitsu_flash_read_debug_count++;
-      }
 
       GVFujitsuFlashAddress++;
       break;
@@ -1586,21 +1535,7 @@ void KonamiGVFujitsuFlashRead(u32 Size, u32 Offset, u32& Value)
 
 void KonamiGVFujitsuFlashWrite(u32 Size, u32 Offset, u32 Value)
 {
-  static int gv_fujitsu_flash_write_debug_count = 0;
-
-  const u32 raw_offset = Offset;
   Offset &= 0xF;
-
-  if (gv_fujitsu_flash_write_debug_count < 2000)
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_flash_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "FLASH WRITE raw_offset=0x%08X offset=0x%X value=0x%04X old_address=0x%08X\n", raw_offset,
-                   Offset, Value & 0xFFFF, GVFujitsuFlashAddress);
-      std::fclose(fp);
-    }
-    gv_fujitsu_flash_write_debug_count++;
-  }
 
   switch (Offset)
   {
@@ -1641,8 +1576,6 @@ static u16 KonamiEepromSwap16(u16 value)
 
 static void KonamiSerialEepromWrite(u32 Value)
 {
-  static int serial_debug_count = 0;
-
   const bool new_di = (Value & 0x01) != 0;
   const bool new_cs = (Value & 0x02) != 0;
   const bool new_clk = (Value & 0x04) != 0;
@@ -1655,30 +1588,6 @@ static void KonamiSerialEepromWrite(u32 Value)
   }
 
   TokimekiDeviceCheckClock = new_device_check_clock;
-
-  static u32 eeprom_edge_debug_count = 0;
-
-  const bool cs_changed = (EepromCs != new_cs);
-  const bool rising_edge = (!EepromClk && new_clk);
-
-  if (eeprom_edge_debug_count < 5000 && (cs_changed || (new_cs && rising_edge)))
-  {
-    if (std::FILE* fp = std::fopen("konami_gv_eeprom_edges_debug.txt", "ab"))
-    {
-      std::fprintf(fp,
-                   "pc=0x%08X value=0x%08X "
-                   "old_cs=%u new_cs=%u old_clk=%u new_clk=%u di=%u do=%u "
-                   "shift=0x%08X shift_count=%u read_bits=%d "
-                   "write_bits=%d write_enabled=%u\n",
-                   CPU::g_state.current_instruction_pc, Value, EepromCs ? 1 : 0, new_cs ? 1 : 0, EepromClk ? 1 : 0,
-                   new_clk ? 1 : 0, new_di ? 1 : 0, EepromDo ? 1 : 0, EepromShiftIn, EepromShiftCount, EepromReadBits,
-                   EepromWriteBits, EepromWriteEnabled ? 1 : 0);
-
-      std::fclose(fp);
-    }
-
-    eeprom_edge_debug_count++;
-  }
 
   if (!new_cs)
   {
@@ -1744,17 +1653,6 @@ static void KonamiSerialEepromWrite(u32 Value)
           KonamiSaveEepromFile();
         }
 
-        if (serial_debug_count < 300)
-        {
-          if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
-          {
-            std::fprintf(fp, "EEPROM WRITE address=%u write_all=%u enabled=%u value=0x%04X\n",
-                         EepromWriteAddress & 0x3F, EepromWriteAll ? 1 : 0, EepromWriteEnabled ? 1 : 0, wire_value);
-            std::fclose(fp);
-          }
-          serial_debug_count++;
-        }
-
         EepromShiftIn = 0;
         EepromShiftCount = 0;
         EepromWriteAll = false;
@@ -1783,17 +1681,6 @@ static void KonamiSerialEepromWrite(u32 Value)
           const u32 opcode = (EepromShiftIn >> 6) & 3;
           const u32 address = EepromShiftIn & 0x3F;
           const u16 eeprom_value = KonamiEepromSwap16(Eeprom[address & 0x3F]);
-
-          if (serial_debug_count < 300)
-          {
-            if (std::FILE* fp = std::fopen("konami_gv_eeprom_serial_debug.txt", "ab"))
-            {
-              std::fprintf(fp, "EEPROM CMD shift=0x%03X start=%u opcode=%u address=%u value=0x%04X enabled=%u\n",
-                           EepromShiftIn, start, opcode, address, eeprom_value, EepromWriteEnabled ? 1 : 0);
-              std::fclose(fp);
-            }
-            serial_debug_count++;
-          }
 
           if (!start)
           {
@@ -1889,6 +1776,7 @@ static void KonamiSerialEepromWrite(u32 Value)
   EepromCs = new_cs;
   EepromClk = new_clk;
 }
+
 void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
 {
   if (Offset >= 0x00180080 && Offset < 0x00180100)
@@ -1897,24 +1785,6 @@ void KonamiEepromRead(u32 Size, u32 Offset, u32& Value)
     const u32 word_index = relative_offset >> 1;
 
     Value = Eeprom[word_index];
-
-    static u32 direct_eeprom_read_log_count = 0;
-    if (direct_eeprom_read_log_count < 2000)
-    {
-      if (std::FILE* fp = std::fopen("konami_gv_eeprom_direct_debug.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "DIRECT EEPROM READ "
-                     "game=%s pc=0x%08X size=%u offset=0x%08X "
-                     "relative=0x%02X index=%u value=0x%08X word=0x%04X\n",
-                     System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Size, Offset,
-                     relative_offset, word_index, Value, Eeprom[word_index]);
-
-        std::fclose(fp);
-      }
-
-      direct_eeprom_read_log_count++;
-    }
   }
   else
   {
@@ -1951,21 +1821,7 @@ void KonamiEepromWrite(u32 Size, u32 Offset, u32 Value)
   {
     const u32 relative_offset = (Offset - 0x00180080) & 0x7F;
     const u32 word_index = relative_offset >> 1;
-    const u16 old_value = Eeprom[word_index];
     const u16 new_value = static_cast<u16>(Value);
-
-    if (std::FILE* fp = std::fopen("konami_gv_eeprom_direct_debug.txt", "ab"))
-    {
-      std::fprintf(fp,
-                   "DIRECT EEPROM WRITE "
-                   "game=%s pc=0x%08X size=%u offset=0x%08X "
-                   "relative=0x%02X index=%u raw_value=0x%08X "
-                   "old_word=0x%04X new_word=0x%04X\n",
-                   System::GetRunningCode().c_str(), CPU::g_state.current_instruction_pc, Size, Offset, relative_offset,
-                   word_index, Value, old_value, new_value);
-
-      std::fclose(fp);
-    }
 
     Eeprom[word_index] = new_value;
     KonamiSaveEepromFile();
@@ -2005,18 +1861,6 @@ static void KonamiLatchTrackball(u32 Player)
 // Trackball
 void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
 {
-  static int btchamp_trackball_debug_count = 0;
-
-  if (System::GetRunningCode() == "btchamp" && btchamp_trackball_debug_count < 500)
-  {
-    if (std::FILE* fp = std::fopen("btchamp_trackball_debug.txt", "ab"))
-    {
-      std::fprintf(fp, "TRACKBALL READ offset=0x%08X\n", Offset);
-      std::fclose(fp);
-    }
-
-    btchamp_trackball_debug_count++;
-  }
   if (System::GetRunningCode() == "btchamp" && Offset == 0x00680086)
   {
     KonamiLatchTrackball(0);
@@ -2070,51 +1914,12 @@ void KonamiTrackballRead(u32 Size, u32 Offset, u32& Value)
       break;
   }
 
-  if (System::GetRunningCode() == "btchamp")
-  {
-    static int value_debug_count = 0;
-
-    if (value_debug_count < 300 &&
-        (TrackballX[0] != 0 || TrackballY[0] != 0 || TrackballX[1] != 0 || TrackballY[1] != 0))
-    {
-      if (std::FILE* fp = std::fopen("btchamp_trackball_values.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "offset=0x%08X value=0x%04X "
-                     "p1_x=0x%04X p1_y=0x%04X "
-                     "p2_x=0x%04X p2_y=0x%04X\n",
-                     Offset, Value & 0xFFFF, TrackballX[0], TrackballY[0], TrackballX[1], TrackballY[1]);
-
-        std::fclose(fp);
-      }
-
-      value_debug_count++;
-    }
-  }
 }
 
 void KonamiTrackballWrite(u32 Size, u32 Offset, u32 Value)
 {
   if (System::GetRunningCode() == "btchamp" && (Offset == 0x00680088 || Offset == 0x0068008A))
   {
-    static int btchamp_trackball_write_debug_count = 0;
-
-    if (btchamp_trackball_write_debug_count < 200)
-    {
-      if (std::FILE* fp = std::fopen("btchamp_trackball_writes.txt", "ab"))
-      {
-        std::fprintf(fp,
-                     "offset=0x%08X value=0x%08X bit0_reset=%u bit1_cs=%u counter_x=0x%03X counter_y=0x%03X "
-                     "start_x=0x%03X start_y=0x%03X out_x=0x%03X out_y=0x%03X\n",
-                     Offset, Value, Value & 1, (Value >> 1) & 1, TrackballCounterX & 0x0FFF, TrackballCounterY & 0x0FFF,
-                     TrackballStartX & 0x0FFF, TrackballStartY & 0x0FFF, TrackballX[0] & 0x0FFF,
-                     TrackballY[0] & 0x0FFF);
-        std::fclose(fp);
-      }
-
-      btchamp_trackball_write_debug_count++;
-    }
-
     const bool reset_active = ((Value & 0x0001) == 0);
 
     if (reset_active && !TrackballResetActive)

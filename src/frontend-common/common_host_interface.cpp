@@ -37,8 +37,6 @@
 #include "save_state_selector_ui.h"
 #include "scmversion/scmversion.h"
 #include <cmath>
-#include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <algorithm>
@@ -371,7 +369,7 @@ static void PrintCommandLineVersion(const char* frontend_name)
     Log::SetConsoleOutputParams(true);
 
   std::fprintf(stderr, "%s Version %s (%s)\n", frontend_name, g_scm_tag_str, g_scm_branch_str);
-  std::fprintf(stderr, "https://github.com/stenzek/duckstation\n");
+  std::fprintf(stderr, "https://github.com/StillJC/ArcadeDuck\n");
   std::fprintf(stderr, "\n");
 
   if (!was_console_enabled)
@@ -1131,7 +1129,7 @@ void CommonHostInterface::UpdateLogSettings(LOGLEVEL level, const char* filter, 
 
   if (log_to_file)
   {
-    Log::SetFileOutputParams(g_settings.log_to_file, GetUserDirectoryRelativePath("duckstation.log").c_str(), true,
+    Log::SetFileOutputParams(g_settings.log_to_file, GetUserDirectoryRelativePath("arcadeduck.log").c_str(), true,
                              filter, level);
   }
   else
@@ -1160,7 +1158,7 @@ void CommonHostInterface::SetUserDirectory()
   else
   {
 #if defined(_WIN32) && !defined(_UWP)
-    // On Windows, use My Documents\DuckStation.
+    // On Windows, use My Documents\ArcadeDuck.
     PWSTR documents_directory;
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, 0, NULL, &documents_directory)))
     {
@@ -1168,28 +1166,28 @@ void CommonHostInterface::SetUserDirectory()
       if (!documents_directory_str.empty())
       {
         m_user_directory = StringUtil::StdStringFromFormat("%s" FS_OSPATH_SEPARATOR_STR "%s",
-                                                           documents_directory_str.c_str(), "DuckStation");
+                                                           documents_directory_str.c_str(), "ArcadeDuck");
       }
       CoTaskMemFree(documents_directory);
     }
 #elif defined(__linux__) || defined(__FreeBSD__)
-    // On Linux, use .local/share/duckstation as a user directory by default.
+    // On Linux, use .local/share/arcadeduck as a user directory by default.
     const char* xdg_data_home = getenv("XDG_DATA_HOME");
     if (xdg_data_home && xdg_data_home[0] == '/')
     {
-      m_user_directory = StringUtil::StdStringFromFormat("%s/duckstation", xdg_data_home);
+      m_user_directory = StringUtil::StdStringFromFormat("%s/arcadeduck", xdg_data_home);
     }
     else
     {
       const char* home_path = getenv("HOME");
       if (home_path)
-        m_user_directory = StringUtil::StdStringFromFormat("%s/.local/share/duckstation", home_path);
+        m_user_directory = StringUtil::StdStringFromFormat("%s/.local/share/arcadeduck", home_path);
     }
 #elif defined(__APPLE__)
-    // On macOS, default to ~/Library/Application Support/DuckStation.
+    // On macOS, default to ~/Library/Application Support/ArcadeDuck.
     const char* home_path = getenv("HOME");
     if (home_path)
-      m_user_directory = StringUtil::StdStringFromFormat("%s/Library/Application Support/DuckStation", home_path);
+      m_user_directory = StringUtil::StdStringFromFormat("%s/Library/Application Support/ArcadeDuck", home_path);
 #endif
 
     if (m_user_directory.empty())
@@ -1728,42 +1726,22 @@ void CommonHostInterface::UpdateInputMap(SettingsInterface& si)
   if (!UpdateControllerInputMapFromGameSettings())
     UpdateControllerInputMap(si);
 
-  const auto konami_debug = [](const char* fmt, ...) {
-    std::FILE* fp = std::fopen("konami_gv_input_debug.txt", "ab");
-    if (!fp)
-      return;
-
-    va_list ap;
-    va_start(ap, fmt);
-    std::vfprintf(fp, fmt, ap);
-    va_end(ap);
-
-    std::fputc('\n', fp);
-    std::fclose(fp);
-  };
-
-  const auto bind_konami_gv_button = [this, &si, &konami_debug](const char* key, u32 mask) {
+  const auto bind_konami_gv_button = [this, &si](const char* key, u32 mask) {
     const std::vector<std::string> bindings = si.GetStringList("KonamiGV", key);
-
-    konami_debug("Konami GV binding list: %s count=%u", key, static_cast<unsigned>(bindings.size()));
 
     for (const std::string& binding : bindings)
     {
       const std::string::size_type slash_pos = binding.find('/');
       if (slash_pos == std::string::npos)
       {
-        konami_debug("Malformed Konami GV binding: %s = %s", key, binding.c_str());
+        Log_WarningPrintf("Malformed Konami GV binding: %s = %s", key, binding.c_str());
         continue;
       }
 
       const std::string_view device = std::string_view(binding).substr(0, slash_pos);
       const std::string_view button = std::string_view(binding).substr(slash_pos + 1);
 
-      konami_debug("Konami GV binding registered: %s = %s mask=0x%08X", key, binding.c_str(), mask);
-
-      AddButtonToInputMap(binding, device, button, [key, mask, konami_debug](bool pressed) {
-        konami_debug("Konami GV binding fired: %s pressed=%u mask=0x%08X", key, pressed ? 1 : 0, mask);
-
+      AddButtonToInputMap(binding, device, button, [mask](bool pressed) {
         if (System::IsShutdown())
           return;
 
@@ -4285,14 +4263,15 @@ void CommonHostInterface::SetControllerNavigationButtonState(FrontendCommon::Con
 
 void CommonHostInterface::SetDiscordPresenceEnabled(bool enabled)
 {
-  if (m_discord_presence_enabled == enabled)
-    return;
-
-  m_discord_presence_enabled = enabled;
+  // The inherited Discord integration uses DuckStation's application ID and
+  // assets. Keep it disabled until ArcadeDuck has its own Discord application.
   if (enabled)
-    InitializeDiscordPresence();
-  else
+    Log_WarningPrintf("Discord Rich Presence is unavailable in this ArcadeDuck Proof of Concept Preview.");
+
+  if (m_discord_presence_active)
     ShutdownDiscordPresence();
+
+  m_discord_presence_enabled = false;
 }
 
 void CommonHostInterface::InitializeDiscordPresence()
@@ -4342,8 +4321,8 @@ void CommonHostInterface::UpdateDiscordPresence(bool rich_presence_only)
 
   // https://discord.com/developers/docs/rich-presence/how-to#updating-presence-update-presence-payload-fields
   DiscordRichPresence rp = {};
-  rp.largeImageKey = "duckstation_logo";
-  rp.largeImageText = "DuckStation PS1/PSX Emulator";
+  rp.largeImageKey = "arcadeduck_logo";
+  rp.largeImageText = "ArcadeDuck - PlayStation-Based Arcade Emulator";
   rp.startTimestamp = std::time(nullptr);
 
   SmallString details_string;

@@ -7,7 +7,7 @@
 QtProgressCallback::QtProgressCallback(QWidget* parent_widget, float show_delay)
   : QObject(parent_widget), m_dialog(QString(), QString(), 0, 1, parent_widget), m_show_delay(show_delay)
 {
-  m_dialog.setWindowTitle(tr("DuckStation"));
+  m_dialog.setWindowTitle(tr("ArcadeDuck"));
   m_dialog.setMinimumSize(QSize(500, 0));
   m_dialog.setModal(parent_widget != nullptr);
   checkForDelayedShow();

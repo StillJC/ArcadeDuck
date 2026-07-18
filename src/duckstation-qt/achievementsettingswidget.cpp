@@ -26,13 +26,13 @@ AchievementSettingsWidget::AchievementSettingsWidget(QtHostInterface* host_inter
   m_ui.challengeMode->setChecked(m_host_interface->GetBoolSettingValue("Cheevos", "ChallengeMode", false));
 
   dialog->registerWidgetHelp(m_ui.enable, tr("Enable Achievements"), tr("Unchecked"),
-                             tr("When enabled and logged in, DuckStation will scan for achievements on startup."));
+                             tr("When enabled and logged in, ArcadeDuck will scan for achievements on startup."));
   dialog->registerWidgetHelp(m_ui.testMode, tr("Enable Test Mode"), tr("Unchecked"),
-                             tr("When enabled, DuckStation will assume all achievements are locked and not send any "
+                             tr("When enabled, ArcadeDuck will assume all achievements are locked and not send any "
                                 "unlock notifications to the server."));
   dialog->registerWidgetHelp(
     m_ui.unofficialTestMode, tr("Test Unofficial Achievements"), tr("Unchecked"),
-    tr("When enabled, DuckStation will list achievements from unofficial sets. Please note that these achievements are "
+    tr("When enabled, ArcadeDuck will list achievements from unofficial sets. Please note that these achievements are "
        "not tracked by RetroAchievements, so they unlock every time."));
   dialog->registerWidgetHelp(
     m_ui.richPresence, tr("Enable Rich Presence"), tr("Unchecked"),

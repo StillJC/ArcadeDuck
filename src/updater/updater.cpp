@@ -18,7 +18,7 @@
 
 Updater::Updater(ProgressCallback* progress) : m_progress(progress)
 {
-  progress->SetTitle("DuckStation Update Installer");
+  progress->SetTitle("ArcadeDuck Update Installer");
 }
 
 Updater::~Updater()
