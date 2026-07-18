@@ -1,3 +1,57 @@
+# ArcadeDuck News
+
+## 2026-07-18 — POC Preview v0.2
+
+This release completes the first public ArcadeDuck proof of concept for Konami GV arcade hardware.
+
+ArcadeDuck began as an attempt to improve *The Simpsons Bowling* and expanded into a broader arcade-focused emulator for PlayStation-derived hardware.
+
+### Konami GV support
+
+- Added MAME-style non-merged ROM ZIP and CHD loading.
+- Added automatic Konami GV game identification and arcade title display.
+- Added direct BIOS loading from `bios/konamigv.zip`.
+- Added validation and loading of the `999a01.7e` Konami GV BIOS.
+- Added NCR53CF96 SCSI CD-ROM communication and DMA support.
+- Added Red Book CDDA playback.
+- Added per-game EEPROM, flash, and NVRAM persistence.
+- Added arcade-oriented joystick, button, coin, service, and test controls.
+- Added trackball support for *The Simpsons Bowling* and *Beat the Champ*.
+- Added lightgun support for *Dead Eye*.
+- Added arcade-specific display geometry with default 4:3 presentation.
+- Retained optional 16:9 stretching.
+
+### Game-specific hardware
+
+- Added *The Simpsons Bowling* flash-ROM daughterboard and trackball support.
+- Added *Beat the Champ* flash, dual-trackball, watchdog, and test-menu behavior.
+- Added *Dead Eye* flash and lightgun handling.
+- Added *Tokimeki Memorial Oshiete Your Heart* daughterboard identification.
+- Added Tokimeki heartbeat, pulse sensor, GSR input, and preliminary printer support.
+- Added compatibility handling for *Let's Attack Crazy Cross*.
+- Added support and regression coverage for the currently documented Konami GV game sets.
+
+### Frontend and presentation
+
+- Renamed the application and packaged executable to ArcadeDuck.
+- Added arcade-oriented default settings and portable package behavior.
+- Added per-game bezel assignment and corrected per-game bezel loading.
+- Added automatic Windows builds and packaged GitHub releases.
+- Added compatibility documentation, known issues, and structured GitHub issue forms.
+
+### Release notes
+
+- The CPU Interpreter is the supported and default execution mode.
+- The inherited Recompiler remains experimental and can cause boot, timing, or display-transition failures.
+- This proof of concept supports Konami GV only.
+- ROMs, BIOS files, CHDs, keys, and other copyrighted game data are not included.
+- Major new development will continue after migration to the final GPL-era DuckStation codebase.
+- Save states are not guaranteed to remain compatible with future migrated builds.
+
+## Inherited Project History
+
+The entries below are retained from the intermediate Simpsons Bowling source project and its inherited DuckStation codebase for historical reference.
+
 - 2026/06/22: **The Simpsons Bowling** standalone port (by @t-dollaz) — macOS Qt frontend, configurable Konami GV BIOS/Flash/EEPROM paths, and mouse/trackball input, extending the Arcade1Up Android port. This is a *modified version* of DuckStation, distributed under the GPLv3.
 - 2021/07/25: Ability to boot games directly from CD-ROM added. You may want to reduce the readahead size to reduce hitches on seek/loading.
 - 2021/07/11: UWP/Xbox one port added. Follow the instructions in "Universal Windows Platform / Xbox One" below.
