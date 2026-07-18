@@ -171,6 +171,11 @@ Planned hardware families include:
 
 These are roadmap targets, not claims of support in the current preview.
 
+## POC Preview Documentation
+
+- [Konami GV compatibility](COMPATIBILITY.md)
+- [Known issues and limitations](KNOWN-ISSUES.md)
+- [Report a bug, compatibility result, or suggestion](https://github.com/StillJC/ArcadeDuck/issues/new/choose)
 ## Development Roadmap
 
 1. Release and document the Konami GV proof of concept.
