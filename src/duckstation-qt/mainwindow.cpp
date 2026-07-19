@@ -736,7 +736,7 @@ void MainWindow::onIssueTrackerActionTriggered()
 
 void MainWindow::onDiscordServerActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://discord.gg/Buktv3t");
+  QtUtils::OpenURL(this, "https://discord.gg/Rr4tqM3n99");
 }
 
 void MainWindow::onAboutActionTriggered()

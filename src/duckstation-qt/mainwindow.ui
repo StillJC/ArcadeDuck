@@ -461,7 +461,7 @@
      <normaloff>:/icons/discord.png</normaloff>:/icons/discord.png</iconset>
    </property>
    <property name="text">
-    <string>&amp;Discord Server...</string>
+    <string>&amp;Discord...</string>
    </property>
   </action>
   <action name="actionCheckForUpdates">
