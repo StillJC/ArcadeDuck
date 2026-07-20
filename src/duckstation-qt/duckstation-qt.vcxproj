@@ -383,6 +383,9 @@
   <Import Project="..\..\dep\msvc\vsprops\Win32Application.props" />
   <Import Project="..\..\dep\msvc\vsprops\QtCompile.props" />
   <Import Project="..\core\core.props" />
+  <PropertyGroup>
+    <TargetName>ArcadeDuck</TargetName>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>

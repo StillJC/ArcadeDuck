@@ -71,9 +71,9 @@ BEGIN
             VALUE "CompanyName", "https://github.com/stenzek/duckstation"
             VALUE "FileDescription", "ArcadeDuck PS1-Based Arcade Emulator"
             VALUE "FileVersion", ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DISPLAY
-            VALUE "InternalName", "duckstation-qt.exe"
+            VALUE "InternalName", "ArcadeDuck.exe"
             VALUE "LegalCopyright", "Copyright (C) 2020-2024 Stenzek and collaborators"
-            VALUE "OriginalFilename", "duckstation-qt.exe"
+            VALUE "OriginalFilename", "ArcadeDuck.exe"
             VALUE "ProductName", ARCADEDUCK_PRODUCT_NAME
             VALUE "ProductVersion", ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DISPLAY
         END

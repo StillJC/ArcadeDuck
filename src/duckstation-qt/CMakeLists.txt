@@ -186,6 +186,7 @@ if(WIN32)
   # We want a Windows subsystem application not console.
   set_target_properties(duckstation-qt PROPERTIES
     WIN32_EXECUTABLE TRUE
+    OUTPUT_NAME ArcadeDuck
     DEBUG_POSTFIX "-debug")
 
   # Copy in Qt DLLs. Borrowed from Dolphin.
