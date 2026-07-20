@@ -2880,26 +2880,15 @@ void MainWindow::checkForUpdates(bool display_message)
     if (display_message)
     {
       QMessageBox mbox(this);
-      mbox.setWindowTitle(tr("Updater Error"));
+      mbox.setWindowTitle(tr("ArcadeDuck Updater"));
       mbox.setWindowModality(Qt::WindowModal);
       mbox.setTextFormat(Qt::RichText);
 
-      QString message;
-      if (!AutoUpdaterDialog::isOfficialBuild())
-      {
-        message =
-          tr("<p>Sorry, you are trying to update a DuckStation version which is not an official GitHub release. To "
-             "prevent incompatibilities, the auto-updater is only enabled on official builds.</p>"
-             "<p>Please download an official release from from <a "
-             "href=\"https://www.duckstation.org/\">duckstation.org</a>.</p>");
-      }
-      else
-      {
-        message = tr("Automatic updating is not supported on the current platform.");
-      }
-
-      mbox.setText(message);
-      mbox.setIcon(QMessageBox::Critical);
+      mbox.setText(tr("<p>Automatic update support is coming soon.</p>"
+                      "<p>For now, new ArcadeDuck builds will be announced through the <a "
+                      "href=\"https://discord.gg/fQ9HvgKCg\">ArcadeDuck Discord server</a> and <a "
+                      "href=\"https://github.com/StillJC/ArcadeDuck\">GitHub repository</a>.</p>"));
+      mbox.setIcon(QMessageBox::Information);
       mbox.exec();
     }
 
