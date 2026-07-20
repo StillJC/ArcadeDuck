@@ -6,6 +6,7 @@
     <ClCompile Include="scmversion.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="arcadeduck_version.h" />
     <ClInclude Include="scmversion.h" />
   </ItemGroup>
   <ItemGroup>

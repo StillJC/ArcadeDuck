@@ -8,6 +8,7 @@
 #include "settings.h"
 #include "system.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "util/sockets.h"
@@ -445,7 +446,7 @@ bool PINEServer::PINESocket::HandleCommand(IPCCommand command, BinarySpanReader 
 
     case MsgVersion:
     {
-      const TinyString version = TinyString::from_format("DuckStation {}", g_scm_tag_str);
+      const TinyString version = TinyString::from_format("{}", ARCADEDUCK_FULL_DISPLAY_STRING);
       if (!BeginReply(reply, version.length() + 1)) [[unlikely]]
         return false;
 

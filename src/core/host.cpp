@@ -8,6 +8,7 @@
 #include "shader_cache_version.h"
 #include "system.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "util/compress_helpers.h"
@@ -265,7 +266,8 @@ void Host::Internal::SetInputSettingsLayer(SettingsInterface* sif, std::unique_l
 
 std::string Host::GetHTTPUserAgent()
 {
-  return fmt::format("DuckStation for {} ({}) {}", TARGET_OS_STR, CPU_ARCH_STR, g_scm_tag_str);
+  return fmt::format("{}/{} (Build {}; {} {})", ARCADEDUCK_PRODUCT_NAME, ARCADEDUCK_SEMANTIC_VERSION,
+                     ARCADEDUCK_BUILD_STRING, TARGET_OS_STR, CPU_ARCH_STR);
 }
 
 bool Host::CreateGPUDevice(RenderAPI api, Error* error)

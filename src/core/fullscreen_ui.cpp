@@ -12,6 +12,7 @@
 #include "settings.h"
 #include "system.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "util/cd_image.h"
@@ -7035,7 +7036,7 @@ void FullscreenUI::DrawAboutWindow()
                        FSUI_CSTR("DuckStation is a free and open-source simulator/emulator of the Sony PlayStation(TM) "
                                  "console, focusing on playability, speed, and long-term maintainability."));
     ImGui::NewLine();
-    ImGui::TextWrapped(FSUI_CSTR("Version: %s"), g_scm_tag_str);
+    ImGui::TextWrapped(FSUI_CSTR("Version: %s"), ARCADEDUCK_FULL_DISPLAY_STRING);
     ImGui::NewLine();
     ImGui::TextWrapped(
       "%s", FSUI_CSTR("Duck icon by icons8 (https://icons8.com/icon/74847/platforms.undefined.short-title)"));

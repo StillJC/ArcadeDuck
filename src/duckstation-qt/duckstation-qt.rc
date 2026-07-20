@@ -1,6 +1,7 @@
 // Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
+#include "..\\scmversion\\arcadeduck_version.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -51,8 +52,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,1
- PRODUCTVERSION 1,0,0,1
+ FILEVERSION ARCADEDUCK_WINDOWS_RESOURCE_VERSION
+ PRODUCTVERSION ARCADEDUCK_WINDOWS_RESOURCE_VERSION
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -68,13 +69,13 @@ BEGIN
         BLOCK "0c0904b0"
         BEGIN
             VALUE "CompanyName", "https://github.com/stenzek/duckstation"
-            VALUE "FileDescription", "DuckStation PS1 Emulator"
-            VALUE "FileVersion", "1.0.0.1"
+            VALUE "FileDescription", "ArcadeDuck PS1-Based Arcade Emulator"
+            VALUE "FileVersion", ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DISPLAY
             VALUE "InternalName", "duckstation-qt.exe"
             VALUE "LegalCopyright", "Copyright (C) 2020-2024 Stenzek and collaborators"
             VALUE "OriginalFilename", "duckstation-qt.exe"
-            VALUE "ProductName", "DuckStation"
-            VALUE "ProductVersion", "1.0.0.1"
+            VALUE "ProductName", ARCADEDUCK_PRODUCT_NAME
+            VALUE "ProductVersion", ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DISPLAY
         END
     END
     BLOCK "VarFileInfo"

@@ -9,6 +9,7 @@
 #include "common/file_system.h"
 #include "common/path.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include <QtCore/QString>
@@ -25,8 +26,14 @@ AboutDialog::AboutDialog(QWidget* parent /* = nullptr */) : QDialog(parent)
   setFixedSize(geometry().width(), geometry().height());
 
   m_ui.scmversion->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  m_ui.scmversion->setText(
-    tr("%1 (%2)").arg(QLatin1StringView(g_scm_tag_str)).arg(QLatin1StringView(g_scm_branch_str)));
+  m_ui.scmversion->setText(QStringLiteral("%1\nBuild %2\nSCM revision: %3 (%4, %5)\nBuild date: %6\nGPL baseline: %7")
+                             .arg(QStringLiteral(ARCADEDUCK_PRODUCT_NAME " " ARCADEDUCK_SEMANTIC_VERSION))
+                             .arg(QStringLiteral(ARCADEDUCK_BUILD_STRING))
+                             .arg(QLatin1StringView(g_scm_hash_str))
+                             .arg(QLatin1StringView(g_scm_branch_str))
+                             .arg(QLatin1StringView(g_scm_tag_str))
+                             .arg(QLatin1StringView(g_scm_date_str))
+                             .arg(QStringLiteral(ARCADEDUCK_GPL_BASELINE_HASH)));
 
   m_ui.description->setTextInteractionFlags(Qt::TextBrowserInteraction);
   m_ui.description->setOpenExternalLinks(true);

@@ -33,6 +33,7 @@
 #include "texture_replacements.h"
 #include "timers.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "util/audio_stream.h"
@@ -426,8 +427,10 @@ void System::CheckCacheLineSize()
 
 void System::LogStartupInformation()
 {
-  INFO_LOG("DuckStation Version {} [{}]", g_scm_tag_str, g_scm_branch_str);
+  INFO_LOG("{}", ARCADEDUCK_FULL_DISPLAY_STRING);
+  INFO_LOG("SCM Revision: {} ({}, {})", g_scm_hash_str, g_scm_branch_str, g_scm_tag_str);
   INFO_LOG("SCM Timestamp: {}", g_scm_date_str);
+  INFO_LOG("GPL baseline: {}", ARCADEDUCK_GPL_BASELINE_HASH);
   INFO_LOG("Build Timestamp: {} {}", __DATE__, __TIME__);
   if (const cpuinfo_package* package = cpuinfo_get_package(0)) [[likely]]
   {

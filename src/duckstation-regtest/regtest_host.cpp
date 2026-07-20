@@ -9,6 +9,7 @@
 #include "core/host.h"
 #include "core/system.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "util/cd_image.h"
@@ -496,7 +497,10 @@ void RegTestHost::InitializeEarlyConsole()
 void RegTestHost::PrintCommandLineVersion()
 {
   InitializeEarlyConsole();
-  std::fprintf(stderr, "DuckStation Regression Test Runner Version %s (%s)\n", g_scm_tag_str, g_scm_branch_str);
+  std::fprintf(stderr, "ArcadeDuck Regression Test Runner - %s\n", ARCADEDUCK_FULL_DISPLAY_STRING);
+  std::fprintf(stderr, "SCM Revision: %s (%s, %s)\n", g_scm_hash_str, g_scm_branch_str, g_scm_tag_str);
+  std::fprintf(stderr, "SCM Timestamp: %s\n", g_scm_date_str);
+  std::fprintf(stderr, "GPL baseline: %s\n", ARCADEDUCK_GPL_BASELINE_HASH);
   std::fprintf(stderr, "https://github.com/stenzek/duckstation\n");
   std::fprintf(stderr, "\n");
 }

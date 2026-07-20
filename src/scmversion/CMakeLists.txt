@@ -9,7 +9,7 @@ else()
 endif()
 
 add_library(scmversion
+  arcadeduck_version.h
   scmversion.cpp
   scmversion.h
 )
-

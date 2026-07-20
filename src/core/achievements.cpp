@@ -12,6 +12,7 @@
 #include "host.h"
 #include "system.h"
 
+#include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
 #include "common/assert.h"
@@ -3320,7 +3321,7 @@ void Achievements::SwitchToRAIntegration()
 
 void Achievements::RAIntegration::InitializeRAIntegration(void* main_window_handle)
 {
-  RA_InitClient((HWND)main_window_handle, "DuckStation", g_scm_tag_str);
+  RA_InitClient((HWND)main_window_handle, ARCADEDUCK_PRODUCT_NAME, ARCADEDUCK_SEMANTIC_VERSION);
   RA_SetUserAgentDetail(Host::GetHTTPUserAgent().c_str());
 
   RA_InstallSharedFunctions(RACallbackIsActive, RACallbackCauseUnpause, RACallbackCausePause, RACallbackRebuildMenu,
