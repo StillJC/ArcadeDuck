@@ -34,7 +34,6 @@ public:
   static std::string getDefaultTag();
   static void cleanupAfterUpdate();
   static bool isOfficialBuild();
-  static bool warnAboutUnofficialBuild();
 
 Q_SIGNALS:
   void updateCheckCompleted();

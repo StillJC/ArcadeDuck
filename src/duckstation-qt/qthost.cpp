@@ -2562,9 +2562,6 @@ int main(int argc, char* argv[])
   if (!QtHost::ParseCommandLineParametersAndInitializeConfig(app, autoboot))
     return EXIT_FAILURE;
 
-  if (!AutoUpdaterDialog::warnAboutUnofficialBuild())
-    return EXIT_FAILURE;
-
   if (!QtHost::EarlyProcessStartup())
     return EXIT_FAILURE;
 
