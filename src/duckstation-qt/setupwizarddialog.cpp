@@ -44,8 +44,8 @@ bool SetupWizardDialog::canShowNextPage()
       {
         if (QMessageBox::question(
               this, tr("Warning"),
-              tr("No BIOS images were found. DuckStation WILL NOT be able to run games without a BIOS image.\n\nAre "
-                 "you sure you wish to continue without selecting a BIOS image?")) != QMessageBox::Yes)
+              tr("No compatible BIOS files were found. ArcadeDuck cannot start compatible content until a BIOS is "
+                 "available. Continue anyway?")) != QMessageBox::Yes)
         {
           return false;
         }
@@ -59,8 +59,8 @@ bool SetupWizardDialog::canShowNextPage()
       {
         if (QMessageBox::question(
               this, tr("Warning"),
-              tr("No game directories have been selected. You will have to manually open any game dumps you "
-                 "want to play, DuckStation's list will be empty.\n\nAre you sure you want to continue?")) !=
+              tr("No arcade content directories have been selected. You can add them later from Settings. Continue "
+                 "anyway?")) !=
             QMessageBox::Yes)
         {
           return false;
@@ -144,8 +144,8 @@ void SetupWizardDialog::updatePageButtons()
 void SetupWizardDialog::confirmCancel()
 {
   if (QMessageBox::question(this, tr("Cancel Setup"),
-                            tr("Are you sure you want to cancel DuckStation setup?\n\nAny changes have been saved, and "
-                               "the wizard will run again next time you start DuckStation.")) != QMessageBox::Yes)
+                            tr("Cancel ArcadeDuck setup? Changes already made will be kept, and the wizard will appear "
+                               "again the next time ArcadeDuck starts.")) != QMessageBox::Yes)
   {
     return;
   }
@@ -191,7 +191,6 @@ void SetupWizardDialog::setupLanguagePage()
   connect(m_ui.language, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
           &SetupWizardDialog::languageChanged);
 
-  SettingWidgetBinder::BindWidgetToBoolSetting(nullptr, m_ui.autoUpdateEnabled, "AutoUpdater", "CheckAtStartup", true);
 }
 
 void SetupWizardDialog::themeChanged()
@@ -267,7 +266,7 @@ void SetupWizardDialog::onDirectoryListContextMenuRequested(const QPoint& point)
   QMenu menu;
   menu.addAction(tr("Remove"), [this]() { onRemoveSearchDirectoryButtonClicked(); });
   menu.addSeparator();
-  menu.addAction(tr("Open Directory..."), [this, row]() {
+  menu.addAction(tr("Open Folder..."), [this, row]() {
     QtUtils::OpenURL(this, QUrl::fromLocalFile(m_ui.searchDirectoryList->item(row, 0)->text()));
   });
   menu.exec(m_ui.searchDirectoryList->mapToGlobal(point));

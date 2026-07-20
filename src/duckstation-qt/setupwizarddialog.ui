@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>DuckStation Setup Wizard</string>
+   <string>ArcadeDuck Setup Wizard</string>
   </property>
   <property name="windowIcon">
    <iconset>
@@ -47,7 +47,7 @@
        <item>
         <widget class="QLabel" name="introLabel">
          <property name="text">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;h1 style=&quot; margin-top:18px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-size:xx-large; font-weight:700;&quot;&gt;Welcome to DuckStation!&lt;/span&gt;&lt;/h1&gt;&lt;p&gt;This wizard will help guide you through the configuration steps required to use the application. It is recommended if this is your first time installing DuckStation that you view the setup guide at &lt;a href=&quot;https://github.com/stenzek/duckstation#downloading-and-running&quot;&gt;https://github.com/stenzek/duckstation#downloading-and-running&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;By default, DuckStation will connect to the server at &lt;a href=&quot;https://github.com/&quot;&gt;github.com&lt;/a&gt; to check for updates, and if available and confirmed, download update packages from &lt;a href=&quot;https://github.com/&quot;&gt;github.com&lt;/a&gt;. If you do not wish for DuckStation to make any network connections on startup, you should uncheck the Automatic Updates option now. The Automatic Update setting can be changed later at any time in Interface Settings.&lt;/p&gt;&lt;p&gt;Please choose a language and theme to begin.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;h1 style=&quot; margin-top:18px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-size:xx-large; font-weight:700;&quot;&gt;Welcome to ArcadeDuck&lt;/span&gt;&lt;/h1&gt;&lt;p&gt;This wizard configures the basic settings required to run supported ArcadeDuck content. You can change these choices later in Settings.&lt;/p&gt;&lt;p&gt;Automatic updates are not currently available. Project information, releases, and support are available through the ArcadeDuck &lt;a href=&quot;https://github.com/StillJC/ArcadeDuck&quot;&gt;GitHub repository&lt;/a&gt; and &lt;a href=&quot;https://discord.gg/fQ9HvgKCg&quot;&gt;Discord community&lt;/a&gt;.&lt;/p&gt;&lt;p&gt;Choose a language and theme to begin.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -92,7 +92,7 @@
          <item row="1" column="1">
           <widget class="QComboBox" name="theme"/>
          </item>
-         <item row="3" column="1">
+         <item row="2" column="1">
           <spacer name="verticalSpacer_3">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
@@ -104,13 +104,6 @@
             </size>
            </property>
           </spacer>
-         </item>
-         <item row="2" column="0" colspan="2">
-          <widget class="QCheckBox" name="autoUpdateEnabled">
-           <property name="text">
-            <string>Enable Automatic Updates</string>
-           </property>
-          </widget>
          </item>
         </layout>
        </item>
@@ -133,7 +126,7 @@
        <item>
         <widget class="QLabel" name="label_4">
          <property name="text">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;DuckStation requires a PS1 or PS2 BIOS in order to run.&lt;/p&gt;&lt;p&gt;For legal reasons, you must obtain a BIOS &lt;span style=&quot; font-weight:700;&quot;&gt;from an actual PS1 unit that you own&lt;/span&gt; (borrowing doesn't count). You should use Caetla or another utility to create an image from your console's BIOS ROM on your PC.&lt;/p&gt;&lt;p&gt;Once dumped, this BIOS image should be placed in the bios folder within the data directory shown below, or you can instruct DuckStation to scan an alternative directory.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;ArcadeDuck requires compatible BIOS files for supported systems. Select the folder containing your legally obtained BIOS files.&lt;/p&gt;&lt;p&gt;Use BIOS files only from hardware you own and are permitted to dump. ArcadeDuck will scan the selected folder for compatible files.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -148,7 +141,7 @@
          <item>
           <widget class="QLabel" name="label_10">
            <property name="text">
-            <string>BIOS Directory:</string>
+            <string>Firmware / BIOS Directory:</string>
            </property>
           </widget>
          </item>
@@ -175,6 +168,9 @@
         <layout class="QFormLayout" name="formLayout_4">
          <item row="0" column="0">
           <widget class="QLabel" name="label">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="text">
             <string>NTSC-J (Japan):</string>
            </property>
@@ -182,6 +178,9 @@
          </item>
          <item row="0" column="1">
           <widget class="QComboBox" name="imageNTSCJ">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -192,6 +191,9 @@
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="label_15">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="text">
             <string>NTSC-U/C (US/Canada):</string>
            </property>
@@ -199,6 +201,9 @@
          </item>
          <item row="1" column="1">
           <widget class="QComboBox" name="imageNTSCU">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -209,6 +214,9 @@
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="label_16">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="text">
             <string>PAL (Europe, Australia):</string>
            </property>
@@ -216,6 +224,9 @@
          </item>
          <item row="2" column="1">
           <widget class="QComboBox" name="imagePAL">
+           <property name="visible">
+            <bool>false</bool>
+           </property>
            <property name="sizePolicy">
             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -244,7 +255,7 @@
          <item>
           <widget class="QPushButton" name="openBiosSearchDirectory">
            <property name="text">
-            <string>Open in Explorer...</string>
+            <string>Open Folder...</string>
            </property>
           </widget>
          </item>
@@ -289,7 +300,7 @@
        <item>
         <widget class="QLabel" name="label_6">
          <property name="text">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;DuckStation will automatically scan and identify games from the selected directories below, and populate the game list. These games should be dumped from discs you own. Utilities such as ImgBurn can be used to create images of game discs in .bin/.cue format.&lt;/p&gt;&lt;p&gt;Supported formats for dumps include: &lt;span style=&quot; font-weight:700;&quot;&gt;.cue&lt;/span&gt; (Cue Sheets), &lt;span style=&quot; font-weight:700;&quot;&gt;.iso/.img&lt;/span&gt; (Single Track Image), &lt;span style=&quot; font-weight:700;&quot;&gt;.ecm&lt;/span&gt; (Error Code Modeling Image), &lt;span style=&quot; font-weight:700;&quot;&gt;.mds&lt;/span&gt; (Media Descriptor Sidecar), &lt;span style=&quot; font-weight:700;&quot;&gt;.chd&lt;/span&gt; (Compressed Hunks of Data), &lt;span style=&quot; font-weight:700;&quot;&gt;.pbp&lt;/span&gt; (PlayStation Portable, Only Decrypted).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Choose folders containing supported non-merged MAME ROM sets. ArcadeDuck will scan these folders and add recognized arcade games to its library.&lt;/p&gt;&lt;p&gt;Keep each game&apos;s ROM ZIP and any required CHD files in their expected MAME layout. Use complete content sets that you are legally permitted to use.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -304,7 +315,7 @@
          <item>
           <widget class="QLabel" name="label_7">
            <property name="text">
-            <string>Search Directories (will be scanned for games)</string>
+            <string>Content Directories</string>
            </property>
           </widget>
          </item>
@@ -330,7 +341,7 @@
             </sizepolicy>
            </property>
            <property name="text">
-            <string>Add...</string>
+            <string>Add Folder...</string>
            </property>
            <property name="icon">
             <iconset theme="folder-add-line">
@@ -367,12 +378,12 @@
         <widget class="QTableWidget" name="searchDirectoryList">
          <column>
           <property name="text">
-           <string>Search Directory</string>
+           <string>Content Directory</string>
           </property>
          </column>
          <column>
           <property name="text">
-           <string>Scan Recursively</string>
+           <string>Scan Subfolders</string>
           </property>
          </column>
         </widget>
@@ -399,7 +410,7 @@
        <item>
         <widget class="QLabel" name="label_8">
          <property name="text">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;By default, DuckStation will map your keyboard to the virtual controller.&lt;/p&gt;&lt;p&gt;&lt;span style=&quot; font-weight:700;&quot;&gt;To use an external controller, you must map it first. &lt;/span&gt;On this screen, you can automatically map any controller which is currently connected. If your controller is not currently connected, you can plug it in now.&lt;/p&gt;&lt;p&gt;To change controller bindings in more detail, or use multi-tap, open the Settings menu and choose Controllers once you have completed the Setup Wizard.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;ArcadeDuck currently uses standard controller configuration for supported content. A default keyboard mapping is already configured.&lt;/p&gt;&lt;p&gt;Connect a controller and choose Map Connected Device to apply a standard input layout. More detailed input configuration is available later in Settings.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="wordWrap">
           <bool>true</bool>
@@ -418,7 +429,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_12">
             <property name="text">
-             <string>Controller Mapped To:</string>
+             <string>Input Source:</string>
             </property>
            </widget>
           </item>
@@ -454,7 +465,7 @@
             <item>
              <widget class="QToolButton" name="controller1AutomaticMapping">
               <property name="text">
-               <string>Automatic Mapping</string>
+               <string>Map Connected Device</string>
               </property>
               <property name="icon">
                <iconset theme="controller-digital-line" />
@@ -488,7 +499,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="label_14">
             <property name="text">
-             <string>Controller Mapped To:</string>
+             <string>Input Source:</string>
             </property>
            </widget>
           </item>
@@ -517,7 +528,7 @@
             <item>
              <widget class="QToolButton" name="controller2AutomaticMapping">
               <property name="text">
-               <string>Automatic Mapping</string>
+               <string>Map Connected Device</string>
               </property>
               <property name="icon">
                <iconset theme="controller-digital-line" />
@@ -564,7 +575,7 @@
        <item>
         <widget class="QLabel" name="label_9">
          <property name="text">
-          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;h1 style=&quot; margin-top:18px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-size:xx-large; font-weight:700;&quot;&gt;Setup Complete!&lt;/span&gt;&lt;/h1&gt;&lt;p&gt;You are now ready to run games.&lt;/p&gt;&lt;p&gt;Further options are available under the settings menu. You can also use the Big Picture UI for navigation entirely with a gamepad.&lt;/p&gt;&lt;p&gt;We hope you enjoy using DuckStation.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;h1 style=&quot; margin-top:18px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-size:xx-large; font-weight:700;&quot;&gt;Setup Complete!&lt;/span&gt;&lt;/h1&gt;&lt;p&gt;Basic ArcadeDuck configuration is complete. You can now open supported content or add content directories later from Settings.&lt;/p&gt;&lt;p&gt;Additional options are available in Settings and the fullscreen interface.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
@@ -644,21 +655,21 @@
        <item>
         <widget class="QLabel" name="labelBIOS">
          <property name="text">
-          <string>BIOS Image</string>
+          <string>Firmware / BIOS</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QLabel" name="labelGameList">
          <property name="text">
-          <string>Game Directories</string>
+          <string>Content Directories</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QLabel" name="labelController">
          <property name="text">
-          <string>Controller Setup</string>
+          <string>Input Setup</string>
          </property>
         </widget>
        </item>
