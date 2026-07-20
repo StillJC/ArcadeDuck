@@ -79,6 +79,12 @@ static_assert(sizeof(PSEXEHeader) == 0x800);
 
 std::optional<Image> LoadImageFromFile(const char* filename, Error* error);
 
+/// Loads and validates the Konami GV BIOS directly from konamigv.zip in a BIOS directory.
+std::optional<Image> LoadKonamiGVImageFromDirectory(const char* directory, Error* error);
+
+/// Returns true when a validated Konami GV BIOS archive exists in a BIOS directory.
+bool HasValidKonamiGVBIOS(const char* directory);
+
 bool IsValidBIOSForRegion(ConsoleRegion console_region, ConsoleRegion bios_region);
 
 bool PatchBIOSFastBoot(u8* image, u32 image_size, ImageInfo::FastBootPatch type);
@@ -96,6 +102,6 @@ std::optional<Image> FindBIOSImageInDirectory(ConsoleRegion region, const char* 
 /// Returns a list of filenames and descriptions for BIOS images in a directory.
 std::vector<std::pair<std::string, const BIOS::ImageInfo*>> FindBIOSImagesInDirectory(const char* directory);
 
-/// Returns true if any BIOS images are found in the configured BIOS directory.
+/// Returns true if any ordinary PlayStation BIOS images are found in the configured BIOS directory.
 bool HasAnyBIOSImages();
 } // namespace BIOS

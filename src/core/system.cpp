@@ -1562,6 +1562,9 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       parameters.konami_gv_set_name.assign(definition->set_name);
       parameters.konami_gv_title.assign(definition->title);
 
+      if (!BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error).has_value())
+        return false;
+
       INFO_LOG("KonamiGV.Loader canonical_set='{}' title='{}' bios_profile='{}' hardware_profile='{}'",
                parameters.konami_gv_set_name, parameters.konami_gv_title,
                Konami::GetGVBIOSProfileName(definition->bios_profile), definition->hardware_profile);

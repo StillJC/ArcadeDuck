@@ -10,6 +10,7 @@
 #include "settingwidgetbinder.h"
 
 #include "core/controller.h"
+#include "core/settings.h"
 
 #include "util/input_manager.h"
 
@@ -40,7 +41,7 @@ bool SetupWizardDialog::canShowNextPage()
   {
     case Page_BIOS:
     {
-      if (!BIOS::HasAnyBIOSImages())
+      if (!BIOS::HasAnyBIOSImages() && !BIOS::HasValidKonamiGVBIOS(EmuFolders::Bios.c_str()))
       {
         if (QMessageBox::question(
               this, tr("Warning"),
