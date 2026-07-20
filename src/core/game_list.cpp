@@ -5,6 +5,7 @@
 #include "bios.h"
 #include "fullscreen_ui.h"
 #include "host.h"
+#include "konami.h"
 #include "memory_card_image.h"
 #include "psf_loader.h"
 #include "settings.h"
@@ -83,7 +84,9 @@ static_assert(std::is_same_v<decltype(Entry::hash), System::GameHash>);
 
 static bool GetExeListEntry(const std::string& path, Entry* entry);
 static bool GetPsfListEntry(const std::string& path, Entry* entry);
+static bool GetKonamiGVListEntry(const std::string& path, Entry* entry);
 static bool GetDiscListEntry(const std::string& path, Entry* entry);
+static bool IsKonamiGVCompanionCHD(const std::string& path, std::string_view* set_name);
 
 static void ApplyCustomAttributes(const std::string& path, Entry* entry,
                                   const INISettingsInterface& custom_attributes_ini);
@@ -234,6 +237,26 @@ bool GameList::GetPsfListEntry(const std::string& path, Entry* entry)
   return true;
 }
 
+bool GameList::GetKonamiGVListEntry(const std::string& path, Entry* entry)
+{
+  const Konami::GVGameDefinition* const definition = Konami::IdentifyGVArchive(path);
+  if (!definition)
+  {
+    INFO_LOG("KonamiGV.GameList ignored_unknown_zip archive_basename='{}'", Konami::GetGVSetNameFromArchivePath(path));
+    return false;
+  }
+
+  entry->path = path;
+  entry->serial.assign(definition->set_name);
+  entry->title.assign(definition->title);
+  entry->region = DiscRegion::Other;
+  entry->type = EntryType::Disc;
+  entry->compatibility = GameDatabase::CompatibilityRating::Unknown;
+
+  INFO_LOG("KonamiGV.GameList added_zip canonical_set='{}' title='{}'", entry->serial, entry->title);
+  return true;
+}
+
 bool GameList::GetDiscListEntry(const std::string& path, Entry* entry)
 {
   std::unique_ptr<CDImage> cdi = CDImage::Open(path.c_str(), false, nullptr);
@@ -326,11 +349,42 @@ bool GameList::GetDiscListEntry(const std::string& path, Entry* entry)
 
 bool GameList::PopulateEntryFromPath(const std::string& path, Entry* entry)
 {
+  if (Konami::IsGVArchivePath(path))
+    return GetKonamiGVListEntry(path, entry);
   if (System::IsExeFileName(path))
     return GetExeListEntry(path, entry);
   if (System::IsPsfFileName(path.c_str()))
     return GetPsfListEntry(path, entry);
   return GetDiscListEntry(path, entry);
+}
+
+bool GameList::IsKonamiGVCompanionCHD(const std::string& path, std::string_view* set_name)
+{
+  if (!StringUtil::EndsWithNoCase(path, ".chd"))
+    return false;
+
+  const std::string_view set_directory = Path::GetDirectory(path);
+  const std::string_view content_root = Path::GetDirectory(set_directory);
+  const Konami::GVGameDefinition* const definition = Konami::GetGVGameDefinition(Path::GetFileTitle(path));
+  if (content_root.empty() || !definition ||
+      !StringUtil::EqualNoCase(Path::GetFileName(set_directory), definition->set_name))
+    return false;
+
+  const std::string content_root_path(content_root);
+  FileSystem::FindResultsArray root_files;
+  FileSystem::FindFiles(content_root_path.c_str(), "*", FILESYSTEM_FIND_FILES, &root_files);
+  const auto zip_iter = std::find_if(root_files.begin(), root_files.end(),
+                                    [definition](const FILESYSTEM_FIND_DATA& ffd) {
+                                      const Konami::GVGameDefinition* const zip_definition =
+                                        Konami::IdentifyGVArchive(ffd.FileName);
+                                      return (zip_definition && zip_definition->set_name == definition->set_name);
+                                    });
+  if (zip_iter == root_files.end())
+    return false;
+
+  if (set_name)
+    *set_name = definition->set_name;
+  return true;
 }
 
 bool GameList::GetGameListEntryFromCache(const std::string& path, Entry* entry,
@@ -486,9 +540,17 @@ void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
   {
     files_scanned++;
 
+    std::string_view companion_set_name;
     if (progress->IsCancelled() || !GameList::IsScannableFilename(ffd.FileName) ||
         IsPathExcluded(excluded_paths, ffd.FileName))
     {
+      continue;
+    }
+
+    if (IsKonamiGVCompanionCHD(ffd.FileName, &companion_set_name))
+    {
+      INFO_LOG("KonamiGV.GameList suppressed_companion_chd path='{}' canonical_set='{}'", ffd.FileName,
+               companion_set_name);
       continue;
     }
 

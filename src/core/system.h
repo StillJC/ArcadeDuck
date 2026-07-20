@@ -23,6 +23,12 @@ enum class GPUVSyncMode : u8;
 
 class Controller;
 
+enum class SystemBootClassification : u8
+{
+  Standard,
+  KonamiGV,
+};
+
 struct CheatCode;
 class CheatList;
 
@@ -51,6 +57,9 @@ struct SystemBootParameters
   std::optional<bool> override_fast_boot;
   std::optional<bool> override_fullscreen;
   std::optional<bool> override_start_paused;
+  SystemBootClassification boot_classification = SystemBootClassification::Standard;
+  std::string konami_gv_set_name;
+  std::string konami_gv_title;
   u32 media_playlist_index = 0;
   bool load_image_to_ram = false;
   bool force_software_renderer = false;

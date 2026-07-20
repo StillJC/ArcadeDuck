@@ -75,6 +75,8 @@ add_library(core
   imgui_overlays.h
   interrupt_controller.cpp
   interrupt_controller.h
+  konami.cpp
+  konami.h
   justifier.cpp
   justifier.h
   mdec.cpp

@@ -21,6 +21,7 @@
 #include "host_interface_progress_callback.h"
 #include "imgui_overlays.h"
 #include "interrupt_controller.h"
+#include "konami.h"
 #include "mdec.h"
 #include "memory_card.h"
 #include "multitap.h"
@@ -791,6 +792,7 @@ bool System::IsLoadableFilename(std::string_view path)
 {
   static constexpr const std::array extensions = {
     ".bin", ".cue",     ".img",    ".iso", ".chd", ".ecm", ".mds", // discs
+    ".zip",                                                        // Konami GV archive candidates
     ".exe", ".psexe",   ".ps-exe",                                 // exes
     ".psf", ".minipsf",                                            // psf
     ".m3u",                                                        // playlists
@@ -1542,6 +1544,37 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     INFO_LOG("Boot Filename: <BIOS/Shell>");
   else
     INFO_LOG("Boot Filename: {}", parameters.filename);
+
+  if (Konami::IsGVArchivePath(parameters.filename))
+  {
+    const std::string_view candidate_set_name = Konami::GetGVSetNameFromArchivePath(parameters.filename);
+    INFO_LOG("KonamiGV.Loader candidate_archive='{}' archive_basename='{}'", parameters.filename,
+             candidate_set_name);
+
+    const Konami::GVGameDefinition* const definition = Konami::IdentifyGVArchive(parameters.filename);
+    if (!definition)
+    {
+      INFO_LOG("KonamiGV.Loader rejected_unknown_zip archive_basename='{}'", candidate_set_name);
+    }
+    else
+    {
+      parameters.boot_classification = SystemBootClassification::KonamiGV;
+      parameters.konami_gv_set_name.assign(definition->set_name);
+      parameters.konami_gv_title.assign(definition->title);
+
+      INFO_LOG("KonamiGV.Loader canonical_set='{}' title='{}' bios_profile='{}' hardware_profile='{}'",
+               parameters.konami_gv_set_name, parameters.konami_gv_title,
+               Konami::GetGVBIOSProfileName(definition->bios_profile), definition->hardware_profile);
+      ERROR_LOG("KonamiGV.Loader content_loader_unimplemented set='{}'", parameters.konami_gv_set_name);
+
+      if (error)
+      {
+        Error::SetStringFmt(error, "Konami GV content loader is not implemented yet for '{}' ({})",
+                            parameters.konami_gv_title, parameters.konami_gv_set_name);
+      }
+      return false;
+    }
+  }
 
   Assert(s_state == State::Shutdown);
   s_state = State::Starting;
