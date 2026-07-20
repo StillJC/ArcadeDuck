@@ -1311,6 +1311,7 @@ void FullscreenUI::DrawLandingTemplate(ImVec2* menu_pos, ImVec2* menu_size)
   if (BeginFullscreenWindow(ImVec2(0.0f, 0.0f), heading_size, "landing_heading", UIPrimaryColor))
   {
     ImFont* const heading_font = g_large_font;
+    ImFont* const branding_font = ImGuiManager::GetBrandFont();
     ImDrawList* const dl = ImGui::GetWindowDrawList();
     SmallString heading_str;
 
@@ -1322,8 +1323,9 @@ void FullscreenUI::DrawLandingTemplate(ImVec2* menu_pos, ImVec2* menu_size)
       const ImVec2 logo_pos = LayoutScale(LAYOUT_MENU_BUTTON_X_PADDING, LAYOUT_MENU_BUTTON_Y_PADDING);
       const ImVec2 logo_size = LayoutScale(LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY, LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
       dl->AddImage(s_app_icon_texture.get(), logo_pos, logo_pos + logo_size);
-      dl->AddText(heading_font, heading_font->FontSize,
-                  ImVec2(logo_pos.x + logo_size.x + LayoutScale(LAYOUT_MENU_BUTTON_X_PADDING), logo_pos.y),
+      dl->AddText(branding_font, branding_font->FontSize,
+                  ImVec2(logo_pos.x + logo_size.x + LayoutScale(LAYOUT_MENU_BUTTON_X_PADDING),
+                         logo_pos.y + ((logo_size.y - branding_font->FontSize) * 0.5f)),
                   ImGui::GetColorU32(ImGuiCol_Text), "ArcadeDuck");
     }
 

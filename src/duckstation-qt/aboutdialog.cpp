@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: (GPL-3.0 OR CC-BY-NC-ND-4.0)
 
 #include "aboutdialog.h"
+#include "qthost.h"
 #include "qtutils.h"
 
 #include "core/settings.h"
@@ -13,6 +14,7 @@
 #include "scmversion/scmversion.h"
 
 #include <QtCore/QString>
+#include <QtGui/QFont>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QPushButton>
@@ -24,6 +26,19 @@ AboutDialog::AboutDialog(QWidget* parent /* = nullptr */) : QDialog(parent)
 
   setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
   setFixedSize(geometry().width(), geometry().height());
+
+  if (const QString& exo2_family = QtHost::GetExo2FontFamily(); !exo2_family.isEmpty())
+  {
+    QFont title_font(m_ui.title->font());
+    title_font.setFamily(exo2_family);
+    title_font.setWeight(QFont::Bold);
+    m_ui.title->setFont(title_font);
+
+    QFont version_font(m_ui.scmversion->font());
+    version_font.setFamily(exo2_family);
+    version_font.setWeight(QFont::DemiBold);
+    m_ui.scmversion->setFont(version_font);
+  }
 
   m_ui.scmversion->setTextInteractionFlags(Qt::TextSelectableByMouse);
   m_ui.scmversion->setText(QStringLiteral("%1\nBuild %2\nSCM revision: %3 (%4, %5)\nBuild date: %6\nGPL baseline: %7")

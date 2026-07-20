@@ -70,6 +70,7 @@ static void ReloadFontDataIfActive();
 static bool AddImGuiFonts(bool fullscreen_fonts);
 static ImFont* AddTextFont(float size);
 static ImFont* AddFixedFont(float size);
+static ImFont* AddBrandFont(float size);
 static bool AddIconFonts(float size);
 static void AcquirePendingOSDMessages(Common::Timer::Value current_time);
 static void DrawOSDMessages(Common::Timer::Value current_time);
@@ -89,9 +90,11 @@ static ImFont* s_standard_font;
 static ImFont* s_fixed_font;
 static ImFont* s_medium_font;
 static ImFont* s_large_font;
+static ImFont* s_brand_font;
 
 static DynamicHeapArray<u8> s_standard_font_data;
 static DynamicHeapArray<u8> s_fixed_font_data;
+static DynamicHeapArray<u8> s_brand_font_data;
 static DynamicHeapArray<u8> s_icon_fa_font_data;
 static DynamicHeapArray<u8> s_icon_pf_font_data;
 static DynamicHeapArray<u8> s_emoji_font_data;
@@ -274,6 +277,7 @@ void ImGuiManager::Shutdown()
   s_fixed_font = nullptr;
   s_medium_font = nullptr;
   s_large_font = nullptr;
+  s_brand_font = nullptr;
   ImGuiFullscreen::SetFonts(nullptr, nullptr, nullptr);
 }
 
@@ -551,6 +555,15 @@ bool ImGuiManager::LoadFontData()
     s_fixed_font_data = std::move(font_data.value());
   }
 
+  if (s_brand_font_data.empty())
+  {
+    std::optional<DynamicHeapArray<u8>> font_data = Host::ReadResourceFile("fonts/exo2/Exo2-Bold.ttf", true);
+    if (font_data.has_value())
+      s_brand_font_data = std::move(font_data.value());
+    else
+      WARNING_LOG("Failed to load bundled Exo 2 branding font; using the default fullscreen font.");
+  }
+
   if (s_icon_fa_font_data.empty())
   {
     std::optional<DynamicHeapArray<u8>> font_data = Host::ReadResourceFile("fonts/fa-solid-900.ttf", true);
@@ -596,6 +609,14 @@ ImFont* ImGuiManager::AddFixedFont(float size)
   cfg.FontDataOwnedByAtlas = false;
   return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(s_fixed_font_data.data(),
                                                     static_cast<int>(s_fixed_font_data.size()), size, &cfg, nullptr);
+}
+
+ImFont* ImGuiManager::AddBrandFont(float size)
+{
+  ImFontConfig cfg;
+  cfg.FontDataOwnedByAtlas = false;
+  return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(s_brand_font_data.data(),
+                                                    static_cast<int>(s_brand_font_data.size()), size, &cfg, nullptr);
 }
 
 bool ImGuiManager::AddIconFonts(float size)
@@ -679,11 +700,16 @@ bool ImGuiManager::AddImGuiFonts(bool fullscreen_fonts)
     s_large_font = AddTextFont(large_font_size);
     if (!s_large_font || !AddIconFonts(large_font_size))
       return false;
+
+    s_brand_font = s_brand_font_data.empty() ? s_large_font : AddBrandFont(large_font_size);
+    if (!s_brand_font)
+      s_brand_font = s_large_font;
   }
   else
   {
     s_medium_font = nullptr;
     s_large_font = nullptr;
+    s_brand_font = nullptr;
   }
 
   ImGuiFullscreen::SetFonts(s_standard_font, s_medium_font, s_large_font);
@@ -957,6 +983,12 @@ ImFont* ImGuiManager::GetLargeFont()
 {
   AddFullscreenFontsIfMissing();
   return s_large_font;
+}
+
+ImFont* ImGuiManager::GetBrandFont()
+{
+  AddFullscreenFontsIfMissing();
+  return s_brand_font ? s_brand_font : s_large_font;
 }
 
 bool ImGuiManager::WantsTextInput()

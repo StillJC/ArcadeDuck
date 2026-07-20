@@ -54,13 +54,16 @@
 #include <QtCore/QDebug>
 #include <QtCore/QEventLoop>
 #include <QtCore/QFile>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtGui/QClipboard>
+#include <QtGui/QFontDatabase>
 #include <QtGui/QKeyEvent>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QMessageBox>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -109,6 +112,7 @@ static void InitializeEarlyConsole();
 static void HookSignals();
 static void PrintCommandLineVersion();
 static void PrintCommandLineHelp(const char* progname);
+static void RegisterBundledFonts();
 static bool ParseCommandLineParametersAndInitializeConfig(QApplication& app,
                                                           std::shared_ptr<SystemBootParameters>& boot_params);
 } // namespace QtHost
@@ -121,6 +125,7 @@ static bool s_start_fullscreen_ui = false;
 static bool s_start_fullscreen_ui_fullscreen = false;
 static bool s_run_setup_wizard = false;
 static bool s_cleanup_after_update = false;
+static QString s_exo2_font_family;
 
 EmuThread* g_emu_thread = nullptr;
 
@@ -212,6 +217,41 @@ QString QtHost::GetAppConfigSuffix()
 QString QtHost::GetResourcesBasePath()
 {
   return QString::fromStdString(EmuFolders::Resources);
+}
+
+const QString& QtHost::GetExo2FontFamily()
+{
+  return s_exo2_font_family;
+}
+
+void QtHost::RegisterBundledFonts()
+{
+  static constexpr std::array<std::string_view, 3> font_filenames = {
+    "fonts/exo2/Exo2-Regular.ttf",
+    "fonts/exo2/Exo2-SemiBold.ttf",
+    "fonts/exo2/Exo2-Bold.ttf",
+  };
+
+  for (const std::string_view filename : font_filenames)
+  {
+    const int font_id = QFontDatabase::addApplicationFont(
+      QString::fromStdString(Path::Combine(EmuFolders::Resources, filename)));
+    if (font_id < 0)
+    {
+      WARNING_LOG("Failed to load bundled Exo 2 font '{}'.", filename);
+      continue;
+    }
+
+    const QStringList families = QFontDatabase::applicationFontFamilies(font_id);
+    if (families.isEmpty())
+    {
+      WARNING_LOG("Bundled Exo 2 font '{}' did not provide a font family.", filename);
+      continue;
+    }
+
+    if (s_exo2_font_family.isEmpty())
+      s_exo2_font_family = families.front();
+  }
 }
 
 INISettingsInterface* QtHost::GetBaseSettingsInterface()
@@ -2561,6 +2601,8 @@ int main(int argc, char* argv[])
   std::shared_ptr<SystemBootParameters> autoboot;
   if (!QtHost::ParseCommandLineParametersAndInitializeConfig(app, autoboot))
     return EXIT_FAILURE;
+
+  QtHost::RegisterBundledFonts();
 
   if (!QtHost::EarlyProcessStartup())
     return EXIT_FAILURE;

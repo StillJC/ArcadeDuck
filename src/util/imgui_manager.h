@@ -80,6 +80,9 @@ ImFont* GetMediumFont();
 /// This font is allocated on demand.
 ImFont* GetLargeFont();
 
+/// Returns the bundled Exo 2 branding font, or the large font if it could not be loaded.
+ImFont* GetBrandFont();
+
 /// Returns true if imgui wants to intercept text input.
 bool WantsTextInput();
 
