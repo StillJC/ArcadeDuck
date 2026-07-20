@@ -359,7 +359,7 @@ bool System::Internal::PerformEarlyHardwareChecks(Error* error)
   if (!cpuinfo_has_x86_sse4_1())
   {
     Error::SetStringFmt(error, "Your CPU does not support the SSE4.1 instruction set.\n"
-                               "A CPU from 2008 or newer is required to run DuckStation.");
+                               "A CPU from 2008 or newer is required to run ArcadeDuck.");
     return false;
   }
 #endif
@@ -5872,7 +5872,7 @@ void System::UpdateRichPresence(bool update_session_time)
   // https://discord.com/developers/docs/rich-presence/how-to#updating-presence-update-presence-payload-fields
   DiscordRichPresence rp = {};
   rp.largeImageKey = "duckstation_logo";
-  rp.largeImageText = "DuckStation PS1/PSX Emulator";
+  rp.largeImageText = "ArcadeDuck PS1-Based Arcade Emulator";
   rp.startTimestamp = s_discord_presence_time_epoch;
   rp.details = "No Game Running";
   if (IsValidOrInitializing())

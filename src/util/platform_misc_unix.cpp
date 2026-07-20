@@ -105,7 +105,7 @@ static bool SetScreensaverInhibitDBus(const bool inhibit_requested, const char* 
 
 static bool SetScreensaverInhibit(bool inhibit)
 {
-  return SetScreensaverInhibitDBus(inhibit, "DuckStation", "DuckStation VM is running.");
+  return SetScreensaverInhibitDBus(inhibit, "DuckStation", "ArcadeDuck VM is running.");
 }
 
 static bool s_screensaver_suspended;

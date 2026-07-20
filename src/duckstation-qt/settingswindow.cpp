@@ -90,7 +90,7 @@ void SettingsWindow::addPages()
       m_game_list_settings = new GameListSettingsWidget(this, m_ui.settingsContainer), tr("Game List"),
       QStringLiteral("folder-open-line"),
       tr("<strong>Game List Settings</strong><hr>The list above shows the directories which will be searched by "
-         "DuckStation to populate the game list. Search directories can be added, removed, and switched to "
+         "ArcadeDuck to populate the game list. Search directories can be added, removed, and switched to "
          "recursive/non-recursive."));
   }
 
@@ -132,7 +132,7 @@ void SettingsWindow::addPages()
     QString title(tr("Achievements"));
     QString icon_text(QStringLiteral("trophy-line"));
     QString help_text(
-      tr("<strong>Achievement Settings</strong><hr>DuckStation uses RetroAchievements as an achievement database and "
+      tr("<strong>Achievement Settings</strong><hr>ArcadeDuck uses RetroAchievements as an achievement database and "
          "for tracking progress. To use achievements, please sign up for an account at retroachievements.org. To view "
          "the achievement list in-game, press the hotkey for <strong>Open Pause Menu</strong> and select "
          "<strong>Achievements</strong> from the menu. Mouse over an option for additional information, and "
@@ -159,7 +159,7 @@ void SettingsWindow::addPages()
     addWidget(
       m_folder_settings = new FolderSettingsWidget(this, m_ui.settingsContainer), tr("Folders"),
       QStringLiteral("folder-settings-line"),
-      tr("<strong>Folder Settings</strong><hr>These options control where DuckStation will save runtime data files."));
+      tr("<strong>Folder Settings</strong><hr>These options control where ArcadeDuck will save runtime data files."));
   }
 
   addWidget(m_advanced_settings = new AdvancedSettingsWidget(this, m_ui.settingsContainer), tr("Advanced"),

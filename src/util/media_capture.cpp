@@ -1999,7 +1999,7 @@ bool MediaCaptureFFmpeg::LoadFFmpeg(Error* error)
     error,
     TRANSLATE_FS(
       "MediaCapture",
-      "You may be missing one or more files, or are using the incorrect version. This build of DuckStation requires:\n"
+      "You may be missing one or more files, or are using the incorrect version. This build of ArcadeDuck requires:\n"
       "  libavcodec: {}\n"
       "  libavformat: {}\n"
       "  libavutil: {}\n"

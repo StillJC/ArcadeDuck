@@ -81,12 +81,12 @@ struct VCRuntimeCheckObject
     char message[512];
     const auto fmt_result =
       fmt::format_to_n(message, sizeof(message),
-                       "Your Microsoft Visual C++ Runtime appears to be too old for this build of DuckStation.\n\n"
+                       "Your Microsoft Visual C++ Runtime appears to be too old for this build of ArcadeDuck.\n\n"
                        "Your version: {}.{}.{}.{}\n"
                        "Required version: {}.{}.{}.{}\n\n"
                        "You can download the latest version from {}.\n\n"
                        "Do you want to exit and download this version now?\n"
-                       "If you select No, DuckStation will likely crash.",
+                       "If you select No, ArcadeDuck will likely crash.",
                        VERSION64_PART(version, 0), VERSION64_PART(version, 1), VERSION64_PART(version, 2),
                        VERSION64_PART(version, 3), VERSION64_PART(MIN_VERSION, 0), VERSION64_PART(MIN_VERSION, 1),
                        VERSION64_PART(MIN_VERSION, 2), VERSION64_PART(MIN_VERSION, 3), DOWNLOAD_URL);

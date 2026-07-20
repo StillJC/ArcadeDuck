@@ -4534,7 +4534,7 @@ void FullscreenUI::DrawDisplaySettingsPage()
   MenuHeading(FSUI_CSTR("Capture"));
 
   DrawEnumSetting(bsi, FSUI_CSTR("Screenshot Size"),
-                  FSUI_CSTR("Determines the size of screenshots created by DuckStation."), "Display", "ScreenshotMode",
+                  FSUI_CSTR("Determines the size of screenshots created by ArcadeDuck."), "Display", "ScreenshotMode",
                   Settings::DEFAULT_DISPLAY_SCREENSHOT_MODE, &Settings::ParseDisplayScreenshotMode,
                   &Settings::GetDisplayScreenshotModeName, &Settings::GetDisplayScreenshotModeDisplayName,
                   DisplayScreenshotMode::Count);
@@ -5039,7 +5039,7 @@ void FullscreenUI::DrawAchievementsSettingsPage()
 
   MenuHeading(FSUI_CSTR("Settings"));
   DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_TROPHY, "Enable Achievements"),
-                    FSUI_CSTR("When enabled and logged in, DuckStation will scan for achievements on startup."),
+                    FSUI_CSTR("When enabled and logged in, ArcadeDuck will scan for achievements on startup."),
                     "Cheevos", "Enabled", false);
 
   const bool enabled = bsi->GetBoolValue("Cheevos", "Enabled", false);
@@ -5072,12 +5072,12 @@ void FullscreenUI::DrawAchievementsSettingsPage()
                     FSUI_CSTR("When enabled, each session will behave as if no achievements have been unlocked."),
                     "Cheevos", "EncoreMode", false, enabled);
   DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_STETHOSCOPE, "Spectator Mode"),
-                    FSUI_CSTR("When enabled, DuckStation will assume all achievements are locked and not send any "
+                    FSUI_CSTR("When enabled, ArcadeDuck will assume all achievements are locked and not send any "
                               "unlock notifications to the server."),
                     "Cheevos", "SpectatorMode", false, enabled);
   DrawToggleSetting(
     bsi, FSUI_ICONSTR(ICON_FA_MEDAL, "Test Unofficial Achievements"),
-    FSUI_CSTR("When enabled, DuckStation will list achievements from unofficial sets. These achievements are not "
+    FSUI_CSTR("When enabled, ArcadeDuck will list achievements from unofficial sets. These achievements are not "
               "tracked by RetroAchievements."),
     "Cheevos", "UnofficialTestMode", false, enabled);
 
@@ -7357,7 +7357,7 @@ TRANSLATE_NOOP("FullscreenUI", "Determines the emulated hardware type.");
 TRANSLATE_NOOP("FullscreenUI", "Determines the format that screenshots will be saved/compressed with.");
 TRANSLATE_NOOP("FullscreenUI", "Determines the position on the screen when black borders must be added.");
 TRANSLATE_NOOP("FullscreenUI", "Determines the rotation of the simulated TV screen.");
-TRANSLATE_NOOP("FullscreenUI", "Determines the size of screenshots created by DuckStation.");
+TRANSLATE_NOOP("FullscreenUI", "Determines the size of screenshots created by ArcadeDuck.");
 TRANSLATE_NOOP("FullscreenUI", "Determines whether a prompt will be displayed to confirm shutting down the emulator/game when the hotkey is pressed.");
 TRANSLATE_NOOP("FullscreenUI", "Determines which algorithm is used to convert interlaced frames to progressive for display on your system.");
 TRANSLATE_NOOP("FullscreenUI", "Device Settings");
@@ -7816,9 +7816,9 @@ TRANSLATE_NOOP("FullscreenUI", "Value: {} | Default: {} | Minimum: {} | Maximum:
 TRANSLATE_NOOP("FullscreenUI", "Vertex Cache");
 TRANSLATE_NOOP("FullscreenUI", "Vertical Sync (VSync)");
 TRANSLATE_NOOP("FullscreenUI", "WARNING: Your game is still saving to the memory card. Continuing to {0} may IRREVERSIBLY DESTROY YOUR MEMORY CARD. We recommend resuming your game and waiting 5 seconds for it to finish saving.\n\nDo you want to {0} anyway?");
-TRANSLATE_NOOP("FullscreenUI", "When enabled and logged in, DuckStation will scan for achievements on startup.");
-TRANSLATE_NOOP("FullscreenUI", "When enabled, DuckStation will assume all achievements are locked and not send any unlock notifications to the server.");
-TRANSLATE_NOOP("FullscreenUI", "When enabled, DuckStation will list achievements from unofficial sets. These achievements are not tracked by RetroAchievements.");
+TRANSLATE_NOOP("FullscreenUI", "When enabled and logged in, ArcadeDuck will scan for achievements on startup.");
+TRANSLATE_NOOP("FullscreenUI", "When enabled, ArcadeDuck will assume all achievements are locked and not send any unlock notifications to the server.");
+TRANSLATE_NOOP("FullscreenUI", "When enabled, ArcadeDuck will list achievements from unofficial sets. These achievements are not tracked by RetroAchievements.");
 TRANSLATE_NOOP("FullscreenUI", "When enabled, each session will behave as if no achievements have been unlocked.");
 TRANSLATE_NOOP("FullscreenUI", "When enabled, memory cards and controllers will be overwritten when save states are loaded.");
 TRANSLATE_NOOP("FullscreenUI", "When enabled, the minimum supported output latency will be used for the host API.");

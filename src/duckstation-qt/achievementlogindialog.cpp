@@ -21,7 +21,7 @@ AchievementLoginDialog::AchievementLoginDialog(QWidget* parent, Achievements::Lo
   {
     m_ui.instructionText->setText(tr("<strong>Your RetroAchievements login token is no longer valid.</strong> You must "
                                      "re-enter your credentials for achievements to be tracked. Your password will not "
-                                     "be saved in DuckStation, an access token will be generated and used instead."));
+                                     "be saved in ArcadeDuck, an access token will be generated and used instead."));
   }
 
   m_login = m_ui.buttonBox->addButton(tr("&Login"), QDialogButtonBox::AcceptRole);

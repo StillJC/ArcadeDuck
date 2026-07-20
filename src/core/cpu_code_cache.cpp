@@ -193,7 +193,7 @@ bool CPU::CodeCache::ProcessStartup(Error* error)
   if (!code_buffer_allocated) [[unlikely]]
   {
     Error::SetStringView(error, "Failed to allocate code storage. The log may contain more information, you will need "
-                                "to run DuckStation with -earlyconsole in the command line.");
+                                "to run ArcadeDuck with -earlyconsole in the command line.");
     return false;
   }
 

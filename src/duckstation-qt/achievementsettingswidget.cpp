@@ -44,7 +44,7 @@ AchievementSettingsWidget::AchievementSettingsWidget(SettingsWindow* dialog, QWi
                                                 Settings::DEFAULT_LEADERBOARD_NOTIFICATION_TIME);
 
   dialog->registerWidgetHelp(m_ui.enable, tr("Enable Achievements"), tr("Unchecked"),
-                             tr("When enabled and logged in, DuckStation will scan for achievements on startup."));
+                             tr("When enabled and logged in, ArcadeDuck will scan for achievements on startup."));
   dialog->registerWidgetHelp(m_ui.hardcoreMode, tr("Enable Hardcore Mode"), tr("Unchecked"),
                              tr("\"Challenge\" mode for achievements, including leaderboard tracking. Disables save "
                                 "state, cheats, and slowdown functions."));
@@ -62,11 +62,11 @@ AchievementSettingsWidget::AchievementSettingsWidget(SettingsWindow* dialog, QWi
   dialog->registerWidgetHelp(m_ui.encoreMode, tr("Enable Encore Mode"), tr("Unchecked"),
                              tr("When enabled, each session will behave as if no achievements have been unlocked."));
   dialog->registerWidgetHelp(m_ui.spectatorMode, tr("Enable Spectator Mode"), tr("Unchecked"),
-                             tr("When enabled, DuckStation will assume all achievements are locked and not send any "
+                             tr("When enabled, ArcadeDuck will assume all achievements are locked and not send any "
                                 "unlock notifications to the server."));
   dialog->registerWidgetHelp(
     m_ui.unofficialAchievements, tr("Test Unofficial Achievements"), tr("Unchecked"),
-    tr("When enabled, DuckStation will list achievements from unofficial sets. Please note that these achievements are "
+    tr("When enabled, ArcadeDuck will list achievements from unofficial sets. Please note that these achievements are "
        "not tracked by RetroAchievements, so they unlock every time."));
   dialog->registerWidgetHelp(
     m_ui.useFirstDiscFromPlaylist, tr("Use First Disc From Playlist"), tr("Unchecked"),
