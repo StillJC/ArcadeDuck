@@ -302,7 +302,7 @@ void ControllerSettingsWindow::onCopyGlobalSettingsClicked()
   g_emu_thread->reloadGameSettings();
   createWidgets();
 
-  QMessageBox::information(QtUtils::GetRootWidget(this), tr("DuckStation Controller Settings"),
+  QMessageBox::information(QtUtils::GetRootWidget(this), tr("ArcadeDuck Controller Settings"),
                            tr("Per-game controller configuration reset to global settings."));
 }
 
@@ -314,7 +314,7 @@ void ControllerSettingsWindow::onRestoreDefaultsForGameClicked()
   g_emu_thread->reloadGameSettings();
   createWidgets();
 
-  QMessageBox::information(QtUtils::GetRootWidget(this), tr("DuckStation Controller Settings"),
+  QMessageBox::information(QtUtils::GetRootWidget(this), tr("ArcadeDuck Controller Settings"),
                            tr("Per-game controller configuration reset to default settings."));
 }
 

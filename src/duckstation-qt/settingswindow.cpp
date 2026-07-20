@@ -285,7 +285,7 @@ void SettingsWindow::onCopyGlobalSettingsClicked()
     return;
 
   if (QMessageBox::question(
-        this, tr("DuckStation Settings"),
+        this, tr("ArcadeDuck Settings"),
         tr("The configuration for this game will be replaced by the current global settings.\n\nAny current setting "
            "values will be overwritten.\n\nDo you want to continue?"),
         QMessageBox::Yes, QMessageBox::No) != QMessageBox::Yes)
@@ -303,7 +303,7 @@ void SettingsWindow::onCopyGlobalSettingsClicked()
 
   reloadPages();
 
-  QMessageBox::information(this, tr("DuckStation Settings"), tr("Per-game configuration copied from global settings."));
+  QMessageBox::information(this, tr("ArcadeDuck Settings"), tr("Per-game configuration copied from global settings."));
 }
 
 void SettingsWindow::onClearSettingsClicked()
@@ -311,7 +311,7 @@ void SettingsWindow::onClearSettingsClicked()
   if (!isPerGameSettings())
     return;
 
-  if (QMessageBox::question(this, tr("DuckStation Settings"),
+  if (QMessageBox::question(this, tr("ArcadeDuck Settings"),
                             tr("The configuration for this game will be cleared.\n\nAny current setting values will be "
                                "lost.\n\nDo you want to continue?"),
                             QMessageBox::Yes, QMessageBox::No) != QMessageBox::Yes)
@@ -324,7 +324,7 @@ void SettingsWindow::onClearSettingsClicked()
 
   reloadPages();
 
-  QMessageBox::information(this, tr("DuckStation Settings"), tr("Per-game configuration cleared."));
+  QMessageBox::information(this, tr("ArcadeDuck Settings"), tr("Per-game configuration cleared."));
 }
 
 void SettingsWindow::registerWidgetHelp(QObject* object, QString title, QString recommended_value, QString text)

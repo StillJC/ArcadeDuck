@@ -454,10 +454,10 @@ bool QtHost::InitializeConfig(std::string settings_filename)
     if (!s_base_settings_interface->Save(&error))
     {
       QMessageBox::critical(
-        nullptr, QStringLiteral("DuckStation"),
+        nullptr, QStringLiteral("ArcadeDuck"),
         QStringLiteral(
           "Failed to save configuration to\n\n%1\n\nThe error was: %2\n\nPlease ensure this directory is writable. You "
-          "can also try portable mode by creating portable.txt in the same directory you installed DuckStation into.")
+          "can also try portable mode by creating portable.txt in the same directory you installed ArcadeDuck into.")
           .arg(QString::fromStdString(s_base_settings_interface->GetFileName()))
           .arg(QString::fromStdString(error.GetDescription())));
       return false;
@@ -600,10 +600,10 @@ bool QtHost::SetDataDirectory()
     {
       // no point translating, config isn't loaded
       QMessageBox::critical(
-        nullptr, QStringLiteral("DuckStation"),
+        nullptr, QStringLiteral("ArcadeDuck"),
         QStringLiteral("Failed to create data directory at path\n\n%1\n\nThe error was: %2\nPlease ensure this "
                        "directory is writable. You can also try portable mode by creating portable.txt in the same "
-                       "directory you installed DuckStation into.")
+                       "directory you installed ArcadeDuck into.")
           .arg(QString::fromStdString(EmuFolders::DataRoot))
           .arg(QString::fromStdString(error.GetDescription())));
       return false;
@@ -2263,7 +2263,7 @@ void QtHost::PrintCommandLineVersion()
   std::fprintf(stderr, "SCM Revision: %s (%s, %s)\n", g_scm_hash_str, g_scm_branch_str, g_scm_tag_str);
   std::fprintf(stderr, "SCM Timestamp: %s\n", g_scm_date_str);
   std::fprintf(stderr, "GPL baseline: %s\n", ARCADEDUCK_GPL_BASELINE_HASH);
-  std::fprintf(stderr, "https://github.com/stenzek/duckstation\n");
+  std::fprintf(stderr, "https://github.com/StillJC/ArcadeDuck\n");
   std::fprintf(stderr, "\n");
 }
 

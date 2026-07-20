@@ -1324,7 +1324,7 @@ void FullscreenUI::DrawLandingTemplate(ImVec2* menu_pos, ImVec2* menu_size)
       dl->AddImage(s_app_icon_texture.get(), logo_pos, logo_pos + logo_size);
       dl->AddText(heading_font, heading_font->FontSize,
                   ImVec2(logo_pos.x + logo_size.x + LayoutScale(LAYOUT_MENU_BUTTON_X_PADDING), logo_pos.y),
-                  ImGui::GetColorU32(ImGuiCol_Text), "DuckStation");
+                  ImGui::GetColorU32(ImGuiCol_Text), "ArcadeDuck");
     }
 
     // draw time
@@ -1527,7 +1527,7 @@ void FullscreenUI::DrawExitWindow()
       QueueResetFocus(FocusResetType::ViewChanged);
     }
 
-    if (HorizontalMenuItem(GetCachedTexture("fullscreenui/exit.png"), FSUI_CSTR("Exit DuckStation"),
+    if (HorizontalMenuItem(GetCachedTexture("fullscreenui/exit.png"), FSUI_CSTR("Exit ArcadeDuck"),
                            FSUI_CSTR("Completely exits the application, returning you to your desktop.")))
     {
       DoRequestExit();
@@ -7023,18 +7023,18 @@ void FullscreenUI::DrawAboutWindow()
 {
   ImGui::SetNextWindowSize(LayoutScale(1000.0f, 540.0f));
   ImGui::SetNextWindowPos(ImGui::GetIO().DisplaySize * 0.5f, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-  ImGui::OpenPopup(FSUI_CSTR("About DuckStation"));
+  ImGui::OpenPopup(FSUI_CSTR("About ArcadeDuck"));
 
   ImGui::PushFont(g_large_font);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, LayoutScale(10.0f));
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, LayoutScale(30.0f, 30.0f));
 
-  if (ImGui::BeginPopupModal(FSUI_CSTR("About DuckStation"), &s_about_window_open,
+  if (ImGui::BeginPopupModal(FSUI_CSTR("About ArcadeDuck"), &s_about_window_open,
                              ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize))
   {
     ImGui::TextWrapped("%s",
-                       FSUI_CSTR("DuckStation is a free and open-source simulator/emulator of the Sony PlayStation(TM) "
-                                 "console, focusing on playability, speed, and long-term maintainability."));
+                        FSUI_CSTR("ArcadeDuck is a free and open-source PS1-based arcade emulator built from the final "
+                                  "GPL release of DuckStation."));
     ImGui::NewLine();
     ImGui::TextWrapped(FSUI_CSTR("Version: %s"), ARCADEDUCK_FULL_DISPLAY_STRING);
     ImGui::NewLine();
@@ -7049,9 +7049,9 @@ void FullscreenUI::DrawAboutWindow()
 
     BeginMenuButtons();
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_GLOBE, "GitHub Repository"), false))
-      ExitFullscreenAndOpenURL("https://github.com/stenzek/duckstation/");
-    if (ActiveButton(FSUI_ICONSTR(ICON_FA_COMMENT, "Discord Server"), false))
-      ExitFullscreenAndOpenURL("https://www.duckstation.org/discord.html");
+      ExitFullscreenAndOpenURL("https://github.com/StillJC/ArcadeDuck");
+    if (ActiveButton(FSUI_ICONSTR(ICON_FA_COMMENT, "Support"), false))
+      ExitFullscreenAndOpenURL("https://discord.gg/fQ9HvgKCg");
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_PEOPLE_CARRY, "Contributor List"), false))
       ExitFullscreenAndOpenURL("https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md");
 
@@ -7223,7 +7223,7 @@ TRANSLATE_NOOP("FullscreenUI", "9x (18x Speed)");
 TRANSLATE_NOOP("FullscreenUI", "9x (for 4K)");
 TRANSLATE_NOOP("FullscreenUI", "A resume save state created at %s was found.\n\nDo you want to load this save and continue?");
 TRANSLATE_NOOP("FullscreenUI", "About");
-TRANSLATE_NOOP("FullscreenUI", "About DuckStation");
+TRANSLATE_NOOP("FullscreenUI", "About ArcadeDuck");
 TRANSLATE_NOOP("FullscreenUI", "Account");
 TRANSLATE_NOOP("FullscreenUI", "Accurate Blending");
 TRANSLATE_NOOP("FullscreenUI", "Achievement Notifications");
@@ -7379,7 +7379,7 @@ TRANSLATE_NOOP("FullscreenUI", "Downsamples the rendered image prior to displayi
 TRANSLATE_NOOP("FullscreenUI", "Downsampling");
 TRANSLATE_NOOP("FullscreenUI", "Downsampling Display Scale");
 TRANSLATE_NOOP("FullscreenUI", "Duck icon by icons8 (https://icons8.com/icon/74847/platforms.undefined.short-title)");
-TRANSLATE_NOOP("FullscreenUI", "DuckStation is a free and open-source simulator/emulator of the Sony PlayStation(TM) console, focusing on playability, speed, and long-term maintainability.");
+TRANSLATE_NOOP("FullscreenUI", "ArcadeDuck is a free and open-source PS1-based arcade emulator built from the final GPL release of DuckStation.");
 TRANSLATE_NOOP("FullscreenUI", "Dump Replaceable VRAM Writes");
 TRANSLATE_NOOP("FullscreenUI", "Emulation Settings");
 TRANSLATE_NOOP("FullscreenUI", "Emulation Speed");
@@ -7417,7 +7417,7 @@ TRANSLATE_NOOP("FullscreenUI", "Error");
 TRANSLATE_NOOP("FullscreenUI", "Execution Mode");
 TRANSLATE_NOOP("FullscreenUI", "Exit");
 TRANSLATE_NOOP("FullscreenUI", "Exit And Save State");
-TRANSLATE_NOOP("FullscreenUI", "Exit DuckStation");
+TRANSLATE_NOOP("FullscreenUI", "Exit ArcadeDuck");
 TRANSLATE_NOOP("FullscreenUI", "Exit Without Saving");
 TRANSLATE_NOOP("FullscreenUI", "Exits Big Picture mode, returning to the desktop interface.");
 TRANSLATE_NOOP("FullscreenUI", "Expansion Mode");

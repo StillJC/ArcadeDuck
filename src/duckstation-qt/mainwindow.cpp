@@ -1408,17 +1408,17 @@ void MainWindow::onViewGamePropertiesActionTriggered()
 
 void MainWindow::onGitHubRepositoryActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://github.com/stenzek/duckstation/");
+  QtUtils::OpenURL(this, "https://github.com/StillJC/ArcadeDuck");
 }
 
 void MainWindow::onIssueTrackerActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://www.duckstation.org/issues.html");
+  QtUtils::OpenURL(this, "https://github.com/StillJC/ArcadeDuck/issues");
 }
 
 void MainWindow::onDiscordServerActionTriggered()
 {
-  QtUtils::OpenURL(this, "https://www.duckstation.org/discord.html");
+  QtUtils::OpenURL(this, "https://discord.gg/fQ9HvgKCg");
 }
 
 void MainWindow::onAboutActionTriggered()

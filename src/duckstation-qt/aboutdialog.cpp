@@ -47,11 +47,10 @@ p, li { white-space: pre-wrap; }
 <p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">  Connor McLaughlin &lt;stenzek@gmail.com&gt;</p>
 <p style=" margin-top:0px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">  and other <a href="https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md">contributors</a></p>
 <p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">%3 <a href="https://icons8.com/icon/74847/platforms.undefined.short-title"><span style=" text-decoration: underline; color:#0057ae;">icons8</span></a></p>
-<p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><a href="https://github.com/stenzek/duckstation/blob/master/LICENSE"><span style=" text-decoration: underline; color:#0057ae;">%4</span></a> | <a href="https://github.com/stenzek/duckstation"><span style=" text-decoration: underline; color:#0057ae;">GitHub</span></a> | <a href="https://discord.gg/Buktv3t"><span style=" text-decoration: underline; color:#0057ae;">Discord</span></a></p></body></html>
+<p style=" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;"><a href="https://github.com/StillJC/ArcadeDuck/blob/main/LICENSE"><span style=" text-decoration: underline; color:#0057ae;">%4</span></a> | <a href="https://github.com/StillJC/ArcadeDuck"><span style=" text-decoration: underline; color:#0057ae;">GitHub</span></a> | <a href="https://discord.gg/fQ9HvgKCg"><span style=" text-decoration: underline; color:#0057ae;">Support</span></a></p></body></html>
 )")
-                              .arg(tr("DuckStation is a free and open-source simulator/emulator of the Sony "
-                                      "PlayStation<span style=\"vertical-align:super;\">TM</span> console, focusing on "
-                                      "playability, speed, and long-term maintainability."))
+                              .arg(tr("ArcadeDuck is a free and open-source PS1-based arcade emulator built from the "
+                                      "final GPL release of DuckStation."))
                               .arg(tr("Authors"))
                               .arg(tr("Icon by"))
                               .arg(tr("License")));
@@ -63,7 +62,7 @@ void AboutDialog::showThirdPartyNotices(QWidget* parent)
 {
   QDialog dialog(parent);
   dialog.setMinimumSize(700, 400);
-  dialog.setWindowTitle(tr("DuckStation Third-Party Notices"));
+  dialog.setWindowTitle(tr("ArcadeDuck Third-Party Notices"));
 
   QIcon icon;
   icon.addFile(QString::fromUtf8(":/icons/duck.png"), QSize(), QIcon::Normal, QIcon::Off);
@@ -83,7 +82,7 @@ void AboutDialog::showThirdPartyNotices(QWidget* parent)
   }
   else
   {
-    tb->setText(tr("Missing thirdparty.html file. You should request it from where-ever you obtained DuckStation."));
+    tb->setText(tr("Missing thirdparty.html file. You should request it from where-ever you obtained ArcadeDuck."));
   }
   layout->addWidget(tb, 1);
 

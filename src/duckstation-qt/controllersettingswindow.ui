@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>DuckStation Controller Settings</string>
+   <string>ArcadeDuck Controller Settings</string>
   </property>
   <property name="windowIcon">
    <iconset resource="resources/duckstation-qt.qrc">
