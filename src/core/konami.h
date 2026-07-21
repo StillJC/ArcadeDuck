@@ -11,6 +11,7 @@
 #include <string_view>
 
 class Error;
+class StateWrapper;
 namespace BIOS {
 struct Image;
 }
@@ -75,6 +76,9 @@ bool IsGVActive();
 std::string_view GetGVSetName();
 std::string_view GetGVTitle();
 std::string_view GetGVPersistenceDirectory();
+bool DoGVState(StateWrapper& sw);
+void WriteEEPROMControl(u32 value);
+bool GetEEPROMDataOutput();
 
 bool IsGVSet(std::string_view set_name);
 const char* GetGVBIOSProfileName(GVBIOSProfile profile);

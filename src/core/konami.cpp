@@ -13,6 +13,7 @@
 #include "bios.h"
 #include "bus.h"
 #include "settings.h"
+#include "util/state_wrapper.h"
 #include "util/cd_image.h"
 
 #include <array>
@@ -33,6 +34,23 @@ struct GVRuntimeState
   std::string hardware_profile;
   std::array<u8, BIOS::BIOS_SIZE> bios;
   std::array<u8, 0x80> default_eeprom;
+  std::array<u8, 0x80> eeprom;
+  std::string eeprom_path;
+  bool eeprom_dirty = false;
+  bool eeprom_write_enabled = false;
+  bool eeprom_di = false;
+  bool eeprom_do = true;
+  bool eeprom_cs = false;
+  bool eeprom_clk = false;
+  u32 eeprom_shift = 0;
+  u32 eeprom_shift_count = 0;
+  u16 eeprom_read_shift = 0;
+  s32 eeprom_read_bits = 0;
+  u8 eeprom_read_address = 0;
+  u16 eeprom_write_shift = 0;
+  s32 eeprom_write_bits = 0;
+  u8 eeprom_write_address = 0;
+  bool eeprom_write_all = false;
   std::string chd_path;
   std::string persistence_directory;
   bool bios_installed = false;
@@ -40,6 +58,68 @@ struct GVRuntimeState
 };
 
 std::optional<GVRuntimeState> s_gv_runtime;
+
+static void ResetEEPROMProtocol(GVRuntimeState& runtime)
+{
+  runtime.eeprom_di = false;
+  runtime.eeprom_do = true;
+  runtime.eeprom_cs = false;
+  runtime.eeprom_clk = false;
+  runtime.eeprom_shift = 0;
+  runtime.eeprom_shift_count = 0;
+  runtime.eeprom_read_shift = 0;
+  runtime.eeprom_read_bits = 0;
+  runtime.eeprom_read_address = 0;
+  runtime.eeprom_write_shift = 0;
+  runtime.eeprom_write_bits = 0;
+  runtime.eeprom_write_address = 0;
+  runtime.eeprom_write_all = false;
+}
+
+static void MarkEEPROMDirty(GVRuntimeState& runtime)
+{
+  if (!runtime.eeprom_dirty)
+    INFO_LOG("KonamiGV.EEPROM dirty canonical_set='{}'", runtime.set_name);
+  runtime.eeprom_dirty = true;
+}
+
+static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
+{
+  runtime.eeprom_path = Path::Combine(runtime.persistence_directory, "eeprom");
+  if (!FileSystem::FileExists(runtime.eeprom_path.c_str()))
+  {
+    runtime.eeprom = runtime.default_eeprom;
+    INFO_LOG("KonamiGV.EEPROM initialized_default canonical_set='{}' path='{}'", runtime.set_name, runtime.eeprom_path);
+    return true;
+  }
+  std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.eeprom_path.c_str(), error);
+  if (!data || data->size() != runtime.eeprom.size())
+  {
+    Error::SetStringFmt(error, "Konami GV EEPROM '{}' has invalid size; expected {} bytes.", runtime.eeprom_path,
+                        static_cast<u32>(runtime.eeprom.size()));
+    ERROR_LOG("KonamiGV.EEPROM malformed_persistence path='{}'", runtime.eeprom_path);
+    return false;
+  }
+  std::memcpy(runtime.eeprom.data(), data->data(), runtime.eeprom.size());
+  INFO_LOG("KonamiGV.EEPROM loaded_persistence canonical_set='{}' path='{}'", runtime.set_name, runtime.eeprom_path);
+  return true;
+}
+
+static void SaveEEPROM(GVRuntimeState& runtime)
+{
+  if (!runtime.eeprom_dirty)
+    return;
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
+      !FileSystem::WriteBinaryFile(runtime.eeprom_path.c_str(), runtime.eeprom.data(), runtime.eeprom.size()))
+  {
+    ERROR_LOG("KonamiGV.EEPROM save_failed path='{}'", runtime.eeprom_path);
+    return;
+  }
+  runtime.eeprom_dirty = false;
+  INFO_LOG("KonamiGV.EEPROM saved path='{}'", runtime.eeprom_path);
+}
 
 // Source authority: simpsons-bowling-duckstation dc6720ae7 and MAME's konamigv.cpp.
 constexpr std::array<GVGameDefinition, 14> s_gv_game_definitions = {{
@@ -119,6 +199,9 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   runtime.default_eeprom = content.default_eeprom;
   runtime.chd_path = content.chd_path;
   runtime.persistence_directory = Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name);
+  if (!LoadEEPROM(runtime, error))
+    return false;
+  ResetEEPROMProtocol(runtime);
   std::memcpy(Bus::g_bios, runtime.bios.data(), runtime.bios.size());
   runtime.bios_installed = true;
   runtime.active = true;
@@ -134,13 +217,19 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
 void ResetGV()
 {
   if (s_gv_runtime && s_gv_runtime->active)
+  {
+    ResetEEPROMProtocol(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
+  }
 }
 
 void ShutdownGV()
 {
   if (s_gv_runtime)
+  {
+    SaveEEPROM(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle shutdown canonical_set='{}'", s_gv_runtime->set_name);
+  }
   s_gv_runtime.reset();
 }
 
@@ -162,6 +251,153 @@ std::string_view GetGVTitle()
 std::string_view GetGVPersistenceDirectory()
 {
   return s_gv_runtime ? std::string_view(s_gv_runtime->persistence_directory) : std::string_view{};
+}
+
+static u16 GetEEPROMWord(const GVRuntimeState& runtime, u8 address)
+{
+  const size_t offset = static_cast<size_t>(address & 0x3f) * 2;
+  return static_cast<u16>((runtime.eeprom[offset] << 8) | runtime.eeprom[offset + 1]);
+}
+
+static void SetEEPROMWord(GVRuntimeState& runtime, u8 address, u16 value)
+{
+  const size_t offset = static_cast<size_t>(address & 0x3f) * 2;
+  if (GetEEPROMWord(runtime, address) == value)
+    return;
+  runtime.eeprom[offset] = static_cast<u8>(value >> 8);
+  runtime.eeprom[offset + 1] = static_cast<u8>(value);
+  MarkEEPROMDirty(runtime);
+}
+
+void WriteEEPROMControl(u32 value)
+{
+  if (!s_gv_runtime || !s_gv_runtime->active)
+    return;
+  GVRuntimeState& runtime = *s_gv_runtime;
+  const bool di = (value & 0x01) != 0;
+  const bool cs = (value & 0x02) != 0;
+  const bool clk = (value & 0x04) != 0;
+  if (!cs)
+  {
+    ResetEEPROMProtocol(runtime);
+    runtime.eeprom_di = di;
+    runtime.eeprom_clk = clk;
+    return;
+  }
+  if (!runtime.eeprom_cs)
+    ResetEEPROMProtocol(runtime);
+
+  if (!runtime.eeprom_clk && clk)
+  {
+    if (runtime.eeprom_read_bits > 0)
+    {
+      runtime.eeprom_do = ((runtime.eeprom_read_shift >> 15) & 1) != 0;
+      runtime.eeprom_read_shift <<= 1;
+      if (--runtime.eeprom_read_bits == 0)
+      {
+        runtime.eeprom_read_address = static_cast<u8>((runtime.eeprom_read_address + 1) & 0x3f);
+        runtime.eeprom_read_shift = GetEEPROMWord(runtime, runtime.eeprom_read_address);
+        runtime.eeprom_read_bits = 16;
+      }
+    }
+    else if (runtime.eeprom_write_bits > 0)
+    {
+      runtime.eeprom_write_shift = static_cast<u16>((runtime.eeprom_write_shift << 1) | (di ? 1 : 0));
+      if (--runtime.eeprom_write_bits == 0)
+      {
+        if (runtime.eeprom_write_enabled)
+        {
+          if (runtime.eeprom_write_all)
+            for (u8 i = 0; i < 64; i++) SetEEPROMWord(runtime, i, runtime.eeprom_write_shift);
+          else
+            SetEEPROMWord(runtime, runtime.eeprom_write_address, runtime.eeprom_write_shift);
+        }
+        runtime.eeprom_shift = 0;
+        runtime.eeprom_shift_count = 0;
+      }
+    }
+    else
+    {
+      if (runtime.eeprom_shift_count == 0 && !di)
+      {
+        runtime.eeprom_di = di;
+        runtime.eeprom_cs = cs;
+        runtime.eeprom_clk = clk;
+        return;
+      }
+      runtime.eeprom_shift = (runtime.eeprom_shift << 1) | (di ? 1 : 0);
+      if (++runtime.eeprom_shift_count == 9)
+      {
+        const u8 opcode = static_cast<u8>((runtime.eeprom_shift >> 6) & 0x03);
+        const u8 address = static_cast<u8>(runtime.eeprom_shift & 0x3f);
+        runtime.eeprom_shift = 0;
+        runtime.eeprom_shift_count = 0;
+        if (opcode == 0x02)
+        {
+          runtime.eeprom_read_address = address;
+          runtime.eeprom_read_shift = GetEEPROMWord(runtime, address);
+          runtime.eeprom_read_bits = 16;
+        }
+        else if (opcode == 0x01)
+        {
+          runtime.eeprom_write_address = address;
+          runtime.eeprom_write_shift = 0;
+          runtime.eeprom_write_bits = 16;
+        }
+        else if (opcode == 0x03 && runtime.eeprom_write_enabled)
+        {
+          SetEEPROMWord(runtime, address, 0xffff);
+        }
+        else if (opcode == 0x00)
+        {
+          switch ((address >> 4) & 0x03)
+          {
+            case 0: runtime.eeprom_write_enabled = false; break;
+            case 1: runtime.eeprom_write_all = true; runtime.eeprom_write_shift = 0; runtime.eeprom_write_bits = 16; break;
+            case 2: if (runtime.eeprom_write_enabled) for (u8 i = 0; i < 64; i++) SetEEPROMWord(runtime, i, 0xffff); break;
+            case 3: runtime.eeprom_write_enabled = true; break;
+          }
+        }
+      }
+    }
+  }
+  runtime.eeprom_di = di;
+  runtime.eeprom_cs = cs;
+  runtime.eeprom_clk = clk;
+}
+
+bool GetEEPROMDataOutput()
+{
+  return s_gv_runtime && s_gv_runtime->eeprom_do;
+}
+
+bool DoGVState(StateWrapper& sw)
+{
+  if (!s_gv_runtime)
+    return true;
+  GVRuntimeState& r = *s_gv_runtime;
+  sw.DoBytes(r.eeprom.data(), r.eeprom.size());
+  sw.Do(&r.eeprom_dirty);
+  sw.Do(&r.eeprom_write_enabled);
+  sw.Do(&r.eeprom_di);
+  sw.Do(&r.eeprom_do);
+  sw.Do(&r.eeprom_cs);
+  sw.Do(&r.eeprom_clk);
+  sw.Do(&r.eeprom_shift);
+  sw.Do(&r.eeprom_shift_count);
+  sw.Do(&r.eeprom_read_shift);
+  sw.Do(&r.eeprom_read_bits);
+  sw.Do(&r.eeprom_read_address);
+  sw.Do(&r.eeprom_write_shift);
+  sw.Do(&r.eeprom_write_bits);
+  sw.Do(&r.eeprom_write_address);
+  sw.Do(&r.eeprom_write_all);
+  if (sw.IsReading() && (r.eeprom_shift_count > 9 || r.eeprom_read_bits < 0 || r.eeprom_read_bits > 16 ||
+                         r.eeprom_write_bits < 0 || r.eeprom_write_bits > 16))
+  {
+    ResetEEPROMProtocol(r);
+  }
+  return !sw.HasError();
 }
 
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error)
