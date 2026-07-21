@@ -14,6 +14,7 @@
 #include "bios.h"
 #include "bus.h"
 #include "settings.h"
+#include "sio.h"
 #include "util/state_wrapper.h"
 #include "util/cd_image.h"
 
@@ -37,6 +38,7 @@ constexpr u32 GV_FUJITSU_FLASH_SECTOR_SIZE = 0x10000;
 constexpr u32 GV_FUJITSU_FLASH_CHIP_COUNT = 4;
 constexpr u32 GV_FUJITSU_FLASH_CHIPS_PER_PAIR = 2;
 constexpr u8 GV_FUJITSU_FLASH_ERASED_VALUE = 0xff;
+constexpr u32 GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT = GV_FUJITSU_FLASH_SIZE / (CDImage::DATA_SECTOR_SIZE / 2);
 
 enum class SharpFlashMode : u8
 {
@@ -144,7 +146,18 @@ static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
   if (!FileSystem::FileExists(runtime.eeprom_path.c_str()))
   {
     runtime.eeprom = runtime.default_eeprom;
-    INFO_LOG("KonamiGV.EEPROM initialized_default canonical_set='{}' path='{}'", runtime.set_name, runtime.eeprom_path);
+    const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+    if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+        !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
+        !FileSystem::WriteBinaryFile(runtime.eeprom_path.c_str(), runtime.eeprom.data(), runtime.eeprom.size()))
+    {
+      Error::SetStringFmt(error, "Failed to create Konami GV EEPROM persistence '{}'.", runtime.eeprom_path);
+      ERROR_LOG("KonamiGV.EEPROM initial_persistence_create_failed canonical_set='{}' path='{}'", runtime.set_name,
+                runtime.eeprom_path);
+      return false;
+    }
+    INFO_LOG("KonamiGV.EEPROM initialized_default_persistence canonical_set='{}' path='{}'", runtime.set_name,
+             runtime.eeprom_path);
     return true;
   }
   std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.eeprom_path.c_str(), error);
@@ -401,12 +414,84 @@ static void MarkFujitsuFlashDirty(GVRuntimeState& runtime, u32 chip)
   runtime.fujitsu_flash_dirty[chip] = true;
 }
 
+static bool IsFujitsuFlashErased(const std::vector<u8>& flash)
+{
+  return std::all_of(flash.begin(), flash.end(), [](u8 value) { return value == GV_FUJITSU_FLASH_ERASED_VALUE; });
+}
+
+static bool PopulateSimpsonsFujitsuFlashFromMedia(GVRuntimeState& runtime, Error* error)
+{
+  constexpr std::array<u32, 2> pair_start_lbas = {{202, 2250}};
+  std::array<u8, CDImage::DATA_SECTOR_SIZE> sector;
+
+  for (u32 pair = 0; pair < pair_start_lbas.size(); pair++)
+  {
+    u32 output_offset = 0;
+    for (u32 sector_index = 0; sector_index < GV_FUJITSU_FLASH_PAIR_SECTOR_COUNT; sector_index++)
+    {
+      if (!runtime.media->Seek(runtime.data_track_number, pair_start_lbas[pair] + sector_index) ||
+          runtime.media->Read(CDImage::ReadMode::DataOnly, 1, sector.data()) != 1)
+      {
+        Error::SetStringFmt(error, "Failed reading Konami GV Fujitsu flash seed sector {}.",
+                            pair_start_lbas[pair] + sector_index);
+        ERROR_LOG("KonamiGV.FujitsuFlash media_seed_failed canonical_set='{}' pair={} lba={}", runtime.set_name,
+                  pair, pair_start_lbas[pair] + sector_index);
+        return false;
+      }
+
+      for (u32 byte_index = 0; byte_index < sector.size(); byte_index += 2)
+      {
+        runtime.fujitsu_flash[pair * 2][output_offset] = sector[byte_index];
+        runtime.fujitsu_flash[(pair * 2) + 1][output_offset] = sector[byte_index + 1];
+        output_offset++;
+      }
+    }
+  }
+
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false))
+  {
+    Error::SetStringFmt(error, "Failed to create Konami GV Fujitsu flash persistence directory '{}'.",
+                        runtime.persistence_directory);
+    ERROR_LOG("KonamiGV.FujitsuFlash media_seed_persistence_directory_failed canonical_set='{}' path='{}'",
+              runtime.set_name, runtime.persistence_directory);
+    return false;
+  }
+  for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+  {
+    if (!FileSystem::WriteBinaryFile(runtime.fujitsu_flash_paths[chip].c_str(), runtime.fujitsu_flash[chip].data(),
+                                     runtime.fujitsu_flash[chip].size()))
+    {
+      Error::SetStringFmt(error, "Failed to create Konami GV Fujitsu flash persistence '{}'.",
+                          runtime.fujitsu_flash_paths[chip]);
+      ERROR_LOG("KonamiGV.FujitsuFlash media_seed_persistence_write_failed canonical_set='{}' path='{}'",
+                runtime.set_name, runtime.fujitsu_flash_paths[chip]);
+      return false;
+    }
+    std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.fujitsu_flash_paths[chip].c_str(), error);
+    if (!data || data->size() != runtime.fujitsu_flash[chip].size())
+    {
+      Error::SetStringFmt(error, "Failed to validate generated Konami GV Fujitsu flash persistence '{}'.",
+                          runtime.fujitsu_flash_paths[chip]);
+      ERROR_LOG("KonamiGV.FujitsuFlash media_seed_persistence_read_failed canonical_set='{}' path='{}'",
+                runtime.set_name, runtime.fujitsu_flash_paths[chip]);
+      return false;
+    }
+    std::memcpy(runtime.fujitsu_flash[chip].data(), data->data(), runtime.fujitsu_flash[chip].size());
+  }
+  INFO_LOG("KonamiGV.FujitsuFlash generated_persistence canonical_set='{}' pair01_lba=202 pair23_lba=2250",
+           runtime.set_name);
+  return true;
+}
+
 static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
 {
   if (!UsesFujitsuFlash(runtime))
     return true;
 
   runtime.fujitsu_flash_active = true;
+  bool needs_media_seed = false;
   for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
   {
     runtime.fujitsu_flash[chip].assign(GV_FUJITSU_FLASH_SIZE, GV_FUJITSU_FLASH_ERASED_VALUE);
@@ -414,6 +499,7 @@ static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
                                                                                   static_cast<char>('0' + chip));
     if (!FileSystem::FileExists(runtime.fujitsu_flash_paths[chip].c_str()))
     {
+      needs_media_seed = true;
       INFO_LOG("KonamiGV.FujitsuFlash initialized_erased canonical_set='{}' path='{}'", runtime.set_name,
                runtime.fujitsu_flash_paths[chip]);
       continue;
@@ -429,9 +515,13 @@ static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
       return false;
     }
     std::memcpy(runtime.fujitsu_flash[chip].data(), data->data(), runtime.fujitsu_flash[chip].size());
+    needs_media_seed |= IsFujitsuFlashErased(runtime.fujitsu_flash[chip]);
     INFO_LOG("KonamiGV.FujitsuFlash loaded_persistence canonical_set='{}' path='{}'", runtime.set_name,
              runtime.fujitsu_flash_paths[chip]);
   }
+
+  if (needs_media_seed && !PopulateSimpsonsFujitsuFlashFromMedia(runtime, error))
+    return false;
 
   ResetFujitsuFlash(runtime);
   INFO_LOG("KonamiGV.FujitsuFlash selected canonical_set='{}' hardware_profile='{}' path0='{}'", runtime.set_name,
@@ -750,6 +840,7 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   runtime.bios_installed = true;
   runtime.active = true;
   s_gv_runtime.emplace(std::move(runtime));
+  SIO::Reset();
   KonamiGVScsi::Initialize();
 
   INFO_LOG("KonamiGV.Lifecycle initialized canonical_set='{}' title='{}' hardware_profile='{}' persistence_directory='{}'",
@@ -888,6 +979,11 @@ std::string_view GetGVTitle()
 std::string_view GetGVPersistenceDirectory()
 {
   return s_gv_runtime ? std::string_view(s_gv_runtime->persistence_directory) : std::string_view{};
+}
+
+std::string_view GetGVCHDPath()
+{
+  return s_gv_runtime ? std::string_view(s_gv_runtime->chd_path) : std::string_view{};
 }
 
 static u16 GetEEPROMWord(const GVRuntimeState& runtime, u8 address)

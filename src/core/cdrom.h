@@ -44,4 +44,8 @@ void SetReadaheadSectors(u32 readahead_sectors);
 /// Reads a frame from the audio FIFO, used by the SPU.
 std::tuple<s16, s16> GetAudioFrame();
 
+/// Supplies GV SCSI CDDA frames to the existing CD audio FIFO consumed by the SPU.
+void PushExternalCDAudioFrames(const u32* frames, u32 frame_count);
+void ClearExternalCDAudioFrames();
+
 } // namespace CDROM

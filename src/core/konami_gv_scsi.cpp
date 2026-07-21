@@ -4,6 +4,7 @@
 #include "konami_gv_scsi.h"
 
 #include "konami.h"
+#include "konami_gv_cdrom.h"
 #include "dma.h"
 #include "interrupt_controller.h"
 #include "system.h"
@@ -126,7 +127,10 @@ struct ControllerState
   u16 response_position = 0;
   u16 target_transfer_length = 0;
   bool data_in_active = false;
+  bool data_out_active = false;
   bool dma_request = false;
+  std::array<u8, 4> audio_output_channel = {{1, 2, 0, 0}};
+  std::array<u8, 4> audio_output_volume = {{0xff, 0xff, 0, 0}};
   std::array<u8, SCSI_LOGICAL_BLOCK_SIZE> sector_buffer = {};
   u32 read_lba = 0;
   u16 read_blocks_remaining = 0;
@@ -186,6 +190,7 @@ static void ResetTargetProtocol()
   s_state.response_position = 0;
   s_state.target_transfer_length = 0;
   s_state.data_in_active = false;
+  s_state.data_out_active = false;
   s_state.dma_request = false;
   s_state.sector_buffer.fill(0);
   s_state.read_lba = 0;
@@ -357,6 +362,49 @@ static void RequestDeferredStop(MigrationStopReason boundary_reason, const char*
   s_state.boundary_requested = true;
 }
 
+static void CompleteDataOut()
+{
+  if (s_state.cdb[0] == 0x15 && s_state.response_length >= 4)
+  {
+    const size_t parameter_length = std::min<size_t>(s_state.response_length, s_state.cdb[4]);
+    const size_t block_descriptor_length = s_state.response[3];
+    size_t page_offset = 4 + block_descriptor_length;
+    while ((page_offset + 2) <= parameter_length)
+    {
+      const u8 page_code = s_state.response[page_offset] & 0x3f;
+      const size_t page_size = 2 + s_state.response[page_offset + 1];
+      if ((page_offset + page_size) > parameter_length)
+        break;
+      if (page_code == 0x0e && page_size >= 24 && (page_offset + 24) <= parameter_length)
+      {
+        for (u8 output = 0; output < 4; output++)
+        {
+          const size_t output_offset = page_offset + 16 + (output * 2);
+          s_state.audio_output_channel[output] = s_state.response[output_offset] & 0x0f;
+          s_state.audio_output_volume[output] = s_state.response[output_offset + 1];
+          KonamiGVCDROM::SetAudioOutput(output, s_state.audio_output_channel[output], s_state.audio_output_volume[output]);
+        }
+        INFO_LOG("KonamiGV.NCR53CF96 mode_select6_audio_control canonical_set='{}' outputs='{:02X}/{:02X} {:02X}/{:02X} {:02X}/{:02X} {:02X}/{:02X}'",
+                 Konami::GetGVSetName(), s_state.audio_output_channel[0], s_state.audio_output_volume[0],
+                 s_state.audio_output_channel[1], s_state.audio_output_volume[1], s_state.audio_output_channel[2],
+                 s_state.audio_output_volume[2], s_state.audio_output_channel[3], s_state.audio_output_volume[3]);
+        break;
+      }
+      page_offset += page_size;
+    }
+  }
+  SetDMARequest(false);
+  s_state.data_out_active = false;
+  s_state.response.fill(0);
+  s_state.response_length = 0;
+  s_state.response_position = 0;
+  s_state.target_transfer_length = 0;
+  s_state.status_message_pending = true;
+  SetPhase(Phase::Status);
+  s_state.sequence_step = 0;
+  AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+}
+
 static void CaptureCDB(u32 pc)
 {
   if (s_state.fifo_count < 2)
@@ -496,16 +544,42 @@ static void CaptureCDB(u32 pc)
     return;
   }
 
+  if (opcode == 0x15)
+  {
+    const u8 lun = (s_state.cdb[1] >> 5) & 0x07;
+    const u8 parameter_length = s_state.cdb[4];
+    if (lun != 0 || (s_state.cdb[1] & 0x10) == 0)
+    {
+      RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unsupported_mode_select_variant", pc);
+      return;
+    }
+    s_state.response.fill(0);
+    s_state.response_length = std::min<u16>(parameter_length, static_cast<u16>(s_state.response.size()));
+    s_state.response_position = 0;
+    s_state.target_transfer_length = s_state.response_length;
+    s_state.data_out_active = s_state.response_length != 0;
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    s_state.status_message_pending = false;
+    SetPhase(Phase::DataOut);
+    s_state.sequence_step = 0x04;
+    INFO_LOG("KonamiGV.NCR53CF96 mode_select6_execute canonical_set='{}' lun={} parameter_length={}",
+             Konami::GetGVSetName(), lun, parameter_length);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
   if (opcode == 0x43)
   {
-    const bool msf = (s_state.cdb[1] & 0x02) != 0;
     const u8 format = s_state.cdb[2] & 0x0f;
     const u8 starting_track = s_state.cdb[6];
     const u16 allocation_length = static_cast<u16>((static_cast<u16>(s_state.cdb[7]) << 8) | s_state.cdb[8]);
     std::array<u8, RESPONSE_CAPACITY> full_response = {};
-    const u32 full_response_length = Konami::BuildGVTOC(msf, starting_track, full_response.data(), full_response.size());
+    const u32 full_response_length = KonamiGVCDROM::ReadTOC(s_state.cdb.data(), full_response.data(),
+                                                             static_cast<u32>(full_response.size()));
     s_state.response.fill(0);
-    s_state.response_length = static_cast<u16>(std::min<u32>({allocation_length, full_response_length, s_state.response.size()}));
+    s_state.response_length = static_cast<u16>(std::min<u32>({allocation_length, full_response_length,
+                                                               static_cast<u32>(s_state.response.size())}));
     s_state.response_position = 0;
     s_state.target_transfer_length = s_state.response_length;
     if (format != 0)
@@ -529,11 +603,33 @@ static void CaptureCDB(u32 pc)
       response_bytes += text;
     }
     INFO_LOG("KonamiGV.NCR53CF96 read_toc_execute canonical_set='{}' format={} msf={} starting_track={} allocation_length={} full_response_length={} toc_data_length={} transfer_length={} adr=1 control=4 adr_control=0x14 data='{}'",
-             Konami::GetGVSetName(), format, msf, starting_track, allocation_length, full_response_length,
+             Konami::GetGVSetName(), format, (s_state.cdb[1] & 0x02) != 0, starting_track, allocation_length, full_response_length,
              full_response_length >= 2 ? full_response_length - 2 : 0, s_state.response_length, response_bytes);
     INFO_LOG("KonamiGV.NCR53CF96 data_in_started canonical_set='{}' phase={} sequence_step={}", Konami::GetGVSetName(),
              static_cast<u8>(s_state.phase), s_state.sequence_step);
     AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
+  if (opcode == 0x42)
+  {
+    const u16 allocation_length = static_cast<u16>((static_cast<u16>(s_state.cdb[7]) << 8) | s_state.cdb[8]);
+    s_state.response.fill(0);
+    const u32 full_length = KonamiGVCDROM::ReadSubChannel(s_state.cdb.data(), s_state.response.data(),
+                                                           static_cast<u32>(s_state.response.size()));
+    s_state.response_length = static_cast<u16>(std::min<u32>({allocation_length, full_length,
+                                                               static_cast<u32>(s_state.response.size())}));
+    s_state.response_position = 0; s_state.target_transfer_length = s_state.response_length; s_state.data_in_active = s_state.response_length != 0;
+    s_state.target_status = SCSI_STATUS_GOOD; s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE; SetPhase(Phase::DataIn); s_state.sequence_step = 0x04;
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE); return;
+  }
+
+  if (opcode == 0x48 || opcode == 0x4b)
+  {
+    const bool ok = opcode == 0x48 ? KonamiGVCDROM::PlayAudioTrackIndex(s_state.cdb[4], s_state.cdb[5], s_state.cdb[7], s_state.cdb[8]) : (KonamiGVCDROM::PauseAudio((s_state.cdb[8] & 1) != 0), true);
+    s_state.target_status = SCSI_STATUS_GOOD; s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE; s_state.status_message_pending = true;
+    SetPhase(Phase::BusFree); s_state.sequence_step = 0x06; AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    if (!ok) WARNING_LOG("KonamiGV.NCR53CF96 audio_command_rejected opcode=0x{:02X}", opcode);
     return;
   }
 
@@ -544,7 +640,7 @@ static void CaptureCDB(u32 pc)
     const u8 page_code = s_state.cdb[2] & 0x3f;
     const u8 allocation_length = s_state.cdb[4];
     s_state.response.fill(0);
-    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, s_state.response.size()));
+    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, static_cast<u32>(s_state.response.size())));
     s_state.response_position = 0;
     s_state.target_transfer_length = s_state.response_length;
     if (page_control != 0 || page_code != 0x0e)
@@ -558,9 +654,12 @@ static void CaptureCDB(u32 pc)
     if (s_state.response_length > 4) s_state.response[4] = 0x0e;
     if (s_state.response_length > 5) s_state.response[5] = 0x16;
     if (s_state.response_length > 6) s_state.response[6] = 0x04;
-    static constexpr std::array<u8, 8> audio_defaults = {1, 0xff, 2, 0xff, 0, 0, 0, 0};
-    for (u32 i = 0; i < audio_defaults.size() && (20 + i) < s_state.response_length; i++)
-      s_state.response[20 + i] = audio_defaults[i];
+    for (u32 output = 0; output < s_state.audio_output_channel.size() && (20 + (output * 2) + 1) < s_state.response_length;
+         output++)
+    {
+      s_state.response[20 + (output * 2)] = s_state.audio_output_channel[output];
+      s_state.response[21 + (output * 2)] = s_state.audio_output_volume[output];
+    }
     s_state.data_in_active = s_state.response_length != 0;
     s_state.target_status = SCSI_STATUS_GOOD;
     s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
@@ -601,7 +700,7 @@ static void CaptureCDB(u32 pc)
       'C', 'D', '-', 'R', 'O', 'M', ' ', 'X', 'M', '-', '5', '4', '0', '1', 'T', 'A',
       '3', '6', '0', '5'};
     s_state.response.fill(0);
-    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, inquiry.size()));
+    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, static_cast<u32>(inquiry.size())));
     std::memcpy(s_state.response.data(), inquiry.data(), s_state.response_length);
     s_state.response_position = 0;
     s_state.target_transfer_length = s_state.response_length;
@@ -792,6 +891,7 @@ static void ResetEventCallback(void*, TickCount, TickCount)
 
 void Initialize()
 {
+  KonamiGVCDROM::Initialize();
   if (!s_reset_event)
     s_reset_event = std::make_unique<TimingEvent>("Konami GV NCR53CF96 Reset", 1, 1, ResetEventCallback, nullptr);
   else
@@ -806,6 +906,7 @@ void Reset()
   if (!s_state.active)
     return;
   ResetController(false, true);
+  KonamiGVCDROM::Reset();
   s_state.active = true;
   INFO_LOG("KonamiGV.NCR53CF96 reset canonical_set='{}'", Konami::GetGVSetName());
 }
@@ -816,6 +917,7 @@ void Shutdown()
     s_reset_event->Deactivate();
   DMA::SetRequest(DMA::Channel::PIO, false);
   DeassertIRQ10();
+  KonamiGVCDROM::Shutdown();
   if (s_state.active)
     INFO_LOG("KonamiGV.NCR53CF96 shutdown canonical_set='{}'", Konami::GetGVSetName());
   s_state = {};
@@ -934,6 +1036,10 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
               if (s_state.data_in_active || s_state.read_active)
               {
                 StartDataInTransfer();
+              }
+              else if (s_state.data_out_active)
+              {
+                SetDMARequest(true);
               }
               else
               {
@@ -1077,9 +1183,18 @@ void DMARead(u32* data, u32 word_count)
     CompleteDataIn();
 }
 
-void DMAWrite(const u32*, u32)
+void DMAWrite(const u32* data, u32 word_count)
 {
-  // Stage 3C is device-to-host REQUEST SENSE only. PIO/DMA writes remain inactive.
+  if (word_count == 0 || !s_state.dma_request || !s_state.data_out_active)
+    return;
+  const u32 byte_count = word_count * sizeof(u32);
+  const u16 remaining = s_state.response_length - s_state.response_position;
+  const u32 copy_bytes = std::min<u32>(byte_count, remaining);
+  std::memcpy(s_state.response.data() + s_state.response_position, data, copy_bytes);
+  s_state.response_position = static_cast<u16>(s_state.response_position + copy_bytes);
+  DecrementTransferCounter(byte_count);
+  if (s_state.response_position == s_state.response_length && (s_state.status & STATUS_TERMINAL_COUNT) != 0)
+    CompleteDataOut();
 }
 
 bool DoState(StateWrapper& sw)
@@ -1130,7 +1245,10 @@ bool DoState(StateWrapper& sw)
   sw.Do(&s_state.response_position);
   sw.Do(&s_state.target_transfer_length);
   sw.Do(&s_state.data_in_active);
+  sw.Do(&s_state.data_out_active);
   sw.Do(&s_state.dma_request);
+  sw.DoBytes(s_state.audio_output_channel.data(), s_state.audio_output_channel.size());
+  sw.DoBytes(s_state.audio_output_volume.data(), s_state.audio_output_volume.size());
   sw.DoBytes(s_state.sector_buffer.data(), s_state.sector_buffer.size());
   sw.Do(&s_state.read_lba);
   sw.Do(&s_state.read_blocks_remaining);

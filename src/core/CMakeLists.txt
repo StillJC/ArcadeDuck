@@ -77,6 +77,8 @@ add_library(core
   interrupt_controller.h
   konami.cpp
   konami.h
+  konami_gv_cdrom.cpp
+  konami_gv_cdrom.h
   konami_gv_scsi.cpp
   konami_gv_scsi.h
   justifier.cpp

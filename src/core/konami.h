@@ -87,6 +87,7 @@ u32 BuildGVTOC(bool msf, u8 requested_track, u8* response, u32 response_size);
 std::string_view GetGVSetName();
 std::string_view GetGVTitle();
 std::string_view GetGVPersistenceDirectory();
+std::string_view GetGVCHDPath();
 bool DoGVState(StateWrapper& sw);
 void WriteEEPROMControl(u32 value);
 bool GetEEPROMDataOutput();

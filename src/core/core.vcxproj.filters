@@ -9,8 +9,9 @@
     <ClCompile Include="gpu.cpp" />
     <ClCompile Include="gpu_hw.cpp" />
     <ClCompile Include="interrupt_controller.cpp" />
-    <ClCompile Include="konami.cpp" />
-    <ClCompile Include="konami_gv_scsi.cpp" />
+      <ClCompile Include="konami.cpp" />
+      <ClCompile Include="konami_gv_cdrom.cpp" />
+      <ClCompile Include="konami_gv_scsi.cpp" />
     <ClCompile Include="cdrom.cpp" />
     <ClCompile Include="gte.cpp" />
     <ClCompile Include="pad.cpp" />
@@ -84,8 +85,9 @@
     <ClInclude Include="gpu.h" />
     <ClInclude Include="gpu_hw.h" />
     <ClInclude Include="interrupt_controller.h" />
-    <ClInclude Include="konami.h" />
-    <ClInclude Include="konami_gv_scsi.h" />
+      <ClInclude Include="konami.h" />
+      <ClInclude Include="konami_gv_cdrom.h" />
+      <ClInclude Include="konami_gv_scsi.h" />
     <ClInclude Include="cdrom.h" />
     <ClInclude Include="gte.h" />
     <ClInclude Include="pad.h" />

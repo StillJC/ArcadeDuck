@@ -3176,6 +3176,27 @@ std::tuple<s16, s16> CDROM::GetAudioFrame()
   return std::tuple<s16, s16>(left_out, right_out);
 }
 
+void CDROM::PushExternalCDAudioFrames(const u32* frames, u32 frame_count)
+{
+  if (!frames || frame_count == 0)
+    return;
+  if (frame_count > s_audio_fifo.GetCapacity())
+  {
+    frames += frame_count - s_audio_fifo.GetCapacity();
+    frame_count = s_audio_fifo.GetCapacity();
+  }
+  const u32 remaining_space = s_audio_fifo.GetSpace();
+  if (frame_count > remaining_space)
+    s_audio_fifo.Remove(frame_count - remaining_space);
+  for (u32 i = 0; i < frame_count; i++)
+    s_audio_fifo.Push(frames[i]);
+}
+
+void CDROM::ClearExternalCDAudioFrames()
+{
+  s_audio_fifo.Clear();
+}
+
 void CDROM::AddCDAudioFrame(s16 left, s16 right)
 {
   s_audio_fifo.Push(ZeroExtend32(static_cast<u16>(left)) | (ZeroExtend32(static_cast<u16>(right)) << 16));

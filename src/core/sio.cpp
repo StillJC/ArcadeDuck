@@ -3,6 +3,7 @@
 
 #include "sio.h"
 #include "controller.h"
+#include "konami.h"
 
 #include "util/state_wrapper.h"
 
@@ -112,8 +113,7 @@ u32 SIO::ReadRegister(u32 offset)
 
     case 0x04: // SIO_STAT
     {
-      const u32 bits = s_SIO_STAT.bits;
-      return bits;
+      return s_SIO_STAT.bits;
     }
 
     case 0x08: // SIO_MODE
@@ -176,10 +176,15 @@ void SIO::SoftReset()
 {
   s_SIO_CTRL.bits = 0;
   s_SIO_STAT.bits = 0;
-  s_SIO_STAT.DSRINPUTLEVEL = true;
-  s_SIO_STAT.CTSINPUTLEVEL = true;
+  if (!Konami::IsGVActive())
+  {
+    s_SIO_STAT.DSRINPUTLEVEL = true;
+    s_SIO_STAT.CTSINPUTLEVEL = true;
+  }
   s_SIO_STAT.TXDONE = true;
   s_SIO_STAT.TXRDY = true;
+  if (Konami::IsGVActive())
+    INFO_LOG("KonamiGV.SIO source_compatible_reset_status=0x{:08X}", s_SIO_STAT.bits);
   s_SIO_MODE.bits = 0;
   s_SIO_BAUD = 0xDC;
 }

@@ -67,6 +67,7 @@
     <ClCompile Include="imgui_overlays.cpp" />
     <ClCompile Include="interrupt_controller.cpp" />
     <ClCompile Include="konami.cpp" />
+    <ClCompile Include="konami_gv_cdrom.cpp" />
     <ClCompile Include="konami_gv_scsi.cpp" />
     <ClCompile Include="justifier.cpp" />
     <ClCompile Include="mdec.cpp" />
@@ -150,6 +151,7 @@
     <ClInclude Include="input_types.h" />
     <ClInclude Include="interrupt_controller.h" />
     <ClInclude Include="konami.h" />
+    <ClInclude Include="konami_gv_cdrom.h" />
     <ClInclude Include="konami_gv_scsi.h" />
     <ClInclude Include="justifier.h" />
     <ClInclude Include="mdec.h" />
