@@ -819,6 +819,62 @@ bool ReadGVDataSector(u32 lba, u8* buffer, u32* cdimage_lba, u32* track_number)
          s_gv_runtime->media->Read(CDImage::ReadMode::DataOnly, 1, buffer) == 1;
 }
 
+u32 BuildGVTOC(bool msf, u8 requested_track, u8* response, u32 response_size)
+{
+  if (!s_gv_runtime || !s_gv_runtime->media || !response || response_size < 4)
+    return 0;
+  const u8 first_track = static_cast<u8>(s_gv_runtime->media->GetFirstTrackNumber());
+  const u8 last_track = static_cast<u8>(s_gv_runtime->media->GetLastTrackNumber());
+  std::memset(response, 0, response_size);
+  response[2] = first_track;
+  response[3] = last_track;
+  u32 write_offset = 4;
+  const auto append = [&](u8 track_number, u8 control_bits, CDImage::LBA lba) {
+    if ((write_offset + 8) > response_size)
+      return;
+    // Target CDImage metadata may omit ADR and retain only CONTROL in the high nibble.
+    const u8 adr = (control_bits & 0x0f) != 0 ? (control_bits & 0x0f) : 0x01;
+    const u8 control = (control_bits >> 4) & 0x0f;
+    response[write_offset + 1] = static_cast<u8>((adr << 4) | control);
+    response[write_offset + 2] = track_number;
+    if (msf)
+    {
+      const CDImage::Position position = CDImage::Position::FromLBA(lba);
+      response[write_offset + 5] = position.minute;
+      response[write_offset + 6] = position.second;
+      response[write_offset + 7] = position.frame;
+    }
+    else
+    {
+      response[write_offset + 4] = static_cast<u8>(lba >> 24);
+      response[write_offset + 5] = static_cast<u8>(lba >> 16);
+      response[write_offset + 6] = static_cast<u8>(lba >> 8);
+      response[write_offset + 7] = static_cast<u8>(lba);
+    }
+    write_offset += 8;
+  };
+  if (requested_track != CDImage::LEAD_OUT_TRACK_NUMBER)
+  {
+    const u8 start_track = (requested_track == 0 || requested_track < first_track) ? first_track : requested_track;
+    for (u8 track = start_track; track <= last_track; track++)
+    {
+      const CDImage::Track& info = s_gv_runtime->media->GetTrack(track);
+      append(track, info.control.bits, info.start_lba);
+      if ((write_offset + 8) > response_size)
+        break;
+    }
+  }
+  if ((write_offset + 8) <= response_size)
+  {
+    const CDImage::Track& info = s_gv_runtime->media->GetTrack(last_track);
+    append(CDImage::LEAD_OUT_TRACK_NUMBER, info.control.bits, s_gv_runtime->media->GetLBACount());
+  }
+  const u16 length = static_cast<u16>(write_offset - 2);
+  response[0] = static_cast<u8>(length >> 8);
+  response[1] = static_cast<u8>(length);
+  return write_offset;
+}
+
 std::string_view GetGVSetName()
 {
   return s_gv_runtime ? std::string_view(s_gv_runtime->set_name) : std::string_view{};

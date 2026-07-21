@@ -496,6 +496,47 @@ static void CaptureCDB(u32 pc)
     return;
   }
 
+  if (opcode == 0x43)
+  {
+    const bool msf = (s_state.cdb[1] & 0x02) != 0;
+    const u8 format = s_state.cdb[2] & 0x0f;
+    const u8 starting_track = s_state.cdb[6];
+    const u16 allocation_length = static_cast<u16>((static_cast<u16>(s_state.cdb[7]) << 8) | s_state.cdb[8]);
+    std::array<u8, RESPONSE_CAPACITY> full_response = {};
+    const u32 full_response_length = Konami::BuildGVTOC(msf, starting_track, full_response.data(), full_response.size());
+    s_state.response.fill(0);
+    s_state.response_length = static_cast<u16>(std::min<u32>({allocation_length, full_response_length, s_state.response.size()}));
+    s_state.response_position = 0;
+    s_state.target_transfer_length = s_state.response_length;
+    if (format != 0)
+    {
+      ERROR_LOG("KonamiGV.NCR53CF96 read_toc_invalid_format canonical_set='{}' format={}", Konami::GetGVSetName(), format);
+      RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unsupported_read_toc_format", pc);
+      return;
+    }
+    std::memcpy(s_state.response.data(), full_response.data(), s_state.response_length);
+    s_state.data_in_active = s_state.response_length != 0;
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    SetPhase(Phase::DataIn);
+    s_state.sequence_step = 0x04;
+    std::string response_bytes;
+    for (u16 i = 0; i < s_state.response_length; i++)
+    {
+      char text[4] = {};
+      std::snprintf(text, sizeof(text), "%02X", s_state.response[i]);
+      if (!response_bytes.empty()) response_bytes += ' ';
+      response_bytes += text;
+    }
+    INFO_LOG("KonamiGV.NCR53CF96 read_toc_execute canonical_set='{}' format={} msf={} starting_track={} allocation_length={} full_response_length={} toc_data_length={} transfer_length={} adr=1 control=4 adr_control=0x14 data='{}'",
+             Konami::GetGVSetName(), format, msf, starting_track, allocation_length, full_response_length,
+             full_response_length >= 2 ? full_response_length - 2 : 0, s_state.response_length, response_bytes);
+    INFO_LOG("KonamiGV.NCR53CF96 data_in_started canonical_set='{}' phase={} sequence_step={}", Konami::GetGVSetName(),
+             static_cast<u8>(s_state.phase), s_state.sequence_step);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
   ERROR_LOG("KonamiGV.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} response_position={} response_remaining={} controller_command=0x{:02X} phase={} sequence_step={} target_status=0x{:02X} sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X} dma_request={}",
             Konami::GetGVSetName(), opcode, bytes, cdb_length, pc, s_state.transfer_count, s_state.fifo_count,
             s_state.response_position, s_state.response_length - s_state.response_position, s_state.command,
