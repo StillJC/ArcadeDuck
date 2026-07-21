@@ -30,6 +30,11 @@ namespace {
 constexpr u32 GV_SHARP_FLASH_SIZE = 0x80000;
 constexpr u32 GV_SHARP_FLASH_SECTOR_SIZE = 0x10000;
 constexpr u8 GV_SHARP_FLASH_ERASED_VALUE = 0xff;
+constexpr u32 GV_FUJITSU_FLASH_SIZE = 0x200000;
+constexpr u32 GV_FUJITSU_FLASH_SECTOR_SIZE = 0x10000;
+constexpr u32 GV_FUJITSU_FLASH_CHIP_COUNT = 4;
+constexpr u32 GV_FUJITSU_FLASH_CHIPS_PER_PAIR = 2;
+constexpr u8 GV_FUJITSU_FLASH_ERASED_VALUE = 0xff;
 
 enum class SharpFlashMode : u8
 {
@@ -37,6 +42,18 @@ enum class SharpFlashMode : u8
   ReadStatus,
   Program,
   EraseSetup,
+};
+
+enum class FujitsuFlashMode : u8
+{
+  ReadArray,
+  Unlock1,
+  Unlock2,
+  Autoselect,
+  Program,
+  EraseUnlock1,
+  EraseUnlock2,
+  EraseSelect,
 };
 
 struct GVRuntimeState
@@ -72,6 +89,13 @@ struct GVRuntimeState
   u16 sharp_flash_status = 0x0080;
   bool sharp_flash_active = false;
   bool sharp_flash_dirty = false;
+  std::array<std::vector<u8>, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash;
+  std::array<std::string, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_paths;
+  std::array<FujitsuFlashMode, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_modes = {};
+  std::array<bool, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_dirty = {};
+  u32 fujitsu_flash_address = 0;
+  bool fujitsu_flash_active = false;
+  bool fujitsu_flash_dirty_logged = false;
   bool bios_installed = false;
   bool active = false;
 };
@@ -340,6 +364,274 @@ static void WriteSharpFlashImpl(GVRuntimeState& runtime, u32 size, u32 offset, u
   }
 }
 
+static bool UsesFujitsuFlash(const GVRuntimeState& runtime)
+{
+  return runtime.hardware_profile == "konamigv_simpbowl";
+}
+
+static void ResetFujitsuFlash(GVRuntimeState& runtime)
+{
+  if (!runtime.fujitsu_flash_active)
+    return;
+
+  runtime.fujitsu_flash_address = 0;
+  runtime.fujitsu_flash_modes.fill(FujitsuFlashMode::ReadArray);
+  INFO_LOG("KonamiGV.FujitsuFlash reset canonical_set='{}'", runtime.set_name);
+}
+
+static void MarkFujitsuFlashDirty(GVRuntimeState& runtime, u32 chip)
+{
+  if (!runtime.fujitsu_flash_dirty_logged)
+  {
+    INFO_LOG("KonamiGV.FujitsuFlash dirty canonical_set='{}'", runtime.set_name);
+    runtime.fujitsu_flash_dirty_logged = true;
+  }
+  runtime.fujitsu_flash_dirty[chip] = true;
+}
+
+static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
+{
+  if (!UsesFujitsuFlash(runtime))
+    return true;
+
+  runtime.fujitsu_flash_active = true;
+  for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+  {
+    runtime.fujitsu_flash[chip].assign(GV_FUJITSU_FLASH_SIZE, GV_FUJITSU_FLASH_ERASED_VALUE);
+    runtime.fujitsu_flash_paths[chip] = Path::Combine(runtime.persistence_directory, std::string("flash") +
+                                                                                  static_cast<char>('0' + chip));
+    if (!FileSystem::FileExists(runtime.fujitsu_flash_paths[chip].c_str()))
+    {
+      INFO_LOG("KonamiGV.FujitsuFlash initialized_erased canonical_set='{}' path='{}'", runtime.set_name,
+               runtime.fujitsu_flash_paths[chip]);
+      continue;
+    }
+
+    std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.fujitsu_flash_paths[chip].c_str(), error);
+    if (!data || data->size() != GV_FUJITSU_FLASH_SIZE)
+    {
+      Error::SetStringFmt(error, "Konami GV Fujitsu flash '{}' has invalid size; expected {} bytes.",
+                          runtime.fujitsu_flash_paths[chip], GV_FUJITSU_FLASH_SIZE);
+      ERROR_LOG("KonamiGV.FujitsuFlash malformed_persistence path='{}' expected_size={}",
+                runtime.fujitsu_flash_paths[chip], GV_FUJITSU_FLASH_SIZE);
+      return false;
+    }
+    std::memcpy(runtime.fujitsu_flash[chip].data(), data->data(), runtime.fujitsu_flash[chip].size());
+    INFO_LOG("KonamiGV.FujitsuFlash loaded_persistence canonical_set='{}' path='{}'", runtime.set_name,
+             runtime.fujitsu_flash_paths[chip]);
+  }
+
+  ResetFujitsuFlash(runtime);
+  INFO_LOG("KonamiGV.FujitsuFlash selected canonical_set='{}' hardware_profile='{}' path0='{}'", runtime.set_name,
+           runtime.hardware_profile, runtime.fujitsu_flash_paths[0]);
+  return true;
+}
+
+static void SaveFujitsuFlash(GVRuntimeState& runtime)
+{
+  if (!runtime.fujitsu_flash_active)
+    return;
+
+  bool needs_save = false;
+  for (const bool dirty : runtime.fujitsu_flash_dirty)
+    needs_save |= dirty;
+  if (!needs_save)
+    return;
+
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false))
+  {
+    ERROR_LOG("KonamiGV.FujitsuFlash save_failed reason='directory' canonical_set='{}'", runtime.set_name);
+    return;
+  }
+
+  for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+  {
+    if (!runtime.fujitsu_flash_dirty[chip])
+      continue;
+    if (!FileSystem::WriteBinaryFile(runtime.fujitsu_flash_paths[chip].c_str(), runtime.fujitsu_flash[chip].data(),
+                                     runtime.fujitsu_flash[chip].size()))
+    {
+      ERROR_LOG("KonamiGV.FujitsuFlash save_failed path='{}'", runtime.fujitsu_flash_paths[chip]);
+      continue;
+    }
+    runtime.fujitsu_flash_dirty[chip] = false;
+    INFO_LOG("KonamiGV.FujitsuFlash saved path='{}'", runtime.fujitsu_flash_paths[chip]);
+  }
+}
+
+static bool IsFujitsuUnlockAAAddress(u32 address)
+{
+  return ((address & 0x0fff) == 0x0555) || ((address & 0x0fff) == 0x0aaa) || ((address & 0xffff) == 0x5555);
+}
+
+static bool IsFujitsuUnlock55Address(u32 address)
+{
+  return ((address & 0xffff) == 0x02aa) || ((address & 0xffff) == 0x2aaa) || ((address & 0x0fff) == 0x0555);
+}
+
+static bool IsFujitsuCommandAddress(u32 address)
+{
+  return ((address & 0xffff) == 0x0555) || ((address & 0xffff) == 0x5555) || ((address & 0x0fff) == 0x0aaa);
+}
+
+static u8 ReadFujitsuFlashChip(const GVRuntimeState& runtime, u32 chip, u32 address)
+{
+  address &= (GV_FUJITSU_FLASH_SIZE - 1);
+  if (runtime.fujitsu_flash_modes[chip] == FujitsuFlashMode::Autoselect)
+  {
+    switch (address & 0xff)
+    {
+      case 0: return 0x04;
+      case 1: return 0xad;
+      case 2: return 0x00;
+      default: return 0xff;
+    }
+  }
+  return runtime.fujitsu_flash[chip][address];
+}
+
+static void EraseFujitsuFlashSector(GVRuntimeState& runtime, u32 chip, u32 address)
+{
+  const u32 sector_base = address & ~(GV_FUJITSU_FLASH_SECTOR_SIZE - 1);
+  bool changed = false;
+  for (u32 i = 0; i < GV_FUJITSU_FLASH_SECTOR_SIZE; i++)
+  {
+    u8& byte = runtime.fujitsu_flash[chip][(sector_base + i) & (GV_FUJITSU_FLASH_SIZE - 1)];
+    if (byte != GV_FUJITSU_FLASH_ERASED_VALUE)
+    {
+      byte = GV_FUJITSU_FLASH_ERASED_VALUE;
+      changed = true;
+    }
+  }
+  if (changed)
+    MarkFujitsuFlashDirty(runtime, chip);
+}
+
+static void EraseFujitsuFlashChip(GVRuntimeState& runtime, u32 chip)
+{
+  bool changed = false;
+  for (u8& byte : runtime.fujitsu_flash[chip])
+  {
+    if (byte != GV_FUJITSU_FLASH_ERASED_VALUE)
+    {
+      byte = GV_FUJITSU_FLASH_ERASED_VALUE;
+      changed = true;
+    }
+  }
+  if (changed)
+    MarkFujitsuFlashDirty(runtime, chip);
+}
+
+static void WriteFujitsuFlashChip(GVRuntimeState& runtime, u32 chip, u32 address, u8 data)
+{
+  address &= (GV_FUJITSU_FLASH_SIZE - 1);
+  if (data == 0xf0 || data == 0xff)
+  {
+    runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::ReadArray;
+    return;
+  }
+
+  switch (runtime.fujitsu_flash_modes[chip])
+  {
+    case FujitsuFlashMode::ReadArray:
+    case FujitsuFlashMode::Autoselect:
+      if (data == 0xaa && IsFujitsuUnlockAAAddress(address))
+        runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::Unlock1;
+      break;
+    case FujitsuFlashMode::Unlock1:
+      runtime.fujitsu_flash_modes[chip] =
+        (data == 0x55 && IsFujitsuUnlock55Address(address)) ? FujitsuFlashMode::Unlock2 : FujitsuFlashMode::ReadArray;
+      break;
+    case FujitsuFlashMode::Unlock2:
+      if (!IsFujitsuCommandAddress(address))
+      {
+        runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::ReadArray;
+        break;
+      }
+      switch (data)
+      {
+        case 0x90: runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::Autoselect; break;
+        case 0xa0: runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::Program; break;
+        case 0x80: runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::EraseUnlock1; break;
+        default: runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::ReadArray; break;
+      }
+      break;
+    case FujitsuFlashMode::Program:
+    {
+      const u8 programmed = runtime.fujitsu_flash[chip][address] & data;
+      if (programmed != runtime.fujitsu_flash[chip][address])
+      {
+        runtime.fujitsu_flash[chip][address] = programmed;
+        MarkFujitsuFlashDirty(runtime, chip);
+      }
+      runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::ReadArray;
+      break;
+    }
+    case FujitsuFlashMode::EraseUnlock1:
+      runtime.fujitsu_flash_modes[chip] = (data == 0xaa && IsFujitsuUnlockAAAddress(address)) ?
+        FujitsuFlashMode::EraseUnlock2 : FujitsuFlashMode::ReadArray;
+      break;
+    case FujitsuFlashMode::EraseUnlock2:
+      runtime.fujitsu_flash_modes[chip] = (data == 0x55 && IsFujitsuUnlock55Address(address)) ?
+        FujitsuFlashMode::EraseSelect : FujitsuFlashMode::ReadArray;
+      break;
+    case FujitsuFlashMode::EraseSelect:
+      if (data == 0x10 && IsFujitsuCommandAddress(address))
+        EraseFujitsuFlashChip(runtime, chip);
+      else if (data == 0x30)
+        EraseFujitsuFlashSector(runtime, chip, address);
+      runtime.fujitsu_flash_modes[chip] = FujitsuFlashMode::ReadArray;
+      break;
+  }
+}
+
+static u32 ReadFujitsuFlashImpl(GVRuntimeState& runtime, u32 size, u32 offset)
+{
+  static_cast<void>(size);
+  if (!runtime.fujitsu_flash_active)
+    return 0xffffffff;
+
+  switch (offset & 0x0f)
+  {
+    case 0:
+    {
+      const u32 chip = (runtime.fujitsu_flash_address >= GV_FUJITSU_FLASH_SIZE) ? GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = runtime.fujitsu_flash_address & (GV_FUJITSU_FLASH_SIZE - 1);
+      const u32 value = static_cast<u32>(ReadFujitsuFlashChip(runtime, chip, address)) |
+                        (static_cast<u32>(ReadFujitsuFlashChip(runtime, chip + 1, address)) << 8);
+      runtime.fujitsu_flash_address++;
+      return value;
+    }
+    case 8: runtime.fujitsu_flash_address |= 1; return 0;
+    default: return 0;
+  }
+}
+
+static void WriteFujitsuFlashImpl(GVRuntimeState& runtime, u32 size, u32 offset, u32 value)
+{
+  static_cast<void>(size);
+  if (!runtime.fujitsu_flash_active)
+    return;
+
+  switch (offset & 0x0f)
+  {
+    case 0:
+    {
+      const u32 chip = (runtime.fujitsu_flash_address >= GV_FUJITSU_FLASH_SIZE) ? GV_FUJITSU_FLASH_CHIPS_PER_PAIR : 0;
+      const u32 address = runtime.fujitsu_flash_address & (GV_FUJITSU_FLASH_SIZE - 1);
+      WriteFujitsuFlashChip(runtime, chip, address, static_cast<u8>(value));
+      WriteFujitsuFlashChip(runtime, chip + 1, address, static_cast<u8>(value >> 8));
+      break;
+    }
+    case 2: runtime.fujitsu_flash_address = value << 1; break;
+    case 4: runtime.fujitsu_flash_address = (runtime.fujitsu_flash_address & 0xff00ff) | (value << 8); break;
+    case 6: runtime.fujitsu_flash_address = (runtime.fujitsu_flash_address & 0x00ffff) | (value << 15); break;
+    default: break;
+  }
+}
+
 // Source authority: simpsons-bowling-duckstation dc6720ae7 and MAME's konamigv.cpp.
 constexpr std::array<GVGameDefinition, 14> s_gv_game_definitions = {{
   {"powyak96", "Jikkyou Powerful Pro Yakyuu '96", GVBIOSProfile::KonamiGV, "konamigv_standard", "powyak96.25c", 0x405a7fc9, "e2d978f49748ba3c4a425188abcd3d272ec23907", "powyak96", "ebd0ea18ff9ce300ea1e30d66a739a96acfb0621", true},
@@ -423,6 +715,8 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   ResetEEPROMProtocol(runtime);
   if (!InitializeSharpFlash(runtime, error))
     return false;
+  if (!InitializeFujitsuFlash(runtime, error))
+    return false;
   std::memcpy(Bus::g_bios, runtime.bios.data(), runtime.bios.size());
   runtime.bios_installed = true;
   runtime.active = true;
@@ -441,6 +735,7 @@ void ResetGV()
   {
     ResetEEPROMProtocol(*s_gv_runtime);
     ResetSharpFlash(*s_gv_runtime);
+    ResetFujitsuFlash(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
   }
 }
@@ -450,6 +745,7 @@ void ShutdownGV()
   if (s_gv_runtime)
   {
     SaveSharpFlash(*s_gv_runtime);
+    SaveFujitsuFlash(*s_gv_runtime);
     SaveEEPROM(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle shutdown canonical_set='{}'", s_gv_runtime->set_name);
   }
@@ -605,6 +901,17 @@ void WriteSharpFlash(u32 size, u32 offset, u32 value)
     WriteSharpFlashImpl(*s_gv_runtime, size, offset, value);
 }
 
+u32 ReadFujitsuFlash(u32 size, u32 offset)
+{
+  return s_gv_runtime ? ReadFujitsuFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
+}
+
+void WriteFujitsuFlash(u32 size, u32 offset, u32 value)
+{
+  if (s_gv_runtime)
+    WriteFujitsuFlashImpl(*s_gv_runtime, size, offset, value);
+}
+
 bool DoGVState(StateWrapper& sw)
 {
   if (!s_gv_runtime)
@@ -643,6 +950,31 @@ bool DoGVState(StateWrapper& sw)
       {
         r.sharp_flash_mode = static_cast<SharpFlashMode>(sharp_flash_mode);
       }
+    }
+  }
+  if (r.fujitsu_flash_active)
+  {
+    std::array<u8, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_modes;
+    for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+    {
+      sw.DoBytes(r.fujitsu_flash[chip].data(), r.fujitsu_flash[chip].size());
+      fujitsu_flash_modes[chip] = static_cast<u8>(r.fujitsu_flash_modes[chip]);
+      sw.Do(&fujitsu_flash_modes[chip]);
+      sw.Do(&r.fujitsu_flash_dirty[chip]);
+    }
+    sw.Do(&r.fujitsu_flash_address);
+    if (sw.IsReading())
+    {
+      bool invalid_mode = false;
+      for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+      {
+        if (fujitsu_flash_modes[chip] > static_cast<u8>(FujitsuFlashMode::EraseSelect))
+          invalid_mode = true;
+        else
+          r.fujitsu_flash_modes[chip] = static_cast<FujitsuFlashMode>(fujitsu_flash_modes[chip]);
+      }
+      if (invalid_mode)
+        ResetFujitsuFlash(r);
     }
   }
   if (sw.IsReading() && (r.eeprom_shift_count > 9 || r.eeprom_read_bits < 0 || r.eeprom_read_bits > 16 ||

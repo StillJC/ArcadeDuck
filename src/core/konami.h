@@ -81,6 +81,8 @@ void WriteEEPROMControl(u32 value);
 bool GetEEPROMDataOutput();
 u32 ReadSharpFlash(u32 size, u32 offset);
 void WriteSharpFlash(u32 size, u32 offset, u32 value);
+u32 ReadFujitsuFlash(u32 size, u32 offset);
+void WriteFujitsuFlash(u32 size, u32 offset, u32 value);
 
 bool IsGVSet(std::string_view set_name);
 const char* GetGVBIOSProfileName(GVBIOSProfile profile);
