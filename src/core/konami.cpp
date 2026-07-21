@@ -19,12 +19,25 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 Log_SetChannel(Konami);
 
 namespace Konami {
 
 namespace {
+
+constexpr u32 GV_SHARP_FLASH_SIZE = 0x80000;
+constexpr u32 GV_SHARP_FLASH_SECTOR_SIZE = 0x10000;
+constexpr u8 GV_SHARP_FLASH_ERASED_VALUE = 0xff;
+
+enum class SharpFlashMode : u8
+{
+  ReadArray,
+  ReadStatus,
+  Program,
+  EraseSetup,
+};
 
 struct GVRuntimeState
 {
@@ -53,6 +66,12 @@ struct GVRuntimeState
   bool eeprom_write_all = false;
   std::string chd_path;
   std::string persistence_directory;
+  std::vector<u8> sharp_flash;
+  std::string sharp_flash_path;
+  SharpFlashMode sharp_flash_mode = SharpFlashMode::ReadArray;
+  u16 sharp_flash_status = 0x0080;
+  bool sharp_flash_active = false;
+  bool sharp_flash_dirty = false;
   bool bios_installed = false;
   bool active = false;
 };
@@ -119,6 +138,206 @@ static void SaveEEPROM(GVRuntimeState& runtime)
   }
   runtime.eeprom_dirty = false;
   INFO_LOG("KonamiGV.EEPROM saved path='{}'", runtime.eeprom_path);
+}
+
+static bool UsesSharpFlash(const GVRuntimeState& runtime)
+{
+  return runtime.hardware_profile == "konamigv_btchamp" || runtime.hardware_profile == "konamigv_kdeadeye";
+}
+
+static void ResetSharpFlash(GVRuntimeState& runtime)
+{
+  if (!runtime.sharp_flash_active)
+    return;
+
+  runtime.sharp_flash_mode = SharpFlashMode::ReadArray;
+  runtime.sharp_flash_status = 0x0080;
+  INFO_LOG("KonamiGV.SharpFlash reset canonical_set='{}'", runtime.set_name);
+}
+
+static void MarkSharpFlashDirty(GVRuntimeState& runtime)
+{
+  if (!runtime.sharp_flash_dirty)
+    INFO_LOG("KonamiGV.SharpFlash dirty canonical_set='{}'", runtime.set_name);
+  runtime.sharp_flash_dirty = true;
+}
+
+static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
+{
+  if (!UsesSharpFlash(runtime))
+    return true;
+
+  runtime.sharp_flash_active = true;
+  runtime.sharp_flash.assign(GV_SHARP_FLASH_SIZE, GV_SHARP_FLASH_ERASED_VALUE);
+  runtime.sharp_flash_path = Path::Combine(runtime.persistence_directory, "flash");
+  ResetSharpFlash(runtime);
+  INFO_LOG("KonamiGV.SharpFlash selected canonical_set='{}' hardware_profile='{}' path='{}'", runtime.set_name,
+           runtime.hardware_profile, runtime.sharp_flash_path);
+
+  if (!FileSystem::FileExists(runtime.sharp_flash_path.c_str()))
+  {
+    INFO_LOG("KonamiGV.SharpFlash initialized_erased canonical_set='{}' path='{}'", runtime.set_name,
+             runtime.sharp_flash_path);
+    return true;
+  }
+
+  std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.sharp_flash_path.c_str(), error);
+  if (!data || data->size() != GV_SHARP_FLASH_SIZE)
+  {
+    Error::SetStringFmt(error, "Konami GV Sharp flash '{}' has invalid size; expected {} bytes.", runtime.sharp_flash_path,
+                        GV_SHARP_FLASH_SIZE);
+    ERROR_LOG("KonamiGV.SharpFlash malformed_persistence path='{}' expected_size={}", runtime.sharp_flash_path,
+              GV_SHARP_FLASH_SIZE);
+    return false;
+  }
+
+  std::memcpy(runtime.sharp_flash.data(), data->data(), runtime.sharp_flash.size());
+  INFO_LOG("KonamiGV.SharpFlash loaded_persistence canonical_set='{}' path='{}'", runtime.set_name,
+           runtime.sharp_flash_path);
+  return true;
+}
+
+static void SaveSharpFlash(GVRuntimeState& runtime)
+{
+  if (!runtime.sharp_flash_active || !runtime.sharp_flash_dirty)
+    return;
+
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
+      !FileSystem::WriteBinaryFile(runtime.sharp_flash_path.c_str(), runtime.sharp_flash.data(), runtime.sharp_flash.size()))
+  {
+    ERROR_LOG("KonamiGV.SharpFlash save_failed path='{}'", runtime.sharp_flash_path);
+    return;
+  }
+
+  runtime.sharp_flash_dirty = false;
+  INFO_LOG("KonamiGV.SharpFlash saved path='{}'", runtime.sharp_flash_path);
+}
+
+static u16 ReadSharpFlashArray16Impl(const GVRuntimeState& runtime, u32 relative_offset)
+{
+  const u32 high_offset = (relative_offset & (GV_SHARP_FLASH_SIZE - 1)) & ~1U;
+  const u32 low_offset = (high_offset + 1) & (GV_SHARP_FLASH_SIZE - 1);
+  return static_cast<u16>((runtime.sharp_flash[high_offset] << 8) | runtime.sharp_flash[low_offset]);
+}
+
+static u32 ReadSharpFlashImpl(const GVRuntimeState& runtime, u32 size, u32 offset)
+{
+  const u32 relative_offset = (offset >= 0x00380000) ? (offset - 0x00380000) : offset;
+  if (runtime.sharp_flash_active && runtime.sharp_flash_mode == SharpFlashMode::ReadStatus)
+  {
+    u32 value = runtime.sharp_flash_status;
+    if (size == 4)
+      value |= value << 16;
+    return value;
+  }
+
+  if (!runtime.sharp_flash_active)
+    return (size == 1) ? 0xff : (size == 2) ? 0xffff : 0xffffffff;
+
+  switch (size)
+  {
+    case 1: return runtime.sharp_flash[relative_offset & (GV_SHARP_FLASH_SIZE - 1)];
+    case 2: return ReadSharpFlashArray16Impl(runtime, relative_offset);
+    case 4:
+    {
+      const u16 low = ReadSharpFlashArray16Impl(runtime, relative_offset);
+      const u16 high = ReadSharpFlashArray16Impl(runtime, relative_offset + 2);
+      return static_cast<u32>(low) | (static_cast<u32>(high) << 16);
+    }
+    default: return 0xffffffff;
+  }
+}
+
+static void WriteSharpFlashImpl(GVRuntimeState& runtime, u32 size, u32 offset, u32 value)
+{
+  if (!runtime.sharp_flash_active)
+    return;
+
+  const u32 relative_offset = (offset >= 0x00380000) ? (offset - 0x00380000) : offset;
+  const u32 byte_offset = relative_offset & (GV_SHARP_FLASH_SIZE - 1);
+  const u8 command = static_cast<u8>(value);
+  if (runtime.sharp_flash_mode == SharpFlashMode::Program)
+  {
+    bool changed = false;
+    const auto write_byte = [&runtime, &changed](u32 byte_offset, u8 byte_value) {
+      if (runtime.sharp_flash[byte_offset] != byte_value)
+      {
+        runtime.sharp_flash[byte_offset] = byte_value;
+        changed = true;
+      }
+    };
+
+    switch (size)
+    {
+      case 1: write_byte(byte_offset, static_cast<u8>(value)); break;
+      case 2:
+      {
+        const u32 high_offset = byte_offset & ~1U;
+        write_byte(high_offset, static_cast<u8>(value >> 8));
+        write_byte((high_offset + 1) & (GV_SHARP_FLASH_SIZE - 1), static_cast<u8>(value));
+        break;
+      }
+      case 4:
+      {
+        const u32 first_offset = byte_offset & ~1U;
+        const u32 second_offset = (first_offset + 2) & (GV_SHARP_FLASH_SIZE - 1);
+        write_byte(first_offset, static_cast<u8>(value >> 8));
+        write_byte((first_offset + 1) & (GV_SHARP_FLASH_SIZE - 1), static_cast<u8>(value));
+        write_byte(second_offset, static_cast<u8>(value >> 24));
+        write_byte((second_offset + 1) & (GV_SHARP_FLASH_SIZE - 1), static_cast<u8>(value >> 16));
+        break;
+      }
+      default: break;
+    }
+
+    if (changed)
+      MarkSharpFlashDirty(runtime);
+    runtime.sharp_flash_status = 0x0080;
+    runtime.sharp_flash_mode = SharpFlashMode::ReadStatus;
+    return;
+  }
+
+  if (runtime.sharp_flash_mode == SharpFlashMode::EraseSetup)
+  {
+    if (command == 0xd0)
+    {
+      const u32 block_start = byte_offset & ~(GV_SHARP_FLASH_SECTOR_SIZE - 1);
+      bool changed = false;
+      for (u32 i = 0; i < GV_SHARP_FLASH_SECTOR_SIZE; i++)
+      {
+        u8& byte = runtime.sharp_flash[(block_start + i) & (GV_SHARP_FLASH_SIZE - 1)];
+        if (byte != GV_SHARP_FLASH_ERASED_VALUE)
+        {
+          byte = GV_SHARP_FLASH_ERASED_VALUE;
+          changed = true;
+        }
+      }
+      if (changed)
+        MarkSharpFlashDirty(runtime);
+      runtime.sharp_flash_status = 0x0080;
+    }
+    else
+    {
+      runtime.sharp_flash_status = 0x00b0;
+    }
+    runtime.sharp_flash_mode = SharpFlashMode::ReadStatus;
+    return;
+  }
+
+  switch (command)
+  {
+    case 0xff: runtime.sharp_flash_mode = SharpFlashMode::ReadArray; runtime.sharp_flash_status = 0x0080; break;
+    case 0x70: runtime.sharp_flash_mode = SharpFlashMode::ReadStatus; break;
+    case 0x50: runtime.sharp_flash_status = 0x0080; break;
+    case 0x40:
+    case 0x10: runtime.sharp_flash_mode = SharpFlashMode::Program; runtime.sharp_flash_status = 0x0080; break;
+    case 0x20: runtime.sharp_flash_mode = SharpFlashMode::EraseSetup; runtime.sharp_flash_status = 0x0080; break;
+    case 0xb0:
+    case 0xd0: runtime.sharp_flash_mode = SharpFlashMode::ReadStatus; runtime.sharp_flash_status = 0x0080; break;
+    default: break;
+  }
 }
 
 // Source authority: simpsons-bowling-duckstation dc6720ae7 and MAME's konamigv.cpp.
@@ -202,6 +421,8 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   if (!LoadEEPROM(runtime, error))
     return false;
   ResetEEPROMProtocol(runtime);
+  if (!InitializeSharpFlash(runtime, error))
+    return false;
   std::memcpy(Bus::g_bios, runtime.bios.data(), runtime.bios.size());
   runtime.bios_installed = true;
   runtime.active = true;
@@ -219,6 +440,7 @@ void ResetGV()
   if (s_gv_runtime && s_gv_runtime->active)
   {
     ResetEEPROMProtocol(*s_gv_runtime);
+    ResetSharpFlash(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
   }
 }
@@ -227,6 +449,7 @@ void ShutdownGV()
 {
   if (s_gv_runtime)
   {
+    SaveSharpFlash(*s_gv_runtime);
     SaveEEPROM(*s_gv_runtime);
     INFO_LOG("KonamiGV.Lifecycle shutdown canonical_set='{}'", s_gv_runtime->set_name);
   }
@@ -371,6 +594,17 @@ bool GetEEPROMDataOutput()
   return s_gv_runtime && s_gv_runtime->eeprom_do;
 }
 
+u32 ReadSharpFlash(u32 size, u32 offset)
+{
+  return s_gv_runtime ? ReadSharpFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
+}
+
+void WriteSharpFlash(u32 size, u32 offset, u32 value)
+{
+  if (s_gv_runtime)
+    WriteSharpFlashImpl(*s_gv_runtime, size, offset, value);
+}
+
 bool DoGVState(StateWrapper& sw)
 {
   if (!s_gv_runtime)
@@ -392,6 +626,25 @@ bool DoGVState(StateWrapper& sw)
   sw.Do(&r.eeprom_write_bits);
   sw.Do(&r.eeprom_write_address);
   sw.Do(&r.eeprom_write_all);
+  if (r.sharp_flash_active)
+  {
+    sw.DoBytes(r.sharp_flash.data(), r.sharp_flash.size());
+    u8 sharp_flash_mode = static_cast<u8>(r.sharp_flash_mode);
+    sw.Do(&sharp_flash_mode);
+    sw.Do(&r.sharp_flash_status);
+    sw.Do(&r.sharp_flash_dirty);
+    if (sw.IsReading())
+    {
+      if (sharp_flash_mode > static_cast<u8>(SharpFlashMode::EraseSetup))
+      {
+        ResetSharpFlash(r);
+      }
+      else
+      {
+        r.sharp_flash_mode = static_cast<SharpFlashMode>(sharp_flash_mode);
+      }
+    }
+  }
   if (sw.IsReading() && (r.eeprom_shift_count > 9 || r.eeprom_read_bits < 0 || r.eeprom_read_bits > 16 ||
                          r.eeprom_write_bits < 0 || r.eeprom_write_bits > 16))
   {
