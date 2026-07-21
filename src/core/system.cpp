@@ -1535,6 +1535,8 @@ bool System::SaveResumeState(Error* error)
 
 bool System::BootSystem(SystemBootParameters parameters, Error* error)
 {
+  std::optional<BIOS::Image> konami_gv_bios;
+  std::optional<Konami::GVLoadedContent> konami_gv_content;
   if (!parameters.save_state.empty())
   {
     // loading a state, so pull the media path from the save state to avoid a double change
@@ -1565,36 +1567,17 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       parameters.konami_gv_set_name.assign(definition->set_name);
       parameters.konami_gv_title.assign(definition->title);
 
-      const std::optional<BIOS::Image> bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
-      if (!bios.has_value())
+      konami_gv_bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
+      if (!konami_gv_bios.has_value())
         return false;
 
-      const std::optional<Konami::GVLoadedContent> content = Konami::LoadGVContent(parameters.filename.c_str(), error);
-      if (!content.has_value())
+      konami_gv_content = Konami::LoadGVContent(parameters.filename.c_str(), error);
+      if (!konami_gv_content.has_value())
         return false;
-
-      if (!Konami::InitializeGV(*bios, *content, error))
-        return false;
-
-      s_running_game_path = parameters.filename;
-      s_running_game_serial = parameters.konami_gv_set_name;
-      s_running_game_title = parameters.konami_gv_title;
 
       INFO_LOG("KonamiGV.Loader canonical_set='{}' title='{}' bios_profile='{}' hardware_profile='{}'",
                parameters.konami_gv_set_name, parameters.konami_gv_title,
                Konami::GetGVBIOSProfileName(definition->bios_profile), definition->hardware_profile);
-      ERROR_LOG("KonamiGV.Loader devices_unimplemented set='{}' chd_path='{}'", parameters.konami_gv_set_name,
-                content->chd_path);
-
-      Konami::ShutdownGV();
-      ClearRunningGame();
-
-      if (error)
-      {
-        Error::SetStringFmt(error, "Konami GV board lifecycle initialized successfully, but GV memory-mapped devices are not implemented yet for '{}' ({})",
-                            parameters.konami_gv_title, parameters.konami_gv_set_name);
-      }
-      return false;
     }
   }
 
@@ -1610,7 +1593,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
   DiscRegion disc_region = DiscRegion::NonPS1;
   BootMode boot_mode = BootMode::FullBoot;
   std::string exe_override;
-  if (!parameters.filename.empty())
+  if (!parameters.filename.empty() && parameters.boot_classification != SystemBootClassification::KonamiGV)
   {
     if (IsExeFileName(parameters.filename))
     {
@@ -1765,8 +1748,8 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     }
   }
 
-  // Load BIOS image.
-  if (!SetBootMode(boot_mode, error))
+  // Konami GV supplies and installs its own validated arcade BIOS after Bus initialization.
+  if (parameters.boot_classification != SystemBootClassification::KonamiGV && !SetBootMode(boot_mode, error))
   {
     s_state = State::Shutdown;
     ClearRunningGame();
@@ -1784,6 +1767,23 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     Host::OnSystemDestroyed();
     Host::OnIdleStateChanged();
     return false;
+  }
+
+  if (parameters.boot_classification == SystemBootClassification::KonamiGV)
+  {
+    if (!konami_gv_bios.has_value() || !konami_gv_content.has_value() ||
+        !Konami::InitializeGV(*konami_gv_bios, *konami_gv_content, error))
+    {
+      DestroySystem();
+      return false;
+    }
+
+    s_boot_mode = BootMode::FullBoot;
+    s_running_game_path = parameters.filename;
+    s_running_game_serial = parameters.konami_gv_set_name;
+    s_running_game_title = parameters.konami_gv_title;
+    INFO_LOG("KonamiGV.Loader dispatch_ready canonical_set='{}' chd_path='{}'", parameters.konami_gv_set_name,
+             konami_gv_content->chd_path);
   }
 
   // Insert disc.

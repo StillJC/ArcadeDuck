@@ -96,6 +96,13 @@ struct GVRuntimeState
   u32 fujitsu_flash_address = 0;
   bool fujitsu_flash_active = false;
   bool fujitsu_flash_dirty_logged = false;
+  bool eeprom_access_logged = false;
+  bool sharp_flash_access_logged = false;
+  bool fujitsu_flash_access_logged = false;
+  bool input_access_logged = false;
+  bool watchdog_access_logged = false;
+  bool game_specific_access_logged = false;
+  bool scsi_boundary_triggered = false;
   bool bios_installed = false;
   bool active = false;
 };
@@ -726,6 +733,8 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
            s_gv_runtime->set_name, s_gv_runtime->title, s_gv_runtime->hardware_profile,
            s_gv_runtime->persistence_directory);
   INFO_LOG("KonamiGV.Lifecycle bios_installed canonical_set='{}'", s_gv_runtime->set_name);
+  INFO_LOG("KonamiGV.EXP1 dispatch_activated canonical_set='{}' scsi='0x1F000000-0x1F00001F' eeprom='0x1F180000-0x1F180003' sharp='0x1F380000-0x1F3FFFFF' fujitsu='0x1F680080-0x1F68008F'",
+           s_gv_runtime->set_name);
   return true;
 }
 
@@ -736,6 +745,13 @@ void ResetGV()
     ResetEEPROMProtocol(*s_gv_runtime);
     ResetSharpFlash(*s_gv_runtime);
     ResetFujitsuFlash(*s_gv_runtime);
+    s_gv_runtime->eeprom_access_logged = false;
+    s_gv_runtime->sharp_flash_access_logged = false;
+    s_gv_runtime->fujitsu_flash_access_logged = false;
+    s_gv_runtime->input_access_logged = false;
+    s_gv_runtime->watchdog_access_logged = false;
+    s_gv_runtime->game_specific_access_logged = false;
+    s_gv_runtime->scsi_boundary_triggered = false;
     INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
   }
 }
@@ -747,6 +763,7 @@ void ShutdownGV()
     SaveSharpFlash(*s_gv_runtime);
     SaveFujitsuFlash(*s_gv_runtime);
     SaveEEPROM(*s_gv_runtime);
+    INFO_LOG("KonamiGV.EXP1 dispatch_shutdown canonical_set='{}'", s_gv_runtime->set_name);
     INFO_LOG("KonamiGV.Lifecycle shutdown canonical_set='{}'", s_gv_runtime->set_name);
   }
   s_gv_runtime.reset();
@@ -793,6 +810,11 @@ void WriteEEPROMControl(u32 value)
   if (!s_gv_runtime || !s_gv_runtime->active)
     return;
   GVRuntimeState& runtime = *s_gv_runtime;
+  if (!runtime.eeprom_access_logged)
+  {
+    INFO_LOG("KonamiGV.EXP1 first_eeprom_access canonical_set='{}'", runtime.set_name);
+    runtime.eeprom_access_logged = true;
+  }
   const bool di = (value & 0x01) != 0;
   const bool cs = (value & 0x02) != 0;
   const bool clk = (value & 0x04) != 0;
@@ -890,26 +912,98 @@ bool GetEEPROMDataOutput()
   return s_gv_runtime && s_gv_runtime->eeprom_do;
 }
 
+u32 ReadGVPlayer1Status(u32 size, u32 offset)
+{
+  static_cast<void>(size);
+  static_cast<void>(offset);
+  if (!s_gv_runtime)
+    return 0xffffffff;
+
+  GVRuntimeState& runtime = *s_gv_runtime;
+  if (!runtime.eeprom_access_logged)
+  {
+    INFO_LOG("KonamiGV.EXP1 first_eeprom_access canonical_set='{}'", runtime.set_name);
+    runtime.eeprom_access_logged = true;
+  }
+  return GetEEPROMDataOutput() ? 0xffffffff : 0xffffdfff;
+}
+
 u32 ReadSharpFlash(u32 size, u32 offset)
 {
+  if (s_gv_runtime && s_gv_runtime->sharp_flash_active && !s_gv_runtime->sharp_flash_access_logged)
+  {
+    INFO_LOG("KonamiGV.EXP1 first_sharp_flash_access canonical_set='{}'", s_gv_runtime->set_name);
+    s_gv_runtime->sharp_flash_access_logged = true;
+  }
   return s_gv_runtime ? ReadSharpFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
 }
 
 void WriteSharpFlash(u32 size, u32 offset, u32 value)
 {
   if (s_gv_runtime)
+  {
+    if (s_gv_runtime->sharp_flash_active && !s_gv_runtime->sharp_flash_access_logged)
+    {
+      INFO_LOG("KonamiGV.EXP1 first_sharp_flash_access canonical_set='{}'", s_gv_runtime->set_name);
+      s_gv_runtime->sharp_flash_access_logged = true;
+    }
     WriteSharpFlashImpl(*s_gv_runtime, size, offset, value);
+  }
 }
 
 u32 ReadFujitsuFlash(u32 size, u32 offset)
 {
+  if (s_gv_runtime && s_gv_runtime->fujitsu_flash_active && !s_gv_runtime->fujitsu_flash_access_logged)
+  {
+    INFO_LOG("KonamiGV.EXP1 first_fujitsu_flash_access canonical_set='{}'", s_gv_runtime->set_name);
+    s_gv_runtime->fujitsu_flash_access_logged = true;
+  }
   return s_gv_runtime ? ReadFujitsuFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
 }
 
 void WriteFujitsuFlash(u32 size, u32 offset, u32 value)
 {
   if (s_gv_runtime)
+  {
+    if (s_gv_runtime->fujitsu_flash_active && !s_gv_runtime->fujitsu_flash_access_logged)
+    {
+      INFO_LOG("KonamiGV.EXP1 first_fujitsu_flash_access canonical_set='{}'", s_gv_runtime->set_name);
+      s_gv_runtime->fujitsu_flash_access_logged = true;
+    }
     WriteFujitsuFlashImpl(*s_gv_runtime, size, offset, value);
+  }
+}
+
+void NotifyGVDeferredEXP1Access(GVDeferredEXP1Range range, u32 physical_address, u32 width, bool is_write, u32 value)
+{
+  if (!s_gv_runtime)
+    return;
+
+  bool* logged = nullptr;
+  const char* category = nullptr;
+  switch (range)
+  {
+    case GVDeferredEXP1Range::Input: logged = &s_gv_runtime->input_access_logged; category = "input"; break;
+    case GVDeferredEXP1Range::Watchdog: logged = &s_gv_runtime->watchdog_access_logged; category = "watchdog"; break;
+    case GVDeferredEXP1Range::GameSpecific: logged = &s_gv_runtime->game_specific_access_logged; category = "game_specific"; break;
+  }
+  if (logged && !*logged)
+  {
+    INFO_LOG("KonamiGV.EXP1 deferred_access canonical_set='{}' category='{}' address=0x{:08X} width={} direction='{}' value=0x{:08X}",
+             s_gv_runtime->set_name, category, physical_address, width, is_write ? "write" : "read", value);
+    *logged = true;
+  }
+}
+
+bool NotifyGVSCSIAccess(u32 physical_address, u32 offset, u32 width, bool is_write, u32 value, u32 pc)
+{
+  if (!s_gv_runtime || s_gv_runtime->scsi_boundary_triggered)
+    return false;
+
+  s_gv_runtime->scsi_boundary_triggered = true;
+  ERROR_LOG("KonamiGV.SCSI first_access canonical_set='{}' address=0x{:08X} offset=0x{:08X} width={} direction='{}' value=0x{:08X} pc=0x{:08X}",
+            s_gv_runtime->set_name, physical_address, offset, width, is_write ? "write" : "read", value, pc);
+  return true;
 }
 
 bool DoGVState(StateWrapper& sw)

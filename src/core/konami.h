@@ -23,6 +23,13 @@ enum class GVBIOSProfile : u8
   KonamiGV,
 };
 
+enum class GVDeferredEXP1Range : u8
+{
+  Input,
+  Watchdog,
+  GameSpecific,
+};
+
 struct GVGameDefinition
 {
   std::string_view set_name;
@@ -79,10 +86,13 @@ std::string_view GetGVPersistenceDirectory();
 bool DoGVState(StateWrapper& sw);
 void WriteEEPROMControl(u32 value);
 bool GetEEPROMDataOutput();
+u32 ReadGVPlayer1Status(u32 size, u32 offset);
 u32 ReadSharpFlash(u32 size, u32 offset);
 void WriteSharpFlash(u32 size, u32 offset, u32 value);
 u32 ReadFujitsuFlash(u32 size, u32 offset);
 void WriteFujitsuFlash(u32 size, u32 offset, u32 value);
+void NotifyGVDeferredEXP1Access(GVDeferredEXP1Range range, u32 physical_address, u32 width, bool is_write, u32 value);
+bool NotifyGVSCSIAccess(u32 physical_address, u32 offset, u32 width, bool is_write, u32 value, u32 pc);
 
 bool IsGVSet(std::string_view set_name);
 const char* GetGVBIOSProfileName(GVBIOSProfile profile);
