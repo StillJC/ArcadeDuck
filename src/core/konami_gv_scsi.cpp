@@ -582,6 +582,49 @@ static void CaptureCDB(u32 pc)
     return;
   }
 
+  if (opcode == 0x12)
+  {
+    const u8 lun = (s_state.cdb[1] >> 5) & 0x07;
+    const bool evpd = (s_state.cdb[1] & 0x01) != 0;
+    const u8 page_code = s_state.cdb[2];
+    const u8 allocation_length = s_state.cdb[4];
+    if (lun != 0 || evpd || page_code != 0)
+    {
+      ERROR_LOG("KonamiGV.NCR53CF96 inquiry_invalid canonical_set='{}' lun={} evpd={} page=0x{:02X}",
+                Konami::GetGVSetName(), lun, evpd, page_code);
+      RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unsupported_inquiry_variant", pc);
+      return;
+    }
+    static constexpr std::array<u8, 36> inquiry = {
+      0x05, 0x80, 0x02, 0x02, 0x20, 0x00, 0x00, 0x98,
+      'T', 'O', 'S', 'H', 'I', 'B', 'A', ' ',
+      'C', 'D', '-', 'R', 'O', 'M', ' ', 'X', 'M', '-', '5', '4', '0', '1', 'T', 'A',
+      '3', '6', '0', '5'};
+    s_state.response.fill(0);
+    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, inquiry.size()));
+    std::memcpy(s_state.response.data(), inquiry.data(), s_state.response_length);
+    s_state.response_position = 0;
+    s_state.target_transfer_length = s_state.response_length;
+    s_state.data_in_active = s_state.response_length != 0;
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    SetPhase(Phase::DataIn);
+    s_state.sequence_step = 0x04;
+    std::string response_bytes;
+    for (u16 i = 0; i < s_state.response_length; i++)
+    {
+      char text[4] = {};
+      std::snprintf(text, sizeof(text), "%02X", s_state.response[i]);
+      if (!response_bytes.empty()) response_bytes += ' ';
+      response_bytes += text;
+    }
+    INFO_LOG("KonamiGV.NCR53CF96 inquiry_execute canonical_set='{}' lun={} evpd={} page=0x{:02X} allocation_length={} full_response_length={} transfer_length={} vendor='TOSHIBA ' product='CD-ROM XM-5401TA' revision='3605' data='{}'",
+             Konami::GetGVSetName(), lun, evpd, page_code, allocation_length, inquiry.size(), s_state.response_length,
+             response_bytes);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
   ERROR_LOG("KonamiGV.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} response_position={} response_remaining={} controller_command=0x{:02X} phase={} sequence_step={} target_status=0x{:02X} sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X} dma_request={}",
             Konami::GetGVSetName(), opcode, bytes, cdb_length, pc, s_state.transfer_count, s_state.fifo_count,
             s_state.response_position, s_state.response_length - s_state.response_position, s_state.command,
