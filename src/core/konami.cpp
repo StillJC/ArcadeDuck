@@ -225,7 +225,27 @@ static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
 
   if (!FileSystem::FileExists(runtime.sharp_flash_path.c_str()))
   {
-    INFO_LOG("KonamiGV.SharpFlash initialized_erased canonical_set='{}' path='{}'", runtime.set_name,
+    const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+    if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+        !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
+        !FileSystem::WriteBinaryFile(runtime.sharp_flash_path.c_str(), runtime.sharp_flash.data(),
+                                     runtime.sharp_flash.size()))
+    {
+      Error::SetStringFmt(error, "Failed to create Konami GV Sharp flash persistence '{}'.", runtime.sharp_flash_path);
+      ERROR_LOG("KonamiGV.SharpFlash initial_persistence_create_failed canonical_set='{}' path='{}'", runtime.set_name,
+                runtime.sharp_flash_path);
+      return false;
+    }
+    std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.sharp_flash_path.c_str(), error);
+    if (!data || data->size() != GV_SHARP_FLASH_SIZE)
+    {
+      Error::SetStringFmt(error, "Failed to validate Konami GV Sharp flash persistence '{}'.", runtime.sharp_flash_path);
+      ERROR_LOG("KonamiGV.SharpFlash initial_persistence_validation_failed canonical_set='{}' path='{}'", runtime.set_name,
+                runtime.sharp_flash_path);
+      return false;
+    }
+    std::memcpy(runtime.sharp_flash.data(), data->data(), runtime.sharp_flash.size());
+    INFO_LOG("KonamiGV.SharpFlash initialized_erased_persistence canonical_set='{}' path='{}'", runtime.set_name,
              runtime.sharp_flash_path);
     return true;
   }
@@ -233,10 +253,11 @@ static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
   std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.sharp_flash_path.c_str(), error);
   if (!data || data->size() != GV_SHARP_FLASH_SIZE)
   {
-    Error::SetStringFmt(error, "Konami GV Sharp flash '{}' has invalid size; expected {} bytes.", runtime.sharp_flash_path,
-                        GV_SHARP_FLASH_SIZE);
-    ERROR_LOG("KonamiGV.SharpFlash malformed_persistence path='{}' expected_size={}", runtime.sharp_flash_path,
-              GV_SHARP_FLASH_SIZE);
+    const size_t actual_size = data ? data->size() : 0;
+    Error::SetStringFmt(error, "Konami GV Sharp flash '{}' has invalid size {}; required {} bytes.",
+                        runtime.sharp_flash_path, actual_size, GV_SHARP_FLASH_SIZE);
+    ERROR_LOG("KonamiGV.SharpFlash malformed_persistence path='{}' actual_size={} required_size={}",
+              runtime.sharp_flash_path, actual_size, GV_SHARP_FLASH_SIZE);
     return false;
   }
 
