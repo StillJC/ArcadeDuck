@@ -11,6 +11,9 @@
 #include <string_view>
 
 class Error;
+namespace BIOS {
+struct Image;
+}
 
 namespace Konami {
 
@@ -63,6 +66,15 @@ std::string GetGVCompanionCHDPath(std::string_view zip_path, const GVGameDefinit
 
 /// Loads and validates the MAME ZIP EEPROM and companion CHD for a recognized GV archive.
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error);
+
+/// Initializes the Stage 1 GV board lifecycle and installs its already-validated BIOS.
+bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error* error);
+void ResetGV();
+void ShutdownGV();
+bool IsGVActive();
+std::string_view GetGVSetName();
+std::string_view GetGVTitle();
+std::string_view GetGVPersistenceDirectory();
 
 bool IsGVSet(std::string_view set_name);
 const char* GetGVBIOSProfileName(GVBIOSProfile profile);

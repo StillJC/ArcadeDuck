@@ -1437,6 +1437,9 @@ void System::ResetSystem()
   if (!Achievements::ConfirmSystemReset())
     return;
 
+  if (Konami::IsGVActive())
+    Konami::ResetGV();
+
   if (Achievements::ResetHardcoreMode(false))
   {
     // Make sure a pre-existing cheat file hasn't been loaded when resetting
@@ -1562,22 +1565,33 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       parameters.konami_gv_set_name.assign(definition->set_name);
       parameters.konami_gv_title.assign(definition->title);
 
-      if (!BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error).has_value())
+      const std::optional<BIOS::Image> bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
+      if (!bios.has_value())
         return false;
 
       const std::optional<Konami::GVLoadedContent> content = Konami::LoadGVContent(parameters.filename.c_str(), error);
       if (!content.has_value())
         return false;
 
+      if (!Konami::InitializeGV(*bios, *content, error))
+        return false;
+
+      s_running_game_path = parameters.filename;
+      s_running_game_serial = parameters.konami_gv_set_name;
+      s_running_game_title = parameters.konami_gv_title;
+
       INFO_LOG("KonamiGV.Loader canonical_set='{}' title='{}' bios_profile='{}' hardware_profile='{}'",
                parameters.konami_gv_set_name, parameters.konami_gv_title,
                Konami::GetGVBIOSProfileName(definition->bios_profile), definition->hardware_profile);
-      ERROR_LOG("KonamiGV.Loader board_initialization_unimplemented set='{}' chd_path='{}'", parameters.konami_gv_set_name,
+      ERROR_LOG("KonamiGV.Loader devices_unimplemented set='{}' chd_path='{}'", parameters.konami_gv_set_name,
                 content->chd_path);
+
+      Konami::ShutdownGV();
+      ClearRunningGame();
 
       if (error)
       {
-        Error::SetStringFmt(error, "Konami GV game content loaded successfully, but GV board initialization is not implemented yet for '{}' ({})",
+        Error::SetStringFmt(error, "Konami GV board lifecycle initialized successfully, but GV memory-mapped devices are not implemented yet for '{}' ({})",
                             parameters.konami_gv_title, parameters.konami_gv_set_name);
       }
       return false;
@@ -1978,6 +1992,7 @@ void System::DestroySystem()
   DMA::Shutdown();
   CPU::PGXP::Shutdown();
   CPU::CodeCache::Shutdown();
+  Konami::ShutdownGV();
   Bus::Shutdown();
   CPU::Shutdown();
   TimingEvents::Shutdown();
@@ -2607,6 +2622,13 @@ std::string System::GetMediaPathFromSaveState(const char* path)
 
 bool System::LoadState(const char* path, Error* error, bool save_undo_state)
 {
+  if (Konami::IsGVActive())
+  {
+    WARNING_LOG("KonamiGV.State rejected_load reason='memory_mapped_devices_unimplemented'");
+    Error::SetStringView(error, "Konami GV save states are unavailable until memory-mapped devices are implemented.");
+    return false;
+  }
+
   if (!IsValid())
   {
     Error::SetStringView(error, "System is not booted.");
@@ -2929,6 +2951,13 @@ bool System::ReadAndDecompressStateData(std::FILE* fp, std::span<u8> dst, u32 fi
 
 bool System::SaveState(const char* path, Error* error, bool backup_existing_save)
 {
+  if (Konami::IsGVActive())
+  {
+    WARNING_LOG("KonamiGV.State rejected_save reason='memory_mapped_devices_unimplemented'");
+    Error::SetStringView(error, "Konami GV save states are unavailable until memory-mapped devices are implemented.");
+    return false;
+  }
+
   if (IsSavingMemoryCards())
   {
     Error::SetStringView(error, TRANSLATE_SV("System", "Cannot save state while memory card is being saved."));

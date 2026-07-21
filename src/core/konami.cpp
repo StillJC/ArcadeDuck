@@ -10,16 +10,36 @@
 #include "common/path.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
+#include "bios.h"
+#include "bus.h"
+#include "settings.h"
 #include "util/cd_image.h"
 
 #include <array>
 #include <algorithm>
+#include <cstring>
 
 Log_SetChannel(Konami);
 
 namespace Konami {
 
 namespace {
+
+struct GVRuntimeState
+{
+  const GVGameDefinition* definition = nullptr;
+  std::string set_name;
+  std::string title;
+  std::string hardware_profile;
+  std::array<u8, BIOS::BIOS_SIZE> bios;
+  std::array<u8, 0x80> default_eeprom;
+  std::string chd_path;
+  std::string persistence_directory;
+  bool bios_installed = false;
+  bool active = false;
+};
+
+std::optional<GVRuntimeState> s_gv_runtime;
 
 // Source authority: simpsons-bowling-duckstation dc6720ae7 and MAME's konamigv.cpp.
 constexpr std::array<GVGameDefinition, 14> s_gv_game_definitions = {{
@@ -77,6 +97,71 @@ std::string GetGVCompanionCHDPath(std::string_view zip_path, const GVGameDefinit
 {
   const std::string zip_directory(Path::GetDirectory(zip_path));
   return Path::Combine(Path::Combine(zip_directory, definition.set_name), GetGVCHDFilename(definition));
+}
+
+bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error* error)
+{
+  ShutdownGV();
+  if (!content.definition || content.set_name != content.definition->set_name || content.chd_path.empty() ||
+      bios.data.size() != BIOS::BIOS_SIZE)
+  {
+    Error::SetStringView(error, "Invalid Konami GV lifecycle initialization data.");
+    ERROR_LOG("KonamiGV.Lifecycle initialization_failed reason='invalid_content'");
+    return false;
+  }
+
+  GVRuntimeState runtime;
+  runtime.definition = content.definition;
+  runtime.set_name.assign(content.definition->set_name);
+  runtime.title.assign(content.definition->title);
+  runtime.hardware_profile.assign(content.definition->hardware_profile);
+  std::memcpy(runtime.bios.data(), bios.data.data(), runtime.bios.size());
+  runtime.default_eeprom = content.default_eeprom;
+  runtime.chd_path = content.chd_path;
+  runtime.persistence_directory = Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name);
+  std::memcpy(Bus::g_bios, runtime.bios.data(), runtime.bios.size());
+  runtime.bios_installed = true;
+  runtime.active = true;
+  s_gv_runtime.emplace(std::move(runtime));
+
+  INFO_LOG("KonamiGV.Lifecycle initialized canonical_set='{}' title='{}' hardware_profile='{}' persistence_directory='{}'",
+           s_gv_runtime->set_name, s_gv_runtime->title, s_gv_runtime->hardware_profile,
+           s_gv_runtime->persistence_directory);
+  INFO_LOG("KonamiGV.Lifecycle bios_installed canonical_set='{}'", s_gv_runtime->set_name);
+  return true;
+}
+
+void ResetGV()
+{
+  if (s_gv_runtime && s_gv_runtime->active)
+    INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
+}
+
+void ShutdownGV()
+{
+  if (s_gv_runtime)
+    INFO_LOG("KonamiGV.Lifecycle shutdown canonical_set='{}'", s_gv_runtime->set_name);
+  s_gv_runtime.reset();
+}
+
+bool IsGVActive()
+{
+  return s_gv_runtime.has_value() && s_gv_runtime->active;
+}
+
+std::string_view GetGVSetName()
+{
+  return s_gv_runtime ? std::string_view(s_gv_runtime->set_name) : std::string_view{};
+}
+
+std::string_view GetGVTitle()
+{
+  return s_gv_runtime ? std::string_view(s_gv_runtime->title) : std::string_view{};
+}
+
+std::string_view GetGVPersistenceDirectory()
+{
+  return s_gv_runtime ? std::string_view(s_gv_runtime->persistence_directory) : std::string_view{};
 }
 
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error)
