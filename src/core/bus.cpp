@@ -13,6 +13,7 @@
 #include "host.h"
 #include "interrupt_controller.h"
 #include "konami.h"
+#include "konami_gv_scsi.h"
 #include "mdec.h"
 #include "pad.h"
 #include "psf_loader.h"
@@ -1303,13 +1304,24 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     const u32 width = u32(1) << static_cast<u32>(size);
     if (offset < 0x20)
     {
-      if (Konami::NotifyGVSCSIAccess(physical_address, offset, width, false, 0, CPU::g_state.pc))
+      const u32 value = KonamiGVScsi::ReadRegister(width, offset);
+      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
+      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
       {
-        Host::ReportErrorAsync("Konami GV SCSI", "Konami GV SCSI emulation is not implemented yet.");
+        std::string message;
+        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
+          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
+        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+          message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
+                                KonamiGVScsi::GetActiveCommand());
+        else
+          message = "Konami GV NCR53CF96 could not capture a complete SCSI CDB.";
+        Host::ReportErrorAsync("Konami GV SCSI",
+                               message);
         System::ShutdownSystem(false);
         CPU::ExitExecution();
       }
-      return UINT32_C(0xFFFFFFFF);
+      return value;
     }
     if (offset >= 0x100000 && offset <= 0x100003)
       return Konami::ReadGVPlayer1Status(width, offset);
@@ -1390,9 +1402,20 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     const u32 width = u32(1) << static_cast<u32>(size);
     if (offset < 0x20)
     {
-      if (Konami::NotifyGVSCSIAccess(physical_address, offset, width, true, value, CPU::g_state.pc))
+      KonamiGVScsi::WriteRegister(width, offset, value, CPU::g_state.pc);
+      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
+      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
       {
-        Host::ReportErrorAsync("Konami GV SCSI", "Konami GV SCSI emulation is not implemented yet.");
+        std::string message;
+        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
+          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
+        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+          message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
+                                KonamiGVScsi::GetActiveCommand());
+        else
+          message = "Konami GV NCR53CF96 could not capture a complete SCSI CDB.";
+        Host::ReportErrorAsync("Konami GV SCSI",
+                               message);
         System::ShutdownSystem(false);
         CPU::ExitExecution();
       }

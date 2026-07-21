@@ -92,7 +92,6 @@ void WriteSharpFlash(u32 size, u32 offset, u32 value);
 u32 ReadFujitsuFlash(u32 size, u32 offset);
 void WriteFujitsuFlash(u32 size, u32 offset, u32 value);
 void NotifyGVDeferredEXP1Access(GVDeferredEXP1Range range, u32 physical_address, u32 width, bool is_write, u32 value);
-bool NotifyGVSCSIAccess(u32 physical_address, u32 offset, u32 width, bool is_write, u32 value, u32 pc);
 
 bool IsGVSet(std::string_view set_name);
 const char* GetGVBIOSProfileName(GVBIOSProfile profile);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "konami.h"
+#include "konami_gv_scsi.h"
 
 #include "common/error.h"
 #include "common/file_system.h"
@@ -102,7 +103,6 @@ struct GVRuntimeState
   bool input_access_logged = false;
   bool watchdog_access_logged = false;
   bool game_specific_access_logged = false;
-  bool scsi_boundary_triggered = false;
   bool bios_installed = false;
   bool active = false;
 };
@@ -728,6 +728,7 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   runtime.bios_installed = true;
   runtime.active = true;
   s_gv_runtime.emplace(std::move(runtime));
+  KonamiGVScsi::Initialize();
 
   INFO_LOG("KonamiGV.Lifecycle initialized canonical_set='{}' title='{}' hardware_profile='{}' persistence_directory='{}'",
            s_gv_runtime->set_name, s_gv_runtime->title, s_gv_runtime->hardware_profile,
@@ -745,13 +746,13 @@ void ResetGV()
     ResetEEPROMProtocol(*s_gv_runtime);
     ResetSharpFlash(*s_gv_runtime);
     ResetFujitsuFlash(*s_gv_runtime);
+    KonamiGVScsi::Reset();
     s_gv_runtime->eeprom_access_logged = false;
     s_gv_runtime->sharp_flash_access_logged = false;
     s_gv_runtime->fujitsu_flash_access_logged = false;
     s_gv_runtime->input_access_logged = false;
     s_gv_runtime->watchdog_access_logged = false;
     s_gv_runtime->game_specific_access_logged = false;
-    s_gv_runtime->scsi_boundary_triggered = false;
     INFO_LOG("KonamiGV.Lifecycle reset canonical_set='{}'", s_gv_runtime->set_name);
   }
 }
@@ -760,6 +761,7 @@ void ShutdownGV()
 {
   if (s_gv_runtime)
   {
+    KonamiGVScsi::Shutdown();
     SaveSharpFlash(*s_gv_runtime);
     SaveFujitsuFlash(*s_gv_runtime);
     SaveEEPROM(*s_gv_runtime);
@@ -995,22 +997,13 @@ void NotifyGVDeferredEXP1Access(GVDeferredEXP1Range range, u32 physical_address,
   }
 }
 
-bool NotifyGVSCSIAccess(u32 physical_address, u32 offset, u32 width, bool is_write, u32 value, u32 pc)
-{
-  if (!s_gv_runtime || s_gv_runtime->scsi_boundary_triggered)
-    return false;
-
-  s_gv_runtime->scsi_boundary_triggered = true;
-  ERROR_LOG("KonamiGV.SCSI first_access canonical_set='{}' address=0x{:08X} offset=0x{:08X} width={} direction='{}' value=0x{:08X} pc=0x{:08X}",
-            s_gv_runtime->set_name, physical_address, offset, width, is_write ? "write" : "read", value, pc);
-  return true;
-}
-
 bool DoGVState(StateWrapper& sw)
 {
   if (!s_gv_runtime)
     return true;
   GVRuntimeState& r = *s_gv_runtime;
+  if (!KonamiGVScsi::DoState(sw))
+    return false;
   sw.DoBytes(r.eeprom.data(), r.eeprom.size());
   sw.Do(&r.eeprom_dirty);
   sw.Do(&r.eeprom_write_enabled);
