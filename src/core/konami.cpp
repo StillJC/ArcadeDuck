@@ -776,6 +776,11 @@ bool IsGVActive()
   return s_gv_runtime.has_value() && s_gv_runtime->active;
 }
 
+bool HasValidGVDiscContent()
+{
+  return IsGVActive() && !s_gv_runtime->chd_path.empty();
+}
+
 std::string_view GetGVSetName()
 {
   return s_gv_runtime ? std::string_view(s_gv_runtime->set_name) : std::string_view{};

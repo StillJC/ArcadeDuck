@@ -63,9 +63,15 @@ constexpr u8 COMMAND_RESET_CHIP = 0x02;
 constexpr u8 COMMAND_RESET_BUS = 0x03;
 constexpr u8 COMMAND_SELECT_WITH_ATN = 0x42;
 constexpr u8 COMMAND_ENABLE_SELECTION_RESELECTION = 0x44;
+constexpr u8 COMMAND_INITIATOR_COMMAND_COMPLETE = 0x11;
+constexpr u8 COMMAND_MESSAGE_ACCEPTED = 0x12;
 constexpr u8 CONFIG2_FEATURES_ENABLE = 0x08;
 constexpr u8 CONFIG1_DISABLE_RESET_INTERRUPT = 0x40;
+constexpr u8 INTERRUPT_FUNCTION_COMPLETE = 0x08;
 constexpr u8 INTERRUPT_SCSI_RESET = 0x80;
+constexpr u8 SCSI_STATUS_GOOD = 0x00;
+constexpr u8 SCSI_MESSAGE_COMMAND_COMPLETE = 0x00;
+constexpr u8 SCSI_SENSE_NO_SENSE = 0x00;
 constexpr u32 NCR_CLOCK_HZ = 16'000'000;
 constexpr u32 RESET_BUS_DELAY_CYCLES = 130;
 
@@ -101,6 +107,15 @@ struct ControllerState
   Phase phase = Phase::BusFree;
   std::array<u8, 12> cdb = {};
   u8 cdb_length = 0;
+  bool target_ready = false;
+  u8 target_status = SCSI_STATUS_GOOD;
+  u8 target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+  u8 sense_key = SCSI_SENSE_NO_SENSE;
+  u8 sense_asc = 0;
+  u8 sense_ascq = 0;
+  bool test_unit_ready_complete = false;
+  bool status_message_pending = false;
+  bool status_message_consumption_logged = false;
   bool boundary_requested = false;
   bool boundary_consumed = false;
   MigrationStopReason boundary_reason = MigrationStopReason::None;
@@ -132,6 +147,21 @@ static void ClearFIFO()
   s_state.fifo_read = 0;
   s_state.fifo_write = 0;
   s_state.fifo_count = 0;
+}
+
+static void ResetTargetProtocol()
+{
+  s_state.cdb.fill(0);
+  s_state.cdb_length = 0;
+  s_state.target_ready = Konami::HasValidGVDiscContent();
+  s_state.target_status = SCSI_STATUS_GOOD;
+  s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+  s_state.sense_key = SCSI_SENSE_NO_SENSE;
+  s_state.sense_asc = 0;
+  s_state.sense_ascq = 0;
+  s_state.test_unit_ready_complete = false;
+  s_state.status_message_pending = false;
+  s_state.status_message_consumption_logged = false;
 }
 
 static u8 ReadFIFO()
@@ -246,6 +276,8 @@ static u8 GetCDBLength(u8 opcode)
   }
 }
 
+static void AssertIRQ10(u8 cause);
+
 static void RequestDeferredStop(MigrationStopReason boundary_reason, const char* reason, u32 pc)
 {
   if (!s_state.deferred_command_logged)
@@ -293,11 +325,49 @@ static void CaptureCDB(u32 pc)
       bytes += ' ';
     bytes += byte_text;
   }
-  ERROR_LOG("KonamiGV.NCR53CF96 first_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} command=0x{:02X} phase={} sequence_step={}",
+  INFO_LOG("KonamiGV.NCR53CF96 cdb_captured canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X}",
+           Konami::GetGVSetName(), opcode, bytes, cdb_length, pc);
+
+  if (opcode == 0x00)
+  {
+    s_state.target_ready = Konami::HasValidGVDiscContent();
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    s_state.sense_key = SCSI_SENSE_NO_SENSE;
+    s_state.sense_asc = 0;
+    s_state.sense_ascq = 0;
+    s_state.test_unit_ready_complete = true;
+    s_state.status_message_pending = true;
+    s_state.status_message_consumption_logged = false;
+    INFO_LOG("KonamiGV.NCR53CF96 test_unit_ready_execute canonical_set='{}' ready={}", Konami::GetGVSetName(),
+             s_state.target_ready);
+    if (!s_state.target_ready)
+    {
+      ERROR_LOG("KonamiGV.NCR53CF96 test_unit_ready_not_ready canonical_set='{}'", Konami::GetGVSetName());
+      RequestDeferredStop(MigrationStopReason::IncompleteCDB, "test_unit_ready_without_valid_media", pc);
+      return;
+    }
+
+    // The authoritative target completes no-data commands internally: no status/message bytes are placed in the FIFO.
+    SetPhase(Phase::BusFree);
+    INFO_LOG("KonamiGV.NCR53CF96 target_phase canonical_set='{}' phase={}", Konami::GetGVSetName(),
+             static_cast<u8>(s_state.phase));
+    s_state.sequence_step = 0x06;
+    INFO_LOG("KonamiGV.NCR53CF96 test_unit_ready_good canonical_set='{}' status=0x{:02X} message=0x{:02X}",
+             Konami::GetGVSetName(), s_state.target_status, s_state.target_message);
+    INFO_LOG("KonamiGV.NCR53CF96 select_command_completion canonical_set='{}' phase={} sequence_step={}",
+             Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
+    INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+             INTERRUPT_FUNCTION_COMPLETE);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
+  ERROR_LOG("KonamiGV.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} controller_command=0x{:02X} phase={} sequence_step={} target_status=0x{:02X} sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X}",
             Konami::GetGVSetName(), opcode, bytes, cdb_length, pc, s_state.transfer_count, s_state.fifo_count,
-            s_state.command, static_cast<u8>(s_state.phase), s_state.sequence_step);
-  s_state.boundary_requested = true;
-  s_state.boundary_reason = MigrationStopReason::FirstCDB;
+            s_state.command, static_cast<u8>(s_state.phase), s_state.sequence_step, s_state.target_status,
+            s_state.sense_key, s_state.sense_asc, s_state.sense_ascq);
+  RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unimplemented_target_command", pc);
 }
 
 static void DeassertIRQ10()
@@ -372,6 +442,7 @@ static void CompleteBusReset()
   s_state.command = 0;
   s_state.command_queue_count = 0;
   ClearFIFO();
+  ResetTargetProtocol();
   SetPhase(Phase::BusFree);
   INFO_LOG("KonamiGV.NCR53CF96 reset_bus_completed canonical_set='{}'", Konami::GetGVSetName());
   if ((s_state.config1 & CONFIG1_DISABLE_RESET_INTERRUPT) == 0)
@@ -532,6 +603,35 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
           case COMMAND_ENABLE_SELECTION_RESELECTION:
             INFO_LOG("KonamiGV.NCR53CF96 enable_selection_reselection canonical_set='{}'", Konami::GetGVSetName());
             break;
+          case COMMAND_INITIATOR_COMMAND_COMPLETE:
+            // Source behavior: the no-data target path already consumed the status/message response.
+            SetPhase(Phase::BusFree);
+            s_state.sequence_step = 0x06;
+            INFO_LOG("KonamiGV.NCR53CF96 initiator_command_complete canonical_set='{}' phase={} sequence_step={}",
+                     Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
+            if (s_state.test_unit_ready_complete && !s_state.status_message_consumption_logged)
+            {
+              INFO_LOG("KonamiGV.NCR53CF96 status_message_ready canonical_set='{}' status=0x{:02X} message=0x{:02X} fifo_count={}",
+                       Konami::GetGVSetName(), s_state.target_status, s_state.target_message, s_state.fifo_count);
+              INFO_LOG("KonamiGV.NCR53CF96 status_message_fifo_consumed canonical_set='{}' source_preconsumed=1", Konami::GetGVSetName());
+              s_state.status_message_consumption_logged = true;
+              s_state.status_message_pending = false;
+              s_state.test_unit_ready_complete = false;
+              INFO_LOG("KonamiGV.NCR53CF96 bus_free_disconnect canonical_set='{}'", Konami::GetGVSetName());
+            }
+            INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+                     INTERRUPT_FUNCTION_COMPLETE);
+            AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+            break;
+          case COMMAND_MESSAGE_ACCEPTED:
+            // Source behavior: Message Accepted only updates the sequence state and raises Function Complete.
+            s_state.sequence_step = 0x06;
+            INFO_LOG("KonamiGV.NCR53CF96 message_accepted canonical_set='{}' sequence_step={}",
+                     Konami::GetGVSetName(), s_state.sequence_step);
+            INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+                     INTERRUPT_FUNCTION_COMPLETE);
+            AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+            break;
           default: RequestDeferredStop(MigrationStopReason::UnsupportedControllerCommand, "unimplemented_controller_command", pc); break;
         }
         CompleteCommand();
@@ -559,6 +659,11 @@ MigrationStopReason ConsumeMigrationStopRequest()
 u8 GetActiveCommand()
 {
   return s_state.command;
+}
+
+u8 GetTargetCommandOpcode()
+{
+  return s_state.cdb[0];
 }
 
 bool DoState(StateWrapper& sw)
@@ -595,6 +700,15 @@ bool DoState(StateWrapper& sw)
   sw.Do(&phase);
   sw.DoBytes(s_state.cdb.data(), s_state.cdb.size());
   sw.Do(&s_state.cdb_length);
+  sw.Do(&s_state.target_ready);
+  sw.Do(&s_state.target_status);
+  sw.Do(&s_state.target_message);
+  sw.Do(&s_state.sense_key);
+  sw.Do(&s_state.sense_asc);
+  sw.Do(&s_state.sense_ascq);
+  sw.Do(&s_state.test_unit_ready_complete);
+  sw.Do(&s_state.status_message_pending);
+  sw.Do(&s_state.status_message_consumption_logged);
   sw.Do(&s_state.boundary_requested);
   sw.Do(&s_state.boundary_consumed);
   u8 boundary_reason = static_cast<u8>(s_state.boundary_reason);
@@ -608,7 +722,7 @@ bool DoState(StateWrapper& sw)
                            phase == static_cast<u8>(Phase::DataOut) || phase == static_cast<u8>(Phase::Status) ||
                            phase == static_cast<u8>(Phase::Command) || phase == static_cast<u8>(Phase::MessageOut) ||
                            phase == static_cast<u8>(Phase::MessageIn);
-  const bool valid_boundary_reason = boundary_reason <= static_cast<u8>(MigrationStopReason::IncompleteCDB);
+  const bool valid_boundary_reason = boundary_reason <= static_cast<u8>(MigrationStopReason::UnsupportedTargetCommand);
   if (sw.IsReading() && (!saved_active || s_state.fifo_read >= FIFO_CAPACITY || s_state.fifo_write >= FIFO_CAPACITY ||
                          s_state.fifo_count > FIFO_CAPACITY || s_state.command_queue_count > s_state.command_queue.size() ||
                          s_state.cdb_length > s_state.cdb.size() || !valid_phase || !valid_boundary_reason))

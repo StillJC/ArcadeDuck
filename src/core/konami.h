@@ -80,6 +80,8 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
 void ResetGV();
 void ShutdownGV();
 bool IsGVActive();
+/// Returns whether the active GV lifecycle retained validated companion-disc content.
+bool HasValidGVDiscContent();
 std::string_view GetGVSetName();
 std::string_view GetGVTitle();
 std::string_view GetGVPersistenceDirectory();

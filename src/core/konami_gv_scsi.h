@@ -15,6 +15,7 @@ enum class MigrationStopReason : u8
   FirstCDB,
   UnsupportedControllerCommand,
   IncompleteCDB,
+  UnsupportedTargetCommand,
 };
 
 void Initialize();
@@ -29,5 +30,6 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc);
 /// Returns the Stage 3A boundary reason once after it is requested.
 MigrationStopReason ConsumeMigrationStopRequest();
 u8 GetActiveCommand();
+u8 GetTargetCommandOpcode();
 
 } // namespace KonamiGVScsi

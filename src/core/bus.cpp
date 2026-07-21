@@ -1314,6 +1314,9 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
         else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
+        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+          message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
+                                KonamiGVScsi::GetTargetCommandOpcode());
         else
           message = "Konami GV NCR53CF96 could not capture a complete SCSI CDB.";
         Host::ReportErrorAsync("Konami GV SCSI",
@@ -1412,6 +1415,9 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
         else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
+        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+          message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
+                                KonamiGVScsi::GetTargetCommandOpcode());
         else
           message = "Konami GV NCR53CF96 could not capture a complete SCSI CDB.";
         Host::ReportErrorAsync("Konami GV SCSI",
