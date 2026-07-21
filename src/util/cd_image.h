@@ -246,6 +246,7 @@ public:
   static std::unique_ptr<CDImage> OpenBinImage(const char* filename, Error* error);
   static std::unique_ptr<CDImage> OpenCueSheetImage(const char* filename, Error* error);
   static std::unique_ptr<CDImage> OpenCHDImage(const char* filename, Error* error);
+  static bool GetCHDImageSHA1(const char* filename, std::array<u8, 20>* out_sha1, Error* error);
   static std::unique_ptr<CDImage> OpenEcmImage(const char* filename, Error* error);
   static std::unique_ptr<CDImage> OpenMdsImage(const char* filename, Error* error);
   static std::unique_ptr<CDImage> OpenPBPImage(const char* filename, Error* error);

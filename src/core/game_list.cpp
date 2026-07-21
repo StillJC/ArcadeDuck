@@ -365,9 +365,10 @@ bool GameList::IsKonamiGVCompanionCHD(const std::string& path, std::string_view*
 
   const std::string_view set_directory = Path::GetDirectory(path);
   const std::string_view content_root = Path::GetDirectory(set_directory);
-  const Konami::GVGameDefinition* const definition = Konami::GetGVGameDefinition(Path::GetFileTitle(path));
+  const Konami::GVGameDefinition* const definition = Konami::GetGVGameDefinition(Path::GetFileName(set_directory));
   if (content_root.empty() || !definition ||
-      !StringUtil::EqualNoCase(Path::GetFileName(set_directory), definition->set_name))
+      !StringUtil::EqualNoCase(Path::GetFileName(set_directory), definition->set_name) ||
+      !StringUtil::EqualNoCase(Path::GetFileName(path), Konami::GetGVCHDFilename(*definition)))
     return false;
 
   const std::string content_root_path(content_root);
@@ -380,6 +381,9 @@ bool GameList::IsKonamiGVCompanionCHD(const std::string& path, std::string_view*
                                       return (zip_definition && zip_definition->set_name == definition->set_name);
                                     });
   if (zip_iter == root_files.end())
+    return false;
+
+  if (!StringUtil::EqualNoCase(path, Konami::GetGVCompanionCHDPath(zip_iter->FileName, *definition)))
     return false;
 
   if (set_name)

@@ -548,3 +548,17 @@ std::unique_ptr<CDImage> CDImage::OpenCHDImage(const char* filename, Error* erro
 
   return image;
 }
+
+bool CDImage::GetCHDImageSHA1(const char* filename, std::array<u8, 20>* out_sha1, Error* error)
+{
+  chd_header header = {};
+  const chd_error result = chd_read_header(filename, &header);
+  if (result != CHDERR_NONE)
+  {
+    Error::SetStringFmt(error, "Failed to read CHD header from '{}': {}.", filename, chd_error_string(result));
+    return false;
+  }
+
+  std::copy_n(header.sha1, out_sha1->size(), out_sha1->data());
+  return true;
+}

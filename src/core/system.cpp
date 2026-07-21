@@ -1565,14 +1565,19 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       if (!BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error).has_value())
         return false;
 
+      const std::optional<Konami::GVLoadedContent> content = Konami::LoadGVContent(parameters.filename.c_str(), error);
+      if (!content.has_value())
+        return false;
+
       INFO_LOG("KonamiGV.Loader canonical_set='{}' title='{}' bios_profile='{}' hardware_profile='{}'",
                parameters.konami_gv_set_name, parameters.konami_gv_title,
                Konami::GetGVBIOSProfileName(definition->bios_profile), definition->hardware_profile);
-      ERROR_LOG("KonamiGV.Loader content_loader_unimplemented set='{}'", parameters.konami_gv_set_name);
+      ERROR_LOG("KonamiGV.Loader board_initialization_unimplemented set='{}' chd_path='{}'", parameters.konami_gv_set_name,
+                content->chd_path);
 
       if (error)
       {
-        Error::SetStringFmt(error, "Konami GV content loader is not implemented yet for '{}' ({})",
+        Error::SetStringFmt(error, "Konami GV game content loaded successfully, but GV board initialization is not implemented yet for '{}' ({})",
                             parameters.konami_gv_title, parameters.konami_gv_set_name);
       }
       return false;
