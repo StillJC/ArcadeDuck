@@ -8,6 +8,7 @@
 #include "gpu.h"
 #include "imgui.h"
 #include "interrupt_controller.h"
+#include "konami_gv_scsi.h"
 #include "mdec.h"
 #include "pad.h"
 #include "spu.h"
@@ -823,9 +824,15 @@ TickCount DMA::TransferMemoryToDevice(u32 address, u32 increment, u32 word_count
       MDEC::DMAWrite(src_pointer, word_count);
       break;
 
+    case Channel::PIO:
+      if (KonamiGVScsi::IsActive())
+        KonamiGVScsi::DMAWrite(src_pointer, word_count);
+      else
+        ERROR_LOG("Unhandled DMA channel {} for device write", static_cast<u32>(channel));
+      break;
+
     case Channel::CDROM:
     case Channel::MDECout:
-    case Channel::PIO:
     default:
       ERROR_LOG("Unhandled DMA channel {} for device write", static_cast<u32>(channel));
       break;
@@ -889,6 +896,18 @@ TickCount DMA::TransferDeviceToMemory(u32 address, u32 increment, u32 word_count
 
     case Channel::MDECout:
       MDEC::DMARead(dest_pointer, word_count);
+      break;
+
+    case Channel::PIO:
+      if (KonamiGVScsi::IsActive())
+      {
+        KonamiGVScsi::DMARead(dest_pointer, word_count);
+      }
+      else
+      {
+        ERROR_LOG("Unhandled DMA channel {} for device read", static_cast<u32>(channel));
+        std::fill_n(dest_pointer, word_count, UINT32_C(0xFFFFFFFF));
+      }
       break;
 
     default:

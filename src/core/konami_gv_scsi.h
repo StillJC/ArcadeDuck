@@ -32,4 +32,8 @@ MigrationStopReason ConsumeMigrationStopRequest();
 u8 GetActiveCommand();
 u8 GetTargetCommandOpcode();
 
+/// DMA channel 5 payload exchange for the active Konami GV NCR53CF96 Data In path.
+void DMARead(u32* data, u32 word_count);
+void DMAWrite(const u32* data, u32 word_count);
+
 } // namespace KonamiGVScsi
