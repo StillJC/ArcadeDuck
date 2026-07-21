@@ -537,6 +537,51 @@ static void CaptureCDB(u32 pc)
     return;
   }
 
+  if (opcode == 0x1a)
+  {
+    const bool dbd = (s_state.cdb[1] & 0x08) != 0;
+    const u8 page_control = s_state.cdb[2] >> 6;
+    const u8 page_code = s_state.cdb[2] & 0x3f;
+    const u8 allocation_length = s_state.cdb[4];
+    s_state.response.fill(0);
+    s_state.response_length = static_cast<u16>(std::min<u32>(allocation_length, s_state.response.size()));
+    s_state.response_position = 0;
+    s_state.target_transfer_length = s_state.response_length;
+    if (page_control != 0 || page_code != 0x0e)
+    {
+      ERROR_LOG("KonamiGV.NCR53CF96 mode_sense6_invalid canonical_set='{}' page_control={} page_code=0x{:02X}",
+                Konami::GetGVSetName(), page_control, page_code);
+      RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unsupported_mode_sense_page", pc);
+      return;
+    }
+    if (s_state.response_length > 0) s_state.response[0] = 0x1b;
+    if (s_state.response_length > 4) s_state.response[4] = 0x0e;
+    if (s_state.response_length > 5) s_state.response[5] = 0x16;
+    if (s_state.response_length > 6) s_state.response[6] = 0x04;
+    static constexpr std::array<u8, 8> audio_defaults = {1, 0xff, 2, 0xff, 0, 0, 0, 0};
+    for (u32 i = 0; i < audio_defaults.size() && (20 + i) < s_state.response_length; i++)
+      s_state.response[20 + i] = audio_defaults[i];
+    s_state.data_in_active = s_state.response_length != 0;
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    SetPhase(Phase::DataIn);
+    s_state.sequence_step = 0x04;
+    std::string response_bytes;
+    for (u16 i = 0; i < s_state.response_length; i++)
+    {
+      char text[4] = {};
+      std::snprintf(text, sizeof(text), "%02X", s_state.response[i]);
+      if (!response_bytes.empty()) response_bytes += ' ';
+      response_bytes += text;
+    }
+    INFO_LOG("KonamiGV.NCR53CF96 mode_sense6_execute canonical_set='{}' dbd={} page_control={} page_code=0x{:02X} allocation_length={} full_response_length={} transfer_length={} header='{:02X} {:02X} {:02X} {:02X}' page='0E 16 04' ports='01 FF 02 FF 00 00 00 00' data='{}'",
+             Konami::GetGVSetName(), dbd, page_control, page_code, allocation_length, allocation_length,
+             s_state.response_length, s_state.response[0], s_state.response[1], s_state.response[2], s_state.response[3],
+             response_bytes);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
   ERROR_LOG("KonamiGV.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} response_position={} response_remaining={} controller_command=0x{:02X} phase={} sequence_step={} target_status=0x{:02X} sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X} dma_request={}",
             Konami::GetGVSetName(), opcode, bytes, cdb_length, pc, s_state.transfer_count, s_state.fifo_count,
             s_state.response_position, s_state.response_length - s_state.response_position, s_state.command,
