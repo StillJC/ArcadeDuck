@@ -76,6 +76,7 @@ constexpr u8 SCSI_STATUS_GOOD = 0x00;
 constexpr u8 SCSI_MESSAGE_COMMAND_COMPLETE = 0x00;
 constexpr u8 SCSI_SENSE_NO_SENSE = 0x00;
 constexpr size_t RESPONSE_CAPACITY = 0xFF;
+constexpr u32 SCSI_LOGICAL_BLOCK_SIZE = 2048;
 constexpr u32 NCR_CLOCK_HZ = 16'000'000;
 constexpr u32 RESET_BUS_DELAY_CYCLES = 130;
 
@@ -126,6 +127,14 @@ struct ControllerState
   u16 target_transfer_length = 0;
   bool data_in_active = false;
   bool dma_request = false;
+  std::array<u8, SCSI_LOGICAL_BLOCK_SIZE> sector_buffer = {};
+  u32 read_lba = 0;
+  u16 read_blocks_remaining = 0;
+  u32 read_total_bytes = 0;
+  u32 read_transferred_bytes = 0;
+  u32 read_sector_offset = 0;
+  bool read_active = false;
+  bool sector_valid = false;
   bool boundary_requested = false;
   bool boundary_consumed = false;
   MigrationStopReason boundary_reason = MigrationStopReason::None;
@@ -178,6 +187,14 @@ static void ResetTargetProtocol()
   s_state.target_transfer_length = 0;
   s_state.data_in_active = false;
   s_state.dma_request = false;
+  s_state.sector_buffer.fill(0);
+  s_state.read_lba = 0;
+  s_state.read_blocks_remaining = 0;
+  s_state.read_total_bytes = 0;
+  s_state.read_transferred_bytes = 0;
+  s_state.read_sector_offset = 0;
+  s_state.read_active = false;
+  s_state.sector_valid = false;
   DMA::SetRequest(DMA::Channel::PIO, false);
 }
 
@@ -455,6 +472,30 @@ static void CaptureCDB(u32 pc)
     return;
   }
 
+  if (opcode == 0x28)
+  {
+    const u32 lba = (static_cast<u32>(s_state.cdb[2]) << 24) | (static_cast<u32>(s_state.cdb[3]) << 16) |
+                    (static_cast<u32>(s_state.cdb[4]) << 8) | s_state.cdb[5];
+    const u16 blocks = static_cast<u16>((static_cast<u16>(s_state.cdb[7]) << 8) | s_state.cdb[8]);
+    s_state.read_lba = lba;
+    s_state.read_blocks_remaining = blocks;
+    s_state.read_total_bytes = static_cast<u32>(blocks) * SCSI_LOGICAL_BLOCK_SIZE;
+    s_state.read_transferred_bytes = 0;
+    s_state.read_sector_offset = 0;
+    s_state.sector_valid = false;
+    s_state.read_active = blocks != 0;
+    s_state.target_status = SCSI_STATUS_GOOD;
+    s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE;
+    SetPhase(Phase::DataIn);
+    s_state.sequence_step = 0x04;
+    INFO_LOG("KonamiGV.NCR53CF96 read10_execute canonical_set='{}' lba={} blocks={} bytes={}", Konami::GetGVSetName(),
+             lba, blocks, s_state.read_total_bytes);
+    INFO_LOG("KonamiGV.NCR53CF96 read10_data_in_started canonical_set='{}' phase={} sequence_step={}",
+             Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
+    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    return;
+  }
+
   ERROR_LOG("KonamiGV.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X} transfer_count=0x{:06X} fifo_count={} response_position={} response_remaining={} controller_command=0x{:02X} phase={} sequence_step={} target_status=0x{:02X} sense_key=0x{:02X} asc=0x{:02X} ascq=0x{:02X} dma_request={}",
             Konami::GetGVSetName(), opcode, bytes, cdb_length, pc, s_state.transfer_count, s_state.fifo_count,
             s_state.response_position, s_state.response_length - s_state.response_position, s_state.command,
@@ -507,6 +548,11 @@ static void StartDataInTransfer()
   INFO_LOG("KonamiGV.NCR53CF96 transfer_information canonical_set='{}' dma=1 phase={} response_remaining={} transfer_count=0x{:06X}",
            Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.response_length - s_state.response_position,
            s_state.transfer_counter);
+  if (s_state.read_active)
+  {
+    SetDMARequest(true);
+    return;
+  }
   if (!s_state.data_in_active || s_state.response_position >= s_state.response_length)
   {
     CompleteDataIn();
@@ -514,6 +560,29 @@ static void StartDataInTransfer()
   }
 
   SetDMARequest(true);
+}
+
+static bool LoadReadSector()
+{
+  if (s_state.sector_valid || s_state.read_blocks_remaining == 0)
+    return s_state.sector_valid;
+  u32 cdimage_lba = 0;
+  u32 track_number = 0;
+  const bool success = Konami::ReadGVDataSector(s_state.read_lba, s_state.sector_buffer.data(), &cdimage_lba, &track_number);
+  if (!success)
+  {
+    s_state.sector_buffer.fill(0);
+    ERROR_LOG("KonamiGV.NCR53CF96 media_read_failure canonical_set='{}' scsi_lba={} cdimage_lba={} track={}",
+              Konami::GetGVSetName(), s_state.read_lba, cdimage_lba, track_number);
+  }
+  s_state.sector_valid = true;
+  INFO_LOG("KonamiGV.NCR53CF96 read10_sector_loaded canonical_set='{}' scsi_lba={} cdimage_lba={} track={} size={} success={} prefix={:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
+           Konami::GetGVSetName(), s_state.read_lba, cdimage_lba, track_number, s_state.sector_buffer.size(), success,
+           s_state.sector_buffer[0], s_state.sector_buffer[1], s_state.sector_buffer[2], s_state.sector_buffer[3],
+           s_state.sector_buffer[4], s_state.sector_buffer[5], s_state.sector_buffer[6], s_state.sector_buffer[7],
+           s_state.sector_buffer[8], s_state.sector_buffer[9], s_state.sector_buffer[10], s_state.sector_buffer[11],
+           s_state.sector_buffer[12], s_state.sector_buffer[13], s_state.sector_buffer[14], s_state.sector_buffer[15]);
+  return true;
 }
 
 static void ResetController(bool retain_destination = false, bool preserve_diagnostics = false)
@@ -733,7 +802,7 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
           case COMMAND_TRANSFER_INFORMATION:
             if ((s_state.command & 0x80) != 0)
             {
-              if (s_state.data_in_active)
+              if (s_state.data_in_active || s_state.read_active)
               {
                 StartDataInTransfer();
               }
@@ -772,6 +841,9 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
           case COMMAND_MESSAGE_ACCEPTED:
             // Message Accepted completes the final Message In acknowledgement after both FIFO bytes are consumed.
             s_state.sequence_step = 0x06;
+            INFO_LOG("KonamiGV.NCR53CF96 message_accepted_fifo_state canonical_set='{}' fifo_count={} completion_bytes_consumed={} phase={}",
+                     Konami::GetGVSetName(), s_state.fifo_count, s_state.status_message_consumption_logged,
+                     static_cast<u8>(s_state.phase));
             if (s_state.status_message_pending && s_state.status_message_consumption_logged && s_state.fifo_count == 0)
             {
               s_state.status_message_pending = false;
@@ -825,7 +897,46 @@ void DMARead(u32* data, u32 word_count)
 
   const u32 byte_count = word_count * sizeof(u32);
   std::memset(data, 0, byte_count);
-  if (!s_state.data_in_active || !s_state.dma_request || s_state.response_position >= s_state.response_length)
+  if (!s_state.dma_request)
+    return;
+
+  if (s_state.read_active)
+  {
+    u8* output = reinterpret_cast<u8*>(data);
+    u32 remaining = byte_count;
+    while (remaining != 0 && s_state.read_blocks_remaining != 0)
+    {
+      if (!LoadReadSector())
+        break;
+      const u32 available = SCSI_LOGICAL_BLOCK_SIZE - s_state.read_sector_offset;
+      const u32 copy_bytes = std::min(remaining, available);
+      std::memcpy(output, s_state.sector_buffer.data() + s_state.read_sector_offset, copy_bytes);
+      output += copy_bytes;
+      remaining -= copy_bytes;
+      s_state.read_sector_offset += copy_bytes;
+      s_state.read_transferred_bytes += copy_bytes;
+      if (s_state.read_sector_offset == SCSI_LOGICAL_BLOCK_SIZE)
+      {
+        INFO_LOG("KonamiGV.NCR53CF96 read10_progress canonical_set='{}' lba={} transferred={} remaining_blocks={}",
+                 Konami::GetGVSetName(), s_state.read_lba, s_state.read_transferred_bytes, s_state.read_blocks_remaining - 1);
+        s_state.read_lba++;
+        s_state.read_blocks_remaining--;
+        s_state.read_sector_offset = 0;
+        s_state.sector_valid = false;
+      }
+    }
+    DecrementTransferCounter(byte_count);
+    if (s_state.read_blocks_remaining == 0 && (s_state.status & STATUS_TERMINAL_COUNT) != 0)
+    {
+      s_state.read_active = false;
+      INFO_LOG("KonamiGV.NCR53CF96 read10_complete canonical_set='{}' bytes={}", Konami::GetGVSetName(),
+               s_state.read_transferred_bytes);
+      CompleteDataIn();
+    }
+    return;
+  }
+
+  if (!s_state.data_in_active || s_state.response_position >= s_state.response_length)
     return;
 
   const u16 remaining = s_state.response_length - s_state.response_position;
@@ -891,6 +1002,14 @@ bool DoState(StateWrapper& sw)
   sw.Do(&s_state.target_transfer_length);
   sw.Do(&s_state.data_in_active);
   sw.Do(&s_state.dma_request);
+  sw.DoBytes(s_state.sector_buffer.data(), s_state.sector_buffer.size());
+  sw.Do(&s_state.read_lba);
+  sw.Do(&s_state.read_blocks_remaining);
+  sw.Do(&s_state.read_total_bytes);
+  sw.Do(&s_state.read_transferred_bytes);
+  sw.Do(&s_state.read_sector_offset);
+  sw.Do(&s_state.read_active);
+  sw.Do(&s_state.sector_valid);
   sw.Do(&s_state.boundary_requested);
   sw.Do(&s_state.boundary_consumed);
   u8 boundary_reason = static_cast<u8>(s_state.boundary_reason);
@@ -909,6 +1028,7 @@ bool DoState(StateWrapper& sw)
                          s_state.fifo_count > FIFO_CAPACITY || s_state.command_queue_count > s_state.command_queue.size() ||
                          s_state.cdb_length > s_state.cdb.size() || s_state.response_length > s_state.response.size() ||
                          s_state.response_position > s_state.response_length || s_state.target_transfer_length > s_state.response.size() ||
+                         s_state.read_sector_offset > SCSI_LOGICAL_BLOCK_SIZE || s_state.read_transferred_bytes > s_state.read_total_bytes ||
                          !valid_phase || !valid_boundary_reason))
   {
     ResetController();

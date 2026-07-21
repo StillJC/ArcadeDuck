@@ -20,6 +20,7 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 Log_SetChannel(Konami);
@@ -83,6 +84,10 @@ struct GVRuntimeState
   u8 eeprom_write_address = 0;
   bool eeprom_write_all = false;
   std::string chd_path;
+  std::unique_ptr<CDImage> media;
+  u32 data_track_number = 0;
+  CDImage::LBA data_track_start_lba = 0;
+  u32 data_track_length = 0;
   std::string persistence_directory;
   std::vector<u8> sharp_flash;
   std::string sharp_flash_path;
@@ -716,6 +721,23 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
   std::memcpy(runtime.bios.data(), bios.data.data(), runtime.bios.size());
   runtime.default_eeprom = content.default_eeprom;
   runtime.chd_path = content.chd_path;
+  runtime.media = CDImage::Open(runtime.chd_path.c_str(), false, error);
+  if (!runtime.media)
+    return false;
+  for (const CDImage::Track& track : runtime.media->GetTracks())
+  {
+    if (track.mode == CDImage::TrackMode::Audio)
+      continue;
+    runtime.data_track_number = track.track_number;
+    runtime.data_track_start_lba = track.start_lba;
+    runtime.data_track_length = track.length;
+    break;
+  }
+  if (runtime.data_track_number == 0)
+  {
+    Error::SetStringFmt(error, "Konami GV CHD '{}' has no readable data track.", runtime.chd_path);
+    return false;
+  }
   runtime.persistence_directory = Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name);
   if (!LoadEEPROM(runtime, error))
     return false;
@@ -734,6 +756,9 @@ bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, Error
            s_gv_runtime->set_name, s_gv_runtime->title, s_gv_runtime->hardware_profile,
            s_gv_runtime->persistence_directory);
   INFO_LOG("KonamiGV.Lifecycle bios_installed canonical_set='{}'", s_gv_runtime->set_name);
+  INFO_LOG("KonamiGV.Media opened canonical_set='{}' tracks={} lba_count={} data_track={} start_lba={} length={}",
+           s_gv_runtime->set_name, s_gv_runtime->media->GetTrackCount(), s_gv_runtime->media->GetLBACount(),
+           s_gv_runtime->data_track_number, s_gv_runtime->data_track_start_lba, s_gv_runtime->data_track_length);
   INFO_LOG("KonamiGV.EXP1 dispatch_activated canonical_set='{}' scsi='0x1F000000-0x1F00001F' eeprom='0x1F180000-0x1F180003' sharp='0x1F380000-0x1F3FFFFF' fujitsu='0x1F680080-0x1F68008F'",
            s_gv_runtime->set_name);
   return true;
@@ -779,6 +804,19 @@ bool IsGVActive()
 bool HasValidGVDiscContent()
 {
   return IsGVActive() && !s_gv_runtime->chd_path.empty();
+}
+
+bool ReadGVDataSector(u32 lba, u8* buffer, u32* cdimage_lba, u32* track_number)
+{
+  if (!s_gv_runtime || !s_gv_runtime->media || !buffer || lba >= s_gv_runtime->data_track_length)
+    return false;
+  const CDImage::LBA translated_lba = s_gv_runtime->data_track_start_lba + static_cast<CDImage::LBA>(lba);
+  if (cdimage_lba)
+    *cdimage_lba = translated_lba;
+  if (track_number)
+    *track_number = s_gv_runtime->data_track_number;
+  return s_gv_runtime->media->Seek(translated_lba) &&
+         s_gv_runtime->media->Read(CDImage::ReadMode::DataOnly, 1, buffer) == 1;
 }
 
 std::string_view GetGVSetName()

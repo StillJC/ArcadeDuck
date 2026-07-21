@@ -82,6 +82,7 @@ void ShutdownGV();
 bool IsGVActive();
 /// Returns whether the active GV lifecycle retained validated companion-disc content.
 bool HasValidGVDiscContent();
+bool ReadGVDataSector(u32 lba, u8* buffer, u32* cdimage_lba = nullptr, u32* track_number = nullptr);
 std::string_view GetGVSetName();
 std::string_view GetGVTitle();
 std::string_view GetGVPersistenceDirectory();
