@@ -1328,24 +1328,17 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     }
     if (offset >= 0x100000 && offset <= 0x100003)
       return Konami::ReadGVPlayer1Status(width, offset);
-    if ((offset >= 0x100004 && offset <= 0x100007) || (offset >= 0x6800C0 && offset <= 0x6800C9))
-    {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::Input, physical_address, width, false, 0);
-      return UINT32_C(0xFFFFFFFF);
-    }
+    if (offset >= 0x100004 && offset <= 0x100007)
+      return Konami::ReadGVPlayer2Status(width, offset);
     if (offset >= 0x380000 && offset <= 0x3FFFFF)
       return Konami::ReadSharpFlash(width, offset);
-    if (offset >= 0x680080 && offset <= 0x68008F)
-      return Konami::ReadFujitsuFlash(width, offset);
     if (offset >= 0x180000 && offset < 0x180100)
-    {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::GameSpecific, physical_address, width, false, 0);
-      return UINT32_C(0xFFFFFFFF);
-    }
+      return Konami::ReadGVEEPROM(width, offset);
     if (offset >= 0x680000 && offset < 0x680100)
     {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::GameSpecific, physical_address, width, false, 0);
-      return UINT32_C(0xFFFFFFFF);
+      if (Konami::GetGVSetName() == "simpbowl" && offset >= 0x680080 && offset <= 0x68008F)
+        return Konami::ReadFujitsuFlash(width, offset);
+      return Konami::ReadGVSpecialIO(width, offset);
     }
     if (offset >= 0x780000 && offset <= 0x780003)
     {
@@ -1401,7 +1394,6 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
   if (Konami::IsGVActive())
   {
     const u32 offset = address & EXP1_MASK;
-    const u32 physical_address = EXP1_BASE | offset;
     const u32 width = u32(1) << static_cast<u32>(size);
     if (offset < 0x20)
     {
@@ -1429,7 +1421,7 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     }
     if (offset >= 0x100000 && offset <= 0x100007)
     {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::Input, physical_address, width, true, value);
+      Konami::WriteGVPlayerStatus(width, offset, value);
       return;
     }
     if (offset >= 0x380000 && offset <= 0x3FFFFF)
@@ -1437,29 +1429,24 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
       Konami::WriteSharpFlash(width, offset, value);
       return;
     }
-    if (offset >= 0x680080 && offset <= 0x68008F)
+    if (Konami::GetGVSetName() == "simpbowl" && offset >= 0x680080 && offset <= 0x68008F)
     {
       Konami::WriteFujitsuFlash(width, offset, value);
       return;
     }
-    if (offset >= 0x180000 && offset < 0x180004)
+    if (offset >= 0x180000 && offset < 0x180100)
     {
-      Konami::WriteEEPROMControl(value);
-      return;
-    }
-    if (offset >= 0x180080 && offset < 0x180100)
-    {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::GameSpecific, physical_address, width, true, value);
+      Konami::WriteGVEEPROM(width, offset, value);
       return;
     }
     if (offset >= 0x680000 && offset < 0x680100)
     {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::GameSpecific, physical_address, width, true, value);
+      Konami::WriteGVSpecialIO(width, offset, value);
       return;
     }
     if (offset >= 0x780000 && offset <= 0x780003)
     {
-      Konami::NotifyGVDeferredEXP1Access(Konami::GVDeferredEXP1Range::Watchdog, physical_address, width, true, value);
+      Konami::WriteGVWatchdog(value);
       return;
     }
   }

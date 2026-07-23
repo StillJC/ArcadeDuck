@@ -72,6 +72,7 @@ constexpr u8 COMMAND_TRANSFER_INFORMATION = 0x10;
 constexpr u8 CONFIG2_FEATURES_ENABLE = 0x08;
 constexpr u8 CONFIG1_DISABLE_RESET_INTERRUPT = 0x40;
 constexpr u8 INTERRUPT_FUNCTION_COMPLETE = 0x08;
+constexpr u8 INTERRUPT_BUS_SERVICE = 0x10;
 constexpr u8 INTERRUPT_SCSI_RESET = 0x80;
 constexpr u8 SCSI_STATUS_GOOD = 0x00;
 constexpr u8 SCSI_MESSAGE_COMMAND_COMPLETE = 0x00;
@@ -157,12 +158,31 @@ static u8 NormalizeRegister(u32 offset)
   return static_cast<u8>((offset & 0x1f) >> 1);
 }
 
+static u8 GetPhaseStatusBits(Phase phase)
+{
+  // Status bits 2:0 expose the SCSI MSG/C-D/I-O lines, not the internal Phase enum.
+  switch (phase)
+  {
+    case Phase::DataOut: return 0x00;
+    case Phase::DataIn: return 0x01;
+    case Phase::Command: return 0x02;
+    case Phase::Status: return 0x03;
+    case Phase::MessageOut: return 0x06;
+    case Phase::MessageIn: return 0x07;
+    case Phase::BusFree: return 0x00;
+    default: return 0x00;
+  }
+}
+
 static void SetPhase(Phase phase)
 {
   if (s_state.phase != phase)
-    INFO_LOG("KonamiGV.NCR53CF96 phase canonical_set='{}' phase={}", Konami::GetGVSetName(), static_cast<u8>(phase));
+  {
+    INFO_LOG("KonamiGV.NCR53CF96 phase canonical_set='{}' phase={} status_bits=0x{:02X}",
+             Konami::GetGVSetName(), static_cast<u8>(phase), GetPhaseStatusBits(phase));
+  }
   s_state.phase = phase;
-  s_state.status = static_cast<u8>((s_state.status & ~0x07) | (static_cast<u8>(phase) & 0x07));
+  s_state.status = static_cast<u8>((s_state.status & ~0x07) | GetPhaseStatusBits(phase));
 }
 
 static void ClearFIFO()
@@ -402,7 +422,9 @@ static void CompleteDataOut()
   s_state.status_message_pending = true;
   SetPhase(Phase::Status);
   s_state.sequence_step = 0;
-  AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+  INFO_LOG("KonamiGV.NCR53CF96 bus_service canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+           INTERRUPT_BUS_SERVICE);
+  AssertIRQ10(INTERRUPT_BUS_SERVICE);
 }
 
 static void CaptureCDB(u32 pc)
@@ -443,6 +465,10 @@ static void CaptureCDB(u32 pc)
   INFO_LOG("KonamiGV.NCR53CF96 cdb_captured canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X}",
            Konami::GetGVSetName(), opcode, bytes, cdb_length, pc);
 
+  // The working GV PoC reports Select-with-ATN completion as Function Complete | Bus Service
+  // for every target CDB, regardless of whether the target next requests data, status, or bus-free.
+  constexpr u8 select_completion_cause = INTERRUPT_FUNCTION_COMPLETE | INTERRUPT_BUS_SERVICE;
+
   if (opcode == 0x00)
   {
     s_state.target_ready = Konami::HasValidGVDiscContent();
@@ -473,8 +499,8 @@ static void CaptureCDB(u32 pc)
     INFO_LOG("KonamiGV.NCR53CF96 select_command_completion canonical_set='{}' phase={} sequence_step={}",
              Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
     INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-             INTERRUPT_FUNCTION_COMPLETE);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+             select_completion_cause);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -515,8 +541,8 @@ static void CaptureCDB(u32 pc)
     INFO_LOG("KonamiGV.NCR53CF96 data_in_started canonical_set='{}' phase={} sequence_step={}",
              Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
     INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-             INTERRUPT_FUNCTION_COMPLETE);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+             select_completion_cause);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -540,7 +566,7 @@ static void CaptureCDB(u32 pc)
              lba, blocks, s_state.read_total_bytes);
     INFO_LOG("KonamiGV.NCR53CF96 read10_data_in_started canonical_set='{}' phase={} sequence_step={}",
              Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -563,9 +589,10 @@ static void CaptureCDB(u32 pc)
     s_state.status_message_pending = false;
     SetPhase(Phase::DataOut);
     s_state.sequence_step = 0x04;
-    INFO_LOG("KonamiGV.NCR53CF96 mode_select6_execute canonical_set='{}' lun={} parameter_length={}",
-             Konami::GetGVSetName(), lun, parameter_length);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    INFO_LOG("KonamiGV.NCR53CF96 mode_select6_execute canonical_set='{}' lun={} parameter_length={} status_bits=0x{:02X} cause=0x{:02X}",
+             Konami::GetGVSetName(), lun, parameter_length, GetPhaseStatusBits(s_state.phase),
+             select_completion_cause);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -607,7 +634,7 @@ static void CaptureCDB(u32 pc)
              full_response_length >= 2 ? full_response_length - 2 : 0, s_state.response_length, response_bytes);
     INFO_LOG("KonamiGV.NCR53CF96 data_in_started canonical_set='{}' phase={} sequence_step={}", Konami::GetGVSetName(),
              static_cast<u8>(s_state.phase), s_state.sequence_step);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -621,14 +648,19 @@ static void CaptureCDB(u32 pc)
                                                                static_cast<u32>(s_state.response.size())}));
     s_state.response_position = 0; s_state.target_transfer_length = s_state.response_length; s_state.data_in_active = s_state.response_length != 0;
     s_state.target_status = SCSI_STATUS_GOOD; s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE; SetPhase(Phase::DataIn); s_state.sequence_step = 0x04;
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE); return;
+    AssertIRQ10(select_completion_cause); return;
   }
 
   if (opcode == 0x48 || opcode == 0x4b)
   {
     const bool ok = opcode == 0x48 ? KonamiGVCDROM::PlayAudioTrackIndex(s_state.cdb[4], s_state.cdb[5], s_state.cdb[7], s_state.cdb[8]) : (KonamiGVCDROM::PauseAudio((s_state.cdb[8] & 1) != 0), true);
     s_state.target_status = SCSI_STATUS_GOOD; s_state.target_message = SCSI_MESSAGE_COMMAND_COMPLETE; s_state.status_message_pending = true;
-    SetPhase(Phase::BusFree); s_state.sequence_step = 0x06; AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    SetPhase(Phase::BusFree);
+    // The working PoC leaves PLAY AUDIO and PAUSE/RESUME at selection step 4.
+    s_state.sequence_step = 0x04;
+    INFO_LOG("KonamiGV.NCR53CF96 audio_select_completion canonical_set='{}' opcode=0x{:02X} cause=0x{:02X}",
+             Konami::GetGVSetName(), opcode, select_completion_cause);
+    AssertIRQ10(select_completion_cause);
     if (!ok) WARNING_LOG("KonamiGV.NCR53CF96 audio_command_rejected opcode=0x{:02X}", opcode);
     return;
   }
@@ -677,7 +709,7 @@ static void CaptureCDB(u32 pc)
              Konami::GetGVSetName(), dbd, page_control, page_code, allocation_length, allocation_length,
              s_state.response_length, s_state.response[0], s_state.response[1], s_state.response[2], s_state.response[3],
              response_bytes);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -720,7 +752,7 @@ static void CaptureCDB(u32 pc)
     INFO_LOG("KonamiGV.NCR53CF96 inquiry_execute canonical_set='{}' lun={} evpd={} page=0x{:02X} allocation_length={} full_response_length={} transfer_length={} vendor='TOSHIBA ' product='CD-ROM XM-5401TA' revision='3605' data='{}'",
              Konami::GetGVSetName(), lun, evpd, page_code, allocation_length, inquiry.size(), s_state.response_length,
              response_bytes);
-    AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+    AssertIRQ10(select_completion_cause);
     return;
   }
 
@@ -766,9 +798,9 @@ static void CompleteDataIn()
   s_state.sequence_step = 0x00;
   INFO_LOG("KonamiGV.NCR53CF96 data_in_complete canonical_set='{}' phase={} sequence_step={}",
            Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
-  INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-           INTERRUPT_FUNCTION_COMPLETE);
-  AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+  INFO_LOG("KonamiGV.NCR53CF96 bus_service canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+           INTERRUPT_BUS_SERVICE);
+  AssertIRQ10(INTERRUPT_BUS_SERVICE);
 }
 
 static void StartDataInTransfer()
@@ -955,7 +987,10 @@ u32 ReadRegister(u32 width, u32 offset)
       s_state.sequence_step = 0;
       DeassertIRQ10();
       if (value != 0)
+      {
+        CompleteCommand();
         INFO_LOG("KonamiGV.NCR53CF96 interrupt_status_read canonical_set='{}' value=0x{:02X}", Konami::GetGVSetName(), value);
+      }
       return value;
     }
     case SequenceStep: return s_state.sequence_step;
@@ -1006,99 +1041,93 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
       if (!QueueCommand(byte_value))
         break;
 
-      do
+      s_state.command = s_state.command_queue[0];
+      const u8 command = s_state.command & 0x7f;
+      INFO_LOG("KonamiGV.NCR53CF96 command canonical_set='{}' command=0x{:02X}", Konami::GetGVSetName(), s_state.command);
+      LoadTransferCounter((s_state.command & 0x80) != 0);
+      switch (command)
       {
-        s_state.command = s_state.command_queue[0];
-        const u8 command = s_state.command & 0x7f;
-        INFO_LOG("KonamiGV.NCR53CF96 command canonical_set='{}' command=0x{:02X}", Konami::GetGVSetName(), s_state.command);
-        LoadTransferCounter((s_state.command & 0x80) != 0);
-        switch (command)
-        {
-          case COMMAND_NOP: break;
-          case COMMAND_FLUSH_FIFO: ClearFIFO(); break;
-          case COMMAND_RESET_CHIP: ResetController(true, true); s_state.active = true; break;
-          case COMMAND_RESET_BUS:
-            s_state.reset_bus_pending = true;
-            INFO_LOG("KonamiGV.NCR53CF96 reset_bus_started canonical_set='{}' pc=0x{:08X} delay_ticks={}",
-                     Konami::GetGVSetName(), pc, GetResetBusDelayTicks());
-            if (s_reset_event)
-              s_reset_event->Schedule(GetResetBusDelayTicks());
+        case COMMAND_NOP: break;
+        case COMMAND_FLUSH_FIFO: ClearFIFO(); break;
+        case COMMAND_RESET_CHIP: ResetController(true, true); s_state.active = true; break;
+        case COMMAND_RESET_BUS:
+          s_state.reset_bus_pending = true;
+          INFO_LOG("KonamiGV.NCR53CF96 reset_bus_started canonical_set='{}' pc=0x{:08X} delay_ticks={}",
+                   Konami::GetGVSetName(), pc, GetResetBusDelayTicks());
+          if (s_reset_event)
+            s_reset_event->Schedule(GetResetBusDelayTicks());
+          else
+            CompleteBusReset();
+          return;
+        case COMMAND_SELECT_WITH_ATN: CaptureCDB(pc); break;
+        case COMMAND_ENABLE_SELECTION_RESELECTION:
+          INFO_LOG("KonamiGV.NCR53CF96 enable_selection_reselection canonical_set='{}'", Konami::GetGVSetName());
+          break;
+        case COMMAND_TRANSFER_INFORMATION:
+          if ((s_state.command & 0x80) != 0)
+          {
+            if (s_state.data_in_active || s_state.read_active)
+            {
+              StartDataInTransfer();
+            }
+            else if (s_state.data_out_active)
+            {
+              INFO_LOG("KonamiGV.NCR53CF96 data_out_transfer_information canonical_set='{}' opcode=0x{:02X} response_remaining={} transfer_count=0x{:06X}",
+                       Konami::GetGVSetName(), s_state.cdb[0],
+                       s_state.response_length - s_state.response_position, s_state.transfer_counter);
+              SetDMARequest(true);
+            }
             else
-              CompleteBusReset();
-            return;
-          case COMMAND_SELECT_WITH_ATN: CaptureCDB(pc); break;
-          case COMMAND_ENABLE_SELECTION_RESELECTION:
-            INFO_LOG("KonamiGV.NCR53CF96 enable_selection_reselection canonical_set='{}'", Konami::GetGVSetName());
+            {
+              SetPhase(Phase::Status);
+              s_state.sequence_step = 0x00;
+              INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}",
+                       Konami::GetGVSetName(), INTERRUPT_FUNCTION_COMPLETE);
+              AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+            }
             break;
-          case COMMAND_TRANSFER_INFORMATION:
-            if ((s_state.command & 0x80) != 0)
-            {
-              if (s_state.data_in_active || s_state.read_active)
-              {
-                StartDataInTransfer();
-              }
-              else if (s_state.data_out_active)
-              {
-                SetDMARequest(true);
-              }
-              else
-              {
-                SetPhase(Phase::Status);
-                s_state.sequence_step = 0x00;
-                INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}",
-                         Konami::GetGVSetName(), INTERRUPT_FUNCTION_COMPLETE);
-                AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
-              }
-              break;
-            }
-            [[fallthrough]];
-          case COMMAND_INITIATOR_COMMAND_COMPLETE:
-            // The target BIOS reads GOOD followed by Command Complete as one little-endian halfword from the FIFO.
-            if (s_state.status_message_pending && s_state.fifo_count == 0)
-            {
-              WriteFIFO(s_state.target_status);
-              WriteFIFO(s_state.target_message);
-            }
-            SetPhase(Phase::MessageIn);
-            s_state.sequence_step = 0x06;
-            INFO_LOG("KonamiGV.NCR53CF96 initiator_command_complete canonical_set='{}' phase={} sequence_step={}",
-                     Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
-            if (s_state.status_message_pending)
-            {
-              INFO_LOG("KonamiGV.NCR53CF96 status_message_ready canonical_set='{}' status=0x{:02X} message=0x{:02X} fifo_count={}",
-                       Konami::GetGVSetName(), s_state.target_status, s_state.target_message, s_state.fifo_count);
-              s_state.test_unit_ready_complete = false;
-            }
-            INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-                     INTERRUPT_FUNCTION_COMPLETE);
-            AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
-            break;
-          case COMMAND_MESSAGE_ACCEPTED:
-            // Message Accepted completes the final Message In acknowledgement after both FIFO bytes are consumed.
-            s_state.sequence_step = 0x06;
-            INFO_LOG("KonamiGV.NCR53CF96 message_accepted_fifo_state canonical_set='{}' fifo_count={} completion_bytes_consumed={} phase={}",
-                     Konami::GetGVSetName(), s_state.fifo_count, s_state.status_message_consumption_logged,
-                     static_cast<u8>(s_state.phase));
-            if (s_state.status_message_pending && s_state.status_message_consumption_logged && s_state.fifo_count == 0)
-            {
-              s_state.status_message_pending = false;
-              SetPhase(Phase::BusFree);
-              INFO_LOG("KonamiGV.NCR53CF96 bus_free_disconnect canonical_set='{}'", Konami::GetGVSetName());
-            }
-            INFO_LOG("KonamiGV.NCR53CF96 message_accepted canonical_set='{}' sequence_step={}",
-                     Konami::GetGVSetName(), s_state.sequence_step);
-            INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-                     INTERRUPT_FUNCTION_COMPLETE);
-            AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
-            break;
-          default: RequestDeferredStop(MigrationStopReason::UnsupportedControllerCommand, "unimplemented_controller_command", pc); break;
-        }
-        CompleteCommand();
-        if (s_state.command_queue_count != 0)
-          INFO_LOG("KonamiGV.NCR53CF96 next_queued_command_started canonical_set='{}' command=0x{:02X}",
-                   Konami::GetGVSetName(), s_state.command_queue[0]);
+          }
+          [[fallthrough]];
+        case COMMAND_INITIATOR_COMMAND_COMPLETE:
+          // The target BIOS reads GOOD followed by Command Complete as one little-endian halfword from the FIFO.
+          if (s_state.status_message_pending && s_state.fifo_count == 0)
+          {
+            WriteFIFO(s_state.target_status);
+            WriteFIFO(s_state.target_message);
+          }
+          SetPhase(Phase::MessageIn);
+          s_state.sequence_step = 0x06;
+          INFO_LOG("KonamiGV.NCR53CF96 initiator_command_complete canonical_set='{}' phase={} sequence_step={}",
+                   Konami::GetGVSetName(), static_cast<u8>(s_state.phase), s_state.sequence_step);
+          if (s_state.status_message_pending)
+          {
+            INFO_LOG("KonamiGV.NCR53CF96 status_message_ready canonical_set='{}' status=0x{:02X} message=0x{:02X} fifo_count={}",
+                     Konami::GetGVSetName(), s_state.target_status, s_state.target_message, s_state.fifo_count);
+            s_state.test_unit_ready_complete = false;
+          }
+          INFO_LOG("KonamiGV.NCR53CF96 function_complete canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+                   INTERRUPT_FUNCTION_COMPLETE);
+          AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
+          break;
+        case COMMAND_MESSAGE_ACCEPTED:
+          // Match the working PoC: Message Accepted disconnects the target and reports Bus Service.
+          s_state.sequence_step = 0x02;
+          INFO_LOG("KonamiGV.NCR53CF96 message_accepted_fifo_state canonical_set='{}' fifo_count={} completion_bytes_consumed={} phase={}",
+                   Konami::GetGVSetName(), s_state.fifo_count, s_state.status_message_consumption_logged,
+                   static_cast<u8>(s_state.phase));
+          s_state.status_message_pending = false;
+          SetPhase(Phase::BusFree);
+          INFO_LOG("KonamiGV.NCR53CF96 bus_free_disconnect canonical_set='{}'", Konami::GetGVSetName());
+          INFO_LOG("KonamiGV.NCR53CF96 message_accepted canonical_set='{}' sequence_step={}",
+                   Konami::GetGVSetName(), s_state.sequence_step);
+          INFO_LOG("KonamiGV.NCR53CF96 bus_service canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+                   INTERRUPT_BUS_SERVICE);
+          AssertIRQ10(INTERRUPT_BUS_SERVICE);
+          break;
+        default: RequestDeferredStop(MigrationStopReason::UnsupportedControllerCommand, "unimplemented_controller_command", pc); break;
       }
-      while (s_state.command_queue_count != 0);
+      if (!s_state.irq && !s_state.dma_request)
+        CompleteCommand();
       break;
     }
     default: break;
@@ -1190,11 +1219,21 @@ void DMAWrite(const u32* data, u32 word_count)
   const u32 byte_count = word_count * sizeof(u32);
   const u16 remaining = s_state.response_length - s_state.response_position;
   const u32 copy_bytes = std::min<u32>(byte_count, remaining);
+  const bool first_write = s_state.response_position == 0;
   std::memcpy(s_state.response.data() + s_state.response_position, data, copy_bytes);
   s_state.response_position = static_cast<u16>(s_state.response_position + copy_bytes);
   DecrementTransferCounter(byte_count);
+  if (first_write)
+  {
+    INFO_LOG("KonamiGV.NCR53CF96 data_out_first_dma_write canonical_set='{}' opcode=0x{:02X} callback_bytes={} copied_bytes={} expected_bytes={}",
+             Konami::GetGVSetName(), s_state.cdb[0], byte_count, copy_bytes, s_state.response_length);
+  }
   if (s_state.response_position == s_state.response_length && (s_state.status & STATUS_TERMINAL_COUNT) != 0)
+  {
+    INFO_LOG("KonamiGV.NCR53CF96 data_out_complete canonical_set='{}' opcode=0x{:02X} bytes={}",
+             Konami::GetGVSetName(), s_state.cdb[0], s_state.response_position);
     CompleteDataOut();
+  }
 }
 
 bool DoState(StateWrapper& sw)

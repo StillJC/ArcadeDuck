@@ -2091,6 +2091,12 @@ void System::FrameDone()
   if (Achievements::IsActive())
     Achievements::FrameUpdate();
 
+  if (Konami::IsGVActive() && Konami::ProcessGVFrame())
+  {
+    ResetSystem();
+    return;
+  }
+
 #ifdef ENABLE_DISCORD_PRESENCE
   PollDiscordPresence();
 #endif
