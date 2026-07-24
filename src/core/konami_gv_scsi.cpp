@@ -73,6 +73,7 @@ constexpr u8 CONFIG2_FEATURES_ENABLE = 0x08;
 constexpr u8 CONFIG1_DISABLE_RESET_INTERRUPT = 0x40;
 constexpr u8 INTERRUPT_FUNCTION_COMPLETE = 0x08;
 constexpr u8 INTERRUPT_BUS_SERVICE = 0x10;
+constexpr u8 INTERRUPT_DISCONNECTED = 0x20;
 constexpr u8 INTERRUPT_SCSI_RESET = 0x80;
 constexpr u8 SCSI_STATUS_GOOD = 0x00;
 constexpr u8 SCSI_MESSAGE_COMMAND_COMPLETE = 0x00;
@@ -81,6 +82,12 @@ constexpr size_t RESPONSE_CAPACITY = 0xFF;
 constexpr u32 SCSI_LOGICAL_BLOCK_SIZE = 2048;
 constexpr u32 NCR_CLOCK_HZ = 16'000'000;
 constexpr u32 RESET_BUS_DELAY_CYCLES = 130;
+constexpr u32 DISCONNECT_DELAY_CYCLES = 1;
+// MAME's NCR53C90 state machine models Select-with-ATN as asynchronous bus
+// arbitration/selection. The fixed portion before target handshaking is:
+// delay(11), delay(6), delay_cycles(4), delay(2), delay_cycles(2).
+constexpr u32 SELECT_SCALED_DELAY_CYCLES = 19;
+constexpr u32 SELECT_UNSCALED_DELAY_CYCLES = 6;
 
 struct ControllerState
 {
@@ -148,10 +155,16 @@ struct ControllerState
   bool underflow_logged = false;
   bool deferred_command_logged = false;
   bool reset_bus_pending = false;
+  bool selection_pending = false;
+  u32 selection_pc = 0;
+  bool initiator_connected = false;
+  bool disconnect_pending = false;
 };
 
 ControllerState s_state;
 std::unique_ptr<TimingEvent> s_reset_event;
+std::unique_ptr<TimingEvent> s_selection_event;
+std::unique_ptr<TimingEvent> s_disconnect_event;
 
 static u8 NormalizeRegister(u32 offset)
 {
@@ -450,6 +463,10 @@ static void CaptureCDB(u32 pc)
     s_state.cdb[i] = PeekFIFO(static_cast<u8>(i + 1));
   s_state.cdb_length = cdb_length;
   ClearFIFO();
+  s_state.initiator_connected = true;
+  s_state.disconnect_pending = false;
+  if (s_disconnect_event)
+    s_disconnect_event->Deactivate();
   SetPhase(Phase::Command);
   s_state.sequence_step = (opcode == 0x00 || opcode == 0x48 || opcode == 0x4b) ? 0x06 : 0x04;
 
@@ -858,6 +875,10 @@ static void ResetController(bool retain_destination = false, bool preserve_diagn
   const bool boundary_consumed = s_state.boundary_consumed;
   if (s_reset_event)
     s_reset_event->Deactivate();
+  if (s_selection_event)
+    s_selection_event->Deactivate();
+  if (s_disconnect_event)
+    s_disconnect_event->Deactivate();
   DMA::SetRequest(DMA::Channel::PIO, false);
   DeassertIRQ10();
   s_state = {};
@@ -890,8 +911,81 @@ static TickCount GetResetBusDelayTicks()
   return System::ScaleTicksToOverclock(static_cast<TickCount>(system_ticks));
 }
 
+static TickCount GetSelectionDelayTicks()
+{
+  const u32 clock_factor = s_state.clock_factor != 0 ? s_state.clock_factor : 8;
+  const u64 device_clocks =
+    (static_cast<u64>(SELECT_SCALED_DELAY_CYCLES) * clock_factor) + SELECT_UNSCALED_DELAY_CYCLES;
+  const u64 system_ticks = (device_clocks * static_cast<u64>(System::MASTER_CLOCK) + NCR_CLOCK_HZ - 1) / NCR_CLOCK_HZ;
+  return std::max<TickCount>(static_cast<TickCount>(1),
+                             System::ScaleTicksToOverclock(static_cast<TickCount>(system_ticks)));
+}
+
+static TickCount GetDisconnectDelayTicks()
+{
+  const u32 clock_factor = s_state.clock_factor != 0 ? s_state.clock_factor : 8;
+  const u64 device_clocks = static_cast<u64>(DISCONNECT_DELAY_CYCLES) * clock_factor;
+  const u64 system_ticks = (device_clocks * static_cast<u64>(System::MASTER_CLOCK) + NCR_CLOCK_HZ - 1) / NCR_CLOCK_HZ;
+  return std::max<TickCount>(static_cast<TickCount>(1),
+                             System::ScaleTicksToOverclock(static_cast<TickCount>(system_ticks)));
+}
+
+static void CompleteSelection()
+{
+  if (!s_state.selection_pending)
+    return;
+
+  const u32 selection_pc = s_state.selection_pc;
+  s_state.selection_pending = false;
+  s_state.selection_pc = 0;
+  INFO_LOG("KonamiGV.NCR53CF96 selection_completed canonical_set='{}'", Konami::GetGVSetName());
+  CaptureCDB(selection_pc);
+}
+
+static void SelectionEventCallback(void*, TickCount, TickCount)
+{
+  if (s_selection_event)
+    s_selection_event->Deactivate();
+  if (s_state.active)
+    CompleteSelection();
+}
+
+static void CompleteTargetDisconnect()
+{
+  if (!s_state.disconnect_pending || !s_state.initiator_connected)
+    return;
+
+  s_state.disconnect_pending = false;
+  s_state.initiator_connected = false;
+  s_state.data_in_active = false;
+  s_state.data_out_active = false;
+  s_state.read_active = false;
+  SetDMARequest(false);
+  SetPhase(Phase::BusFree);
+  INFO_LOG("KonamiGV.NCR53CF96 target_bsy_released canonical_set='{}'", Konami::GetGVSetName());
+  INFO_LOG("KonamiGV.NCR53CF96 disconnected canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+           INTERRUPT_DISCONNECTED);
+  AssertIRQ10(INTERRUPT_DISCONNECTED);
+}
+
+static void DisconnectEventCallback(void*, TickCount, TickCount)
+{
+  if (s_disconnect_event)
+    s_disconnect_event->Deactivate();
+  if (s_state.active)
+    CompleteTargetDisconnect();
+}
+
 static void CompleteBusReset()
 {
+  if (s_selection_event)
+    s_selection_event->Deactivate();
+  if (s_disconnect_event)
+    s_disconnect_event->Deactivate();
+  s_state.selection_pending = false;
+  s_state.selection_pc = 0;
+  s_state.disconnect_pending = false;
+  s_state.initiator_connected = false;
   s_state.reset_bus_pending = false;
   s_state.dma_command = false;
   s_state.command = 0;
@@ -928,6 +1022,14 @@ void Initialize()
     s_reset_event = std::make_unique<TimingEvent>("Konami GV NCR53CF96 Reset", 1, 1, ResetEventCallback, nullptr);
   else
     s_reset_event->Deactivate();
+  if (!s_selection_event)
+    s_selection_event = std::make_unique<TimingEvent>("Konami GV NCR53CF96 Selection", 1, 1, SelectionEventCallback, nullptr);
+  else
+    s_selection_event->Deactivate();
+  if (!s_disconnect_event)
+    s_disconnect_event = std::make_unique<TimingEvent>("Konami GV NCR53CF96 Disconnect", 1, 1, DisconnectEventCallback, nullptr);
+  else
+    s_disconnect_event->Deactivate();
   ResetController();
   s_state.active = true;
   INFO_LOG("KonamiGV.NCR53CF96 initialized canonical_set='{}'", Konami::GetGVSetName());
@@ -947,6 +1049,10 @@ void Shutdown()
 {
   if (s_reset_event)
     s_reset_event->Deactivate();
+  if (s_selection_event)
+    s_selection_event->Deactivate();
+  if (s_disconnect_event)
+    s_disconnect_event->Deactivate();
   DMA::SetRequest(DMA::Channel::PIO, false);
   DeassertIRQ10();
   KonamiGVCDROM::Shutdown();
@@ -1059,7 +1165,17 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
           else
             CompleteBusReset();
           return;
-        case COMMAND_SELECT_WITH_ATN: CaptureCDB(pc); break;
+        case COMMAND_SELECT_WITH_ATN:
+          s_state.selection_pending = true;
+          s_state.selection_pc = pc;
+          s_state.sequence_step = 0;
+          INFO_LOG("KonamiGV.NCR53CF96 selection_started canonical_set='{}' pc=0x{:08X} delay_ticks={}",
+                   Konami::GetGVSetName(), pc, GetSelectionDelayTicks());
+          if (s_selection_event)
+            s_selection_event->Schedule(GetSelectionDelayTicks());
+          else
+            CompleteSelection();
+          return;
         case COMMAND_ENABLE_SELECTION_RESELECTION:
           INFO_LOG("KonamiGV.NCR53CF96 enable_selection_reselection canonical_set='{}'", Konami::GetGVSetName());
           break;
@@ -1110,19 +1226,32 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
           AssertIRQ10(INTERRUPT_FUNCTION_COMPLETE);
           break;
         case COMMAND_MESSAGE_ACCEPTED:
-          // Match the working PoC: Message Accepted disconnects the target and reports Bus Service.
+          // Release ACK for the Command Complete message. The target then releases BSY;
+          // the controller reports Disconnected only after observing that bus transition.
           s_state.sequence_step = 0x02;
           INFO_LOG("KonamiGV.NCR53CF96 message_accepted_fifo_state canonical_set='{}' fifo_count={} completion_bytes_consumed={} phase={}",
                    Konami::GetGVSetName(), s_state.fifo_count, s_state.status_message_consumption_logged,
                    static_cast<u8>(s_state.phase));
           s_state.status_message_pending = false;
-          SetPhase(Phase::BusFree);
-          INFO_LOG("KonamiGV.NCR53CF96 bus_free_disconnect canonical_set='{}'", Konami::GetGVSetName());
-          INFO_LOG("KonamiGV.NCR53CF96 message_accepted canonical_set='{}' sequence_step={}",
-                   Konami::GetGVSetName(), s_state.sequence_step);
-          INFO_LOG("KonamiGV.NCR53CF96 bus_service canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
-                   INTERRUPT_BUS_SERVICE);
-          AssertIRQ10(INTERRUPT_BUS_SERVICE);
+          s_state.disconnect_pending = s_state.initiator_connected;
+          INFO_LOG("KonamiGV.NCR53CF96 message_accepted canonical_set='{}' sequence_step={} disconnect_pending={}",
+                   Konami::GetGVSetName(), s_state.sequence_step, s_state.disconnect_pending);
+          if (s_state.disconnect_pending)
+          {
+            if (s_disconnect_event)
+              s_disconnect_event->Schedule(GetDisconnectDelayTicks());
+            else
+              CompleteTargetDisconnect();
+          }
+          else
+          {
+            // No active initiator connection means the bus is already free. Preserve the
+            // old Bus Service fallback rather than fabricating a disconnect transition.
+            SetPhase(Phase::BusFree);
+            INFO_LOG("KonamiGV.NCR53CF96 bus_service canonical_set='{}' cause=0x{:02X}", Konami::GetGVSetName(),
+                     INTERRUPT_BUS_SERVICE);
+            AssertIRQ10(INTERRUPT_BUS_SERVICE);
+          }
           break;
         default: RequestDeferredStop(MigrationStopReason::UnsupportedControllerCommand, "unimplemented_controller_command", pc); break;
       }
@@ -1305,6 +1434,10 @@ bool DoState(StateWrapper& sw)
   sw.Do(&s_state.underflow_logged);
   sw.Do(&s_state.deferred_command_logged);
   sw.Do(&s_state.reset_bus_pending);
+  sw.Do(&s_state.selection_pending);
+  sw.Do(&s_state.selection_pc);
+  sw.Do(&s_state.initiator_connected);
+  sw.Do(&s_state.disconnect_pending);
   const bool valid_phase = phase == static_cast<u8>(Phase::BusFree) || phase == static_cast<u8>(Phase::DataIn) ||
                            phase == static_cast<u8>(Phase::DataOut) || phase == static_cast<u8>(Phase::Status) ||
                            phase == static_cast<u8>(Phase::Command) || phase == static_cast<u8>(Phase::MessageOut) ||
@@ -1324,6 +1457,18 @@ bool DoState(StateWrapper& sw)
     s_state.phase = static_cast<Phase>(phase);
     s_state.boundary_reason = static_cast<MigrationStopReason>(boundary_reason);
     DMA::SetRequest(DMA::Channel::PIO, s_state.dma_request);
+    if (s_selection_event)
+    {
+      s_selection_event->Deactivate();
+      if (s_state.selection_pending)
+        s_selection_event->Schedule(GetSelectionDelayTicks());
+    }
+    if (s_disconnect_event)
+    {
+      s_disconnect_event->Deactivate();
+      if (s_state.disconnect_pending && s_state.initiator_connected)
+        s_disconnect_event->Schedule(GetDisconnectDelayTicks());
+    }
   }
   return !sw.HasError();
 }
