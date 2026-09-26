@@ -9,10 +9,10 @@
 // - Increment MINOR for each completed project or hardware-system milestone.
 // - Increment PATCH for fixes made to an existing milestone.
 // - Keep the -dev suffix while the next milestone remains on the development branch.
-#define ARCADEDUCK_SEMANTIC_VERSION "0.5.1-dev"
+#define ARCADEDUCK_SEMANTIC_VERSION "0.5.2-dev"
 
-#define ARCADEDUCK_WINDOWS_RESOURCE_VERSION 0,5,1,0
-#define ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DOTTED "0.5.1.0"
+#define ARCADEDUCK_WINDOWS_RESOURCE_VERSION 0,5,2,0
+#define ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DOTTED "0.5.2.0"
 #define ARCADEDUCK_WINDOWS_RESOURCE_VERSION_DISPLAY "v" ARCADEDUCK_SEMANTIC_VERSION
 
 // Retained for source provenance and licensing records, not the primary display version.
