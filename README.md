@@ -13,14 +13,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/StillJC/ArcadeDuck/releases/tag/latest">
-    <img alt="Stable Version" src="https://img.shields.io/github/v/release/StillJC/ArcadeDuck?filter=latest&sort=date&display_name=release&style=for-the-badge&logo=github&label=Stable">
+  <a href="https://github.com/StillJC/ArcadeDuck/releases">
+    <img alt="Stable Release" src="https://img.shields.io/badge/Stable-Not%20Released-555555?style=for-the-badge&logo=github">
   </a>
   <a href="https://github.com/StillJC/ArcadeDuck/releases/tag/dev">
-    <img alt="Development Version" src="https://img.shields.io/github/v/release/StillJC/ArcadeDuck?include_prereleases=true&filter=dev&sort=date&display_name=release&style=for-the-badge&logo=github&label=Dev">
-  </a>
-  <a href="https://github.com/StillJC/ArcadeDuck/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/StillJC/ArcadeDuck/total?style=for-the-badge&logo=github&label=Downloads">
+    <img alt="Development Release" src="https://img.shields.io/badge/Dev-Pre--Release-2f81f7?style=for-the-badge&logo=github">
   </a>
   <a href="https://github.com/StillJC/ArcadeDuck/actions/workflows/release-main.yml">
     <img alt="Stable Build Status" src="https://img.shields.io/github/actions/workflow/status/StillJC/ArcadeDuck/release-main.yml?branch=main&style=for-the-badge&logo=githubactions&label=Stable%20Build">
