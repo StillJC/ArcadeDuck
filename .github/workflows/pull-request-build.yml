@@ -1,0 +1,64 @@
+name: ArcadeDuck Pull Request Build
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'appveyor.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+
+  workflow_dispatch:
+
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v6
+        with:
+          path: |
+            dep/msvc/deps-x64
+          key: deps-x64 ${{ hashFiles('scripts/deps/build-dependencies-windows-x64.bat') }}
+
+      - name: Build X64 Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        env:
+          DEBUG: 0
+        run: scripts/deps/build-dependencies-windows-x64.bat
+
+      - name: Initialize build tag
+        shell: cmd
+        run: |
+          echo #pragma once > src/scmversion/tag.h
+
+      - name: Remove stale updater helper
+        shell: cmd
+        run: |
+          if exist bin\x64\updater.exe del /Q bin\x64\updater.exe
+          if exist bin\x64\updater-x64-*.exe del /Q bin\x64\updater-x64-*.exe
+
+      - name: Compile x64 release build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          msbuild ArcadeDuck.sln -t:Build -p:Platform=x64;Configuration=ReleaseLTCG-Clang
+
+      - name: Create x64 PR archive
+        shell: cmd
+        run: |
+          del /Q bin\x64\*.pdb bin\x64\*.exp bin\x64\*.lib bin\x64\*.iobj bin\x64\*.ipdb bin\x64\common-tests* 2>NUL
+          copy /Y THIRD-PARTY-LICENSES.txt bin\x64\THIRD-PARTY-LICENSES.txt
+          "C:\Program Files\7-Zip\7z.exe" a -r arcadeduck-windows-x64-pr.zip ./bin/x64/*
+
+      - name: Upload x64 PR artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-pr
+          path: arcadeduck-windows-x64-pr.zip

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SetupWizardDialog</class>
+ <widget class="QDialog" name="SetupWizardDialog">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>760</width><height>389</height></rect></property>
+  <property name="windowTitle"><string>ArcadeDuck Setup Wizard</string></property>
+  <property name="windowIcon"><iconset><normalon>:/icons/duck.png</normalon></iconset></property>
+  <layout class="QGridLayout" name="gridLayout">
+   <property name="horizontalSpacing"><number>10</number></property>
+   <item row="0" column="0">
+    <layout class="QVBoxLayout" name="sideLayout">
+     <item><widget class="QLabel" name="logo"><property name="minimumSize"><size><width>128</width><height>128</height></size></property><property name="maximumSize"><size><width>128</width><height>128</height></size></property><property name="scaledContents"><bool>true</bool></property></widget></item>
+     <item><spacer name="sideSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeType"><enum>QSizePolicy::Fixed</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+     <item>
+      <layout class="QVBoxLayout" name="pageLabelsLayout">
+       <property name="spacing"><number>20</number></property>
+       <item><widget class="QLabel" name="labelLanguage"><property name="text"><string>Language</string></property></widget></item>
+       <item><widget class="QLabel" name="labelBIOS"><property name="text"><string>BIOS Folder</string></property></widget></item>
+       <item><widget class="QLabel" name="labelGameList"><property name="text"><string>Content Directories</string></property></widget></item>
+       <item><widget class="QLabel" name="labelComplete"><property name="text"><string>Complete</string></property></widget></item>
+      </layout>
+     </item>
+     <item><spacer name="sideBottomSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property></spacer></item>
+    </layout>
+   </item>
+   <item row="0" column="1">
+    <widget class="QStackedWidget" name="pages">
+     <property name="currentIndex"><number>0</number></property>
+     <widget class="QWidget" name="page">
+      <layout class="QVBoxLayout" name="languageLayout">
+       <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+       <item><widget class="QLabel" name="introLabel"><property name="text"><string>&lt;html&gt;&lt;body&gt;&lt;h1&gt;Welcome to ArcadeDuck&lt;/h1&gt;&lt;p&gt;This wizard configures the basic settings required to run supported ArcadeDuck content. You can change these choices later in Settings.&lt;/p&gt;&lt;p&gt;Choose a language and theme to begin.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+       <item><layout class="QFormLayout" name="languageFormLayout"><item row="0" column="0"><widget class="QLabel" name="languageLabel"><property name="text"><string>Language:</string></property></widget></item><item row="0" column="1"><widget class="QComboBox" name="language"/></item><item row="1" column="0"><widget class="QLabel" name="themeLabel"><property name="text"><string>Theme:</string></property></widget></item><item row="1" column="1"><widget class="QComboBox" name="theme"/></item></layout></item>
+       <item><spacer name="languageSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property></spacer></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="page_2">
+      <layout class="QVBoxLayout" name="biosLayout">
+       <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+       <item><widget class="QLabel" name="biosExplanation"><property name="text"><string>ArcadeDuck automatically selects the required BIOS for each game and hardware family. Select the folder containing your legally obtained BIOS files.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+       <item><layout class="QHBoxLayout" name="biosDirectoryLayout"><item><widget class="QLabel" name="biosDirectoryLabel"><property name="text"><string>BIOS Directory:</string></property></widget></item><item><widget class="QLineEdit" name="biosSearchDirectory"/></item><item><widget class="QPushButton" name="browseBiosSearchDirectory"><property name="text"><string>Browse...</string></property></widget></item><item><widget class="QPushButton" name="resetBiosSearchDirectory"><property name="text"><string>Reset</string></property></widget></item></layout></item>
+       <item><layout class="QHBoxLayout" name="biosActionsLayout"><item><spacer name="biosActionSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="openBiosSearchDirectory"><property name="text"><string>Open Folder...</string></property></widget></item></layout></item>
+       <item><spacer name="biosSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>1</width><height>1</height></size></property></spacer></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="page_3">
+      <layout class="QVBoxLayout" name="contentLayout">
+       <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+       <item><widget class="QLabel" name="contentExplanation"><property name="text"><string>Choose folders containing supported non-merged MAME ROM sets. ArcadeDuck will scan these folders and add recognized arcade games to its library.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+       <item><layout class="QHBoxLayout" name="contentActionsLayout"><item><widget class="QLabel" name="contentDirectoriesLabel"><property name="text"><string>Content Directories</string></property></widget></item><item><spacer name="contentActionSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QToolButton" name="addSearchDirectoryButton"><property name="text"><string>Add Folder...</string></property></widget></item><item><widget class="QToolButton" name="removeSearchDirectoryButton"><property name="text"><string>Remove</string></property></widget></item></layout></item>
+       <item><widget class="QTableWidget" name="searchDirectoryList"><column><property name="text"><string>Content Directory</string></property></column><column><property name="text"><string>Scan Subfolders</string></property></column></widget></item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="page_4">
+      <layout class="QVBoxLayout" name="completeLayout">
+       <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+       <item><widget class="QLabel" name="completeLabel"><property name="text"><string>&lt;html&gt;&lt;body&gt;&lt;h1&gt;Setup Complete!&lt;/h1&gt;&lt;p&gt;Basic ArcadeDuck configuration is complete. You can now open supported content or add content directories later from Settings.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item row="1" column="0" colspan="2"><layout class="QHBoxLayout" name="buttonLayout"><item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item><item><widget class="QPushButton" name="back"><property name="text"><string>&amp;Back</string></property></widget></item><item><widget class="QPushButton" name="next"><property name="text"><string>&amp;Next</string></property><property name="default"><bool>true</bool></property></widget></item><item><widget class="QPushButton" name="cancel"><property name="text"><string>&amp;Cancel</string></property></widget></item></layout></item>
+  </layout>
+ </widget>
+ <resources><include location="resources/resources.qrc"/></resources>
+ <connections/>
+</ui>

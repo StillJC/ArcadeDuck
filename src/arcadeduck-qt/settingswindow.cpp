@@ -1,0 +1,935 @@
+// SPDX-FileCopyrightText: 2019-2024 Connor McLaughlin <stenzek@gmail.com>
+// SPDX-FileCopyrightText: 2026 StillJC
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// Modified for ArcadeDuck by StillJC, 2026.
+
+#include "settingswindow.h"
+#include "advancedsettingswidget.h"
+#include "audiosettingswidget.h"
+#include "consolesettingswidget.h"
+#include "systemlinksettingswidget.h"
+
+#include "achievementsettingswidget.h"
+#include "foldersettingswidget.h"
+#include "gamelistsettingswidget.h"
+#include "gamesummarywidget.h"
+#include "graphicssettingswidget.h"
+#include "interfacesettingswidget.h"
+#include "mainwindow.h"
+#include "operatorsettingswidget.h"
+#include "postprocessingsettingswidget.h"
+#include "qthost.h"
+
+#include "core/achievements.h"
+#include "core/arcade/arcade_control_registry.h"
+#include "core/arcade/arcade_database.h"
+#include "core/game_database.h"
+#include "core/host.h"
+
+#include "util/ini_settings_interface.h"
+
+#include "common/assert.h"
+#include "common/file_system.h"
+#include "common/log.h"
+
+#include <QtGui/QWheelEvent>
+#include <QtWidgets/QMessageBox>
+#include <QtWidgets/QComboBox>
+#include <QtWidgets/QFormLayout>
+#include <QtWidgets/QGroupBox>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QScrollBar>
+#include <QtWidgets/QTextEdit>
+#include <QtWidgets/QVBoxLayout>
+
+Log_SetChannel(SettingsWindow);
+
+static QList<SettingsWindow*> s_open_game_properties_dialogs;
+
+SettingsWindow::SettingsWindow() : QWidget()
+{
+  m_ui.setupUi(this);
+  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+  addPages();
+  connectUi();
+}
+
+SettingsWindow::SettingsWindow(const std::string& path, const std::string& serial, const GameDatabase::Entry* entry,
+                               std::unique_ptr<INISettingsInterface> sif)
+  : QWidget(), m_sif(std::move(sif)), m_database_entry(entry), m_game_serial(serial)
+{
+  const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::GetGame(serial);
+  if (!arcade_game)
+    arcade_game = Arcade::Database::IdentifyArchive(path);
+  if (arcade_game)
+  {
+    m_game_serial = arcade_game->id;
+    m_is_arcade_game = true;
+  }
+
+  m_ui.setupUi(this);
+  setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
+
+  addWidget(new GameSummaryWidget(path, m_game_serial, this, m_ui.settingsContainer), tr("Summary"),
+            QStringLiteral("file-list-line"),
+            tr("<strong>Summary</strong><hr>This page shows information and per-game settings for the selected arcade "
+               "set."));
+  addPages();
+  connectUi();
+
+  s_open_game_properties_dialogs.push_back(this);
+}
+
+SettingsWindow::~SettingsWindow()
+{
+  if (isPerGameSettings())
+    s_open_game_properties_dialogs.removeOne(this);
+}
+
+void SettingsWindow::closeEvent(QCloseEvent* event)
+{
+  // we need to clean up ourselves, since we're not modal
+  if (isPerGameSettings())
+    deleteLater();
+}
+
+void SettingsWindow::addPages()
+{
+  addWidget(
+    m_interface_settings = new InterfaceSettingsWidget(this, m_ui.settingsContainer), tr("Interface"),
+    QStringLiteral("settings-3-line"),
+    tr("<strong>Interface Settings</strong><hr>These options control how the emulator looks and "
+       "behaves.<br><br>Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
+
+  if (isArcadeGameSettings())
+  {
+    addWidget(m_console_settings = new ConsoleSettingsWidget(this, m_ui.settingsContainer), tr("Machine"),
+              QStringLiteral("chip-2-line"),
+              tr("<strong>Machine Settings</strong><hr>These options determine the configuration of the simulated "
+                 "arcade machine."));
+    addWidget(createArcadeOperatorPage(), tr("Operator"), QStringLiteral("chip-line"),
+              tr("<strong>Operator Settings</strong><hr>Configure game-specific physical DIP switches and cabinet "
+                 "options where supported."));
+    addWidget(createArcadeControlsPage(), tr("Controls"), QStringLiteral(":/icons/arcade-cabinet-100.png"),
+              tr("<strong>Controls</strong><hr>Shows the recommended four-port arcade layout for this game."));
+    addWidget(m_graphics_settings = new GraphicsSettingsWidget(this, m_ui.settingsContainer), tr("Graphics"),
+              QStringLiteral("image-fill"),
+              tr("<strong>Graphics Settings</strong><hr>ArcadeDuck defaults prioritize accurate arcade display "
+                 "geometry, stable physical aspect ratio, original rendering behavior, and broad compatibility. "
+                 "Visual enhancements can be enabled globally or overridden for individual games."));
+    addWidget(m_post_processing_settings = new PostProcessingSettingsWidget(this, m_ui.settingsContainer),
+              tr("Post-Processing"), QStringLiteral("sun-fill"),
+              tr("<strong>Post-Processing Settings</strong><hr>Post processing alters the displayed image with filters."));
+    addWidget(m_audio_settings = new AudioSettingsWidget(this, m_ui.settingsContainer), tr("Audio"),
+              QStringLiteral("volume-up-line"),
+              tr("<strong>Audio Settings</strong><hr>These options control per-game audio output."));
+
+    return;
+  }
+
+  if (!isPerGameSettings())
+  {
+    addWidget(
+      m_game_list_settings = new GameListSettingsWidget(this, m_ui.settingsContainer), tr("Game List"),
+      QStringLiteral("folder-open-line"),
+      tr("<strong>Game List Settings</strong><hr>The list above shows the directories which will be searched by "
+         "ArcadeDuck to populate the game list. Search directories can be added, removed, and switched to "
+         "recursive/non-recursive."));
+    addWidget(
+      m_folder_settings = new FolderSettingsWidget(this, m_ui.settingsContainer), tr("Folders"),
+      QStringLiteral("folder-settings-line"),
+      tr("<strong>Folder Settings</strong><hr>These options control where ArcadeDuck will save runtime data files."));
+  }
+
+  addWidget(
+    m_console_settings = new ConsoleSettingsWidget(this, m_ui.settingsContainer), tr("Machine"),
+    QStringLiteral("chip-2-line"),
+    tr("<strong>Machine Settings</strong><hr>These options determine the configuration of the emulated "
+       "machine.<br><br>Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
+
+  if (!isPerGameSettings())
+  {
+    addWidget(
+      m_operator_settings = new OperatorSettingsWidget(this, m_ui.settingsContainer), tr("Operator"),
+      QStringLiteral("chip-line"),
+      tr("<strong>Operator Settings</strong><hr>Configure cabinet operator controls, BIOS file storage, and future "
+         "machine-switch options.<br><br>Test and Service bindings are global and are not stored in game profiles."));
+    addWidget(
+      new SystemLinkSettingsWidget(this, m_ui.settingsContainer), tr("System Link"),
+      QStringLiteral("global-line"),
+      tr("<strong>System Link Settings</strong><hr>Configure network transport for supported linked arcade "
+         "hardware. Cabinet count and cabinet identity remain controlled by each game's own service/operator settings."));
+  }
+
+  addWidget(m_graphics_settings = new GraphicsSettingsWidget(this, m_ui.settingsContainer), tr("Graphics"),
+            QStringLiteral("image-fill"),
+            tr("<strong>Graphics Settings</strong><hr>ArcadeDuck defaults prioritize accurate arcade display geometry, "
+               "stable physical aspect ratio, original rendering behavior, and broad compatibility. Visual "
+               "enhancements can be enabled globally or overridden for individual games."));
+  addWidget(
+    m_post_processing_settings = new PostProcessingSettingsWidget(this, m_ui.settingsContainer), tr("Post-Processing"),
+    QStringLiteral("sun-fill"),
+    tr("<strong>Post-Processing Settings</strong><hr>Post processing allows you to alter the appearance of the image "
+       "displayed on the screen with various filters. Shaders will be executed in sequence."));
+  addWidget(
+    m_audio_settings = new AudioSettingsWidget(this, m_ui.settingsContainer), tr("Audio"),
+    QStringLiteral("volume-up-line"),
+    tr("<strong>Audio Settings</strong><hr>These options control the audio output of the machine. Mouse over an option "
+       "for additional information."));
+
+  if (!isPerGameSettings())
+  {
+    addWidget(m_advanced_settings = new AdvancedSettingsWidget(this, m_ui.settingsContainer), tr("Advanced"),
+              QStringLiteral("alert-line"),
+              tr("<strong>Advanced Settings</strong><hr>These options control logging and internal behavior of the "
+                 "emulator. Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
+
+    connect(m_advanced_settings, &AdvancedSettingsWidget::onShowDebugOptionsChanged, m_graphics_settings,
+            &GraphicsSettingsWidget::onShowDebugSettingsChanged);
+  }
+}
+
+void SettingsWindow::addAchievementsPage()
+{
+  QString title(tr("Achievements"));
+  QString icon_text(QStringLiteral("trophy-line"));
+  QString help_text(
+    tr("<strong>Achievement Settings</strong><hr>ArcadeDuck uses RetroAchievements as an achievement database and "
+       "for tracking progress. To use achievements, please sign up for an account at retroachievements.org. To view "
+       "the achievement list in-game, press the hotkey for <strong>Open Pause Menu</strong> and select "
+       "<strong>Achievements</strong> from the menu. Mouse over an option for additional information, and "
+       "Shift+Wheel to scroll this panel."));
+
+  if (!Achievements::IsUsingRAIntegration())
+  {
+    addWidget(m_achievement_settings = new AchievementSettingsWidget(this, m_ui.settingsContainer), std::move(title),
+              std::move(icon_text), std::move(help_text));
+  }
+  else
+  {
+    QLabel* placeholder_label =
+      new QLabel(QStringLiteral("RAIntegration is being used, built-in RetroAchievements support is disabled."),
+                 m_ui.settingsContainer);
+    placeholder_label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    addWidget(placeholder_label, std::move(title), std::move(icon_text), std::move(help_text));
+  }
+}
+
+QWidget* SettingsWindow::createArcadeOperatorPage()
+{
+  QWidget* page = new QWidget(m_ui.settingsContainer);
+  QVBoxLayout* layout = new QVBoxLayout(page);
+  QGroupBox* group = new QGroupBox(tr("Machine Configuration"), page);
+  QVBoxLayout* group_layout = new QVBoxLayout(group);
+  QLabel* description = new QLabel(group);
+  description->setWordWrap(true);
+  group_layout->addWidget(description);
+
+  QFormLayout* form = new QFormLayout();
+  group_layout->addLayout(form);
+
+  auto add_switch = [this, group, form](const QString& label, const char* key, bool default_value,
+                                        const QString& disabled_text, const QString& enabled_text,
+                                        const QString& recommended_value, const QString& help_text) {
+    QComboBox* combo = new QComboBox(group);
+    combo->addItem(disabled_text, false);
+    combo->addItem(enabled_text, true);
+
+    const bool value = getBoolValue("ArcadeMachine", key, default_value).value_or(default_value);
+    combo->setCurrentIndex(value ? 1 : 0);
+
+    connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, combo, key](int index) {
+              setBoolSettingValue("ArcadeMachine", key, combo->itemData(index).toBool());
+            });
+
+    form->addRow(label, combo);
+    registerWidgetHelp(combo, label, recommended_value, help_text);
+  };
+
+  const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::GetGame(m_game_serial);
+  const bool is_namco_system11 = arcade_game && arcade_game->system_id == "namco_system11";
+  const bool is_bust_a_move_2 = m_game_serial == "bam2" || m_game_serial == "bam2a";
+  const bool is_video_system_zn1 =
+    arcade_game && arcade_game->system_id == "video_system_zn1";
+  const bool is_sony_zn =
+    arcade_game &&
+    (arcade_game->system_id == "capcom_zn1" ||
+     arcade_game->system_id == "taito_fx1" ||
+     arcade_game->system_id == "acclaim_zn1" ||
+     arcade_game->system_id == "time_warner_zn1" ||
+     arcade_game->system_id == "atlus_zn1" ||
+     arcade_game->system_id == "video_system_zn1" ||
+     arcade_game->system_id == "eighting_raizing_zn1" ||
+     arcade_game->system_id == "tecmo_tps");
+  const bool has_s551_4_game_test =
+    arcade_game &&
+    (arcade_game->system_id == "taito_fx1" ||
+     arcade_game->hardware_profile == "coh1002e");
+
+  if (m_game_serial == "cryptklr")
+  {
+    description->setText(
+      tr("Crypt Killer GQ420 physical DIP switches.\nRestart the game after changing a switch."));
+
+    add_switch(tr("Sound Output:"), "CryptKillerStereo", true, tr("Mono"), tr("Stereo"), tr("Stereo"),
+               tr("Physical DIP switch 1. Selects stereo or mono cabinet audio output."));
+    add_switch(tr("Stage Set:"), "CryptKillerEndlessStages", false, tr("6 Stage End"), tr("Endless"),
+               tr("6 Stage End"), tr("Physical DIP switch 2. Selects the normal six-stage ending or endless play."));
+    add_switch(tr("Mirror:"), "CryptKillerMirror", false, tr("No"), tr("Yes"), tr("No"),
+               tr("Physical DIP switch 3. Enables the cabinet mirror configuration."));
+    add_switch(tr("Woofer:"), "CryptKillerWoofer", false, tr("No"), tr("Yes"), tr("No"),
+               tr("Physical DIP switch 4. Enables the cabinet woofer configuration."));
+    add_switch(tr("Number of Players:"), "CryptKillerThreePlayers", true, tr("2"), tr("3"), tr("3"),
+               tr("Physical DIP switch 5. Selects a two-player or three-player cabinet."));
+    add_switch(tr("Coin Mechanism (2-player only):"), "CryptKillerCommonCoinMechanism", true, tr("Independent"),
+               tr("Common"), tr("Common"),
+               tr("Physical DIP switch 6. Selects common or independent coin mechanisms in two-player mode."));
+  }
+  else if (is_namco_system11)
+  {
+    description->setText(
+      tr("Namco System 11 physical DIP SW2 switches.\nRestart the game after changing a switch."));
+
+    add_switch(tr("DIP1 Test (SW2:1):"), "NamcoSystem11DIPTest", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical DIP SW2:1. This is separate from the cabinet Test switch/hotkey."));
+    add_switch(tr("DIP2 Freeze (SW2:2):"), "NamcoSystem11DIPFreeze", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical DIP SW2:2. Freezes game execution when enabled by the game hardware."));
+  }
+  else if (is_video_system_zn1)
+  {
+    description->setText(
+      tr("Video System COH-1002V motherboard S551 DIP switches.\nRestart the game after changing a switch."));
+
+    add_switch(tr("BIOS Service Mode (S551:2):"), "VideoSystemZN1BIOSServiceMode", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical motherboard DIP S551:2. Forces the ZN BIOS service/test-mode configuration."));
+    add_switch(tr("Game Test Mode (S551:3):"), "VideoSystemZN1TestMode", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical motherboard DIP S551:3 used by the Video System game software for test mode."));
+    add_switch(tr("Save (S551:4):"), "VideoSystemZN1Save", true,
+               tr("No"), tr("Yes"), tr("Yes"),
+               tr("Physical motherboard DIP S551:4. Yes is the normal setting; No disables the game's save setting."));
+  }
+  else if (is_bust_a_move_2)
+  {
+    description->setText(
+      tr("Bust-A-Move 2 COH-1002E motherboard S551 DIP switches.\nRestart the game after changing a switch."));
+
+    QComboBox* cabinet_combo = new QComboBox(group);
+    cabinet_combo->addItem(tr("Generic Cab (Unsupported)"), false);
+    cabinet_combo->addItem(tr("Dedicated Cab"), true);
+    cabinet_combo->setCurrentIndex(1);
+    cabinet_combo->setEnabled(false);
+
+    const QString cabinet_label = tr("Cabinet Type (S551:1):");
+    form->addRow(cabinet_label, cabinet_combo);
+    registerWidgetHelp(
+      cabinet_combo, cabinet_label, tr("Dedicated Cab"),
+      tr("Physical motherboard DIP S551:1 exists, but Generic Cab support is currently disabled in ArcadeDuck. "
+         "Bust-A-Move 2 is fixed to the verified Dedicated Cab wiring."));    add_switch(tr("BIOS Service Mode (S551:2):"), "SonyZNBIOSServiceMode", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical motherboard DIP S551:2. Forces the ZN BIOS service/test-mode configuration."));
+
+    QComboBox* region_combo = new QComboBox(group);
+    region_combo->addItem(tr("English"), 0);
+    region_combo->addItem(tr("Japanese (2)"), 1);
+    region_combo->addItem(tr("Korean"), 2);
+    region_combo->addItem(tr("Japanese"), 3);
+
+    int region_value = getIntValue("ArcadeMachine", "BustAMove2Region", 3).value_or(3);
+    if (region_value < 0 || region_value > 3)
+      region_value = 3;
+    region_combo->setCurrentIndex(region_value);
+
+    connect(region_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, region_combo](int index) {
+              setIntSettingValue("ArcadeMachine", "BustAMove2Region", region_combo->itemData(index).toInt());
+            });
+
+    const QString region_label = tr("Region (S551:3-4):");
+    form->addRow(region_label, region_combo);
+    registerWidgetHelp(region_combo, region_label, tr("Japanese"),
+                       tr("Physical motherboard DIP S551:3-4 region encoding used by Bust-A-Move 2."));
+  }
+  else if (is_sony_zn)
+  {
+    description->setText(
+      tr("Sony ZN motherboard S551 physical DIP switches.\nRestart the game after changing a switch."));
+
+    add_switch(tr("BIOS Service Mode (S551:2):"), "SonyZNBIOSServiceMode", false,
+               tr("Off"), tr("On"), tr("Off"),
+               tr("Physical motherboard DIP S551:2. Forces the ZN BIOS service/test-mode configuration."));
+
+    if (has_s551_4_game_test)
+    {
+      add_switch(tr("Game Test Mode (S551:4):"), "SonyZNGameTestMode", false,
+                 tr("Off"), tr("On"), tr("Off"),
+                 tr("Physical motherboard DIP S551:4 used by this hardware profile for game test mode."));
+    }
+  }
+  else
+  {
+    description->setText(tr("No physical DIP switch settings are available for this game."));
+  }
+
+  layout->addWidget(group);
+  layout->addStretch(1);
+  return page;
+}
+
+QWidget* SettingsWindow::createArcadeControlsPage()
+{
+  QWidget* page = new QWidget(m_ui.settingsContainer);
+  QVBoxLayout* layout = new QVBoxLayout(page);
+  QLabel* description = new QLabel(tr("These are ArcadeDuck's recommended controls for this game. The active input profile "
+                                      "is selected and edited on the Summary page."), page);
+  description->setWordWrap(true);
+  layout->addWidget(description);
+
+  QGroupBox* group = new QGroupBox(tr("Recommended Layout"), page);
+  QFormLayout* form = new QFormLayout(group);
+  const Arcade::ArcadeGameControlProfile* profile = Arcade::GetArcadeGameControlProfile(m_game_serial);
+  if (!profile)
+  {
+    form->addRow(new QLabel(tr("No recommended arcade control profile is available."), group));
+  }
+  else
+  {
+    for (u32 i = 0; i < Arcade::NUM_ARCADE_CONTROLLER_PORTS; i++)
+    {
+      const Arcade::ArcadePortProfile& port = profile->ports[i];
+      QString value = tr("None");
+      if (port.controller_type != Arcade::ArcadeControllerType::None)
+      {
+        const Arcade::ArcadeControllerTypeInfo* type = Arcade::GetArcadeControllerTypeInfo(port.controller_type);
+        const Arcade::ArcadeControlLayoutInfo* layout_info = Arcade::GetArcadeControlLayoutInfo(port.game_layout_key);
+        value = type ? QString::fromUtf8(type->display_name.data(), static_cast<int>(type->display_name.size())) : tr("Unknown");
+        if (layout_info)
+          value += QStringLiteral(" — ") + QString::fromUtf8(layout_info->display_name.data(), static_cast<int>(layout_info->display_name.size()));
+        if (port.joystick_mode == Arcade::ArcadeJoystickMode::FourWay)
+          value += tr(" (4-way)");
+        else if (port.joystick_mode == Arcade::ArcadeJoystickMode::EightWay)
+          value += tr(" (8-way)");
+      }
+      form->addRow(tr("Port %1:").arg(i + 1), new QLabel(value, group));
+    }
+  }
+  layout->addWidget(group);
+  layout->addStretch(1);
+  return page;
+}
+
+void SettingsWindow::reloadPages()
+{
+  const int min_count = isPerGameSettings() ? 1 : 0;
+  while (m_ui.settingsContainer->count() > min_count)
+  {
+    const int row = m_ui.settingsContainer->count() - 1;
+
+    delete m_ui.settingsCategory->takeItem(row);
+
+    QWidget* widget = m_ui.settingsContainer->widget(row);
+    m_ui.settingsContainer->removeWidget(widget);
+    delete widget;
+  }
+
+  addPages();
+}
+
+void SettingsWindow::connectUi()
+{
+  if (isPerGameSettings())
+  {
+    m_ui.footerLayout->removeWidget(m_ui.restoreDefaults);
+    m_ui.restoreDefaults->deleteLater();
+    m_ui.restoreDefaults = nullptr;
+  }
+  else
+  {
+    m_ui.footerLayout->removeWidget(m_ui.copyGlobalSettings);
+    m_ui.copyGlobalSettings->deleteLater();
+    m_ui.copyGlobalSettings = nullptr;
+    m_ui.footerLayout->removeWidget(m_ui.clearGameSettings);
+    m_ui.clearGameSettings->deleteLater();
+    m_ui.clearGameSettings = nullptr;
+  }
+
+  m_ui.settingsCategory->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+  m_ui.settingsCategory->setCurrentRow(0);
+  m_ui.settingsContainer->setCurrentIndex(0);
+  m_ui.helpText->setText(m_category_help_text[0]);
+  connect(m_ui.settingsCategory, &QListWidget::currentRowChanged, this, &SettingsWindow::onCategoryCurrentRowChanged);
+  connect(m_ui.close, &QPushButton::clicked, this, &SettingsWindow::close);
+  if (m_ui.restoreDefaults)
+    connect(m_ui.restoreDefaults, &QPushButton::clicked, this, &SettingsWindow::onRestoreDefaultsClicked);
+  if (m_ui.copyGlobalSettings)
+    connect(m_ui.copyGlobalSettings, &QPushButton::clicked, this, &SettingsWindow::onCopyGlobalSettingsClicked);
+  if (m_ui.clearGameSettings)
+    connect(m_ui.clearGameSettings, &QPushButton::clicked, this, &SettingsWindow::onClearSettingsClicked);
+}
+
+void SettingsWindow::addWidget(QWidget* widget, QString title, QString icon, QString help_text)
+{
+  const int index = m_ui.settingsCategory->count();
+
+  QListWidgetItem* item = new QListWidgetItem(m_ui.settingsCategory);
+  item->setText(title);
+  if (!icon.isEmpty())
+    item->setIcon(icon.startsWith(QStringLiteral(":/")) ? QIcon(icon) : QIcon::fromTheme(icon));
+
+  m_ui.settingsContainer->addWidget(widget);
+
+  m_category_help_text[index] = std::move(help_text);
+}
+
+void SettingsWindow::setCategory(const char* category)
+{
+  // the titles in the category list will be translated.
+  const QString translated_category(tr(category));
+
+  for (int i = 0; i < m_ui.settingsCategory->count(); i++)
+  {
+    if (translated_category == m_ui.settingsCategory->item(i)->text())
+    {
+      // will also update the visible widget
+      m_ui.settingsCategory->setCurrentRow(i);
+      break;
+    }
+  }
+}
+
+int SettingsWindow::getCategoryRow() const
+{
+  return m_ui.settingsCategory->currentRow();
+}
+
+void SettingsWindow::setCategoryRow(int index)
+{
+  m_ui.settingsCategory->setCurrentRow(index);
+}
+
+void SettingsWindow::onCategoryCurrentRowChanged(int row)
+{
+  DebugAssert(row < static_cast<int>(MAX_SETTINGS_WIDGETS));
+  m_ui.settingsContainer->setCurrentIndex(row);
+  m_ui.helpText->setText(m_category_help_text[row]);
+}
+
+void SettingsWindow::onRestoreDefaultsClicked()
+{
+  if (QMessageBox::question(this, tr("Confirm Restore Defaults"),
+                            tr("Are you sure you want to restore the default settings? Any preferences will be lost."),
+                            QMessageBox::Yes, QMessageBox::No) != QMessageBox::Yes)
+  {
+    return;
+  }
+
+  g_emu_thread->setDefaultSettings(true, false);
+}
+
+void SettingsWindow::onCopyGlobalSettingsClicked()
+{
+  if (!isPerGameSettings())
+    return;
+
+  if (QMessageBox::question(
+        this, tr("ArcadeDuck Settings"),
+        tr("The configuration for this game will be replaced by the current global settings.\n\nAny current setting "
+           "values will be overwritten.\n\nDo you want to continue?"),
+        QMessageBox::Yes, QMessageBox::No) != QMessageBox::Yes)
+  {
+    return;
+  }
+
+  {
+    auto lock = Host::GetSettingsLock();
+    Settings temp;
+    temp.Load(*Host::Internal::GetBaseSettingsLayer(), *Host::Internal::GetBaseSettingsLayer());
+    temp.Save(*m_sif.get(), true);
+  }
+  saveAndReloadGameSettings();
+
+  reloadPages();
+
+  QMessageBox::information(this, tr("ArcadeDuck Settings"), tr("Per-game configuration copied from global settings."));
+}
+
+void SettingsWindow::onClearSettingsClicked()
+{
+  if (!isPerGameSettings())
+    return;
+
+  if (QMessageBox::question(this, tr("ArcadeDuck Settings"),
+                            tr("The configuration for this game will be cleared.\n\nAny current setting values will be "
+                               "lost.\n\nDo you want to continue?"),
+                            QMessageBox::Yes, QMessageBox::No) != QMessageBox::Yes)
+  {
+    return;
+  }
+
+  Settings::Clear(*m_sif.get());
+  saveAndReloadGameSettings();
+
+  reloadPages();
+
+  QMessageBox::information(this, tr("ArcadeDuck Settings"), tr("Per-game configuration cleared."));
+}
+
+void SettingsWindow::registerWidgetHelp(QObject* object, QString title, QString recommended_value, QString text)
+{
+  // construct rich text with formatted description
+  QString full_text;
+  full_text += "<table width='100%' cellpadding='0' cellspacing='0'><tr><td><strong>";
+  full_text += title;
+  full_text += "</strong></td><td align='right'><strong>";
+  full_text += tr("Recommended Value");
+  full_text += ": </strong>";
+  full_text += recommended_value;
+  full_text += "</td></table><hr>";
+  full_text += text;
+
+  m_widget_help_text_map[object] = std::move(full_text);
+  object->installEventFilter(this);
+}
+
+bool SettingsWindow::eventFilter(QObject* object, QEvent* event)
+{
+  if (event->type() == QEvent::Enter)
+  {
+    auto iter = m_widget_help_text_map.constFind(object);
+    if (iter != m_widget_help_text_map.end())
+    {
+      m_current_help_widget = object;
+      m_ui.helpText->setText(iter.value());
+    }
+  }
+  else if (event->type() == QEvent::Leave)
+  {
+    if (m_current_help_widget)
+    {
+      m_current_help_widget = nullptr;
+      m_ui.helpText->setText(m_category_help_text[m_ui.settingsCategory->currentRow()]);
+    }
+  }
+  else if (event->type() == QEvent::Wheel)
+  {
+    if (handleWheelEvent(static_cast<QWheelEvent*>(event)))
+      return true;
+  }
+
+  return QWidget::eventFilter(object, event);
+}
+
+bool SettingsWindow::handleWheelEvent(QWheelEvent* event)
+{
+  if (!(event->modifiers() & Qt::ShiftModifier))
+    return false;
+
+  const int amount = event->hasPixelDelta() ? event->pixelDelta().y() : (event->angleDelta().y() / 20);
+
+  QScrollBar* sb = m_ui.helpText->verticalScrollBar();
+  if (!sb)
+    return false;
+
+  sb->setSliderPosition(std::max(sb->sliderPosition() - amount, 0));
+  return true;
+}
+
+void SettingsWindow::wheelEvent(QWheelEvent* event)
+{
+  if (handleWheelEvent(event))
+    return;
+
+  QWidget::wheelEvent(event);
+}
+
+bool SettingsWindow::getEffectiveBoolValue(const char* section, const char* key, bool default_value) const
+{
+  bool value;
+  if (m_sif && m_sif->GetBoolValue(section, key, &value))
+    return value;
+  else
+    return Host::GetBaseBoolSettingValue(section, key, default_value);
+}
+
+int SettingsWindow::getEffectiveIntValue(const char* section, const char* key, int default_value) const
+{
+  int value;
+  if (m_sif && m_sif->GetIntValue(section, key, &value))
+    return value;
+  else
+    return Host::GetBaseIntSettingValue(section, key, default_value);
+}
+
+float SettingsWindow::getEffectiveFloatValue(const char* section, const char* key, float default_value) const
+{
+  float value;
+  if (m_sif && m_sif->GetFloatValue(section, key, &value))
+    return value;
+  else
+    return Host::GetBaseFloatSettingValue(section, key, default_value);
+}
+
+std::string SettingsWindow::getEffectiveStringValue(const char* section, const char* key,
+                                                    const char* default_value) const
+{
+  std::string value;
+  if (!m_sif || !m_sif->GetStringValue(section, key, &value))
+    value = Host::GetBaseStringSettingValue(section, key, default_value);
+  return value;
+}
+
+Qt::CheckState SettingsWindow::getCheckState(const char* section, const char* key, bool default_value)
+{
+  bool value;
+  if (m_sif)
+  {
+    if (!m_sif->GetBoolValue(section, key, &value))
+      return Qt::PartiallyChecked;
+  }
+  else
+  {
+    value = Host::GetBaseBoolSettingValue(section, key, default_value);
+  }
+
+  return value ? Qt::Checked : Qt::Unchecked;
+}
+
+std::optional<bool> SettingsWindow::getBoolValue(const char* section, const char* key,
+                                                 std::optional<bool> default_value) const
+{
+  std::optional<bool> value;
+  if (m_sif)
+  {
+    bool bvalue;
+    if (m_sif->GetBoolValue(section, key, &bvalue))
+      value = bvalue;
+    else
+      value = default_value;
+  }
+  else
+  {
+    value = Host::GetBaseBoolSettingValue(section, key, default_value.value_or(false));
+  }
+
+  return value;
+}
+
+std::optional<int> SettingsWindow::getIntValue(const char* section, const char* key,
+                                               std::optional<int> default_value) const
+{
+  std::optional<int> value;
+  if (m_sif)
+  {
+    int ivalue;
+    if (m_sif->GetIntValue(section, key, &ivalue))
+      value = ivalue;
+    else
+      value = default_value;
+  }
+  else
+  {
+    value = Host::GetBaseIntSettingValue(section, key, default_value.value_or(0));
+  }
+
+  return value;
+}
+
+std::optional<float> SettingsWindow::getFloatValue(const char* section, const char* key,
+                                                   std::optional<float> default_value) const
+{
+  std::optional<float> value;
+  if (m_sif)
+  {
+    float fvalue;
+    if (m_sif->GetFloatValue(section, key, &fvalue))
+      value = fvalue;
+    else
+      value = default_value;
+  }
+  else
+  {
+    value = Host::GetBaseFloatSettingValue(section, key, default_value.value_or(0.0f));
+  }
+
+  return value;
+}
+
+std::optional<std::string> SettingsWindow::getStringValue(const char* section, const char* key,
+                                                          std::optional<const char*> default_value) const
+{
+  std::optional<std::string> value;
+  if (m_sif)
+  {
+    std::string svalue;
+    if (m_sif->GetStringValue(section, key, &svalue))
+      value = std::move(svalue);
+    else if (default_value.has_value())
+      value = default_value.value();
+  }
+  else
+  {
+    value = Host::GetBaseStringSettingValue(section, key, default_value.value_or(""));
+  }
+
+  return value;
+}
+
+void SettingsWindow::setBoolSettingValue(const char* section, const char* key, std::optional<bool> value)
+{
+  if (m_sif)
+  {
+    value.has_value() ? m_sif->SetBoolValue(section, key, value.value()) : m_sif->DeleteValue(section, key);
+    saveAndReloadGameSettings();
+  }
+  else
+  {
+    value.has_value() ? Host::SetBaseBoolSettingValue(section, key, value.value()) :
+                        Host::DeleteBaseSettingValue(section, key);
+    Host::CommitBaseSettingChanges();
+    g_emu_thread->applySettings();
+  }
+}
+
+void SettingsWindow::setIntSettingValue(const char* section, const char* key, std::optional<int> value)
+{
+  if (m_sif)
+  {
+    value.has_value() ? m_sif->SetIntValue(section, key, value.value()) : m_sif->DeleteValue(section, key);
+    saveAndReloadGameSettings();
+  }
+  else
+  {
+    value.has_value() ? Host::SetBaseIntSettingValue(section, key, value.value()) :
+                        Host::DeleteBaseSettingValue(section, key);
+    Host::CommitBaseSettingChanges();
+    g_emu_thread->applySettings();
+  }
+}
+
+void SettingsWindow::setFloatSettingValue(const char* section, const char* key, std::optional<float> value)
+{
+  if (m_sif)
+  {
+    value.has_value() ? m_sif->SetFloatValue(section, key, value.value()) : m_sif->DeleteValue(section, key);
+    saveAndReloadGameSettings();
+  }
+  else
+  {
+    value.has_value() ? Host::SetBaseFloatSettingValue(section, key, value.value()) :
+                        Host::DeleteBaseSettingValue(section, key);
+    Host::CommitBaseSettingChanges();
+    g_emu_thread->applySettings();
+  }
+}
+
+void SettingsWindow::setStringSettingValue(const char* section, const char* key, std::optional<const char*> value)
+{
+  if (m_sif)
+  {
+    value.has_value() ? m_sif->SetStringValue(section, key, value.value()) : m_sif->DeleteValue(section, key);
+    saveAndReloadGameSettings();
+  }
+  else
+  {
+    value.has_value() ? Host::SetBaseStringSettingValue(section, key, value.value()) :
+                        Host::DeleteBaseSettingValue(section, key);
+    Host::CommitBaseSettingChanges();
+    g_emu_thread->applySettings();
+  }
+}
+
+bool SettingsWindow::containsSettingValue(const char* section, const char* key) const
+{
+  if (m_sif)
+    return m_sif->ContainsValue(section, key);
+  else
+    return Host::ContainsBaseSettingValue(section, key);
+}
+
+void SettingsWindow::removeSettingValue(const char* section, const char* key)
+{
+  if (m_sif)
+  {
+    m_sif->DeleteValue(section, key);
+    saveAndReloadGameSettings();
+  }
+  else
+  {
+    Host::DeleteBaseSettingValue(section, key);
+    Host::CommitBaseSettingChanges();
+    g_emu_thread->applySettings();
+  }
+}
+
+void SettingsWindow::saveAndReloadGameSettings()
+{
+  DebugAssert(m_sif);
+  QtHost::SaveGameSettings(m_sif.get(), true);
+  g_emu_thread->reloadGameSettings(false);
+}
+
+bool SettingsWindow::hasGameTrait(GameDatabase::Trait trait)
+{
+  return (m_database_entry && m_database_entry->HasTrait(trait) &&
+          m_sif->GetBoolValue("Main", "ApplyCompatibilitySettings", true));
+}
+
+void SettingsWindow::openGamePropertiesDialog(const std::string& path, const std::string& serial)
+{
+  const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::IdentifyArchive(path);
+  if (!arcade_game)
+    arcade_game = Arcade::Database::GetGame(serial);
+
+  const std::string real_serial = arcade_game ? arcade_game->id : serial;
+  std::string ini_filename = System::GetGameSettingsPath(real_serial);
+
+  // Reuse an existing dialog for the same per-set settings file.
+  for (SettingsWindow* dialog : s_open_game_properties_dialogs)
+  {
+    if (dialog->isPerGameSettings() &&
+        static_cast<INISettingsInterface*>(dialog->getSettingsInterface())->GetFileName() == ini_filename)
+    {
+      dialog->show();
+      dialog->raise();
+      dialog->activateWindow();
+      dialog->setFocus();
+      return;
+    }
+  }
+
+  std::unique_ptr<INISettingsInterface> sif = std::make_unique<INISettingsInterface>(std::move(ini_filename));
+  if (FileSystem::FileExists(sif->GetFileName().c_str()))
+    sif->Load();
+
+  SettingsWindow* dialog = new SettingsWindow(path, real_serial, nullptr, std::move(sif));
+  dialog->show();
+}
+
+void SettingsWindow::closeGamePropertiesDialogs()
+{
+  for (SettingsWindow* dialog : s_open_game_properties_dialogs)
+  {
+    dialog->close();
+    dialog->deleteLater();
+  }
+}
+
+bool SettingsWindow::setGameSettingsBoolForSerial(const std::string& serial, const char* section, const char* key,
+                                                  bool value)
+{
+  std::string ini_filename = System::GetGameSettingsPath(serial);
+  if (ini_filename.empty())
+    return false;
+
+  INISettingsInterface sif(std::move(ini_filename));
+  if (FileSystem::FileExists(sif.GetFileName().c_str()))
+    sif.Load();
+
+  sif.SetBoolValue(section, key, value);
+  return sif.Save();
+}

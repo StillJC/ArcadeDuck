@@ -1,0 +1,19 @@
+ArcadeDuck
+=========
+
+Copyright (C) 2026 StillJC
+
+ArcadeDuck is distributed under the GNU General Public License version 3
+only, except for files and third-party components that are explicitly marked
+with a different compatible license.
+
+ArcadeDuck is a derivative work based on DuckStation. DuckStation-derived
+files retain their original copyright notices. Files modified for ArcadeDuck
+are marked with a modification notice identifying StillJC and the year 2026.
+
+Third-party components retain their original licenses and attribution.
+See THIRD-PARTY-LICENSES.txt and the license files shipped with individual
+third-party components for details.
+
+SPDX-FileCopyrightText: 2026 StillJC
+SPDX-License-Identifier: GPL-3.0-only

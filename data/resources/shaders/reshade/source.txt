@@ -1,0 +1,29 @@
+ArcadeDuck curated ReShade FX source snapshots
+==============================================
+
+crosire/reshade-shaders
+Branch: slim
+Commit: 6db142b
+Files:
+  Shaders/ReShade.fxh
+  Shaders/ReShadeUI.fxh
+  Shaders/Deband.fx
+
+Conkwer/satpixie-crt-shader
+Branch: main
+Commit: 8c08dd1
+File:
+  Reshade/reshade-shaders/Shaders/CRT-Satpixie-Simplified.fx
+
+CeeJayDK/SweetFX
+Branch: master
+Commit: 16d1a42
+Files:
+  Shaders/SweetFX/Curves.fx
+  Shaders/SweetFX/Levels.fx
+  Shaders/SweetFX/LiftGammaGain.fx
+  Shaders/SweetFX/Tonemap.fx
+  Shaders/SweetFX/Vibrance.fx
+
+Upstream source files retain their original copyright/license notices where
+present. Redistribution notices are also recorded in THIRD-PARTY-LICENSES.txt.

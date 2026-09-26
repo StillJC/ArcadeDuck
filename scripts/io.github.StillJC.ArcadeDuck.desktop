@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ArcadeDuck
+GenericName=Arcade Emulator
+Comment=Arcade game emulator
+Icon=io.github.StillJC.ArcadeDuck
+TryExec=arcadeduck-qt
+Exec=arcadeduck-qt
+Categories=Game;Emulator;Qt;

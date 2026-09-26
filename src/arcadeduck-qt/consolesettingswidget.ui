@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConsoleSettingsWidget</class>
+ <widget class="QWidget" name="ConsoleSettingsWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>648</width>
+    <height>456</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title">
+      <string>Machine</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0" colspan="2">
+       <widget class="QCheckBox" name="disableAllEnhancements">
+        <property name="text">
+         <string>Disable All Enhancements</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="title">
+      <string>CPU Emulation</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="cpuExecutionModeLabel">
+        <property name="text">
+         <string>Execution Mode:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cpuExecutionMode"/>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox_4">
+     <property name="title">
+      <string>CD-ROM Emulation</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_4">
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cdromReadaheadSectors"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>Read Speedup:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="cdromReadSpeedup">
+        <item>
+         <property name="text">
+          <string>None (Double Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>2x (Quad Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>3x (6x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>4x (8x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>5x (10x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>6x (12x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>7x (14x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>8x (16x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>9x (18x Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>10x (20x Speed)</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>Seek Speedup:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="cdromSeekSpeedup">
+        <property name="currentIndex">
+         <number>1</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>Infinite/Instantaneous</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>None (Normal Speed)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>2x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>3x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>4x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>5x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>6x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>7x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>8x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>9x</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>10x</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <layout class="QGridLayout" name="gridLayout">
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="cdromLoadImageToRAM">
+          <property name="text">
+           <string>Preload Image To RAM</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QCheckBox" name="cdromLoadImagePatches">
+          <property name="text">
+           <string>Apply Image Patches</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>Async Readahead:</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="synchronizationLatencyGroup">
+     <property name="title">
+      <string>Synchronization &amp; Latency</string>
+     </property>
+     <layout class="QGridLayout" name="synchronizationLatencyLayout">
+      <item row="0" column="0">
+       <widget class="QCheckBox" name="vsync">
+        <property name="text">
+         <string>Vertical Sync (VSync)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QCheckBox" name="syncToHostRefreshRate">
+        <property name="text">
+         <string>Sync To Host Refresh Rate</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="optimalFramePacing">
+        <property name="text">
+         <string>Optimal Frame Pacing</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="preFrameSleep">
+        <property name="text">
+         <string>Reduce Input Latency</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="skipPresentingDuplicateFrames">
+        <property name="text">
+         <string>Skip Duplicate Frame Display</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QFormLayout" name="preFrameSleepBufferLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="preFrameSleepBufferLabel">
+          <property name="text">
+           <string>Frame Time Buffer:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QDoubleSpinBox" name="preFrameSleepBuffer">
+          <property name="suffix">
+           <string> Milliseconds</string>
+          </property>
+          <property name="decimals">
+           <number>1</number>
+          </property>
+          <property name="singleStep">
+           <double>0.500000000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="resources/resources.qrc"/>
+ </resources>
+ <connections/>
+</ui>

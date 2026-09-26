@@ -1,0 +1,5 @@
+.flatpak-builder/
+build/
+repo/
+io.github.StillJC.ArcadeDuck.metainfo.xml
+*.flatpak

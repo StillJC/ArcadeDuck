@@ -1,0 +1,173 @@
+name: ArcadeDuck Development Build
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - '**.md'
+      - 'appveyor.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+
+  workflow_dispatch:
+
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Cache Dependencies
+        id: cache-deps
+        uses: actions/cache@v6
+        with:
+          path: |
+            dep/msvc/deps-x64
+          key: deps-x64 ${{ hashFiles('scripts/deps/build-dependencies-windows-x64.bat') }}
+
+      - name: Build X64 Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        env:
+          DEBUG: 0
+        run: scripts/deps/build-dependencies-windows-x64.bat
+
+      - name: Configure development metadata
+        shell: pwsh
+        run: |
+          $versionPath = "src/scmversion/arcadeduck_version.h"
+          $text = Get-Content -LiteralPath $versionPath -Raw
+          $match = [regex]::Match($text, '#define ARCADEDUCK_SEMANTIC_VERSION "([^"]+)"')
+          if (-not $match.Success) {
+            throw "Could not determine ArcadeDuck semantic version."
+          }
+
+          $version = $match.Groups[1].Value
+          if (-not $version.EndsWith("-dev")) {
+            throw "Development builds require an ArcadeDuck version ending in -dev. Found: $version"
+          }
+
+          $build = "D{0:D4}" -f [int]"${{ github.run_number }}"
+          "ARCADEDUCK_CI_BUILD=$build" >> $env:GITHUB_ENV
+          "ARCADEDUCK_RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+          "ARCADEDUCK_RELEASE_TITLE=ArcadeDuck v$version - Dev $build" >> $env:GITHUB_ENV
+
+          @(
+            "#pragma once"
+            '#define SCM_RELEASE_ASSET "arcadeduck-windows-x64-release.zip"'
+            '#define SCM_RELEASE_TAGS {"latest", "dev"}'
+            '#define SCM_RELEASE_TAG "dev"'
+          ) | Set-Content -LiteralPath "src/scmversion/tag.h" -Encoding ascii
+
+          Write-Host "Development version: $version"
+          Write-Host "Development build:   $build"
+
+      - name: Remove stale updater helper
+        shell: cmd
+        run: |
+          if exist bin\x64\updater.exe del /Q bin\x64\updater.exe
+          if exist bin\x64\updater-x64-*.exe del /Q bin\x64\updater-x64-*.exe
+
+      - name: Compile x64 release build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          msbuild ArcadeDuck.sln -t:Build -p:Platform=x64;Configuration=ReleaseLTCG-Clang
+
+      - name: Create x64 symbols archive
+        shell: cmd
+        run: |
+          "C:\Program Files\7-Zip\7z.exe" a -r arcadeduck-windows-x64-release-symbols.zip ./bin/x64/*.pdb
+
+      - name: Remove extra bloat before archiving
+        shell: cmd
+        run: |
+          del /Q bin\x64\*.pdb bin\x64\*.exp bin\x64\*.lib bin\x64\*.iobj bin\x64\*.ipdb bin\x64\common-tests* 2>NUL
+
+          if exist bin\x64\updater.exe del /Q bin\x64\updater.exe
+
+          for %%f in (bin\x64\updater-x64-*.exe) do (
+            echo Found updater helper: %%f
+            rename "%%f" updater.exe
+          )
+
+          if not exist bin\x64\updater.exe (
+            echo ERROR: updater helper was not built.
+            dir bin\x64\*updater*
+            exit /b 1
+          )
+
+      - name: Create x64 release archive
+        shell: cmd
+        run: |
+          copy /Y LICENSE bin\x64\LICENSE.txt
+          copy /Y THIRD-PARTY-LICENSES.txt bin\x64\THIRD-PARTY-LICENSES.txt
+          "C:\Program Files\7-Zip\7z.exe" a -r arcadeduck-windows-x64-release.zip ./bin/x64/*
+
+      - name: Upload x64 release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-dev
+          path: arcadeduck-windows-x64-release*.zip
+
+  create-release:
+    needs: [windows-build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determine development release title
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^#define ARCADEDUCK_SEMANTIC_VERSION "\(.*\)"/\1/p' src/scmversion/arcadeduck_version.h | tr -d '\r\n')
+          BUILD=$(printf 'D%04d' '${{ github.run_number }}')
+
+          case "$VERSION" in
+            *-dev) ;;
+            *)
+              echo "ERROR: Development version must end in -dev. Found: $VERSION"
+              exit 1
+              ;;
+          esac
+
+          echo "ARCADEDUCK_RELEASE_TITLE=ArcadeDuck v${VERSION} - Dev ${BUILD}" >> "$GITHUB_ENV"
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-dev
+          path: ./artifacts/
+
+      - name: Display Downloaded Artifacts
+        run: find ./artifacts/
+
+      - name: Publish development prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="dev"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+
+          # Ensure a stale rolling tag cannot pin the new release to an old commit.
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}" >/dev/null 2>&1 || true
+
+          gh release create "$TAG" \
+            "./artifacts/arcadeduck-windows-x64-release.zip" \
+            "./artifacts/arcadeduck-windows-x64-release-symbols.zip" \
+            --target "${GITHUB_SHA}" \
+            --title "${ARCADEDUCK_RELEASE_TITLE}" \
+            --generate-notes \
+            --prerelease \
+            --latest=false

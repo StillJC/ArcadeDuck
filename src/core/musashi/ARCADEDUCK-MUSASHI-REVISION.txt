@@ -1,0 +1,3 @@
+Musashi source: https://github.com/kstenerud/Musashi.git
+Pinned revision: 313ebf1bd9f4d0d93341eb5ce21fd8a119e9dbdd
+Configuration: Motorola 68000 only; 68010/020/030/040 and PMMU disabled.

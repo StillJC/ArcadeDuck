@@ -1,0 +1,6 @@
+ArcadeDuck third-party ADSP-2181 core
+Source: https://github.com/cryan209/modem-dsp-emu
+Pinned commit: a74f6b7343a925b21af9955e4b33004118de26cb
+Upstream path: tools/adsp2181emu
+License: BSD-3-Clause (see source file headers)
+ArcadeDuck applies local board hooks and ADSP-2181 RAX interrupt-map corrections during installation.

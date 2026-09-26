@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\..\dep\msvc\vsprops\Configurations.props" />
+  <ItemGroup>
+    <ClCompile Include="achievements.cpp" />
+    <ClCompile Include="arcade\arcade_control_registry.cpp" />
+    <ClCompile Include="arcade\arcade_database.cpp" />
+    <ClCompile Include="arcade\arcade_input.cpp" />
+    <ClCompile Include="arcade\arcade_machine_handler.cpp" />
+    <ClCompile Include="arcade\arcade_output.cpp" />
+    <ClCompile Include="arcade\arcade_output_network.cpp" />
+    <ClCompile Include="arcade\arcade_output_win32.cpp" />
+    <ClCompile Include="bios.cpp" />
+    <ClCompile Include="bus.cpp" />
+    <ClCompile Include="cdrom.cpp" />
+    <ClCompile Include="cdrom_async_reader.cpp" />
+    <ClCompile Include="cheats.cpp" />
+    <ClCompile Include="cpu_core.cpp" />
+    <ClCompile Include="cpu_disasm.cpp" />
+    <ClCompile Include="cpu_code_cache.cpp" />
+    <ClCompile Include="cpu_newrec_compiler.cpp" />
+    <ClCompile Include="cpu_newrec_compiler_aarch32.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_newrec_compiler_aarch64.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_newrec_compiler_riscv64.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_newrec_compiler_x64.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_recompiler_code_generator.cpp" />
+    <ClCompile Include="cpu_recompiler_code_generator_aarch32.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_recompiler_code_generator_aarch64.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_recompiler_code_generator_generic.cpp" />
+    <ClCompile Include="cpu_recompiler_code_generator_x64.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'!='x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="cpu_recompiler_register_cache.cpp" />
+    <ClCompile Include="cpu_types.cpp" />
+    <ClCompile Include="fullscreen_ui.cpp" />
+    <ClCompile Include="game_database.cpp" />
+    <ClCompile Include="game_list.cpp" />
+    <ClCompile Include="gdb_server.cpp" />
+    <ClCompile Include="gpu_backend.cpp" />
+    <ClCompile Include="gpu_commands.cpp" />
+    <ClCompile Include="gpu_hw_shadergen.cpp" />
+    <ClCompile Include="gpu_shadergen.cpp" />
+    <ClCompile Include="gpu_sw.cpp" />
+    <ClCompile Include="gpu_sw_backend.cpp" />
+    <ClCompile Include="gte.cpp" />
+    <ClCompile Include="dma.cpp" />
+    <ClCompile Include="gpu.cpp" />
+    <ClCompile Include="gpu_hw.cpp" />
+    <ClCompile Include="host.cpp" />
+    <ClCompile Include="host_interface_progress_callback.cpp" />
+    <ClCompile Include="hotkeys.cpp" />
+    <ClCompile Include="imgui_overlays.cpp" />
+    <ClCompile Include="interrupt_controller.cpp" />
+    <ClCompile Include="arcade\devices\audio\k054539.cpp" />
+    <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
+    <ClCompile Include="arcade\devices\security\cat702.cpp" />
+    <ClCompile Include="arcade\devices\storage\chd_hard_disk.cpp" />
+    <ClCompile Include="arcade\third_party\qsound_hle\qsound.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4456;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\ymfm\ymfm_adpcm.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4389;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+          <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\ymfm\ymfm_opn.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4389;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\ymfm\ymfm_ssg.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4389;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\z80_superzazu\z80.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4805;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="arcade\systems\sony\zn\acclaim_ata.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\time_warner_ata.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\acclaim_rax.cpp" />
+    <ClCompile Include="arcade\third_party\adsp2181\adsp2181_core.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;4245;4389;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+          <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-sign-compare -Wno-unused-parameter %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\systems\sony\zn\capcom_qsound.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\atlus_zn1_sound.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\eighting_raizing_sound.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\tecmo_cbaj_sound.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\tecmo_gr2_link.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\ymz280b.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\taito_fx1a_sound.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\taito_fx1b_mn10200.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="arcade\systems\sony\zn\taito_fx1b_zsg2.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\taito_fx1b_zoom.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\sony_zn.cpp" />
+    <ClCompile Include="arcade\devices\storage\ncr53cf96.cpp" />
+    <ClCompile Include="arcade\systems\konami\konami.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_eeprom.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_hdd.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_k056800.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_pcm.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_scsi.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_sound_cpu.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_tms57002.cpp" />
+    <ClCompile Include="arcade\systems\konami\gq\konami_gq_tms57002_ops.cpp">
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="m37710\m37710.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="m37710\m37710o0.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="m37710\m37710o1.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="m37710\m37710o2.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ClCompile Include="m37710\m37710o3.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+        <ClCompile Include="musashi\m68k_bus.cpp" />
+    <ClCompile Include="musashi\m68kcpu.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+          <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4101;4189;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+          <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-variable %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="musashi\m68kops.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+          <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4101;4189;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+          <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-variable %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+
+    <ClCompile Include="arcade\systems\konami\gv\konami_gv_cdrom.cpp" />
+    <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
+    <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
+    <ClCompile Include="legacy_pad_state.cpp" />
+    <ClCompile Include="mdec.cpp" />
+    <ClCompile Include="pcdrv.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="cpu_pgxp.cpp" />
+    <ClCompile Include="pine_server.cpp" />
+    <ClCompile Include="settings.cpp" />
+    <ClCompile Include="sio.cpp" />
+    <ClCompile Include="spu.cpp" />
+    <ClCompile Include="system.cpp" />
+    <ClCompile Include="texture_replacements.cpp" />
+    <ClCompile Include="timers.cpp" />
+    <ClCompile Include="timing_event.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="achievements_private.h" />
+    <ClInclude Include="arcade\arcade_control_registry.h" />
+    <ClInclude Include="arcade\arcade_database.h" />
+    <ClInclude Include="arcade\arcade_input.h" />
+    <ClInclude Include="arcade\arcade_machine_handler.h" />
+    <ClInclude Include="arcade\arcade_output.h" />
+    <ClInclude Include="arcade\arcade_output_network.h" />
+    <ClInclude Include="arcade\arcade_output_win32.h" />
+    <ClInclude Include="bios.h" />
+    <ClInclude Include="bus.h" />
+    <ClInclude Include="cdrom.h" />
+    <ClInclude Include="cdrom_async_reader.h" />
+    <ClInclude Include="cheats.h" />
+    <ClInclude Include="achievements.h" />
+    <ClInclude Include="cpu_code_cache_private.h" />
+    <ClInclude Include="cpu_core.h" />
+    <ClInclude Include="cpu_core_private.h" />
+    <ClInclude Include="cpu_disasm.h" />
+    <ClInclude Include="cpu_code_cache.h" />
+    <ClInclude Include="cpu_newrec_compiler.h" />
+    <ClInclude Include="cpu_newrec_compiler_aarch32.h">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="cpu_newrec_compiler_aarch64.h">
+      <ExcludedFromBuild Condition="'$(Platform)'!='ARM64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="cpu_newrec_compiler_riscv64.h">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="cpu_newrec_compiler_x64.h">
+      <ExcludedFromBuild Condition="'$(Platform)'!='x64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="cpu_recompiler_code_generator.h" />
+    <ClInclude Include="cpu_recompiler_register_cache.h" />
+    <ClInclude Include="cpu_recompiler_thunks.h" />
+    <ClInclude Include="cpu_recompiler_types.h" />
+    <ClInclude Include="fullscreen_ui.h" />
+    <ClInclude Include="game_database.h" />
+    <ClInclude Include="game_list.h" />
+    <ClInclude Include="gdb_server.h" />
+    <ClInclude Include="gpu_backend.h" />
+    <ClInclude Include="gpu_hw_shadergen.h" />
+    <ClInclude Include="gpu_shadergen.h" />
+    <ClInclude Include="gpu_sw.h" />
+    <ClInclude Include="gpu_sw_backend.h" />
+    <ClInclude Include="gpu_types.h" />
+    <ClInclude Include="gte.h" />
+    <ClInclude Include="cpu_types.h" />
+    <ClInclude Include="dma.h" />
+    <ClInclude Include="gpu.h" />
+    <ClInclude Include="gpu_hw.h" />
+    <ClInclude Include="gte_types.h" />
+    <ClInclude Include="host.h" />
+    <ClInclude Include="host_interface_progress_callback.h" />
+    <ClInclude Include="imgui_overlays.h" />
+    <ClInclude Include="input_types.h" />
+    <ClInclude Include="interrupt_controller.h" />
+    <ClInclude Include="arcade\devices\audio\k054539.h" />
+    <ClInclude Include="arcade\devices\audio\ymf271.h" />
+    <ClInclude Include="arcade\devices\security\cat702.h" />
+    <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />
+    <ClInclude Include="arcade\third_party\qsound_hle\qsound.h" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm.h" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm_adpcm.h" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm_fm.h" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm_fm.ipp" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm_opn.h" />
+    <ClInclude Include="arcade\third_party\ymfm\ymfm_ssg.h" />
+    <ClInclude Include="arcade\third_party\z80_superzazu\z80.h" />
+    <ClInclude Include="arcade\systems\sony\zn\acclaim_ata.h" />
+    <ClInclude Include="arcade\systems\sony\zn\time_warner_ata.h" />
+    <ClInclude Include="arcade\systems\sony\zn\acclaim_rax.h" />
+    <ClInclude Include="arcade\third_party\adsp2181\adsp2181_core.h" />
+    <None Include="arcade\third_party\adsp2181\2100ops.inc" />
+    <ClInclude Include="arcade\systems\sony\zn\capcom_qsound.h" />
+    <ClInclude Include="arcade\systems\sony\zn\atlus_zn1_sound.h" />
+    <ClInclude Include="arcade\systems\sony\zn\eighting_raizing_sound.h" />
+    <ClInclude Include="arcade\systems\sony\zn\tecmo_cbaj_sound.h" />
+    <ClInclude Include="arcade\systems\sony\zn\tecmo_gr2_link.h" />
+    <ClInclude Include="arcade\systems\sony\zn\ymz280b.h" />
+    <ClInclude Include="arcade\systems\sony\zn\taito_fx1a_sound.h" />
+    <ClInclude Include="arcade\systems\sony\zn\taito_fx1b_mn10200.h" />
+    <ClInclude Include="arcade\systems\sony\zn\taito_fx1b_zsg2.h" />
+    <ClInclude Include="arcade\systems\sony\zn\taito_fx1b_zoom.h" />
+    <ClInclude Include="arcade\systems\sony\zn\sony_zn.h" />
+    <ClInclude Include="arcade\devices\storage\ncr53cf96.h" />
+    <ClInclude Include="arcade\systems\konami\konami.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_eeprom.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_hdd.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_k056800.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_pcm.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_scsi.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_sound_cpu.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.h" />
+    <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.hxx" />
+    <ClInclude Include="m37710\m37710.h" />
+    <ClInclude Include="m37710\m37710cm.h" />
+    <ClInclude Include="m37710\m37710il.h" />
+    <ClInclude Include="m37710\m37710op.h" />
+        <ClInclude Include="musashi\m68k_bus.h" />
+    <ClInclude Include="musashi\m68k.h" />
+    <ClInclude Include="musashi\m68kconf.h" />
+    <ClInclude Include="musashi\m68kcpu.h" />
+    <ClInclude Include="musashi\m68kops.h" />
+    <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
+    <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
+    <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
+    <ClInclude Include="legacy_pad_state.h" />
+    <ClInclude Include="mdec.h" />
+    <ClInclude Include="pad.h" />
+    <ClInclude Include="pcdrv.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="cpu_pgxp.h" />
+    <ClInclude Include="pine_server.h" />
+    <ClInclude Include="save_state_version.h" />
+    <ClInclude Include="settings.h" />
+    <ClInclude Include="shader_cache_version.h" />
+    <ClInclude Include="sio.h" />
+    <ClInclude Include="spu.h" />
+    <ClInclude Include="system.h" />
+    <ClInclude Include="texture_replacements.h" />
+    <ClInclude Include="timers.h" />
+    <ClInclude Include="timing_event.h" />
+    <ClInclude Include="types.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\dep\imgui\imgui.vcxproj">
+      <Project>{bb08260f-6fbc-46af-8924-090ee71360c6}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\libchdr\libchdr.vcxproj">
+      <Project>{425d6c99-d1c8-43c2-b8ac-4d7b1d941017}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\minizip\minizip.vcxproj">
+      <Project>{8bda439c-6358-45fb-9994-2ff083babe06}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\rainterface\rainterface.vcxproj" Condition="'$(Platform)'!='ARM64'">
+      <Project>{e4357877-d459-45c7-b8f6-dcbb587bb528}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\rapidyaml\rapidyaml.vcxproj">
+      <Project>{1ad23a8a-4c20-434c-ae6b-0e07759eeb1e}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\rcheevos\rcheevos.vcxproj">
+      <Project>{4ba0a6d4-3ae1-42b2-9347-096fd023ff64}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\vixl\vixl.vcxproj" Condition="'$(Platform)'=='ARM64'">
+      <Project>{8906836e-f06e-46e8-b11a-74e5e8c7b8fb}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\xxhash\xxhash.vcxproj">
+      <Project>{09553c96-9f39-49bf-8ae6-7acbd07c410c}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\dep\zydis\zydis.vcxproj" Condition="'$(Platform)'=='x64' And $(Configuration.Contains('Debug'))">
+      <Project>{c51a346a-86b2-46df-9bb3-d0aa7e5d8699}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\scmversion\scmversion.vcxproj">
+      <Project>{075ced82-6a20-46df-94c7-9624ac9ddbeb}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\util\util.vcxproj">
+      <Project>{57f6206d-f264-4b07-baf8-11b9bbe1f455}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{868B98C8-65A1-494B-8346-250A73A48C0A}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="..\..\dep\msvc\vsprops\StaticLibrary.props" />
+  <Import Project="core.props" />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions Condition="'$(Platform)'=='x64' And $(Configuration.Contains('Debug'))">ZYDIS_DISABLE_ENCODER;ZYDIS_DISABLE_AVX512;ZYDIS_DISABLE_KNC;ZYDIS_STATIC_BUILD;ZYCORE_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)dep\libchdr\include;$(SolutionDir)dep\minizip\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Platform)'=='x64' And $(Configuration.Contains('Debug'))">$(SolutionDir)dep\zydis\include;$(SolutionDir)dep\zydis\dependencies\zycore\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ObjectFileName>$(IntDir)/%(RelativeDir)/</ObjectFileName>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="..\..\dep\msvc\vsprops\Targets.props" />
+</Project>

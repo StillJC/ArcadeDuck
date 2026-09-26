@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OperatorSettingsWidget</class>
+ <widget class="QWidget" name="OperatorSettingsWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>529</width><height>330</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item>
+    <widget class="QGroupBox" name="operatorControlsGroupBox">
+     <property name="title"><string>Operator Controls</string></property>
+     <layout class="QFormLayout" name="operatorControlsLayout">
+      <item row="0" column="0"><widget class="QLabel" name="testBindingLabel"><property name="text"><string>Test Switch</string></property></widget></item>
+      <item row="0" column="1"><widget class="InputBindingWidget" name="testBinding"/></item>
+      <item row="1" column="0"><widget class="QLabel" name="serviceBindingLabel"><property name="text"><string>Service Button</string></property></widget></item>
+      <item row="1" column="1"><widget class="InputBindingWidget" name="serviceBinding"/></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="externalOutputsGroupBox">
+     <property name="title"><string>External Cabinet Outputs</string></property>
+     <layout class="QFormLayout" name="externalOutputsLayout">
+      <item row="0" column="0" colspan="2">
+       <widget class="QCheckBox" name="externalOutputsEnabled">
+        <property name="text"><string>Enable external cabinet outputs</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="externalOutputProtocolLabel">
+        <property name="text"><string>Protocol:</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="externalOutputProtocol"/>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QLabel" name="externalOutputsDescription">
+        <property name="text"><string>Publishes supported cabinet lamps, recoil, and other physical feedback to compatible external software. Changes take effect the next time a game starts.</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="directoryGroupBox">
+     <property name="title"><string>Arcade BIOS Files</string></property>
+     <layout class="QVBoxLayout" name="directoryGroupBoxLayout">
+      <item><widget class="QLabel" name="directoryGroupBoxLabel"><property name="text"><string>ArcadeDuck automatically selects the required BIOS for each game. BIOS files are searched for in this directory.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+      <item>
+       <layout class="QHBoxLayout" name="directoryGroupBoxHorizontalLayout">
+        <item><widget class="QLineEdit" name="searchDirectory"/></item>
+        <item><widget class="QPushButton" name="browseSearchDirectory"><property name="text"><string>Browse...</string></property></widget></item>
+        <item><widget class="QPushButton" name="openSearchDirectory"><property name="text"><string>Open in Explorer...</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="machineConfigurationGroupBox">
+     <property name="title"><string>Machine Configuration</string></property>
+     <layout class="QVBoxLayout" name="machineConfigurationLayout">
+      <item><widget class="QLabel" name="machineConfigurationPlaceholder"><property name="enabled"><bool>false</bool></property><property name="text"><string>No configurable machine switches are available yet.</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>InputBindingWidget</class><extends>QPushButton</extends><header>inputbindingwidgets.h</header></customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

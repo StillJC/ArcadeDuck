@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>io.github.StillJC.ArcadeDuck</id>
+  <launchable type="desktop-id">io.github.StillJC.ArcadeDuck.desktop</launchable>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0</project_license>
+  <name>ArcadeDuck</name>
+  <developer_name>ArcadeDuck contributors</developer_name>
+  <summary>Arcade emulator</summary>
+  <description>
+    <p>ArcadeDuck provides an arcade-focused game library, operator controls, and emulation frontend.</p>
+  </description>
+  <content_rating type="oars-1.1"/>
+  <url type="homepage">https://github.com/StillJC/ArcadeDuck</url>
+  <url type="help">https://github.com/StillJC/ArcadeDuck/issues</url>
+  <url type="vcs-browser">https://github.com/StillJC/ArcadeDuck</url>
+  <releases>
+    <release version="@GIT_VERSION@" date="@GIT_DATE@" />
+  </releases>
+  <custom>
+    <value key="flathub::manifest">https://raw.githubusercontent.com/StillJC/ArcadeDuck/@GIT_HASH@/scripts/flatpak/io.github.StillJC.ArcadeDuck.yaml</value>
+  </custom>
+</component>
