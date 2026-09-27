@@ -40,6 +40,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -204,6 +205,97 @@ void ImGuiManager::RenderDebugWindows()
   }
 }
 
+namespace NamcoSystem12 {
+bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intensity_counts,
+                                u16* start_address, u32* scroll_x,
+                                u32* scroll_y, u64* generation);
+}
+
+static void DrawCyberLeadLEDOverlay(float& position_y, float scale, float margin, float spacing)
+{
+  static constexpr u32 WIDTH = 96;
+  static constexpr u32 HEIGHT = 16;
+
+  std::array<u8, WIDTH * HEIGHT> pixels{};
+  std::array<u32, 4> levels{};
+  u16 start_address = 0;
+  u32 scroll_x = 0;
+  u32 scroll_y = 0;
+  u64 generation = 0;
+
+  if (!NamcoSystem12::DebugCopyCyberLeadLEDFrame(
+        std::span<u8>(pixels.data(), pixels.size()), &levels, &start_address,
+        &scroll_x, &scroll_y, &generation))
+  {
+    return;
+  }
+
+  ImDrawList* const dl = ImGui::GetBackgroundDrawList();
+  ImFont* const font = ImGuiManager::GetStandardFont();
+  const float font_size = font->FontSize;
+  const float shadow_offset = std::ceil(scale);
+
+  const float pad = std::ceil(scale * 6.0f);
+  const float led_size = std::max(2.0f, std::floor(scale * 3.0f));
+  const float gap = std::max(1.0f, std::floor(scale * 0.5f));
+  const float title_height = font_size;
+  const float meta_height = font_size;
+  const float grid_width = (static_cast<float>(WIDTH) * led_size) +
+                           (static_cast<float>(WIDTH - 1) * gap);
+  const float grid_height = (static_cast<float>(HEIGHT) * led_size) +
+                            (static_cast<float>(HEIGHT - 1) * gap);
+  const float panel_width = (pad * 2.0f) + grid_width;
+  const float panel_height = (pad * 2.0f) + title_height + spacing + grid_height + spacing + meta_height;
+  const float panel_x = ImGui::GetIO().DisplaySize.x - margin - panel_width;
+  const float panel_y = position_y;
+  const float grid_x = panel_x + pad;
+  const float grid_y = panel_y + pad + title_height + spacing;
+  const float meta_y = grid_y + grid_height + spacing;
+
+  dl->AddRectFilled(ImVec2(panel_x, panel_y), ImVec2(panel_x + panel_width, panel_y + panel_height),
+                    IM_COL32(0, 0, 0, 180), scale * 4.0f);
+  dl->AddRect(ImVec2(panel_x, panel_y), ImVec2(panel_x + panel_width, panel_y + panel_height),
+              IM_COL32(255, 170, 0, 96), scale * 4.0f, 0, 1.0f);
+
+  const ImVec2 title_pos(grid_x, panel_y + pad);
+  dl->AddText(font, font_size,
+              ImVec2(title_pos.x + shadow_offset, title_pos.y + shadow_offset),
+              IM_COL32(0, 0, 0, 180), "CYBER LEAD LED");
+  dl->AddText(font, font_size, title_pos, IM_COL32(255, 208, 96, 255), "CYBER LEAD LED");
+
+  static constexpr std::array<ImU32, 4> COLORS = {
+    IM_COL32(20, 16, 8, 220),
+    IM_COL32(96, 64, 8, 255),
+    IM_COL32(208, 128, 8, 255),
+    IM_COL32(255, 210, 64, 255)
+  };
+
+  for (u32 y = 0; y < HEIGHT; y++)
+  {
+    const float py = grid_y + (static_cast<float>(y) * (led_size + gap));
+    for (u32 x = 0; x < WIDTH; x++)
+    {
+      const float px = grid_x + (static_cast<float>(x) * (led_size + gap));
+      const u8 level = pixels[(y * WIDTH) + x] & 3;
+      dl->AddRectFilled(ImVec2(px, py), ImVec2(px + led_size, py + led_size), COLORS[level], 1.0f);
+    }
+  }
+
+  LargeString meta;
+  meta.append_format("gen={} start={:04X} scroll={},{} lit={} levels=[{},{},{}]",
+                     generation, start_address, scroll_x, scroll_y,
+                     (levels[1] + levels[2] + levels[3]),
+                     levels[1], levels[2], levels[3]);
+
+  const ImVec2 meta_pos(grid_x, meta_y);
+  dl->AddText(font, font_size,
+              ImVec2(meta_pos.x + shadow_offset, meta_pos.y + shadow_offset),
+              IM_COL32(0, 0, 0, 180), meta.c_str(), meta.end_ptr());
+  dl->AddText(font, font_size, meta_pos, IM_COL32(255, 255, 255, 255), meta.c_str(), meta.end_ptr());
+
+  position_y += panel_height + spacing;
+}
+
 void ImGuiManager::RenderTextOverlays()
 {
   const System::State state = System::GetState();
@@ -216,6 +308,7 @@ void ImGuiManager::RenderTextOverlays()
     DrawPerformanceOverlay(position_y, scale, margin, spacing);
     DrawFrameTimeOverlay(position_y, scale, margin, spacing);
     DrawMediaCaptureOverlay(position_y, scale, margin, spacing);
+    DrawCyberLeadLEDOverlay(position_y, scale, margin, spacing);
 
     if (g_settings.display_show_enhancements && state != System::State::Paused)
       DrawEnhancementsOverlay();

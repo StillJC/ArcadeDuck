@@ -273,7 +273,11 @@ void GPU_SW_Backend::DrawRectangle(const GPUBackendDrawRectangleCommand* cmd)
     }
 
     const u32 draw_y = static_cast<u32>(y) & g_vram_height_mask;
-    const u8 texcoord_y = Truncate8(ZeroExtend32(origin_texcoord_y) + offset_y);
+    // Rectangle texture flip: reverse V stepping modulo 256 when GP0(E1h).13 is set.
+    const u8 texcoord_y =
+      cmd->draw_mode.texture_y_flip ?
+        Truncate8(ZeroExtend32(origin_texcoord_y) - offset_y) :
+        Truncate8(ZeroExtend32(origin_texcoord_y) + offset_y);
 
     for (u32 offset_x = 0; offset_x < cmd->width; offset_x++)
     {
@@ -281,7 +285,11 @@ void GPU_SW_Backend::DrawRectangle(const GPUBackendDrawRectangleCommand* cmd)
       if (x < static_cast<s32>(m_drawing_area.left) || x > static_cast<s32>(m_drawing_area.right))
         continue;
 
-      const u8 texcoord_x = Truncate8(ZeroExtend32(origin_texcoord_x) + offset_x);
+      // Rectangle texture flip: reverse U stepping modulo 256 when GP0(E1h).12 is set.
+      const u8 texcoord_x =
+        cmd->draw_mode.texture_x_flip ?
+          Truncate8(ZeroExtend32(origin_texcoord_x) - offset_x) :
+          Truncate8(ZeroExtend32(origin_texcoord_x) + offset_x);
 
       ShadePixel<texture_enable, raw_texture_enable, transparency_enable, false>(cmd, static_cast<u32>(x), draw_y, r, g,
                                                                                  b, texcoord_x, texcoord_y);

@@ -15,6 +15,7 @@
 #include "core/arcade/systems/sony/zn/acclaim_ata.h"
 #include "core/arcade/systems/sony/zn/time_warner_ata.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "mdec.h"
 #include "pad.h"
 #include "spu.h"
@@ -930,6 +931,10 @@ TickCount DMA::TransferDeviceToMemory(u32 address, u32 increment, u32 word_count
       else if (SonyZN::TimeWarnerATA::IsActive())
       {
         SonyZN::TimeWarnerATA::DMARead(dest_pointer, word_count);
+      }
+      else if (NamcoSystem12::IsActive())
+      {
+        NamcoSystem12::DMARead(dest_pointer, word_count);
       }
       else if (KonamiGQScsi::IsActive())
       {

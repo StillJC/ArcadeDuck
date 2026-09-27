@@ -79,6 +79,7 @@ systems:
     machineHandler: "namco_system12"
     biosProfile: ""
     releaseYear: 1997
+    cpuClockPercent: 148
     maxPlayers: 2
     supportsLightgun: true
     supportsTrackball: false
@@ -86,8 +87,8 @@ systems:
     supportsNetwork: true
     properties:
       mainCPU: "CXD8661R-compatible R3000A"
-      systemRAM: "0x200000"
-      soundCPU: "Namco C76 / H8 variants"
+      systemRAM: "0x400000 (COH-700/700B), 0x1000000 (COH-716)"
+      soundCPU: "H8/3002 family"
       sound: "Namco C352"
       archivePolicy: "complete_non_merged"
 

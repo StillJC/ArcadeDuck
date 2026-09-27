@@ -23,6 +23,7 @@
 #include "core/arcade/systems/konami/gq/konami_gq_scsi.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "mdec.h"
 #include "settings.h"
@@ -969,6 +970,11 @@ void Bus::SetExpansionROM(std::vector<u8> data)
   s_exp1_rom = std::move(data);
 }
 
+u32 Bus::GetEXP1Base()
+{
+  return s_MEMCTRL.exp1_base;
+}
+
 bool Bus::ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value)
 {
   address &= CPU::PHYSICAL_MEMORY_ADDRESS_MASK;
@@ -1140,6 +1146,45 @@ void Bus::RAMWriteHandler(VirtualMemoryAddress address, u32 value)
 {
   const u32 offset = address & g_ram_mask;
 
+  // Temporary Attack Pla Rail coin-state diagnostic.
+  // Runtime traces proved:
+  //   gp=0x8007175C, gp+0x47A=0x80071BD6 (cached JVS coin count)
+  //   baseline=0x80071D5C.
+  //
+  // Trace only writes which overlap either 16-bit variable. This is diagnostic
+  // only and does not alter the write.
+  constexpr u32 APLARAIL_CACHED_COIN = UINT32_C(0x00071BD6);
+  constexpr u32 APLARAIL_BASELINE_COIN = UINT32_C(0x00071D5C);
+  constexpr u32 access_bytes = UINT32_C(1) << static_cast<u32>(size);
+  const u32 access_end = offset + access_bytes;
+
+  const bool touches_aplarail_cached_coin =
+    offset < (APLARAIL_CACHED_COIN + UINT32_C(2)) &&
+    access_end > APLARAIL_CACHED_COIN;
+  const bool touches_aplarail_baseline_coin =
+    offset < (APLARAIL_BASELINE_COIN + UINT32_C(2)) &&
+    access_end > APLARAIL_BASELINE_COIN;
+
+  if (NamcoSystem12::IsActive() &&
+      (touches_aplarail_cached_coin || touches_aplarail_baseline_coin))
+  {
+    const char* const label =
+      touches_aplarail_cached_coin ? "CACHED" : "BASELINE";
+
+    u16 before = 0;
+    const u32 probe_offset =
+      touches_aplarail_cached_coin ? APLARAIL_CACHED_COIN : APLARAIL_BASELINE_COIN;
+    std::memcpy(&before, &g_ram[probe_offset], sizeof(before));
+
+    WARNING_LOG(
+      "System12 AplaRail COIN-RAM-W label={} before={:04X} addr={:08X} offset={:08X} "
+      "width={} value={:08X} pc={:08X} current_pc={:08X} instr={:08X} ra={:08X} gp={:08X}",
+      label, before, address, offset, access_bytes, value,
+      CPU::g_state.pc, CPU::g_state.current_instruction_pc,
+      CPU::g_state.current_instruction.bits, CPU::g_state.regs.ra,
+      CPU::g_state.regs.gp);
+  }
+
   if constexpr (size == MemoryAccessSize::Byte)
   {
     g_ram[offset] = Truncate8(value);
@@ -1164,6 +1209,11 @@ u32 Bus::BIOSReadHandler(VirtualMemoryAddress address)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
+  }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
   }
 
   // TODO: Configurable mirroring.
@@ -1288,6 +1338,11 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadBankedROM(width, offset);
+  }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP1(width, offset);
   }
   if (Konami::IsGQActive())
   {
@@ -1433,6 +1488,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     const u32 offset = address & EXP1_MASK;
     const u32 width = u32(1) << static_cast<u32>(size);
     if (SonyZN::WriteEXP1(width, offset, value))
+      return;
+  }
+
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 offset = address & EXP1_MASK;
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP1(width, offset, value))
       return;
   }
 
@@ -1677,6 +1740,12 @@ u32 Bus::EXP3ReadHandler(VirtualMemoryAddress address)
     return SonyZN::ReadEXP3(width, offset);
   }
 
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP3(width, offset);
+  }
+
   if (NamcoSystem11::IsActive() && offset >= 0x04000 && offset <= 0x0ffff)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
@@ -1707,6 +1776,16 @@ void Bus::EXP3WriteHandler(VirtualMemoryAddress address, u32 value)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     SonyZN::WriteEXP3(width, offset, value);
+    return;
+  }
+
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP3(width, offset, value))
+      return;
+
+    // The ordinary System 12 banked ROM aperture is read-only.
     return;
   }
 
@@ -1832,7 +1911,21 @@ void Bus::HWHandlers::MemCtrlWrite(PhysicalMemoryAddress address, u32 value)
 
   value = FIXUP_WORD_WRITE_VALUE(size, offset, value);
 
-  const u32 write_mask = (index == 8) ? COMDELAY::WRITE_MASK : MEMDELAY::WRITE_MASK;
+  u32 write_mask = MEMDELAY::WRITE_MASK;
+  switch (index)
+  {
+    case 0:
+    case 1:
+      write_mask = 0xFFFFFFFFu;
+      break;
+
+    case 8:
+      write_mask = COMDELAY::WRITE_MASK;
+      break;
+
+    default:
+      break;
+  }
   const u32 new_value = (s_MEMCTRL.regs[index] & ~write_mask) | (value & write_mask);
   if (s_MEMCTRL.regs[index] != new_value)
   {

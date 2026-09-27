@@ -2199,6 +2199,9 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
       break;
   }
 
+  // Apply RAM read latency at the actual fastmem access, matching the checked memory path.
+  EmitAddCPUStructField(OFFSETOF(State, pending_ticks), Value::FromConstantU32(Bus::RAM_READ_TICKS));
+
   // insert nops, we need at least 5 bytes for a relative jump
   const u32 fastmem_size = static_cast<u32>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc));
   const u32 nops = (fastmem_size < 5 ? 5 - fastmem_size : 0);
@@ -2216,7 +2219,6 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
   // we add the ticks *after* the add here, since we counted incorrectly, then correct for it below
   DebugAssert(m_delayed_cycles_add > 0);
   EmitAddCPUStructField(OFFSETOF(State, pending_ticks), Value::FromConstantU32(static_cast<u32>(m_delayed_cycles_add)));
-  m_delayed_cycles_add += Bus::RAM_READ_TICKS;
 
   EmitLoadGuestMemorySlowmem(instruction, info, address, size, result, true);
 

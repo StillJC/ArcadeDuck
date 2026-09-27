@@ -28,6 +28,7 @@
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "legacy_pad_state.h"
 #include "mdec.h"
@@ -74,6 +75,8 @@
 #include "imgui.h"
 #include "xxhash.h"
 
+#include <cstring>
+#include <vector>
 #include <cctype>
 #include <cinttypes>
 #include <cmath>
@@ -1197,6 +1200,8 @@ void System::LoadSettings(bool display_osd_messages)
   g_settings.Load(si, controller_si);
 
   const Arcade::Database::GameDefinition* const arcade_game = Arcade::Database::GetGame(s_running_game_serial);
+  const Arcade::Database::SystemDefinition* const arcade_system =
+    arcade_game ? Arcade::Database::GetSystem(arcade_game->system_id) : nullptr;
   if (arcade_game)
   {
     SettingsInterface* const game_settings = Host::Internal::GetGameSettingsLayer();
@@ -1238,7 +1243,11 @@ void System::LoadSettings(bool display_osd_messages)
   InputManager::ReloadBindings(controller_si, hotkey_si);
   WarnAboutUnsafeSettings();
 
-  if (arcade_game && arcade_game->cpu_clock_percent != 100)
+  const u16 arcade_cpu_clock_percent =
+    arcade_game ? ((arcade_game->cpu_clock_percent != 100) ? arcade_game->cpu_clock_percent :
+                   (arcade_system ? arcade_system->cpu_clock_percent : 100)) :
+                  100;
+  if (arcade_game && arcade_cpu_clock_percent != 100)
   {
     SettingsInterface* const game_settings = Host::Internal::GetGameSettingsLayer();
     const bool has_game_cpu_clock_override =
@@ -1249,9 +1258,10 @@ void System::LoadSettings(bool display_osd_messages)
     if (!has_game_cpu_clock_override)
     {
       g_settings.cpu_overclock_enable = true;
-      g_settings.SetCPUOverclockPercent(arcade_game->cpu_clock_percent);
+      g_settings.SetCPUOverclockPercent(arcade_cpu_clock_percent);
       g_settings.UpdateOverclockActive();
-      INFO_LOG("Arcade CPU clock game='{}' default={}%.", arcade_game->id, arcade_game->cpu_clock_percent);
+      INFO_LOG("Arcade CPU clock game='{}' default={}% source='{}'.", arcade_game->id, arcade_cpu_clock_percent,
+               arcade_game->cpu_clock_percent != 100 ? "game" : "system");
     }
   }
 
@@ -1489,6 +1499,8 @@ void System::ResetSystem()
   // epoch, so restart them only after InternalReset() has reset that epoch.
   if (NamcoSystem11::IsActive())
     NamcoSystem11::Reset();
+  if (NamcoSystem12::IsActive())
+    NamcoSystem12::Reset();
   if (SonyZN::IsActive())
     SonyZN::Reset();
 
@@ -2078,6 +2090,7 @@ void System::DestroySystem()
   g_gpu.reset();
   Konami::ShutdownGQ();
   NamcoSystem11::Shutdown();
+  NamcoSystem12::Shutdown();
   SonyZN::Shutdown();
   DMA::Shutdown();
   CPU::PGXP::Shutdown();
@@ -2182,6 +2195,26 @@ void System::FrameDone()
   if (Achievements::IsActive())
     Achievements::FrameUpdate();
 
+  if (NamcoSystem12::BeginMainBoardReset())
+  {
+    std::vector<u8> preserved_ram;
+    if (Bus::g_ram && Bus::g_ram_size != 0)
+      preserved_ram.assign(Bus::g_ram, Bus::g_ram + Bus::g_ram_size);
+
+    INFO_LOG("Namco System 12 requested RAM-preserving main-board reset ({} bytes).",
+             preserved_ram.size());
+
+    InternalReset();
+
+    if (!preserved_ram.empty() && Bus::g_ram && Bus::g_ram_size == preserved_ram.size())
+      std::memcpy(Bus::g_ram, preserved_ram.data(), preserved_ram.size());
+
+    NamcoSystem12::EndMainBoardReset();
+    ResetPerformanceCounters();
+    ResetThrottler();
+    InterruptExecution();
+    return;
+  }
   if (NamcoSystem11::BeginMainBoardReset())
   {
     INFO_LOG("Namco System 11 full board reset requested by C76.");

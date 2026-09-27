@@ -118,6 +118,7 @@ struct SystemDefinition
   std::string machine_handler;
   std::string bios_profile;
   u16 release_year = 0;
+  u16 cpu_clock_percent = 100;
   u8 max_players = 1;
   bool supports_lightgun = false;
   bool supports_trackball = false;

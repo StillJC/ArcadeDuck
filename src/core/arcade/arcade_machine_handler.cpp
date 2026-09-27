@@ -5,6 +5,7 @@
 
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "core/bios.h"
 #include "core/bus.h"
@@ -180,6 +181,62 @@ public:
 private:
   bool m_coh100 = false;
   std::optional<NamcoSystem11::LoadedContent> m_content;
+};
+
+class NamcoSystem12Handler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Namco System 12 game definition.");
+      return false;
+    }
+
+    const std::string& profile = context.game_definition->hardware_profile;
+        m_content = NamcoSystem12::LoadSystem12Content(context.archive_path.c_str(), *context.game_definition, error);
+    if (!m_content.has_value())
+      return false;
+
+    m_coh716 = (m_content->machine_config == "coh716" || profile == "coh716");
+    return true;
+  }
+
+  std::optional<u32> GetRAMSizeOverride() const override
+  {
+    return m_coh716 ? Bus::RAM_16MB_SIZE : Bus::RAM_4MB_SIZE;
+  }
+
+  void PrepareSharedHardware() const override
+  {
+    // COH-700 uses CXD8654Q and COH-716 uses CXD8561CQ, both with 2 MiB VRAM.
+    // ArcadeDuck's current type-2 arcade GPU mode is the closest existing
+    // hardware seam and is already used for CXD8654Q-class ZN-2/G-Net boards.
+    GPU::SetCXD8561QMode(true);
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_content.has_value())
+    {
+      Error::SetStringView(error, "Invalid Namco System 12 boot content.");
+      return false;
+    }
+
+    if (!NamcoSystem12::Initialize(std::move(*m_content), error))
+      return false;
+
+    VERBOSE_LOG("NamcoSystem12.Loader dispatch_ready canonical_set='{}' profile='{}'",
+                context.canonical_game_id, context.game_definition->hardware_profile);
+    return true;
+  }
+
+private:
+  bool m_coh716 = false;
+  std::optional<NamcoSystem12::LoadedContent> m_content;
 };
 
 class CapcomZN1Handler final : public MachineHandler
@@ -1094,6 +1151,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<KonamiGQHandler>();
   if (id == "namco_system11")
     return std::make_unique<NamcoSystem11Handler>();
+  if (id == "namco_system12")
+    return std::make_unique<NamcoSystem12Handler>();
   if (id == "capcom_zn1")
     return std::make_unique<CapcomZN1Handler>();
   if (id == "capcom_zn2")

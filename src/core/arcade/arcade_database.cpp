@@ -591,6 +591,7 @@ bool ParseSystem(const ryml::ConstNodeRef& node)
       !GetString(node, "machineHandler", &definition.machine_handler, true) ||
       !GetString(node, "biosProfile", &definition.bios_profile) ||
       !GetUnsigned(node, "releaseYear", &definition.release_year) ||
+      !GetUnsigned(node, "cpuClockPercent", &definition.cpu_clock_percent) ||
       !GetUnsigned(node, "maxPlayers", &definition.max_players) ||
       !GetBool(node, "supportsLightgun", &definition.supports_lightgun) ||
       !GetBool(node, "supportsTrackball", &definition.supports_trackball) ||
@@ -604,6 +605,11 @@ bool ParseSystem(const ryml::ConstNodeRef& node)
   if (definition.max_players == 0)
   {
     ERROR_LOG("Arcade system '{}' must support at least one player.", definition.id);
+    return false;
+  }
+  if (definition.cpu_clock_percent < 10 || definition.cpu_clock_percent > 1000)
+  {
+    ERROR_LOG("Arcade system '{}' field 'cpuClockPercent' must be between 10 and 1000.", definition.id);
     return false;
   }
 

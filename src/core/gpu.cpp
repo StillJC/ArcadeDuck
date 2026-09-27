@@ -6,6 +6,7 @@
 
 #include "gpu.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "dma.h"
 #include "gpu_shadergen.h"
 #include "host.h"
@@ -186,11 +187,9 @@ static void SetArcadeGPUHardwareMode(bool gq_mode, bool cxd8561q_mode, bool use_
 {
   s_gq_gpu_mode = gq_mode;
   s_cxd8561q_gpu_mode = cxd8561q_mode;
-  // Physical population and address decoder range are separate on the v2 GPU.
-  // CXD8538Q/type-1 exposes its 2 MiB layout directly; CXD8561Q/type-2 starts
-  // with the upper Y address bit gated until GP1(09h).0 enables it.
+  // Type-1 and type-2 arcade GPUs expose their populated 2 MiB VRAM directly.
   g_vram_height = use_2mb_vram ? VRAM_GQ_HEIGHT : VRAM_HEIGHT;
-  g_vram_address_height = gq_mode ? g_vram_height : VRAM_HEIGHT;
+  g_vram_address_height = (gq_mode || cxd8561q_mode) ? g_vram_height : VRAM_HEIGHT;
   g_vram_height_mask = g_vram_address_height - 1;
   g_vram_size = VRAM_WIDTH * g_vram_height * sizeof(u16);
 
@@ -640,6 +639,17 @@ u32 GPU::ReadRegister(u32 offset)
         SynchronizeCRTC();
       if (IsCommandCompletionPending())
         s_command_tick_event.InvokeEarly();
+
+      // Type-2 reports the selected interlaced display field through GPUSTAT
+      // bits 13 and 31. Use the already-advanced display-field state for readback.
+      if (IsCXD8561QMode() && m_GPUSTAT.vertical_interlace)
+      {
+        const u32 field = ZeroExtend32(m_crtc_state.interlaced_display_field & 1u);
+        u32 stat = m_GPUSTAT.bits;
+        stat &= ~((1u << 13) | (1u << 31));
+        stat |= (field << 13) | (field << 31);
+        return stat;
+      }
 
       if (IsGQMode())
       {
@@ -1279,6 +1289,7 @@ void GPU::CRTCTickEvent(TickCount ticks)
     {
       Timers::SetGate(HBLANK_TIMER_INDEX, false);
       InterruptController::SetLineState(InterruptController::IRQ::VBLANK, false);
+      NamcoSystem12::SetVBlank(false);
       m_crtc_state.in_vblank = false;
     }
 
@@ -1319,6 +1330,7 @@ void GPU::CRTCTickEvent(TickCount ticks)
 
       Timers::SetGate(HBLANK_TIMER_INDEX, new_vblank);
       InterruptController::SetLineState(InterruptController::IRQ::VBLANK, new_vblank);
+      NamcoSystem12::SetVBlank(new_vblank);
       m_crtc_state.in_vblank = new_vblank;
     }
 
@@ -1671,49 +1683,10 @@ void GPU::WriteGP1(u32 value)
     }
     break;
 
-    case 0x09: // v2 VRAM Y-address gate / standard allow-texture-disable control
+    case 0x09: // Allow texture-disable control
     {
-      if (IsCXD8561QMode())
-      {
-        const bool upper_y_enabled = ConvertToBoolUnchecked(param & 0x01);
-        const u32 new_address_height =
-          (upper_y_enabled && g_vram_height > VRAM_HEIGHT) ? g_vram_height : static_cast<u32>(VRAM_HEIGHT);
-
-        if (g_vram_address_height != new_address_height)
-        {
-          // Finish work decoded with the old Y range before changing the address decoder.
-          FlushRender();
-          SynchronizeCRTC();
-
-          g_vram_address_height = new_address_height;
-          g_vram_height_mask = g_vram_address_height - 1;
-
-          // Renderer-facing decoded state must not retain references to the gated bank.
-          // Raw-latch persistence can be modeled separately if later hardware tests require it.
-          if (g_vram_address_height == VRAM_HEIGHT)
-          {
-            m_draw_mode.mode_reg.texture_page_y_base_high = 0;
-            m_draw_mode.palette_reg.bits &= DrawMode::PALETTE_MASK;
-            m_drawing_area.top &= VRAM_HEIGHT_MASK;
-            m_drawing_area.bottom &= VRAM_HEIGHT_MASK;
-            m_crtc_state.regs.display_address_start &= ~(UINT32_C(1) << 19);
-          }
-
-          m_draw_mode.texture_page_changed = true;
-          m_drawing_area_changed = true;
-          SetClampedDrawingArea();
-          InvalidateCLUT();
-          UpdateCRTCDisplayParameters();
-        }
-
-        DEBUG_LOG("CXD8561Q upper VRAM Y <- {} (addressable={}x{})", upper_y_enabled ? "enabled" : "disabled",
-                  static_cast<u32>(VRAM_WIDTH), g_vram_address_height);
-      }
-      else
-      {
-        m_set_texture_disable_mask = ConvertToBoolUnchecked(param & 0x01);
-        DEBUG_LOG("Set texture disable mask <- {}", m_set_texture_disable_mask ? "allowed" : "ignored");
-      }
+      m_set_texture_disable_mask = ConvertToBoolUnchecked(param & 0x01);
+      DEBUG_LOG("Set texture disable mask <- {}", m_set_texture_disable_mask ? "allowed" : "ignored");
     }
     break;
 

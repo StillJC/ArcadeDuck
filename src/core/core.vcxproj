@@ -181,6 +181,32 @@
     <ClCompile Include="arcade\systems\konami\gv\konami_gv_cdrom.cpp" />
     <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
     <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
+    <ClCompile Include="arcade\third_party\h8_300h\emu.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\h8_300h\h8_arcadeduck_stubs.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>    <ClCompile Include="arcade\devices\jvs\jvs_bus.cpp" />
+    <ClCompile Include="arcade\devices\jvs\jvs_chain.cpp" />
+    <ClCompile Include="arcade\devices\jvs\namco_cyberlead.cpp" />
+    <ClCompile Include="arcade\devices\jvs\namco_cyberlead_led.cpp" />
+    <ClCompile Include="arcade\devices\jvs\namco_emio102.cpp" />
+    <ClCompile Include="arcade\devices\jvs\namco_empri101.cpp" />
+    <ClCompile Include="arcade\systems\namco\system12\namco_system12.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
     <ClCompile Include="mdec.cpp" />
     <ClCompile Include="pcdrv.cpp" />
@@ -306,6 +332,20 @@
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
     <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\config.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\device.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\ir.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\logger.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\registers.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\rtc.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\system.h" />
+    <ClInclude Include="arcade\third_party\h8_300h\types.h" />    <ClInclude Include="arcade\devices\jvs\jvs_bus.h" />
+    <ClInclude Include="arcade\devices\jvs\jvs_chain.h" />
+    <ClInclude Include="arcade\devices\jvs\namco_cyberlead.h" />
+    <ClInclude Include="arcade\devices\jvs\namco_cyberlead_led.h" />
+    <ClInclude Include="arcade\devices\jvs\namco_emio102.h" />
+    <ClInclude Include="arcade\devices\jvs\namco_empri101.h" />
+    <ClInclude Include="arcade\systems\namco\system12\namco_system12.h" />
     <ClInclude Include="legacy_pad_state.h" />
     <ClInclude Include="mdec.h" />
     <ClInclude Include="pad.h" />
