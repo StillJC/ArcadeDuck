@@ -176,6 +176,8 @@ add_library(core
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp
   arcade/systems/konami/gv/konami_gv_scsi.h
+  arcade/systems/namco/system10/namco_system10.cpp
+  arcade/systems/namco/system10/namco_system10.h
   arcade/systems/namco/system11/namco_system11.cpp
   arcade/systems/namco/system11/namco_system11.h
   legacy_pad_state.cpp

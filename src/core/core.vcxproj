@@ -180,6 +180,7 @@
 
     <ClCompile Include="arcade\systems\konami\gv\konami_gv_cdrom.cpp" />
     <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
+    <ClCompile Include="arcade\systems\namco\system10\namco_system10.cpp" />
     <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
     <ClCompile Include="mdec.cpp" />
@@ -305,6 +306,7 @@
     <ClInclude Include="musashi\m68kops.h" />
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
+    <ClInclude Include="arcade\systems\namco\system10\namco_system10.h" />
     <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
     <ClInclude Include="legacy_pad_state.h" />
     <ClInclude Include="mdec.h" />
