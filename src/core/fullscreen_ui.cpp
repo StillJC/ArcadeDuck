@@ -3768,8 +3768,8 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 
   DrawEnumSetting(
     bsi, FSUI_CSTR("Deinterlacing Mode"),
-    FSUI_CSTR("Controls how interlaced video modes are presented. Disabled preserves native behavior and is the default. "
-              "Enable a deinterlacing method per game when visible combing or flicker requires it."),
+    FSUI_CSTR("Controls how interlaced video modes are presented. Adaptive is the ArcadeDuck default and is recommended for arcade titles. "
+              "Choose Disabled, Weave, or Blend only when a title or display setup benefits from a different presentation."),
     "Display", "DeinterlacingMode", Settings::DEFAULT_DISPLAY_DEINTERLACING_MODE,
     &Settings::ParseDisplayDeinterlacingMode, &Settings::GetDisplayDeinterlacingModeName,
     &Settings::GetDisplayDeinterlacingModeDisplayName, DisplayDeinterlacingMode::Count);
@@ -6781,7 +6781,7 @@ TRANSLATE_NOOP("FullscreenUI", "Controls");
 TRANSLATE_NOOP("FullscreenUI", "Controls Settings");
 TRANSLATE_NOOP("FullscreenUI", "Controls filtering for 3D textures. Nearest-Neighbor preserves the original texture sampling and is the ArcadeDuck default. Smoother filters can blur artwork or create texture seams.");
 TRANSLATE_NOOP("FullscreenUI", "Controls filtering for sprites, HUD elements, and other 2D artwork. Nearest-Neighbor is recommended to keep text and overlays sharp.");
-TRANSLATE_NOOP("FullscreenUI", "Controls how interlaced video modes are presented. Disabled preserves native behavior and is the default. Enable a deinterlacing method per game when visible combing or flicker requires it.");
+TRANSLATE_NOOP("FullscreenUI", "Controls how interlaced video modes are presented. Adaptive is the ArcadeDuck default and is recommended for arcade titles. Choose Disabled, Weave, or Blend only when a title or display setup benefits from a different presentation.");
 TRANSLATE_NOOP("FullscreenUI", "Controls how the final image is resized to the host display. Bilinear (Smooth) is recommended for aspect-correct arcade output and non-square pixels. Nearest-Neighbor is sharper but can produce uneven pixels at non-integer scales.");
 TRANSLATE_NOOP("FullscreenUI", "Controls the final scale used by Box downsampling. 1x returns the upscaled image to the original hardware resolution.");
 TRANSLATE_NOOP("FullscreenUI", "Controls the physical shape of the displayed image. Auto uses the game or arcade hardware's native presentation rules and is recommended. ArcadeDuck may apply hardware-specific aspect handling when raw pixel dimensions are not the intended display shape.");

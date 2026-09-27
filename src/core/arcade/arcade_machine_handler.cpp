@@ -233,7 +233,7 @@ public:
     if (!m_bios.has_value())
       return false;
 
-    m_content = SonyZN::LoadCapcomZN1Content(context.archive_path.c_str(), *context.game_definition,
+    m_content = SonyZN::LoadCapcomZNContent(context.archive_path.c_str(), *context.game_definition,
                                             firmware_archive_path.c_str(), *context.firmware_definition, error);
     return m_content.has_value();
   }
@@ -256,7 +256,7 @@ public:
     }
 
     const std::string persistence_directory = GetContextPersistenceDirectory(context);
-    if (!SonyZN::InitializeCapcomZN1(*m_bios, std::move(*m_content), persistence_directory, error))
+    if (!SonyZN::InitializeCapcomZN(*m_bios, std::move(*m_content), persistence_directory, error))
       return false;
 
     VERBOSE_LOG("SonyZN.Loader dispatch_ready canonical_set='{}' profile='{}'", context.canonical_game_id,
@@ -272,7 +272,75 @@ public:
 private:
   bool m_use_2mb_vram = false;
   std::optional<BIOS::Image> m_bios;
-  std::optional<SonyZN::CapcomZN1Content> m_content;
+  std::optional<SonyZN::CapcomZNContent> m_content;
+};
+
+class CapcomZN2Handler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition || !context.firmware_definition)
+    {
+      Error::SetStringView(error, "Missing Capcom ZN-2 game or firmware definition.");
+      return false;
+    }
+
+    if (context.game_definition->hardware_profile != "coh3002c")
+    {
+      Error::SetStringFmt(error, "Capcom ZN-2 handler requires COH-3002C; requested '{}' with profile '{}'.",
+                          context.canonical_game_id, context.game_definition->hardware_profile);
+      return false;
+    }
+
+    const std::string firmware_archive_path =
+      Path::Combine(EmuFolders::Bios, context.firmware_definition->archive_name);
+
+    m_bios = SonyZN::LoadFirmwareBIOS(firmware_archive_path.c_str(), *context.firmware_definition, "", error);
+    if (!m_bios.has_value())
+      return false;
+
+    m_content = SonyZN::LoadCapcomZNContent(context.archive_path.c_str(), *context.game_definition,
+                                           firmware_archive_path.c_str(), *context.firmware_definition, error);
+    return m_content.has_value();
+  }
+
+  std::optional<u32> GetRAMSizeOverride() const override { return Bus::RAM_4MB_SIZE; }
+
+  void PrepareSharedHardware() const override
+  {
+    // COH-3002C uses the ZN-2 CXD8654Q-class GPU with the full 2 MiB VRAM population.
+    // ArcadeDuck's existing CXD8561Q/type-2 mode supplies the required 2 MiB PSX GPU-visible aperture.
+    GPU::SetCXD8561QMode(true);
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_bios.has_value() || !m_content.has_value() || !m_content->is_zn2)
+    {
+      Error::SetStringView(error, "Invalid Capcom ZN-2 boot content.");
+      return false;
+    }
+
+    const std::string persistence_directory = GetContextPersistenceDirectory(context);
+    if (!SonyZN::InitializeCapcomZN(*m_bios, std::move(*m_content), persistence_directory, error))
+      return false;
+
+    VERBOSE_LOG("SonyZN.Loader dispatch_ready canonical_set='{}' profile='{}' family='capcom_zn2'",
+                context.canonical_game_id, context.game_definition->hardware_profile);
+    return true;
+  }
+
+  const BIOS::Image* GetBIOSImageForSystemIdentity() const override
+  {
+    return m_bios.has_value() ? &m_bios.value() : nullptr;
+  }
+
+private:
+  std::optional<BIOS::Image> m_bios;
+  std::optional<SonyZN::CapcomZNContent> m_content;
 };
 
 class VideoSystemZN1Handler final : public MachineHandler
@@ -959,6 +1027,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<NamcoSystem11Handler>();
   if (id == "capcom_zn1")
     return std::make_unique<CapcomZN1Handler>();
+  if (id == "capcom_zn2")
+    return std::make_unique<CapcomZN2Handler>();
   if (id == "video_system_zn1")
     return std::make_unique<VideoSystemZN1Handler>();
   if (id == "atlus_zn1")

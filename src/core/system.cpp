@@ -672,8 +672,20 @@ TickCount System::GetMaxSliceTicks()
 
 void System::UpdateOverclock()
 {
+  // Sony ZN daughterboards which derive time from the global CPU tick counter
+  // must settle/capture the old clock domain before g_ticks_per_second changes.
+  const bool sony_zn_active = SonyZN::IsActive();
+  if (sony_zn_active)
+    SonyZN::PrepareForCPUClockChange();
+
   g_ticks_per_second = ScaleTicksToOverclock(MASTER_CLOCK);
   s_max_slice_ticks = ScaleTicksToOverclock(MASTER_CLOCK / 10);
+
+  if (sony_zn_active)
+    SonyZN::CompleteCPUClockChange();
+
+  // CPUClockChanged() retires pending SPU sample ticks using the conversion
+  // state under which they were scheduled, then installs the new ratio.
   SPU::CPUClockChanged();
   CDROM::CPUClockChanged();
   g_gpu->CPUClockChanged();
@@ -1468,6 +1480,9 @@ void System::ResetSystem()
     ApplySettings(false);
   }
 
+  if (SonyZN::IsActive())
+    SonyZN::PrepareForTimingEpochReset();
+
   InternalReset();
 
   // These machine resets schedule or timestamp work against the global timing
@@ -2181,6 +2196,7 @@ void System::FrameDone()
   if (SonyZN::BeginMainBoardReset())
   {
     INFO_LOG("Sony ZN full board reset requested by Taito MB3773.");
+    SonyZN::PrepareForTimingEpochReset();
     InternalReset();
     SonyZN::EndMainBoardReset();
     ResetPerformanceCounters();
@@ -2598,6 +2614,15 @@ bool System::DoState(StateWrapper& sw, GPUTexture** host_texture, bool update_di
   sw.Do(&cpu_overclock_active);
   sw.Do(&cpu_overclock_numerator);
   sw.Do(&cpu_overclock_denominator);
+
+  if (sw.IsReading() && sw.GetVersion() < 72)
+  {
+    // v71 and older predate the cached SPU clock-domain fields. Their pending
+    // TimingEvent timestamps belong to the ratio stored in this Overclock block,
+    // so reconstruct that saved domain before any transition to current settings.
+    SPU::RestoreLegacyClockDomainFromState(cpu_overclock_active, cpu_overclock_numerator,
+                                           cpu_overclock_denominator);
+  }
 
   if (sw.IsReading() && (cpu_overclock_active != g_settings.cpu_overclock_active ||
                          (cpu_overclock_active && (g_settings.cpu_overclock_numerator != cpu_overclock_numerator ||

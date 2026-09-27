@@ -354,7 +354,11 @@ static void ProcessReverb(s32 left_in, s32 right_in, s32* left_out, s32* right_o
 
 static void InternalGeneratePendingSamples();
 static void Execute(void* param, TickCount ticks, TickCount ticks_late);
-static void UpdateEventInterval();
+static u32 GetSampleEventIntervalFrames();
+static TickCount GetSampleEventNominalTicks(u32 interval_frames);
+static TickCount GetSampleEventDowncount(u32 interval_frames);
+static void ScheduleNextSampleEvent();
+static void UpdateEventInterval(bool force_reschedule = false);
 
 static void ExecuteFIFOWriteToRAM(TickCount& ticks);
 static void ExecuteFIFOReadFromRAM(TickCount& ticks);
@@ -375,6 +379,12 @@ struct SPUState
   TickCount ticks_carry = 0;
   TickCount cpu_ticks_per_spu_tick = 0;
   TickCount cpu_tick_divider = 0;
+
+  // Conversion state belonging to the currently scheduled SPU sample event.
+  // g_settings can already contain a newly selected overclock ratio before
+  // System::UpdateOverclock() has retired pending ticks from the old domain.
+  bool cpu_overclock_active = false;
+  u32 cpu_overclock_denominator = 1;
 
   SPUCNTRegister SPUCNT = {};
   SPUSTATRegister SPUSTAT = {};
@@ -482,6 +492,8 @@ ALWAYS_INLINE_RELEASE static s32 ApplyGVMixScale(s32 sample, s32 numerator, s32 
 void SPU::Initialize()
 {
   // (X * D) / N / 768 -> (X * D) / (N * 768)
+  s_state.cpu_overclock_active = g_settings.cpu_overclock_active;
+  s_state.cpu_overclock_denominator = std::max(g_settings.cpu_overclock_denominator, 1u);
   s_state.cpu_ticks_per_spu_tick = System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK);
   s_state.cpu_tick_divider = static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK);
   s_state.tick_event.SetInterval(s_state.cpu_ticks_per_spu_tick);
@@ -565,13 +577,69 @@ void SPU::RecreateOutputStream()
 
 void SPU::CPUClockChanged()
 {
-  // (X * D) / N / 768 -> (X * D) / (N * 768)
+  // Retire every raw tick accumulated under the previous CPU-clock domain
+  // before replacing the SPU conversion parameters. This must be forced even
+  // when fewer than one whole 44.1 kHz frame is pending; Execute() converts
+  // that sub-frame duration into ticks_carry.
+  if (s_state.tick_event.IsActive())
+    s_state.tick_event.InvokeEarly(true);
+
+  DebugAssert(s_state.ticks_carry >= 0);
+
+  const u64 old_phase_denominator =
+    s_state.cpu_overclock_active ?
+      static_cast<u64>(std::max<TickCount>(s_state.cpu_tick_divider, 1)) :
+      static_cast<u64>(SYSCLK_TICKS_PER_SPU_TICK);
+  const u64 old_phase_numerator = static_cast<u64>(s_state.ticks_carry);
+
+  // Install the newly selected conversion state only after old-domain work has
+  // been retired. Execute()/InternalGeneratePendingSamples() use these cached
+  // parameters rather than already-updated g_settings.
+  s_state.cpu_overclock_active = g_settings.cpu_overclock_active;
+  s_state.cpu_overclock_denominator = std::max(g_settings.cpu_overclock_denominator, 1u);
   s_state.cpu_ticks_per_spu_tick = System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK);
   s_state.cpu_tick_divider = static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK);
-  s_state.ticks_carry = 0;
-  UpdateEventInterval();
+
+  // Preserve the fractional position within the current 44.1 kHz frame. The
+  // representation changes with the overclock ratio:
+  //   inactive: carry / 768
+  //   active:   carry / (numerator * 768)
+  // Flooring cannot create an early SPU frame and loses less than one unit of
+  // the new fractional denominator.
+  const u64 new_phase_denominator =
+    s_state.cpu_overclock_active ?
+      static_cast<u64>(std::max<TickCount>(s_state.cpu_tick_divider, 1)) :
+      static_cast<u64>(SYSCLK_TICKS_PER_SPU_TICK);
+  s_state.ticks_carry = static_cast<TickCount>(
+    (old_phase_numerator * new_phase_denominator) / old_phase_denominator);
+
+  UpdateEventInterval(true);
 }
 
+void SPU::RestoreLegacyClockDomainFromState(bool saved_overclock_active, u32 saved_overclock_numerator,
+                                            u32 saved_overclock_denominator)
+{
+  const u32 numerator = std::max(saved_overclock_numerator, 1u);
+  const u32 denominator = std::max(saved_overclock_denominator, 1u);
+
+  s_state.cpu_overclock_active = saved_overclock_active;
+  s_state.cpu_overclock_denominator = saved_overclock_active ? denominator : 1u;
+
+  if (saved_overclock_active)
+  {
+    // Equivalent to System::ScaleTicksToOverclock(), but using the ratio stored
+    // in the legacy save rather than the user's currently selected settings.
+    s_state.cpu_ticks_per_spu_tick = static_cast<TickCount>(
+      ((static_cast<u64>(SYSCLK_TICKS_PER_SPU_TICK) * numerator) + denominator - 1) / denominator);
+    s_state.cpu_tick_divider =
+      static_cast<TickCount>(static_cast<u64>(numerator) * SYSCLK_TICKS_PER_SPU_TICK);
+  }
+  else
+  {
+    s_state.cpu_ticks_per_spu_tick = SYSCLK_TICKS_PER_SPU_TICK;
+    s_state.cpu_tick_divider = SYSCLK_TICKS_PER_SPU_TICK;
+  }
+}
 void SPU::Shutdown()
 {
 #ifdef SPU_DUMP_ALL_VOICES
@@ -696,6 +764,17 @@ bool SPU::DoCompatibleState(StateWrapper& sw)
   };
 
   sw.Do(&s_state.ticks_carry);
+
+  // v72: the live CPU-clock repair made these conversion parameters explicit
+  // SPU timing state. They must travel with ticks_carry and the TimingEvent
+  // state so a load under a different selected CPU ratio can retire the saved
+  // clock domain correctly before System::UpdateOverclock() adapts it.
+  sw.DoEx(&s_state.cpu_ticks_per_spu_tick, 72, System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK));
+  sw.DoEx(&s_state.cpu_tick_divider, 72,
+          static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK));
+  sw.DoEx(&s_state.cpu_overclock_active, 72, g_settings.cpu_overclock_active);
+  sw.DoEx(&s_state.cpu_overclock_denominator, 72, std::max(g_settings.cpu_overclock_denominator, 1u));
+
   sw.Do(&s_state.SPUCNT.bits);
   sw.Do(&s_state.SPUSTAT.bits);
   sw.Do(&s_state.transfer_control.bits);
@@ -759,7 +838,10 @@ bool SPU::DoCompatibleState(StateWrapper& sw)
 
   if (sw.IsReading())
   {
-    UpdateEventInterval();
+    // Do not reschedule or invoke the sample TimingEvent here. System restores
+    // SPU device data before TimingEvents::DoState(); touching the event at this
+    // point would combine the newly loaded SPU snapshot with timestamps from the
+    // discarded pre-load session. The saved event schedule is restored later.
     UpdateTransferEvent();
   }
 
@@ -1650,9 +1732,9 @@ void SPU::InternalGeneratePendingSamples()
 {
   const TickCount ticks_pending = s_state.tick_event.GetTicksSinceLastExecution();
   TickCount frames_to_execute;
-  if (g_settings.cpu_overclock_active)
+  if (s_state.cpu_overclock_active)
   {
-    frames_to_execute = static_cast<u32>((static_cast<u64>(ticks_pending) * g_settings.cpu_overclock_denominator) +
+    frames_to_execute = static_cast<u32>((static_cast<u64>(ticks_pending) * s_state.cpu_overclock_denominator) +
                                          static_cast<u32>(s_state.ticks_carry)) /
                         static_cast<u32>(s_state.cpu_tick_divider);
   }
@@ -2391,11 +2473,11 @@ void SPU::ProcessReverb(s32 left_in, s32 right_in, s32* left_out, s32* right_out
 void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
 {
   u32 remaining_frames;
-  if (g_settings.cpu_overclock_active)
+  if (s_state.cpu_overclock_active)
   {
     // (X * D) / N / 768 -> (X * D) / (N * 768)
     const u64 num =
-      (static_cast<u64>(ticks) * g_settings.cpu_overclock_denominator) + static_cast<u32>(s_state.ticks_carry);
+      (static_cast<u64>(ticks) * s_state.cpu_overclock_denominator) + static_cast<u32>(s_state.ticks_carry);
     remaining_frames = static_cast<u32>(num / s_state.cpu_tick_divider);
     s_state.ticks_carry = static_cast<TickCount>(num % s_state.cpu_tick_divider);
   }
@@ -2592,9 +2674,70 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
     output_stream->EndWrite(frames_in_this_batch);
     remaining_frames -= frames_in_this_batch;
   }
+
+  if (s_state.tick_event.IsActive())
+    ScheduleNextSampleEvent();
 }
 
-void SPU::UpdateEventInterval()
+u32 SPU::GetSampleEventIntervalFrames()
+{
+  const u32 buffer_capacity = s_state.audio_stream->GetBufferSize();
+  const u32 target_buffer_size = s_state.audio_stream->GetTargetBufferSize();
+  const u32 max_slice_frames =
+    (g_settings.audio_stream_parameters.stretch_mode == AudioStretchMode::LowLatency) ?
+      std::max<u32>(target_buffer_size / 2u, AudioStream::CHUNK_SIZE) :
+      buffer_capacity;
+
+  return (s_state.SPUCNT.enable && s_state.SPUCNT.irq9_enable) ? 1u : max_slice_frames;
+}
+
+TickCount SPU::GetSampleEventNominalTicks(u32 interval_frames)
+{
+  DebugAssert(interval_frames > 0);
+
+  if (!s_state.cpu_overclock_active)
+    return static_cast<TickCount>(static_cast<u64>(interval_frames) * SYSCLK_TICKS_PER_SPU_TICK);
+
+  const u64 divider = std::max<u64>(static_cast<u64>(s_state.cpu_tick_divider), 1);
+  const u64 denominator = std::max<u64>(static_cast<u64>(s_state.cpu_overclock_denominator), 1);
+  const u64 phase = static_cast<u64>(interval_frames) * divider;
+  return static_cast<TickCount>(std::max<u64>((phase + denominator - 1) / denominator, 1));
+}
+
+TickCount SPU::GetSampleEventDowncount(u32 interval_frames)
+{
+  DebugAssert(interval_frames > 0);
+  DebugAssert(s_state.ticks_carry >= 0);
+
+  if (!s_state.cpu_overclock_active)
+  {
+    const u64 target_phase = static_cast<u64>(interval_frames) * SYSCLK_TICKS_PER_SPU_TICK;
+    const u64 carry =
+      std::min<u64>(static_cast<u64>(s_state.ticks_carry), target_phase - 1);
+    return static_cast<TickCount>(std::max<u64>(target_phase - carry, 1));
+  }
+
+  // Execute() advances phase by (raw CPU ticks * denominator) and emits a
+  // sample each time phase reaches cpu_tick_divider (numerator * 768).
+  // Schedule the exact first raw tick at which the requested frame count is
+  // reachable, preserving the fractional phase already accumulated.
+  const u64 divider = std::max<u64>(static_cast<u64>(s_state.cpu_tick_divider), 1);
+  const u64 denominator = std::max<u64>(static_cast<u64>(s_state.cpu_overclock_denominator), 1);
+  const u64 target_phase = static_cast<u64>(interval_frames) * divider;
+  const u64 carry =
+    std::min<u64>(static_cast<u64>(s_state.ticks_carry), target_phase - 1);
+  const u64 remaining_phase = target_phase - carry;
+
+  return static_cast<TickCount>(
+    std::max<u64>((remaining_phase + denominator - 1) / denominator, 1));
+}
+
+void SPU::ScheduleNextSampleEvent()
+{
+  s_state.tick_event.Schedule(GetSampleEventDowncount(GetSampleEventIntervalFrames()));
+}
+
+void SPU::UpdateEventInterval(bool force_reschedule)
 {
   // Don't generate more than the audio buffer since in a single slice, otherwise we'll both overflow the buffers when
   // we do write it, and the audio thread will underflow since it won't have enough data it the game isn't messing with
@@ -2604,28 +2747,21 @@ void SPU::UpdateEventInterval()
   // has headroom. Using that capacity as the SPU event interval can therefore leave the producer asleep for far longer
   // than the queue is intended to cover. Keep two scheduled producer opportunities inside the current Low Latency
   // target instead.
-  const u32 buffer_capacity = s_state.audio_stream->GetBufferSize();
-  const u32 target_buffer_size = s_state.audio_stream->GetTargetBufferSize();
-  const u32 max_slice_frames =
-    (g_settings.audio_stream_parameters.stretch_mode == AudioStretchMode::LowLatency) ?
-      std::max<u32>(target_buffer_size / 2u, AudioStream::CHUNK_SIZE) :
-      buffer_capacity;
-
   // TODO: Make this predict how long until the interrupt will be hit instead...
-  const u32 interval = (s_state.SPUCNT.enable && s_state.SPUCNT.irq9_enable) ? 1 : max_slice_frames;
-  const TickCount interval_ticks = static_cast<TickCount>(interval) * s_state.cpu_ticks_per_spu_tick;
-  if (s_state.tick_event.IsActive() && s_state.tick_event.GetInterval() == interval_ticks)
+  const u32 interval = GetSampleEventIntervalFrames();
+  const TickCount interval_ticks = GetSampleEventNominalTicks(interval);
+  if (!force_reschedule && s_state.tick_event.IsActive() &&
+      s_state.tick_event.GetInterval() == interval_ticks)
+  {
     return;
+  }
 
   // Ensure all pending ticks have been executed, since we won't get them back after rescheduling.
+  // Execute() itself installs an exact phase-aware next deadline, which is then
+  // replaced below if the interval/clock policy changed.
   s_state.tick_event.InvokeEarly(true);
   s_state.tick_event.SetInterval(interval_ticks);
-
-  TickCount downcount = interval_ticks;
-  if (!g_settings.cpu_overclock_active)
-    downcount -= s_state.ticks_carry;
-
-  s_state.tick_event.Schedule(downcount);
+  s_state.tick_event.Schedule(GetSampleEventDowncount(interval));
 }
 
 void SPU::DrawDebugStateWindow()

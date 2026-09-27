@@ -10120,6 +10120,7 @@ games:
     region: "Europe"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10174,6 +10175,7 @@ games:
     region: "US"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10228,6 +10230,7 @@ games:
     region: "Asia"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10282,6 +10285,7 @@ games:
     region: "Japan"
     revision: "971216"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10336,6 +10340,7 @@ games:
     region: "Japan"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10389,6 +10394,7 @@ games:
     region: "Europe"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10438,6 +10444,7 @@ games:
     region: "US"
     revision: "980526"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10487,6 +10494,7 @@ games:
     region: "US"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10536,6 +10544,7 @@ games:
     region: "Asia"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10585,6 +10594,7 @@ games:
     region: "Hispanic"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10634,6 +10644,7 @@ games:
     region: "Japan"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10682,6 +10693,7 @@ games:
     region: "US"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10732,6 +10744,7 @@ games:
     region: "Asia"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10782,6 +10795,7 @@ games:
     region: "Japan"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10831,6 +10845,7 @@ games:
     region: "Japan"
     revision: "980710"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10876,6 +10891,7 @@ games:
     region: "Europe"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10927,6 +10943,7 @@ games:
     region: "US"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10978,6 +10995,7 @@ games:
     region: "Asia"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11029,6 +11047,7 @@ games:
     region: "Japan"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11079,6 +11098,7 @@ games:
     region: "Europe"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11130,6 +11150,7 @@ games:
     region: "US"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11181,6 +11202,7 @@ games:
     region: "Asia"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11232,6 +11254,7 @@ games:
     region: "Hispanic"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11283,6 +11306,7 @@ games:
     region: "Japan"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11333,6 +11357,7 @@ games:
     region: "Europe"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11395,6 +11420,7 @@ games:
     region: "US"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11457,6 +11483,7 @@ games:
     region: "Asia"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11519,6 +11546,7 @@ games:
     region: "Japan"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1

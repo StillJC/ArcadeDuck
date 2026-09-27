@@ -335,8 +335,8 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
   dialog->registerWidgetHelp(
     m_ui.displayDeinterlacing, tr("Deinterlacing"),
     QString::fromUtf8(Settings::GetDisplayDeinterlacingModeName(Settings::DEFAULT_DISPLAY_DEINTERLACING_MODE)),
-    tr("Controls how interlaced video modes are presented. Disabled preserves native behavior and is the default. "
-       "Enable a deinterlacing method per game when visible combing or flicker requires it."));
+    tr("Controls how interlaced video modes are presented. Adaptive is the ArcadeDuck default and is recommended for arcade titles. "
+       "Choose Disabled, Weave, or Blend only when a title or display setup benefits from a different presentation."));
   dialog->registerWidgetHelp(
     m_ui.displayCropMode, tr("Crop"),
     QString::fromUtf8(Settings::GetDisplayCropModeDisplayName(Settings::DEFAULT_DISPLAY_CROP_MODE)),
