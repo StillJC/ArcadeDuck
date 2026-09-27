@@ -23,8 +23,12 @@ TAG=$(git describe --tags --always | tr -d '\r\n')
 DATE=$(git log -1 --date=iso8601-strict --format=%cd)
 if [ -n "${ARCADEDUCK_CI_BUILD:-}" ]; then
   BUILD="${ARCADEDUCK_CI_BUILD}"
-else
+elif git merge-base --is-ancestor "${BASELINE}" HEAD 2>/dev/null; then
   BUILD=$(git rev-list --count "${BASELINE}..HEAD" 2>/dev/null | tr -d '\r\n')
+else
+  # Sanitized public history does not contain the historical GPL baseline.
+  # Count commits available in this repository instead.
+  BUILD=$(git rev-list --count HEAD 2>/dev/null | tr -d '\r\n')
 fi
 
 if [ -z "$VERSION" ]; then

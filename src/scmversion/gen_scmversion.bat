@@ -29,7 +29,13 @@ FOR /F "tokens=* USEBACKQ" %%g IN (`git log -1 --date=iso8601-strict "--format=%
 IF DEFINED ARCADEDUCK_CI_BUILD (
   SET "BUILD=%ARCADEDUCK_CI_BUILD%"
 ) ELSE (
-  FOR /F "tokens=* USEBACKQ" %%g IN (`git rev-list --count %BASELINE%..HEAD`) do (SET "BUILD=%%g")
+  git merge-base --is-ancestor "%BASELINE%" HEAD >NUL 2>&1
+  IF ERRORLEVEL 1 (
+    REM Sanitized public history does not contain the historical GPL baseline.
+    FOR /F "tokens=* USEBACKQ" %%g IN (`git rev-list --count HEAD`) do (SET "BUILD=%%g")
+  ) ELSE (
+    FOR /F "tokens=* USEBACKQ" %%g IN (`git rev-list --count %BASELINE%..HEAD`) do (SET "BUILD=%%g")
+  )
 )
 
 IF NOT DEFINED HASH (
