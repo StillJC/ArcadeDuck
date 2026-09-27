@@ -57,6 +57,7 @@
       <ClCompile Include="musashi\m68kops.c" />
       <ClCompile Include="arcade\systems\konami\gv\konami_gv_cdrom.cpp" />
       <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
+      <ClCompile Include="arcade\systems\konami\system573\konami_system573.cpp" />
       <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
     <ClCompile Include="cdrom.cpp" />
     <ClCompile Include="gte.cpp" />
@@ -169,6 +170,7 @@
       <ClInclude Include="musashi\m68kops.h" />
       <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
       <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
+      <ClInclude Include="arcade\systems\konami\system573\konami_system573.h" />
       <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
     <ClInclude Include="cdrom.h" />
     <ClInclude Include="gte.h" />
