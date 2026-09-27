@@ -99,6 +99,7 @@ struct Settings
 
   // Network transport for supported linked arcade hardware.
   bool system_link_enabled : 1 = false;
+  u8 system_link_cabinet_id = 1;
   u16 system_link_port = 19702;
   std::string system_link_server_address = "127.0.0.1";
 

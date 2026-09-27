@@ -19,6 +19,7 @@ private:
   void updateEnabledState();
 
   QCheckBox* m_enabled = nullptr;
+  QSpinBox* m_cabinet_id = nullptr;
   QLineEdit* m_server_address = nullptr;
   QSpinBox* m_port = nullptr;
 };

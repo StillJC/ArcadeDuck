@@ -100,6 +100,7 @@
     <ClCompile Include="arcade\systems\sony\zn\eighting_raizing_sound.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\tecmo_cbaj_sound.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\tecmo_gr2_link.cpp" />
+    <ClCompile Include="arcade\systems\sony\zn\taito_gnet_comm.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\ymz280b.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\taito_fx1a_sound.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\taito_fx1b_mn10200.cpp">
@@ -276,6 +277,7 @@
     <ClInclude Include="arcade\systems\sony\zn\eighting_raizing_sound.h" />
     <ClInclude Include="arcade\systems\sony\zn\tecmo_cbaj_sound.h" />
     <ClInclude Include="arcade\systems\sony\zn\tecmo_gr2_link.h" />
+    <ClInclude Include="arcade\systems\sony\zn\taito_gnet_comm.h" />
     <ClInclude Include="arcade\systems\sony\zn\ymz280b.h" />
     <ClInclude Include="arcade\systems\sony\zn\taito_fx1a_sound.h" />
     <ClInclude Include="arcade\systems\sony\zn\taito_fx1b_mn10200.h" />

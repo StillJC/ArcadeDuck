@@ -122,6 +122,8 @@ add_library(core
   arcade/systems/sony/zn/tecmo_cbaj_sound.h
   arcade/systems/sony/zn/tecmo_gr2_link.cpp
   arcade/systems/sony/zn/tecmo_gr2_link.h
+  arcade/systems/sony/zn/taito_gnet_comm.cpp
+  arcade/systems/sony/zn/taito_gnet_comm.h
   arcade/systems/sony/zn/ymz280b.cpp
   arcade/systems/sony/zn/ymz280b.h
   arcade/systems/sony/zn/taito_fx1a_sound.cpp

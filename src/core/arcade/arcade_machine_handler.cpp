@@ -343,6 +343,75 @@ private:
   std::optional<SonyZN::CapcomZNContent> m_content;
 };
 
+class TaitoGNetHandler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition || !context.firmware_definition)
+    {
+      Error::SetStringView(error, "Missing Taito G-Net game or firmware definition.");
+      return false;
+    }
+
+    if (context.game_definition->hardware_profile != "coh3002t" &&
+        context.game_definition->hardware_profile != "coh3002t_comm")
+    {
+      Error::SetStringFmt(error, "Taito G-Net handler requires COH-3002T; requested '{}' with profile '{}'.",
+                          context.canonical_game_id, context.game_definition->hardware_profile);
+      return false;
+    }
+
+    const std::string firmware_archive_path =
+      Path::Combine(EmuFolders::Bios, context.firmware_definition->archive_name);
+
+    m_bios = SonyZN::LoadFirmwareBIOS(firmware_archive_path.c_str(), *context.firmware_definition, "", error);
+    if (!m_bios.has_value())
+      return false;
+
+    m_content = SonyZN::LoadTaitoGNetContent(context.archive_path.c_str(), *context.game_definition,
+                                             firmware_archive_path.c_str(), *context.firmware_definition, error);
+    return m_content.has_value();
+  }
+
+  std::optional<u32> GetRAMSizeOverride() const override { return Bus::RAM_4MB_SIZE; }
+
+  void PrepareSharedHardware() const override
+  {
+    // COH-3002T is ZN-2 class hardware with the full 2 MiB VRAM population.
+    // The current ZN-2 path supplies the required 2 MiB aperture until a
+    // distinct CXD8654Q identity is warranted by demonstrated behavior.
+    GPU::SetCXD8561QMode(true);
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_bios.has_value() || !m_content.has_value())
+    {
+      Error::SetStringView(error, "Invalid Taito G-Net boot content.");
+      return false;
+    }
+
+    const std::string persistence_directory = GetContextPersistenceDirectory(context);
+    if (!SonyZN::InitializeTaitoGNet(*m_bios, std::move(*m_content), persistence_directory, error))
+      return false;
+
+    VERBOSE_LOG("SonyZN.Loader dispatch_ready canonical_set='{}' profile='{}' family='taito_gnet'",
+                context.canonical_game_id, context.game_definition->hardware_profile);
+    return true;
+  }
+
+  const BIOS::Image* GetBIOSImageForSystemIdentity() const override
+  {
+    return m_bios.has_value() ? &m_bios.value() : nullptr;
+  }
+
+private:
+  std::optional<BIOS::Image> m_bios;
+  std::optional<SonyZN::TaitoGNetContent> m_content;
+};
 class VideoSystemZN1Handler final : public MachineHandler
 {
 public:
@@ -1029,6 +1098,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<CapcomZN1Handler>();
   if (id == "capcom_zn2")
     return std::make_unique<CapcomZN2Handler>();
+  if (id == "taito_gnet")
+    return std::make_unique<TaitoGNetHandler>();
   if (id == "video_system_zn1")
     return std::make_unique<VideoSystemZN1Handler>();
   if (id == "atlus_zn1")

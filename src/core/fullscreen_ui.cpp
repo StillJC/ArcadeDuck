@@ -2897,6 +2897,11 @@ void FullscreenUI::DrawSystemLinkSettingsPage()
   }
 
   DrawIntSpinBoxSetting(
+    bsi, FSUI_ICONSTR(ICON_FA_HASHTAG, "Cabinet ID"),
+    FSUI_CSTR("Physical cabinet/node ID for linked arcade hardware which uses an external ID switch. Taito G-Net Communication PCB supports IDs 1 through 4."),
+    "SystemLink", "CabinetID", 1, 1, 4, 1, "%d", enabled);
+
+  DrawIntSpinBoxSetting(
     bsi, FSUI_ICONSTR(ICON_FA_PLUG, "Port"),
     FSUI_CSTR("TCP port shared by all ArcadeDuck instances participating in the same system-link group. All cabinets must use the same port."),
     "SystemLink", "Port", 19702, 1, 65535, 1, "%d", enabled);

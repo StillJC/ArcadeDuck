@@ -156,6 +156,38 @@ systems:
       undumpedRoms:
         - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
 
+  taito_gnet:
+    name: "Taito G-Net"
+    manufacturer: "Taito"
+    hardwareFamily: "sony_zn2_arcade"
+    machineHandler: "taito_gnet"
+    biosProfile: "coh3002t"
+    releaseYear: 1998
+    maxPlayers: 2
+    supportsLightgun: false
+    supportsTrackball: false
+    supportsSpecialControls: true
+    supportsNetwork: false
+    properties:
+      sonyBoard: "COH-3002T"
+      archivePolicy: "complete_non_merged"
+    bios:
+      archive: "coh3002t.zip"
+      romRegions:
+        - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+        - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+        - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+        - { id: "firm", size: 0x200000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "eprom", size: 0x100000, width: 16, endianness: "little" }
+        - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+      roms:
+        - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-60.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x03967fa7", sha1: "0e17fec2286e4e25deb23d40e41ce0986f373d49", groupSize: 1, skip: 0 }
+        - { role: "cat702_1_001", region: "cat702_1", name: "tt10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x235510b1", sha1: "2cc02113207a8f0b078152d31ce6503411750e70", groupSize: 1, skip: 0 }
+        - { role: "firm_001", region: "firm", name: "flash.u30", size: 0x200000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xc48c8236", sha1: "c6dad60266ce2ff635696bc0d91903c543273559", groupSize: 1, skip: 0 }
+        - { role: "eprom_001", region: "eprom", name: "f35-01_m27c800.bin", size: 0x100000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x6225ec11", sha1: "047852d456b6ff85f8e640887caa03cf3e63ffad", groupSize: 1, skip: 0 }
+        - { role: "cat702_2_001", region: "cat702_2", name: "tt16.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x6bb167b3", sha1: "9dcba08f10775a9adf2b1f382c947460edd3d239", groupSize: 1, skip: 0 }
+      undumpedRoms:
+        - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
   taito_fx1:
     name: "Taito FX-1"
     manufacturer: "Taito"
@@ -474,6 +506,27 @@ controlLayouts:
         displayName: "Horn"
         kind: "button"
 
+
+  gobyrc:
+    displayName: "RC de Go! / Go By RC"
+    controllerType: "driving"
+    joystickMode: "none"
+    bindings:
+      - key: "Steering"
+        displayName: "Wheel"
+        kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerate (Pull Trigger)"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake (Push Trigger)"
+        kind: "axis"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
   cryptklr:
     displayName: "Crypt Killer"
     controllerType: "lightgun"
@@ -980,6 +1033,59 @@ controlLayouts:
         displayName: "Button 6 - Heavy Kick"
         kind: "button"
 
+  mahjngoh:
+    displayName: "Mahjong Oh"
+    controllerType: "mahjong"
+    joystickMode: "none"
+    bindings:
+      - { key: "MahjongA", displayName: "A", kind: "button" }
+      - { key: "MahjongB", displayName: "B", kind: "button" }
+      - { key: "MahjongC", displayName: "C", kind: "button" }
+      - { key: "MahjongD", displayName: "D", kind: "button" }
+      - { key: "MahjongE", displayName: "E", kind: "button" }
+      - { key: "MahjongF", displayName: "F", kind: "button" }
+      - { key: "MahjongG", displayName: "G", kind: "button" }
+      - { key: "MahjongH", displayName: "H", kind: "button" }
+      - { key: "MahjongI", displayName: "I", kind: "button" }
+      - { key: "MahjongJ", displayName: "J", kind: "button" }
+      - { key: "MahjongK", displayName: "K", kind: "button" }
+      - { key: "MahjongL", displayName: "L", kind: "button" }
+      - { key: "MahjongM", displayName: "M", kind: "button" }
+      - { key: "MahjongN", displayName: "N", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+      - { key: "MahjongKan", displayName: "Kan", kind: "button" }
+      - { key: "MahjongPon", displayName: "Pon", kind: "button" }
+      - { key: "MahjongChi", displayName: "Chi", kind: "button" }
+      - { key: "MahjongReach", displayName: "Reach", kind: "button" }
+      - { key: "MahjongRon", displayName: "Ron", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+
+  raycris:
+    displayName: "RayCrisis"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1 - Shot"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 - Lock-On Laser"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 - Round Divider / Special Attack"
+        kind: "button"
   plsmaswd:
     displayName: "Plasma Sword / Star Gladiator 2"
     controllerType: "arcade"
@@ -2421,6 +2527,33 @@ controlLayouts:
         kind: "button"
       - key: "Button2"
         displayName: "Button 2 — Bomb"
+        kind: "button"
+
+  taitogn3b:
+    displayName: "Taito G-Net (3 Button)"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3"
         kind: "button"
 
 games:
@@ -10385,6 +10518,825 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  mahjngoh:
+    archive: "mahjngoh.zip"
+    title: "Mahjong Oh"
+    system: "taito_gnet"
+    manufacturer: "Warashi / Mahjong Kobo / Taito"
+    year: 1999
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "mahjong", joystick: "none", layout: "mahjngoh" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "mahjngoh", sha1: "ee97ba75282223afa41f21b1d38a6ed1d26962cd", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "mahjngoh"
+      stateClass: "ttgnmp_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Mahjong Oh (V2.06J 1999/11/23 08:52:22)"
+
+  rcdego:
+    archive: "rcdego.zip"
+    title: "RC de Go!"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1999
+    region: "Japan"
+    hardwareProfile: "coh3002t_comm"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "driving", joystick: "none", layout: "gobyrc" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "rcdego", sha1: "b70effc7a01e6b5e51cc2d5bc8e4afab583cc635", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "gobyrc"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "RC de Go! (V2.03J 1999/05/22 19:29)"
+
+  raycris:
+    archive: "raycris.zip"
+    title: "RayCrisis"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1998
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycris", sha1: "55ac36114df79ad9711799eca66d352c8cd64af0", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  chaoshea:
+    archive: "chaoshea.zip"
+    title: "Chaos Heat"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1998
+    region: "World"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheat", sha1: "4ec3afdf2df487fabd20c330087c2387cb31eaec", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  chaosheaj:
+    archive: "chaosheaj.zip"
+    title: "Chaos Heat"
+    parent: "chaoshea"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1998
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheatj", sha1: "5d6d5c5da9000ebecf5955add344f891a6848064", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  raycrisj:
+    archive: "raycrisj.zip"
+    title: "RayCrisis"
+    parent: "raycris"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1998
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycrisj", sha1: "83c4bd9a8096d1939a241b34a7e5f53403a58e15", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  flipmaze:
+    archive: "flipmaze.zip"
+    title: "Flip Maze"
+    system: "taito_gnet"
+    manufacturer: "MOSS / Taito"
+    year: 1999
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "flipmaze", sha1: "1a97b2614c29df0294fcb96e856f431ed92a9217", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  shikigam:
+    archive: "shikigam.zip"
+    title: "Shikigami no Shiro"
+    system: "taito_gnet"
+    manufacturer: "Alfa System / Taito"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigam", sha1: "be7858990f0260a1666328033dc46a4ec36dd7c0", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  shikigama:
+    archive: "shikigama.zip"
+    title: "Shikigami no Shiro - internal build"
+    parent: "shikigam"
+    system: "taito_gnet"
+    manufacturer: "Alfa System / Taito"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigama", sha1: "6aee63d4cacb210b011be3dfef54f88152da36c3", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  sianniv:
+    archive: "sianniv.zip"
+    title: "Space Invaders Anniversary"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 2003
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "sianniv", sha1: "b857d227f47b566ac9aed48f4d9209536f674197", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgnirq_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  kollon:
+    archive: "kollon.zip"
+    title: "Kollon"
+    system: "taito_gnet"
+    manufacturer: "CyberFront"
+    year: 2003
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollon", sha1: "37efcd5333ca7dd10cde480bd31c6b3c21f06b9f", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgnirq_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  kollonc:
+    archive: "kollonc.zip"
+    title: "Kollon"
+    parent: "kollon"
+    system: "taito_gnet"
+    manufacturer: "CyberFront"
+    year: 2003
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollonc", sha1: "ce62181659701cfb8f7c564870ab902be4d8e060", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Kollon (V2.04JC 2003/11/01 12:00)"
+
+  otenamhf:
+    archive: "otenamhf.zip"
+    title: "Otenami Haiken Final"
+    system: "taito_gnet"
+    manufacturer: "Success / Warashi"
+    year: 2005
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamhf", sha1: "5b15c33bf401e5546d78e905f538513d6ffcf562", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Otenami Haiken Final (V2.07JC 2005/04/20 15:36)"
+  otenamih:
+    archive: "otenamih.zip"
+    title: "Otenami Haiken"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 1999
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamih", sha1: "b50055c5d3cb338fa322f66396b2f2ca9eb2acda", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  psyvaria:
+    archive: "psyvaria.zip"
+    title: "Psyvariar -Medium Unit-"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2000
+    region: "World"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvaria", sha1: "06998a0903e8575909ff4778c89d19ccd364f78f", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  psyvarij:
+    archive: "psyvarij.zip"
+    title: "Psyvariar -Medium Unit-"
+    parent: "psyvaria"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarij", sha1: "238023e73d99cb76d6495352f9786bb8fb880c63", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  psyvarrv:
+    archive: "psyvarrv.zip"
+    title: "Psyvariar -Revision-"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarrv", sha1: "da493715637011883d673046582cc2b2fe8e80c4", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  zokuotena:
+    archive: "zokuotena.zip"
+    title: "Zoku Otenamihaiken"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zokuotena", sha1: "e067c45578acde0039ed6ed480265d2814296e22", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  zooo:
+    archive: "zooo.zip"
+    title: "Zooo"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2004
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zooo", sha1: "12945dc6fd1230d28aa15360838a9bf3f2b9890b", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  shanghss:
+    archive: "shanghss.zip"
+    title: "Shanghai Shoryu Sairin"
+    system: "taito_gnet"
+    manufacturer: "Warashi"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghss", sha1: "9140cd7e9dc509093065dacfb7b189812917aa6d", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  soutenry:
+    archive: "soutenry.zip"
+    title: "Soutenryu"
+    system: "taito_gnet"
+    manufacturer: "Warashi"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "soutenry", sha1: "511732c56dcfd57518227247999d81271775aa9c", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  shangtou:
+    archive: "shangtou.zip"
+    title: "Shanghai Sangokuhai Tougi"
+    system: "taito_gnet"
+    manufacturer: "Warashi / Sunsoft / Taito"
+    year: 2002
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghaito", sha1: "50f25d20a2a2da87645cf4bd00088ad2c96ce10b", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  nightrai:
+    archive: "nightrai.zip"
+    title: "Night Raid"
+    system: "taito_gnet"
+    manufacturer: "Takumi"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "nightrai", sha1: "21452da5aefd701b666c495bd391ec9ab90b5a41", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  otenki:
+    archive: "otenki.zip"
+    title: "Otenki Kororin"
+    system: "taito_gnet"
+    manufacturer: "Takumi"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenki", sha1: "93a618be8056d56106dfdf254b686a41e783b34b", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  xiistag:
+    archive: "xiistag.zip"
+    title: "XII Stag"
+    system: "taito_gnet"
+    manufacturer: "Triangle Service"
+    year: 2002
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "xiistag", sha1: "ca1b87a29e8d5ff8c67aee68cdb1c42fd237f92c", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  spuzbobl:
+    archive: "spuzbobl.zip"
+    title: "Super Puzzle Bobble"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1999
+    region: "World"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobl", sha1: "1b1c72fb7e5656021485fefaef8f2ba48e2b4ea8", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Super Puzzle Bobble (V2.05O 1999/2/24 18:00)"
+
+  spuzboblj:
+    archive: "spuzboblj.zip"
+    title: "Super Puzzle Bobble"
+    parent: "spuzbobl"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1999
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobj", sha1: "dac433cf88543d2499bf797d7406b82ae4338726", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Super Puzzle Bobble (V2.04J 1999/2/17 02:10)"
+
+  gobyrc:
+    archive: "gobyrc.zip"
+    title: "Go By RC"
+    system: "taito_gnet"
+    manufacturer: "Taito"
+    year: 1999
+    region: "World"
+    hardwareProfile: "coh3002t_comm"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "driving", joystick: "none", layout: "gobyrc" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "gobyrc", sha1: "0bee1f495fc8b033fd56aad9260ae94abb35eb58", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "gobyrc"
+      stateClass: "taitogn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Go By RC (V2.03O 1999/05/25 13:31)"
+
+  zokuoten:
+    archive: "zokuoten.zip"
+    title: "Zoku Otenamihaiken"
+    system: "taito_gnet"
+    manufacturer: "Success"
+    year: 2003
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zokuoten", sha1: "116e58c90f39a3c18ca6fe0216c998ba02c58814", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "taitogn"
+      stateClass: "ttgncl4_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Zoku Otenamihaiken (V2.05J 2003/05/12 18:00)"
+
+  usagi:
+    archive: "usagi.zip"
+    title: "Usagi"
+    system: "taito_gnet"
+    manufacturer: "Warashi / Mahjong Kobo / Taito"
+    year: 2001
+    region: "Japan"
+    hardwareProfile: "coh3002t"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "mahjong", joystick: "none", layout: "mahjngoh" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "usagi", sha1: "edf9dd271957f6cb06feed238ae21100514bef8e", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "taitogn"
+      inputProfile: "usagi"
+      stateClass: "ttgnmp_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Usagi (V2.02J 2001/10/02 12:41:19)"
   sfex2:
     archive: "sfex2.zip"
     title: "Street Fighter EX2"

@@ -38,6 +38,10 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
   m_enabled = new QCheckBox(Tr("Enable System Link"), network_group);
   network_layout->addRow(m_enabled);
 
+  m_cabinet_id = new QSpinBox(network_group);
+  m_cabinet_id->setRange(1, 4);
+  network_layout->addRow(Tr("Cabinet ID:"), m_cabinet_id);
+
   m_server_address = new QLineEdit(network_group);
   m_server_address->setClearButtonEnabled(true);
   network_layout->addRow(Tr("Host IPv4 Address:"), m_server_address);
@@ -60,6 +64,7 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
   layout->addStretch();
 
   SettingWidgetBinder::BindWidgetToBoolSetting(nullptr, m_enabled, "SystemLink", "Enabled", false);
+  SettingWidgetBinder::BindWidgetToIntSetting(nullptr, m_cabinet_id, "SystemLink", "CabinetID", 1);
   SettingWidgetBinder::BindWidgetToStringSetting(nullptr, m_server_address, "SystemLink", "ServerAddress",
                                                  "127.0.0.1");
   SettingWidgetBinder::BindWidgetToIntSetting(nullptr, m_port, "SystemLink", "Port", 19702);
@@ -68,6 +73,10 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
     m_enabled, Tr("Enable System Link"), Tr("Disabled"),
     Tr("Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal "
        "single-cabinet operation."));
+  dialog->registerWidgetHelp(
+    m_cabinet_id, Tr("Cabinet ID"), Tr("1"),
+    Tr("Physical cabinet/node ID for linked arcade hardware which uses an external ID switch. Taito G-Net "
+       "Communication PCB uses IDs 1 through 4. Use a unique ID for every linked instance."));
   dialog->registerWidgetHelp(
     m_server_address, Tr("Host IPv4 Address"), Tr("127.0.0.1"),
     Tr("IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck "
@@ -85,6 +94,7 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
 void SystemLinkSettingsWidget::updateEnabledState()
 {
   const bool enabled = m_enabled->isChecked();
+  m_cabinet_id->setEnabled(enabled);
   m_server_address->setEnabled(enabled);
   m_port->setEnabled(enabled);
 }

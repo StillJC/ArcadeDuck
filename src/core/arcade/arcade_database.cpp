@@ -80,7 +80,7 @@ bool IsKnownControllerType(std::string_view value)
 {
   return StringUtil::EqualNoCase(value, "none") || StringUtil::EqualNoCase(value, "arcade") ||
          StringUtil::EqualNoCase(value, "trackball") || StringUtil::EqualNoCase(value, "lightgun") ||
-         StringUtil::EqualNoCase(value, "driving") || StringUtil::EqualNoCase(value, "tokimeki");
+         StringUtil::EqualNoCase(value, "driving") || StringUtil::EqualNoCase(value, "tokimeki") || StringUtil::EqualNoCase(value, "mahjong");
 }
 
 bool IsKnownJoystickMode(std::string_view value)
@@ -268,6 +268,8 @@ ArcadeControllerType ParseControllerType(std::string_view value)
     return ArcadeControllerType::Driving;
   if (StringUtil::EqualNoCase(value, "tokimeki"))
     return ArcadeControllerType::Tokimeki;
+  if (StringUtil::EqualNoCase(value, "mahjong"))
+    return ArcadeControllerType::Mahjong;
   return ArcadeControllerType::None;
 }
 

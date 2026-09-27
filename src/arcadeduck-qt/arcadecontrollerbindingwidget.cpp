@@ -465,6 +465,8 @@ QWidget* ArcadeControllerBindingWidget::createArtworkWidget()
     resource = ":/controllers/racing.png";
   else if (type == Arcade::ArcadeControllerType::Tokimeki)
     resource = ":/controllers/tokimeki.png";
+  else if (type == Arcade::ArcadeControllerType::Mahjong)
+    resource = ":/controllers/mahjong.png";
 
   const QString resource_path = QString::fromUtf8(resource ? resource : "");
   const bool resource_exists = QFile::exists(resource_path);

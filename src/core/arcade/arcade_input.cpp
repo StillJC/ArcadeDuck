@@ -28,12 +28,16 @@ enum class Control : u8
 {
   Left, Right, Up, Down, Button1, Button2, Button3, Button4, Button5, Button6, Coin, Start, Trigger, Reload,
   GSRIncrease, GSRDecrease, GearUp, GearDown, Handbrake, View, Horn, MusicNext, MusicPrevious, Select,
-  SelectUp, SelectDown, SelectLeft, SelectRight, Enter, Sensor, Count
+  SelectUp, SelectDown, SelectLeft, SelectRight, Enter, Sensor,
+  MahjongA, MahjongB, MahjongC, MahjongD, MahjongE, MahjongF, MahjongG, MahjongH,
+  MahjongI, MahjongJ, MahjongK, MahjongL, MahjongM, MahjongN, MahjongKan, MahjongPon,
+  MahjongChi, MahjongReach, MahjongRon, Count
 };
 
 enum class DrivingAxis : u8
 {
   Steering,
+  ThrottleBrake,
   Accelerator,
   Brake,
   Clutch,
@@ -71,6 +75,7 @@ struct PortState
   float axis_x = 0.0f;
   float axis_y = 0.0f;
   float steering = 0.5f;
+  float throttle_brake = 0.5f;
   float accelerator = 0.0f;
   float brake = 0.0f;
   float clutch = 0.0f;
@@ -106,7 +111,7 @@ float s_lightgun_viewport_border_y = 0.0f;
 
 std::optional<Control> GetControl(std::string_view key)
 {
-  static constexpr std::array<std::pair<std::string_view, Control>, 30> controls = {{
+  static constexpr std::array<std::pair<std::string_view, Control>, 49> controls = {{
     {"Left", Control::Left}, {"Right", Control::Right}, {"Up", Control::Up}, {"Down", Control::Down},
     {"Button1", Control::Button1}, {"Button2", Control::Button2}, {"Button3", Control::Button3},
     {"Button4", Control::Button4}, {"Button5", Control::Button5}, {"Button6", Control::Button6},
@@ -117,6 +122,13 @@ std::optional<Control> GetControl(std::string_view key)
     {"MusicPrevious", Control::MusicPrevious}, {"Select", Control::Select}, {"SelectUp", Control::SelectUp},
     {"SelectDown", Control::SelectDown}, {"SelectLeft", Control::SelectLeft},
     {"SelectRight", Control::SelectRight}, {"Enter", Control::Enter}, {"Sensor", Control::Sensor},
+    {"MahjongA", Control::MahjongA}, {"MahjongB", Control::MahjongB}, {"MahjongC", Control::MahjongC},
+    {"MahjongD", Control::MahjongD}, {"MahjongE", Control::MahjongE}, {"MahjongF", Control::MahjongF},
+    {"MahjongG", Control::MahjongG}, {"MahjongH", Control::MahjongH}, {"MahjongI", Control::MahjongI},
+    {"MahjongJ", Control::MahjongJ}, {"MahjongK", Control::MahjongK}, {"MahjongL", Control::MahjongL},
+    {"MahjongM", Control::MahjongM}, {"MahjongN", Control::MahjongN}, {"MahjongKan", Control::MahjongKan},
+    {"MahjongPon", Control::MahjongPon}, {"MahjongChi", Control::MahjongChi},
+    {"MahjongReach", Control::MahjongReach}, {"MahjongRon", Control::MahjongRon},
   }};
   for (const auto& [name, control] : controls)
   {
@@ -381,6 +393,9 @@ void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
       port.steering =
         ApplyDrivingAxisAdjustment(value, true, port.steering_deadzone, port.steering_sensitivity);
       break;
+    case DrivingAxis::ThrottleBrake:
+      port.throttle_brake = ApplyDrivingAxisAdjustment(value, true, 0.0f, 1.0f);
+      break;
     case DrivingAxis::Accelerator:
       port.accelerator =
         ApplyDrivingAxisAdjustment(value, false, port.accelerator_deadzone, port.accelerator_sensitivity);
@@ -526,7 +541,7 @@ void AddDrivingAxisBindings(SettingsInterface& si, const std::string& section, u
   for (const std::string& binding : si.GetStringList(section.c_str(), key.data()))
   {
     const std::string normalized_binding =
-      (axis == DrivingAxis::Steering) ? NormalizeCenteredControllerAxisBinding(binding) : binding;
+      (axis == DrivingAxis::Steering || axis == DrivingAxis::ThrottleBrake) ? NormalizeCenteredControllerAxisBinding(binding) : binding;
     InputManager::AddBinding(
       normalized_binding, InputAxisEventHandler{[port, axis](float value) { OnDrivingAxis(port, axis, value); }});
   }
@@ -622,7 +637,10 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
                             "Button5", "Button6", "Coin", "Start", "Trigger", "Reload", "GSRIncrease",
                             "GSRDecrease", "GearUp", "GearDown", "Handbrake", "View", "Horn", "MusicNext",
                             "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft", "SelectRight",
-                            "Enter", "Sensor"})
+                            "Enter", "Sensor", "MahjongA", "MahjongB", "MahjongC", "MahjongD",
+                            "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
+                            "MahjongK", "MahjongL", "MahjongM", "MahjongN", "MahjongKan", "MahjongPon",
+                            "MahjongChi", "MahjongReach", "MahjongRon"})
     {
       AddDigitalBindings(si, section, port, key);
     }
@@ -639,6 +657,7 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
     else if (state.type == Arcade::ArcadeControllerType::Driving)
     {
       AddDrivingAxisBindings(si, section, port, "Steering", DrivingAxis::Steering);
+      AddDrivingAxisBindings(si, section, port, "ThrottleBrake", DrivingAxis::ThrottleBrake);
       AddDrivingAxisBindings(si, section, port, "Accelerator", DrivingAxis::Accelerator);
       AddDrivingAxisBindings(si, section, port, "Brake", DrivingAxis::Brake);
       AddDrivingAxisBindings(si, section, port, "Clutch", DrivingAxis::Clutch);
@@ -675,6 +694,27 @@ bool IsDigitalPressed(u32 port, std::string_view key)
   return IsPressed(s_ports[port], control.value());
 }
 
+bool HasDigitalControl(u32 port, std::string_view key)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  if (port >= s_ports.size())
+    return false;
+
+  const PortState& state = s_ports[port];
+  if (state.layout.empty())
+    return false;
+
+  const Arcade::ArcadeControlLayoutInfo* layout = Arcade::GetArcadeControlLayoutInfo(state.layout);
+  if (!layout)
+    return false;
+
+  return std::any_of(layout->bindings.begin(), layout->bindings.end(),
+                     [key](const Arcade::ArcadeControlLayoutBindingInfo& binding) {
+                       return binding.kind == Arcade::ArcadeControlBindingKind::Button &&
+                              binding.binding_key == key;
+                     });
+}
+
 float GetAnalogValue(u32 port, std::string_view key)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
@@ -684,6 +724,8 @@ float GetAnalogValue(u32 port, std::string_view key)
   const PortState& state = s_ports[port];
   if (key == "Steering")
     return state.steering;
+  if (key == "ThrottleBrake")
+    return state.throttle_brake;
   if (key == "Accelerator")
     return state.accelerator;
   if (key == "Brake")
@@ -692,6 +734,29 @@ float GetAnalogValue(u32 port, std::string_view key)
     return state.clutch;
 
   return 0.0f;
+}
+
+bool HasAnalogControl(u32 port, std::string_view key)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  if (port >= s_ports.size())
+    return false;
+
+  const PortState& state = s_ports[port];
+  if (state.type != Arcade::ArcadeControllerType::Driving || state.layout.empty())
+    return false;
+
+  const Arcade::ArcadeControlLayoutInfo* const layout = Arcade::GetArcadeControlLayoutInfo(state.layout);
+  if (!layout)
+    return false;
+
+  for (const Arcade::ArcadeControlLayoutBindingInfo& binding : layout->bindings)
+  {
+    if (binding.kind == Arcade::ArcadeControlBindingKind::Axis && binding.binding_key == key)
+      return true;
+  }
+
+  return false;
 }
 
 bool IsOperatorPressed(std::string_view key)
