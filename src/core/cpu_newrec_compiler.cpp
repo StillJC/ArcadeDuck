@@ -1182,6 +1182,12 @@ void CPU::NewRec::Compiler::CompileInstruction()
 
   m_cycles++;
 
+  // A timing deadline may become due after the branch itself but before its
+  // architectural delay slot. Check before NewRec can swap or inline the
+  // delay slot so the rare slow path can preserve that boundary exactly.
+  if (iinfo->is_branch_instruction && !m_current_instruction_branch_delay_slot)
+    GenerateBranchEventBoundaryCheck();
+
   if (IsNopInstruction(*inst))
   {
     UpdateLoadDelay();

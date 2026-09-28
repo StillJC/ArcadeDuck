@@ -28,6 +28,10 @@ ALWAYS_INLINE static void CheckForPendingInterrupt()
 
 void DispatchInterrupt();
 
+// Rare recompiler slow path for an event boundary which lands on a branch
+// before its architectural delay slot.
+void ExecuteRecompilerBranchEventBoundary(u32 branch_pc, u32 branch_bits, u32 delay_bits);
+
 // icache stuff
 ALWAYS_INLINE static bool IsCachedAddress(VirtualMemoryAddress address)
 {

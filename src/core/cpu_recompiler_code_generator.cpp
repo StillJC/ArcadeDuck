@@ -2432,6 +2432,61 @@ bool CodeGenerator::Compile_Branch(Instruction instruction, const CodeCache::Ins
 {
   InstructionPrologue(instruction, info, 1);
 
+  // Branches normally keep their delay slot in the same compiled block.
+  // If the timing deadline lands at this branch, take a rare slow path which
+  // preserves the hardware-visible branch -> event -> delay-slot boundary.
+  if (info.is_branch_instruction && !info.is_branch_delay_slot &&
+      (m_current_instruction.instruction + 1) != m_block_end.instruction)
+  {
+    Value pending_ticks = m_register_cache.AllocateScratch(RegSize_32);
+    Value downcount = m_register_cache.AllocateScratch(RegSize_32);
+
+    EmitLoadCPUStructField(pending_ticks.GetHostRegister(), RegSize_32, OFFSETOF(State, pending_ticks));
+    if (m_delayed_cycles_add > 0)
+    {
+      EmitAdd(pending_ticks.GetHostRegister(), pending_ticks.GetHostRegister(),
+              Value::FromConstantU32(m_delayed_cycles_add), false);
+    }
+    EmitLoadCPUStructField(downcount.GetHostRegister(), RegSize_32, OFFSETOF(State, downcount));
+
+    LabelType continue_branch;
+    EmitConditionalBranch(Condition::Less, false, pending_ticks.GetHostRegister(), downcount, &continue_branch);
+
+    const TickCount saved_delayed_cycles_add = m_delayed_cycles_add;
+    const TickCount saved_gte_done_cycle = m_gte_done_cycle;
+    const bool saved_load_delay_dirty = m_load_delay_dirty;
+
+    DebugAssert(saved_delayed_cycles_add >= 1);
+
+    m_register_cache.PushState();
+    EmitBranch(GetCurrentFarCodePointer());
+
+    SwitchToFarCode();
+
+    // InstructionPrologue() has already included the branch's one cycle.
+    // Commit only the work which architecturally precedes the branch; the
+    // slow-path helper accounts for the branch itself.
+    m_delayed_cycles_add = saved_delayed_cycles_add - 1;
+    BlockEpilogue();
+
+    EmitFunctionCall(
+      nullptr, &CPU::ExecuteRecompilerBranchEventBoundary,
+      Value::FromConstantU32(info.pc),
+      Value::FromConstantU32(instruction.bits),
+      Value::FromConstantU32((m_current_instruction.instruction + 1)->bits));
+
+    EmitEndBlock(true, CodeCache::g_check_events_and_dispatch);
+
+    SwitchToNearCode();
+
+    m_delayed_cycles_add = saved_delayed_cycles_add;
+    m_gte_done_cycle = saved_gte_done_cycle;
+    m_load_delay_dirty = saved_load_delay_dirty;
+
+    m_register_cache.PopState();
+    EmitBindLabel(&continue_branch);
+  }
+
   auto DoBranch = [this, &instruction, &info](Condition condition, const Value& lhs, const Value& rhs, Reg lr_reg,
                                               Value&& branch_target) {
     const bool can_link_block = info.is_direct_branch_instruction && g_settings.cpu_recompiler_block_linking;
