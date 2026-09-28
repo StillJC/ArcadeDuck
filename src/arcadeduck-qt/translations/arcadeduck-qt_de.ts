@@ -12016,16 +12016,6 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
         <translation>PGXP ist inkompatibel mit dem Software-Renderer, weshalb PGXP deaktiviert wird.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-                <translation>Zurückspulen wird unter Android auf 32-Bit-ARM nicht unterstützt.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-                <translation>Runahead wird unter Android auf 32-Bit-ARM nicht unterstützt.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
                 <translation>Zurückspulen ist deaktiviert, weil Runahead aktiviert ist.</translation>

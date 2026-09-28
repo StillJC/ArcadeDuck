@@ -166,7 +166,6 @@ using ImGuiFullscreen::ThreeWayToggleButton;
 using ImGuiFullscreen::ToggleButton;
 using ImGuiFullscreen::WantsToCloseMenu;
 
-#ifndef __ANDROID__
 namespace FullscreenUI {
 enum class MainWindowType
 {
@@ -6624,7 +6623,6 @@ bool FullscreenUI::IsLeaderboardsWindowOpen()
   return (s_current_main_window == MainWindowType::Leaderboards);
 }
 
-#endif // __ANDROID__
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Translation String Area

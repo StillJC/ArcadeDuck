@@ -86,7 +86,7 @@ float SettingInfo::FloatStepValue() const
 
 #if defined(_WIN32)
 const MediaCaptureBackend Settings::DEFAULT_MEDIA_CAPTURE_BACKEND = MediaCaptureBackend::MediaFoundation;
-#elif !defined(__ANDROID__)
+#else
 const MediaCaptureBackend Settings::DEFAULT_MEDIA_CAPTURE_BACKEND = MediaCaptureBackend::FFmpeg;
 #endif
 
@@ -449,14 +449,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   texture_replacements.dump_vram_write_height_threshold =
     si.GetIntValue("TextureReplacements", "DumpVRAMWriteHeightThreshold", 128);
 
-#ifdef __ANDROID__
-  // No expansion due to license incompatibility.
-  audio_expansion_mode = AudioExpansionMode::Disabled;
-
-  // Android users are incredibly silly and don't understand that stretch is in the aspect ratio list...
-  if (si.GetBoolValue("Display", "Stretch", false))
-    display_aspect_ratio = DisplayAspectRatio::MatchWindow;
-#endif
 }
 
 void Settings::Save(SettingsInterface& si, bool ignore_base) const
@@ -825,22 +817,6 @@ void Settings::FixIncompatibleSettings(bool display_osd_messages)
   {
     WARNING_LOG("mmap fastmem is not available on this platform, using LUT instead.");
     g_settings.cpu_fastmem_mode = CPUFastmemMode::LUT;
-  }
-#endif
-
-#if defined(__ANDROID__) && defined(__arm__) && !defined(__aarch64__) && !defined(_M_ARM64)
-  if (g_settings.rewind_enable)
-  {
-    Host::AddKeyedOSDMessage("rewind_disabled_android",
-                             TRANSLATE_STR("OSDMessage", "Rewind is not supported on 32-bit ARM for Android."), 30.0f);
-    g_settings.rewind_enable = false;
-  }
-  if (g_settings.IsRunaheadEnabled())
-  {
-    Host::AddKeyedOSDMessage("rewind_disabled_android",
-                             TRANSLATE_STR("OSDMessage", "Runahead is not supported on 32-bit ARM for Android."),
-                             30.0f);
-    g_settings.runahead_frames = 0;
   }
 #endif
 
@@ -1437,15 +1413,9 @@ const char* Settings::GetDisplayCropModeDisplayName(DisplayCropMode crop_mode)
 }
 
 static constexpr const std::array s_display_aspect_ratio_names = {
-#ifndef __ANDROID__
   TRANSLATE_NOOP("DisplayAspectRatio", "Auto (Game Native)"),
   TRANSLATE_NOOP("DisplayAspectRatio", "Stretch To Fill"),
   TRANSLATE_NOOP("DisplayAspectRatio", "Custom"),
-#else
-  "Auto (Game Native)",
-  "Auto (Match Window)",
-  "Custom",
-#endif
   "4:3",
   "16:9",
   "19:9",
@@ -2042,10 +2012,8 @@ static const char* s_log_filters[] = {
   "WAVWriter",
   "WindowInfo",
 
-#ifndef __ANDROID__
   "CubebAudioStream",
   "SDLAudioStream",
-#endif
 
 #ifdef ENABLE_OPENGL
   "OpenGLContext",

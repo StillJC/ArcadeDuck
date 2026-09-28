@@ -12257,16 +12257,6 @@ This action cannot be undone.</source>
         <translation>PGXP несовместим с программной отрисовкой, PGXP отключен.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>Перемотка назад не поддерживается на 32-разрядном ARM для Android.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>Опережение не поддерживается в 32-разрядной версии ARM для Android.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>Перемотка отключена, потому что включено опережение.</translation>

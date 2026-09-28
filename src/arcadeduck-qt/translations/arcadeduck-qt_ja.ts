@@ -12007,16 +12007,6 @@ This action cannot be undone.</source>
         <translation>PGXP はソフトウェアレンダラーと互換性がないため、PGXP を無効にします。</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>巻き戻しは Android 用の32ビット ARM ではサポートされていません。</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>先行実行は Android 用の32ビット ARM ではサポートされていません。</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>先行実行が有効になっているため、巻き戻しは無効になっています。</translation>

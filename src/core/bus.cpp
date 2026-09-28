@@ -53,7 +53,6 @@ Log_SetChannel(Bus);
 // TODO: Get rid of page code bits, instead use page faults to track SMC.
 
 // Exports for external debugger access
-#ifndef __ANDROID__
 namespace Exports {
 
 extern "C" {
@@ -67,7 +66,6 @@ __attribute__((visibility("default"), used)) u32 RAM_SIZE, RAM_MASK;
 }
 
 } // namespace Exports
-#endif
 
 namespace Bus {
 
@@ -264,20 +262,16 @@ bool Bus::AllocateMemoryMap(bool export_shared_memory, Error* error)
   g_memory_handlers_isc = g_memory_handlers + MEMORY_LUT_SLOTS;
   SetHandlers();
 
-#ifndef __ANDROID__
   Exports::RAM = reinterpret_cast<uintptr_t>(g_unprotected_ram);
-#endif
 
   return true;
 }
 
 void Bus::ReleaseMemoryMap()
 {
-#ifndef __ANDROID__
   Exports::RAM = 0;
   Exports::RAM_SIZE = 0;
   Exports::RAM_MASK = 0;
-#endif
 
   g_memory_handlers_isc = nullptr;
   if (g_memory_handlers)
@@ -383,7 +377,7 @@ bool Bus::ReallocateMemoryMap(bool export_shared_memory, Error* error)
 
 void Bus::CleanupMemoryMap()
 {
-#if !defined(_WIN32) && !defined(__ANDROID__)
+#if !defined(_WIN32)
   // This is only needed on Linux.
   if (!s_shmem_name.empty())
     MemMap::DeleteSharedMemory(s_shmem_name.c_str());
@@ -431,10 +425,8 @@ bool Bus::SetRAMSize(u32 ram_size)
 
   g_ram_size = ram_size;
 
-#ifndef __ANDROID__
   Exports::RAM_SIZE = g_ram_size;
   Exports::RAM_MASK = g_ram_mask;
-#endif
   return true;
 }
 
@@ -573,8 +565,8 @@ void Bus::RecalculateMemoryTimings()
   TRACE_LOG("SPU Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.spu_delay_size.data_bus_16bit ? 16 : 8, g_spu_access_time[0] + 1, g_spu_access_time[1] + 1,
             g_spu_access_time[2] + 1);
-  const u32 exp1_bus_width = s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u;
-  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}", exp1_bus_width, g_exp1_access_time[0] + 1,
+  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}",
+            s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u, g_exp1_access_time[0] + 1,
             g_exp1_access_time[1] + 1, g_exp1_access_time[2] + 1);
   TRACE_LOG("EXP3 Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.exp3_delay_size.data_bus_16bit ? 16 : 8, g_exp3_access_time[0] + 1,

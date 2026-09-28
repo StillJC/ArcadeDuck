@@ -95,14 +95,12 @@ Log_SetChannel(System);
 #include <objbase.h>
 #endif
 
-#ifndef __ANDROID__
 #define ENABLE_DISCORD_PRESENCE 1
 #define ENABLE_PINE_SERVER 1
 #define ENABLE_GDB_SERVER 1
 #define ENABLE_SOCKET_MULTIPLEXER 1
 #include "gdb_server.h"
 #include "pine_server.h"
-#endif
 
 // #define PROFILE_MEMORY_SAVE_STATES 1
 
@@ -1330,7 +1328,6 @@ void System::SetDefaultSettings(SettingsInterface& si)
 
   temp.Save(si, false);
 
-#ifndef __ANDROID__
   si.SetStringValue("MediaCapture", "Backend", MediaCapture::GetBackendName(Settings::DEFAULT_MEDIA_CAPTURE_BACKEND));
   si.SetStringValue("MediaCapture", "Container", Settings::DEFAULT_MEDIA_CAPTURE_CONTAINER);
   si.SetBoolValue("MediaCapture", "VideoCapture", true);
@@ -1346,7 +1343,6 @@ void System::SetDefaultSettings(SettingsInterface& si)
   si.SetStringValue("MediaCapture", "AudioCodec", "");
   si.SetBoolValue("MediaCapture", "AudioCodecUseArgs", false);
   si.SetStringValue("MediaCapture", "AudioCodecArgs", "");
-#endif
 }
 
 void System::ApplySettings(bool display_osd_messages)
@@ -2419,8 +2415,7 @@ void System::Throttle(Common::Timer::Value current_time)
   }
   else
   {
-    // Use a spinwait if we undersleep for all platforms except android.. don't want to burn battery.
-    // Linux also seems to do a much better job of waking up at the requested time.
+    // Use a spinwait if we undersleep. Linux also seems to do a much better job of waking up at the requested time.
 #if !defined(__linux__)
     Common::Timer::SleepUntil(s_next_frame_time, g_settings.display_optimal_frame_pacing);
 #else
@@ -2428,7 +2423,6 @@ void System::Throttle(Common::Timer::Value current_time)
 #endif
   }
 #else
-  // No spinwait on Android, see above.
   Common::Timer::SleepUntil(s_next_frame_time, false);
 #endif
 
@@ -3872,17 +3866,12 @@ bool System::CheckForSBIFile(CDImage* image, Error* error)
       return true;
     }
   }
-#ifndef __ANDROID__
   Error::SetStringFmt(
     error,
     TRANSLATE_FS("System", "You are attempting to run a libcrypt protected game without an SBI file:\n\n{0}: "
                            "{1}\n\nYour dump is incomplete, you must add the SBI file to run this game. \n\nThe "
                            "name of the SBI file must match the name of the disc image."),
     s_running_game_serial, s_running_game_title);
-#else
-  // Shorter because no confirm messages.
-  Error::SetStringView(error, "Missing SBI file.", "The selected game requires a SBI file to run properly.");
-#endif
 
   return false;
 }

@@ -27,7 +27,7 @@
 #include <mach/mach_vm.h>
 #include <mach/vm_map.h>
 #include <sys/mman.h>
-#elif !defined(__ANDROID__)
+#else
 #include <cerrno>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -598,7 +598,7 @@ void MemMap::EndCodeWrite()
 
 #endif
 
-#elif !defined(__ANDROID__)
+#else
 
 bool MemMap::MemProtect(void* baseaddr, size_t size, PageProtect mode)
 {

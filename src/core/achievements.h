@@ -135,7 +135,6 @@ void DrawGameOverlays();
 /// Draws ImGui overlays when paused.
 void DrawPauseMenuOverlays();
 
-#ifndef __ANDROID__
 
 /// Queries the achievement list, and if no achievements are available, returns false.
 bool PrepareAchievementsWindow();
@@ -149,7 +148,6 @@ bool PrepareLeaderboardsWindow();
 /// Renders the leaderboard list.
 void DrawLeaderboardsWindow();
 
-#endif // __ANDROID__
 
 #ifdef ENABLE_RAINTEGRATION
 /// Prevents the internal implementation from being used. Instead, RAIntegration will be

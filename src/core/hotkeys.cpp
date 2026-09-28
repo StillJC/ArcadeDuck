@@ -34,7 +34,6 @@ void Settings::SetDefaultHotkeyConfig(SettingsInterface& si)
 {
   si.ClearSection("Hotkeys");
 
-#ifndef __ANDROID__
   si.SetStringValue("Hotkeys", "FastForward", "Keyboard/Tab");
   si.SetStringValue("Hotkeys", "TogglePause", "Keyboard/Space");
   si.SetStringValue("Hotkeys", "Screenshot", "Keyboard/F10");
@@ -45,7 +44,6 @@ void Settings::SetDefaultHotkeyConfig(SettingsInterface& si)
   si.SetStringValue("Hotkeys", "SaveSelectedSaveState", "Keyboard/F2");
   si.SetStringValue("Hotkeys", "SelectPreviousSaveStateSlot", "Keyboard/F3");
   si.SetStringValue("Hotkeys", "SelectNextSaveStateSlot", "Keyboard/F4");
-#endif
 }
 
 static void HotkeyModifyResolutionScale(s32 increment)
@@ -149,7 +147,6 @@ static void HotkeyToggleOSD()
   g_settings.display_show_enhancements ^= Host::GetBoolSettingValue("Display", "ShowEnhancements", false);
 }
 
-#ifndef __ANDROID__
 
 static bool CanPause()
 {
@@ -176,16 +173,13 @@ static bool CanPause()
   return true;
 }
 
-#endif
 
 BEGIN_HOTKEY_LIST(g_common_hotkeys)
-#ifndef __ANDROID__
 DEFINE_HOTKEY("OpenPauseMenu", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Open Pause Menu"),
               [](s32 pressed) {
                 if (!pressed && CanPause())
                   FullscreenUI::OpenPauseMenu();
               })
-#endif
 
 DEFINE_HOTKEY("FastForward", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Fast Forward"),
               [](s32 pressed) {
@@ -212,7 +206,6 @@ DEFINE_HOTKEY("ToggleTurbo", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOO
                   System::SetTurboEnabled(!System::IsTurboEnabled());
               })
 
-#ifndef __ANDROID__
 DEFINE_HOTKEY("ToggleFullscreen", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Toggle Fullscreen"),
               [](s32 pressed) {
                 if (!pressed)
@@ -230,7 +223,6 @@ DEFINE_HOTKEY("PowerOff", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("
                 if (!pressed && CanPause())
                   Host::RequestSystemShutdown(true, g_settings.save_state_on_exit);
               })
-#endif
 
 DEFINE_HOTKEY("Screenshot", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Save Screenshot"),
               [](s32 pressed) {
@@ -238,7 +230,6 @@ DEFINE_HOTKEY("Screenshot", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP
                   System::SaveScreenshot();
               })
 
-#ifndef __ANDROID__
 DEFINE_HOTKEY("ToggleMediaCapture", TRANSLATE_NOOP("Hotkeys", "General"),
               TRANSLATE_NOOP("Hotkeys", "Toggle Media Capture"), [](s32 pressed) {
                 if (!pressed)
@@ -261,20 +252,17 @@ DEFINE_HOTKEY("OpenLeaderboards", TRANSLATE_NOOP("Hotkeys", "General"),
                 if (!pressed && CanPause())
                   FullscreenUI::OpenLeaderboardsWindow();
               })
-#endif
 
 DEFINE_HOTKEY("Reset", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Reset System"), [](s32 pressed) {
   if (!pressed)
     Host::RunOnCPUThread(System::ResetSystem);
 })
 
-#ifndef __ANDROID__
 DEFINE_HOTKEY("FrameStep", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Frame Step"),
               [](s32 pressed) {
                 if (!pressed)
                   System::DoFrameStep();
               })
-#endif
 
 DEFINE_HOTKEY("Rewind", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Rewind"), [](s32 pressed) {
   if (pressed < 0)
@@ -282,19 +270,11 @@ DEFINE_HOTKEY("Rewind", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hot
   System::SetRewindState(pressed > 0);
 })
 
-#ifndef __ANDROID__
 DEFINE_HOTKEY("ToggleCheats", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Toggle Cheats"),
               [](s32 pressed) {
                 if (!pressed)
                   System::DoToggleCheats();
               })
-#else
-DEFINE_HOTKEY("TogglePatchCodes", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Toggle Patch Codes"),
-              [](s32 pressed) {
-                if (!pressed)
-                  System::DoToggleCheats();
-              })
-#endif
 
 DEFINE_HOTKEY("ToggleOverclocking", TRANSLATE_NOOP("Hotkeys", "System"),
               TRANSLATE_NOOP("Hotkeys", "Toggle Clock Speed Control (Overclocking)"), [](s32 pressed) {

@@ -18,9 +18,7 @@
 #include "soundtouch/SoundTouch.h"
 #include "soundtouch/SoundTouchDLL.h"
 
-#ifndef __ANDROID__
 #include "freesurround_decoder.h"
-#endif
 
 #include <algorithm>
 #include <cmath>
@@ -79,11 +77,9 @@ std::vector<std::pair<std::string, std::string>> AudioStream::GetDriverNames(Aud
   std::vector<std::pair<std::string, std::string>> ret;
   switch (backend)
   {
-#ifndef __ANDROID__
     case AudioBackend::Cubeb:
       ret = GetCubebDriverNames();
       break;
-#endif
 
     default:
       break;
@@ -98,11 +94,9 @@ std::vector<AudioStream::DeviceInfo> AudioStream::GetOutputDevices(AudioBackend 
   std::vector<AudioStream::DeviceInfo> ret;
   switch (backend)
   {
-#ifndef __ANDROID__
     case AudioBackend::Cubeb:
       ret = GetCubebOutputDevices(driver, sample_rate);
       break;
-#endif
 
     default:
       break;
@@ -117,19 +111,11 @@ std::unique_ptr<AudioStream> AudioStream::CreateStream(AudioBackend backend, u32
 {
   switch (backend)
   {
-#ifndef __ANDROID__
     case AudioBackend::Cubeb:
       return CreateCubebAudioStream(sample_rate, parameters, driver_name, device_name, error);
 
     case AudioBackend::SDL:
       return CreateSDLAudioStream(sample_rate, parameters, error);
-#else
-    case AudioBackend::AAudio:
-      return CreateAAudioAudioStream(sample_rate, parameters, error);
-
-    case AudioBackend::OpenSLES:
-      return CreateOpenSLESAudioStream(sample_rate, parameters, error);
-#endif
 
     case AudioBackend::Null:
       return CreateNullStream(sample_rate, parameters.buffer_ms);
@@ -159,23 +145,13 @@ u32 AudioStream::GetMSForBufferSize(u32 sample_rate, u32 buffer_size)
 
 static constexpr const std::array s_backend_names = {
   "Null",
-#ifndef __ANDROID__
   "Cubeb",
   "SDL",
-#else
-  "AAudio",
-  "OpenSLES",
-#endif
 };
 static constexpr const std::array s_backend_display_names = {
   TRANSLATE_NOOP("AudioStream", "Null (No Output)"),
-#ifndef __ANDROID__
   TRANSLATE_NOOP("AudioStream", "Cubeb"),
   TRANSLATE_NOOP("AudioStream", "SDL"),
-#else
-  "AAudio",
-  "OpenSL ES",
-#endif
 };
 
 std::optional<AudioBackend> AudioStream::ParseBackendName(const char* str)
@@ -584,14 +560,12 @@ void AudioStream::DestroyBuffer()
 
 void AudioStream::EmptyBuffer()
 {
-#ifndef __ANDROID__
   if (IsExpansionEnabled())
   {
     m_expander->Flush();
     m_expand_output_buffer = nullptr;
     m_expand_buffer_pos = 0;
   }
-#endif
 
   if (IsStretchEnabled())
   {
@@ -741,7 +715,6 @@ void AudioStream::ExpandAllocate()
   if (m_parameters.expansion_mode == AudioExpansionMode::Disabled)
     return;
 
-#ifndef __ANDROID__
   static constexpr std::array<std::pair<FreeSurroundDecoder::ChannelSetup, bool>,
                               static_cast<size_t>(AudioExpansionMode::Count)>
     channel_setup_mapping = {{
@@ -766,9 +739,6 @@ void AudioStream::ExpandAllocate()
   m_expander->SetRearSeparation(m_parameters.expand_rear_separation);
   m_expander->SetLowCutoff(static_cast<float>(m_parameters.expand_low_cutoff) / m_sample_rate * 2);
   m_expander->SetHighCutoff(static_cast<float>(m_parameters.expand_high_cutoff) / m_sample_rate * 2);
-#else
-  Panic("Attempting to use expansion on Android.");
-#endif
 }
 
 void AudioStream::EndWrite(u32 num_frames)
@@ -790,7 +760,6 @@ void AudioStream::EndWrite(u32 num_frames)
     return;
   }
 
-#ifndef __ANDROID__
   if (IsExpansionEnabled())
   {
     // StretchWriteBlock() overwrites the staging buffer on output, so we need to copy into the expand buffer first.
@@ -810,7 +779,6 @@ void AudioStream::EndWrite(u32 num_frames)
     }
   }
   else
-#endif
   {
     S16ChunkToFloat(m_staging_buffer.get(), m_float_buffer.get(), CHUNK_SIZE * NUM_INPUT_CHANNELS);
     StretchWriteBlock(m_float_buffer.get());
@@ -1250,14 +1218,10 @@ void AudioStreamParameters::Load(SettingsInterface& si, const char* section)
     AudioStream::ParseStretchMode(
       si.GetStringValue(section, "StretchMode", AudioStream::GetStretchModeName(DEFAULT_STRETCH_MODE)).c_str())
       .value_or(DEFAULT_STRETCH_MODE);
-#ifndef __ANDROID__
   expansion_mode =
     AudioStream::ParseExpansionMode(
       si.GetStringValue(section, "ExpansionMode", AudioStream::GetExpansionModeName(DEFAULT_EXPANSION_MODE)).c_str())
       .value_or(DEFAULT_EXPANSION_MODE);
-#else
-  expansion_mode = AudioExpansionMode::Disabled;
-#endif
   output_latency_ms = static_cast<u16>(std::min<u32>(
     si.GetUIntValue(section, "OutputLatencyMS", DEFAULT_OUTPUT_LATENCY_MS), std::numeric_limits<u16>::max()));
   output_latency_minimal = si.GetBoolValue(section, "OutputLatencyMinimal", DEFAULT_OUTPUT_LATENCY_MINIMAL);

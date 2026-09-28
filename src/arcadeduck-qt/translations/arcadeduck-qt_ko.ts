@@ -12002,16 +12002,6 @@ This action cannot be undone.</source>
         <translation>PGXP는 소프트웨어 렌더러와 호환되지 않으므로 PGXP를 비활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>Android용 32비트 ARM에서는 되감기가 지원되지 않습니다.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>선행 실행은 Android용 32비트 ARM에서는 지원되지 않습니다.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>선행 실행이 활성화되어 되감기가 비활성화되었습니다. 선행 실행을 사용하면 시스템 요구 사항이 크게 증가합니다.</translation>

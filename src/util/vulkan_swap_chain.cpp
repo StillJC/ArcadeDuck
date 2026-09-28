@@ -133,28 +133,6 @@ VkSurfaceKHR VulkanSwapChain::CreateVulkanSurface(VkInstance instance, VkPhysica
   }
 #endif
 
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-  if (wi->type == WindowInfo::Type::Android)
-  {
-    VkAndroidSurfaceCreateInfoKHR surface_create_info = {
-      VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,  // VkStructureType                sType
-      nullptr,                                            // const void*                    pNext
-      0,                                                  // VkAndroidSurfaceCreateFlagsKHR flags
-      reinterpret_cast<ANativeWindow*>(wi->window_handle) // ANativeWindow* window
-    };
-
-    VkSurfaceKHR surface;
-    VkResult res = vkCreateAndroidSurfaceKHR(instance, &surface_create_info, nullptr, &surface);
-    if (res != VK_SUCCESS)
-    {
-      LOG_VULKAN_ERROR(res, "vkCreateAndroidSurfaceKHR failed: ");
-      return VK_NULL_HANDLE;
-    }
-
-    return surface;
-  }
-#endif
-
 #if defined(VK_USE_PLATFORM_XLIB_KHR)
   if (wi->type == WindowInfo::Type::X11)
   {
@@ -364,12 +342,9 @@ bool VulkanSwapChain::CreateSwapChain()
     (surface_capabilities.maxImageCount == 0) ? std::numeric_limits<u32>::max() : surface_capabilities.maxImageCount);
   DEV_LOG("Creating a swap chain with {} images in present mode {}", image_count, PresentModeToString(m_present_mode));
 
-  // Determine the dimensions of the swap chain. Values of -1 indicate the size we specify here
-  // determines window size? Android sometimes lags updating currentExtent, so don't use it.
+  // Determine the dimensions of the swap chain. Values of -1 indicate the size we specify here.
   VkExtent2D size = surface_capabilities.currentExtent;
-#ifndef __ANDROID__
   if (size.width == UINT32_MAX)
-#endif
   {
     size.width = m_window_info.surface_width;
     size.height = m_window_info.surface_height;

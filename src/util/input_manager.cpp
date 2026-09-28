@@ -637,12 +637,8 @@ static std::array<const char*, static_cast<u32>(InputSourceType::Count)> s_input
   "DInput",
   "XInput",
 #endif
-#ifndef __ANDROID__
   "SDL",
   "RawInput",
-#else
-  "Android",
-#endif
 }};
 
 InputSource* InputManager::GetInputSourceInterface(InputSourceType type)
@@ -671,15 +667,10 @@ bool InputManager::GetInputSourceDefaultEnabled(InputSourceType type)
       return false;
 #endif
 
-#ifndef __ANDROID__
     case InputSourceType::SDL:
       return true;
     case InputSourceType::RawInput:
       return false;
-#else
-    case InputSourceType::Android:
-      return true;
-#endif
 
     default:
       return false;
@@ -1140,13 +1131,11 @@ void InputManager::UpdatePointerCount()
     return;
   }
 
-#ifndef __ANDROID__
   InputSource* ris = GetInputSourceInterface(InputSourceType::RawInput);
   DebugAssert(ris);
 
   s_pointer_count = 0;
   s_pointer_count = std::min<u32>(static_cast<u32>(ris->EnumeratePointerDevices().size()), MAX_POINTER_DEVICES);
-#endif
 }
 
 u32 InputManager::GetPointerCount()
@@ -1548,12 +1537,6 @@ GenericInputBindingMapping InputManager::GetGenericBindingMapping(std::string_vi
 
 bool InputManager::IsInputSourceEnabled(SettingsInterface& si, InputSourceType type)
 {
-#ifdef __ANDROID__
-  // Force Android source to always be enabled so nobody accidentally breaks it via ini.
-  if (type == InputSourceType::Android)
-    return true;
-#endif
-
   return si.GetBoolValue("InputSources", InputManager::InputSourceToString(type), GetInputSourceDefaultEnabled(type));
 }
 
@@ -1596,11 +1579,7 @@ void InputManager::ReloadSources(SettingsInterface& si, std::unique_lock<std::mu
   UpdateInputSourceState(si, settings_lock, InputSourceType::XInput, &InputSource::CreateXInputSource);
   UpdateInputSourceState(si, settings_lock, InputSourceType::RawInput, &InputSource::CreateWin32RawInputSource);
 #endif
-#ifndef __ANDROID__
   UpdateInputSourceState(si, settings_lock, InputSourceType::SDL, &InputSource::CreateSDLSource);
-#else
-  UpdateInputSourceState(si, settings_lock, InputSourceType::Android, &InputSource::CreateAndroidSource);
-#endif
 
   UpdatePointerCount();
 }

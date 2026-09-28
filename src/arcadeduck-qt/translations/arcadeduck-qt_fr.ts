@@ -12018,16 +12018,6 @@ Cette action ne peut pas être annulée.</translation>
         <translation>PGXP est incompatible avec le logiciel de rendu, ce qui désactive PGXP.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>Le rewind n&apos;est pas supporté en 32-bit ARM sous Android.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>Le runahead n&apos;est pas supporté en 32-bit ARM sous Android.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>Le rewind est désactivé car le runahead est activé.</translation>

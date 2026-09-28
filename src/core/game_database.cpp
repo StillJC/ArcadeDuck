@@ -487,14 +487,7 @@ void GameDatabase::Entry::ApplySettings(Settings& settings, bool display_osd_mes
   {
     if (display_osd_messages && settings.gpu_pgxp_enable && !settings.gpu_pgxp_cpu)
     {
-#ifndef __ANDROID__
       APPEND_MESSAGE(TRANSLATE_SV("GameDatabase", "PGXP CPU mode enabled."));
-#else
-      Host::AddIconOSDMessage("gamedb_force_pgxp_cpu", ICON_EMOJI_WARNING,
-                              "This game requires PGXP CPU mode, which increases system requirements.\n"
-                              "      If the game runs too slow, disable PGXP for this game.",
-                              Host::OSD_WARNING_DURATION);
-#endif
     }
 
     settings.gpu_pgxp_cpu = settings.gpu_pgxp_enable;

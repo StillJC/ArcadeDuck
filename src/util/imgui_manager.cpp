@@ -283,13 +283,8 @@ bool ImGuiManager::Initialize(float global_scale, bool show_osd_messages, Error*
   io.BackendUsingLegacyKeyArrays = 0;
   io.BackendUsingLegacyNavInputArray = 0;
   io.KeyRepeatDelay = 0.5f;
-#ifndef __ANDROID__
-  // Android has no keyboard, nor are we using ImGui for any actual user-interactable windows.
   io.ConfigFlags |=
     ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NoMouseCursorChange;
-#else
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
-#endif
 
   s_window_width = static_cast<float>(g_gpu_device->GetWindowWidth());
   s_window_height = static_cast<float>(g_gpu_device->GetWindowHeight());

@@ -12009,16 +12009,6 @@ A compatibilidade com pacotes de cheats do MAME está planejada para uma atualiz
         <translation>PGXP é incompatível com o rederizador por software, desligando PGXP.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>O retrocesso não é compatível com o a plataforma ARM de 32 bits para Android.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>Pulo de quadros não é compatível com a versão de 32Bits.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>Função de retrocesso desligada porque o avanço rápido está ligado.</translation>

@@ -26,13 +26,8 @@ class SoundTouch;
 enum class AudioBackend : u8
 {
   Null,
-#ifndef __ANDROID__
   Cubeb,
   SDL,
-#else
-  AAudio,
-  OpenSLES,
-#endif
   Count
 };
 
@@ -85,13 +80,8 @@ struct AudioStreamParameters
 
   static constexpr AudioStretchMode DEFAULT_STRETCH_MODE = AudioStretchMode::LowLatency;
   static constexpr AudioExpansionMode DEFAULT_EXPANSION_MODE = AudioExpansionMode::Disabled;
-#ifndef __ANDROID__
   static constexpr u16 DEFAULT_BUFFER_MS = 50;
   static constexpr u16 DEFAULT_OUTPUT_LATENCY_MS = 20;
-#else
-  static constexpr u16 DEFAULT_BUFFER_MS = 100;
-  static constexpr u16 DEFAULT_OUTPUT_LATENCY_MS = 20;
-#endif
   static constexpr u16 DEFAULT_LOW_LATENCY_BUFFER_MS = 10;
   static constexpr bool DEFAULT_OUTPUT_LATENCY_MINIMAL = false;
   static constexpr bool DEFAULT_WASAPI_RAW_OUTPUT = false;
@@ -132,11 +122,7 @@ public:
   static constexpr u32 MIN_EXPANSION_BLOCK_SIZE = 256;
   static constexpr u32 MAX_EXPANSION_BLOCK_SIZE = 4096;
 
-#ifndef __ANDROID__
   static constexpr AudioBackend DEFAULT_BACKEND = AudioBackend::Cubeb;
-#else
-  static constexpr AudioBackend DEFAULT_BACKEND = AudioBackend::AAudio;
-#endif
 
   struct DeviceInfo
   {
@@ -254,7 +240,6 @@ private:
   static constexpr u32 STRETCH_RESET_THRESHOLD = 5;
   static constexpr u32 TARGET_IPS = 691;
 
-#ifndef __ANDROID__
   static std::vector<std::pair<std::string, std::string>> GetCubebDriverNames();
   static std::vector<DeviceInfo> GetCubebOutputDevices(const char* driver, u32 sample_rate);
   static std::unique_ptr<AudioStream> CreateCubebAudioStream(u32 sample_rate, const AudioStreamParameters& parameters,
@@ -262,12 +247,6 @@ private:
                                                              Error* error);
   static std::unique_ptr<AudioStream> CreateSDLAudioStream(u32 sample_rate, const AudioStreamParameters& parameters,
                                                            Error* error);
-#else
-  static std::unique_ptr<AudioStream> CreateAAudioAudioStream(u32 sample_rate, const AudioStreamParameters& parameters,
-                                                              Error* error);
-  static std::unique_ptr<AudioStream> CreateOpenSLESAudioStream(u32 sample_rate,
-                                                                const AudioStreamParameters& parameters, Error* error);
-#endif
 
   ALWAYS_INLINE bool IsExpansionEnabled() const { return m_parameters.expansion_mode != AudioExpansionMode::Disabled; }
   ALWAYS_INLINE bool IsStretchEnabled() const { return m_parameters.stretch_mode != AudioStretchMode::Off; }
@@ -277,9 +256,7 @@ private:
 
   void InternalWriteFrames(SampleType* samples, u32 num_frames);
 
-#ifndef __ANDROID__
   void ExpandAllocate();
-#endif
 
   void StretchAllocate();
   void StretchDestroy();
@@ -346,14 +323,12 @@ private:
   // float buffer, soundtouch only accepts float samples as input
   std::unique_ptr<float[]> m_float_buffer;
 
-#ifndef __ANDROID__
   std::unique_ptr<FreeSurroundDecoder> m_expander;
 
   // block buffer for expansion
   std::unique_ptr<float[]> m_expand_buffer;
   float* m_expand_output_buffer = nullptr;
   u32 m_expand_buffer_pos = 0;
-#endif
 };
 
 template<AudioExpansionMode mode, AudioStream::ReadChannel c0, AudioStream::ReadChannel c1, AudioStream::ReadChannel c2,

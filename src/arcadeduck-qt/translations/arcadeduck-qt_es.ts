@@ -12018,16 +12018,6 @@ Esta acción no se puede revertir.</translation>
         <translation>PGXP es incompatible con el renderizador por software, se deshabilitará.</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>El rebobinado no está disponible en dispositivos ARM de 32 bits.</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>El procesamiento anticipado no está disponible en dispositivos ARM de 32 bits.</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>El rebobinado está deshabilitado porque el procesamiento anticipado está habilitado.</translation>

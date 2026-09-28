@@ -186,12 +186,10 @@ static void LeaderboardFetchNearbyCallback(int result, const char* error_message
 static void LeaderboardFetchAllCallback(int result, const char* error_message, rc_client_leaderboard_entry_list_t* list,
                                         rc_client_t* client, void* callback_userdata);
 
-#ifndef __ANDROID__
 static void DrawAchievement(const rc_client_achievement_t* cheevo);
 static void DrawLeaderboardListEntry(const rc_client_leaderboard_t* lboard);
 static void DrawLeaderboardEntry(const rc_client_leaderboard_entry_t& entry, bool is_self, float rank_column_width,
                                  float name_column_width, float time_column_width, float column_spacing);
-#endif
 
 static bool s_hardcore_mode = false;
 
@@ -2021,7 +2019,6 @@ bool Achievements::ConfirmHardcoreModeDisable(const char* trigger)
 
 void Achievements::ConfirmHardcoreModeDisableAsync(const char* trigger, std::function<void(bool)> callback)
 {
-#ifndef __ANDROID__
 #ifdef ENABLE_RAINTEGRATION
   if (IsUsingRAIntegration())
   {
@@ -2055,21 +2052,14 @@ void Achievements::ConfirmHardcoreModeDisableAsync(const char* trigger, std::fun
                 trigger),
     std::move(real_callback), fmt::format(ICON_FA_CHECK " {}", TRANSLATE_SV("Achievements", "Yes")),
     fmt::format(ICON_FA_TIMES " {}", TRANSLATE_SV("Achievements", "No")));
-#else
-  Host::AddOSDMessage(fmt::format(TRANSLATE_FS("Achievements", "Cannot {} while hardcode mode is active."), trigger),
-                      Host::OSD_WARNING_DURATION);
-  callback(false);
-#endif
 }
 
 void Achievements::ClearUIState()
 {
-#ifndef __ANDROID__
   if (FullscreenUI::IsAchievementsWindowOpen() || FullscreenUI::IsLeaderboardsWindowOpen())
     FullscreenUI::ReturnToPreviousWindow();
 
   CloseLeaderboard();
-#endif
 
   s_achievement_badge_paths = {};
 
@@ -2239,7 +2229,6 @@ void Achievements::DrawGameOverlays()
   }
 }
 
-#ifndef __ANDROID__
 
 void Achievements::DrawPauseMenuOverlays()
 {
@@ -3166,7 +3155,6 @@ void Achievements::DrawLeaderboardListEntry(const rc_client_leaderboard_t* lboar
     OpenLeaderboard(lboard);
 }
 
-#endif // __ANDROID__
 
 void Achievements::OpenLeaderboard(const rc_client_leaderboard_t* lboard)
 {

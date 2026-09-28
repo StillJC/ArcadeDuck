@@ -12002,16 +12002,6 @@ MAME cheat package compatibility is planned for a future update.</source>
         <translation>PGXP与软件渲染器不兼容，禁用PGXP。</translation>
     </message>
     <message>
-        <location filename="../../core/settings.cpp" line="796"/>
-        <source>Rewind is not supported on 32-bit ARM for Android.</source>
-        <translation>倒带不支持安卓系统下32位ARM处理器。</translation>
-    </message>
-    <message>
-        <location filename="../../core/settings.cpp" line="802"/>
-        <source>Runahead is not supported on 32-bit ARM for Android.</source>
-        <translation>预运行不支持安卓系统下32位ARM处理器。</translation>
-    </message>
-    <message>
         <location filename="../../core/settings.cpp" line="811"/>
         <source>Rewind is disabled because runahead is enabled.</source>
         <translation>倒带被禁用，因为启用了预运行。</translation>

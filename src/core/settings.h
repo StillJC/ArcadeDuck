@@ -509,32 +509,23 @@ struct Settings
 
   static constexpr SaveStateCompressionMode DEFAULT_SAVE_STATE_COMPRESSION_MODE = SaveStateCompressionMode::ZstDefault;
 
-#ifndef __ANDROID__
   static const MediaCaptureBackend DEFAULT_MEDIA_CAPTURE_BACKEND;
   static constexpr const char* DEFAULT_MEDIA_CAPTURE_CONTAINER = "mp4";
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_WIDTH = 640;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_HEIGHT = 480;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_BITRATE = 6000;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_AUDIO_BITRATE = 128;
-#endif
 
   // Enable console logging by default on Linux platforms.
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
   static constexpr bool DEFAULT_LOG_TO_CONSOLE = true;
 #else
   static constexpr bool DEFAULT_LOG_TO_CONSOLE = false;
 #endif
 
-  // Android doesn't create settings until they're first opened, so we have to override the defaults here.
-#ifndef __ANDROID__
   static constexpr bool DEFAULT_SAVE_STATE_BACKUPS = true;
   static constexpr bool DEFAULT_FAST_BOOT_VALUE = false;
   static constexpr bool DEFAULT_THREADED_PRESENTATION = false;
-#else
-  static constexpr bool DEFAULT_SAVE_STATE_BACKUPS = false;
-  static constexpr bool DEFAULT_FAST_BOOT_VALUE = true;
-  static constexpr bool DEFAULT_THREADED_PRESENTATION = true;
-#endif
 
   // PINE uses a concept of "slot" to be able to communicate with multiple
   // emulators at the same time, each slot should be unique to each emulator to

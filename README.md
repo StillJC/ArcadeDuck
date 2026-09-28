@@ -119,7 +119,6 @@ The Windows dependency ZIP is **Windows-specific** and should not be treated as 
 Examples of possible future contribution areas include:
 
 - Linux
-- Android
 - macOS or other desktop operating systems
 - Other architectures where the underlying codebase can reasonably be supported
 - A libretro/RetroArch frontend or core integration
