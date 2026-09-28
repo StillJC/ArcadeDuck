@@ -37,6 +37,7 @@ static void FlushLoadDelay();
 static void FlushPipeline();
 
 static u32 GetExceptionVector(bool debug_exception = false);
+
 static void RaiseException(u32 CAUSE_bits, u32 EPC, u32 vector);
 
 static u32 ReadReg(Reg rs);
@@ -362,10 +363,11 @@ ALWAYS_INLINE_RELEASE void CPU::RaiseException(u32 CAUSE_bits, u32 EPC, u32 vect
 
   if (g_state.cop0_regs.cause.BD)
   {
-    // TAR is set to the address which was being fetched in this instruction, or the next instruction to execute if the
-    // exception hadn't occurred in the delay slot.
+    // EPC points back to the branch. TAR is updated only when the branch was
+    // taken; for a not-taken branch, the previous TAR value is preserved.
     g_state.cop0_regs.EPC -= UINT32_C(4);
-    g_state.cop0_regs.TAR = g_state.pc;
+    if (g_state.cop0_regs.cause.BT)
+      g_state.cop0_regs.TAR = g_state.pc;
   }
 
   // current -> previous, switch to kernel mode and disable interrupts
@@ -1984,8 +1986,96 @@ restart_instruction:
   }
 }
 
+namespace CPU {
+
+template<PGXPMode pgxp_mode>
+static void ExecuteRecompilerBranchEventBoundaryImpl(u32 branch_pc, u32 branch_bits, u32 delay_bits)
+{
+  // The recompiler side exit has committed all work before the branch, but
+  // deliberately leaves the branch's own instruction cycle uncommitted.
+  // If an event was already due before the branch, service it and redispatch
+  // without executing the branch.
+  g_state.pc = branch_pc;
+  g_state.npc = branch_pc + sizeof(Instruction);
+  g_state.next_instruction_is_branch_delay_slot = false;
+  g_state.branch_was_taken = false;
+  g_state.current_instruction_in_branch_delay_slot = false;
+  g_state.current_instruction_was_branch_taken = false;
+  g_state.exception_raised = false;
+
+  if (g_state.pending_ticks >= g_state.downcount)
+  {
+    TimingEvents::RunEvents();
+    return;
+  }
+
+  // Execute the branch using the same architectural path as the interpreter.
+  // The delay-slot opcode came from the already-compiled block, matching the
+  // instruction which was fetched for this branch.
+  g_state.pending_ticks++;
+  g_state.current_instruction.bits = branch_bits;
+  g_state.current_instruction_pc = branch_pc;
+  g_state.next_instruction.bits = delay_bits;
+  g_state.pc = branch_pc + sizeof(Instruction);
+  g_state.npc = branch_pc + (sizeof(Instruction) * 2);
+
+  ExecuteInstruction<pgxp_mode, false>();
+  UpdateLoadDelay();
+
+  if (g_state.exception_raised)
+    return;
+
+  // This is the hardware-visible branch -> event -> delay-slot boundary.
+  if (g_state.pending_ticks >= g_state.downcount)
+  {
+    TimingEvents::RunEvents();
+
+    if (g_state.exception_raised)
+      return;
+  }
+
+  // No interrupt was taken. Execute the already-fetched delay slot, then
+  // return to the dispatcher at the branch continuation.
+  const u32 continuation_pc = g_state.npc;
+  const bool branch_taken = g_state.branch_was_taken;
+
+  g_state.pending_ticks++;
+  g_state.current_instruction.bits = delay_bits;
+  g_state.current_instruction_pc = branch_pc + sizeof(Instruction);
+  g_state.current_instruction_in_branch_delay_slot = true;
+  g_state.current_instruction_was_branch_taken = branch_taken;
+  g_state.next_instruction_is_branch_delay_slot = false;
+  g_state.branch_was_taken = false;
+  g_state.exception_raised = false;
+  g_state.pc = continuation_pc;
+  g_state.npc = continuation_pc + sizeof(Instruction);
+
+  ExecuteInstruction<pgxp_mode, false>();
+  UpdateLoadDelay();
+}
+
+void ExecuteRecompilerBranchEventBoundary(u32 branch_pc, u32 branch_bits, u32 delay_bits)
+{
+  if (g_settings.gpu_pgxp_enable)
+  {
+    if (g_settings.gpu_pgxp_cpu)
+      ExecuteRecompilerBranchEventBoundaryImpl<PGXPMode::CPU>(branch_pc, branch_bits, delay_bits);
+    else
+      ExecuteRecompilerBranchEventBoundaryImpl<PGXPMode::Memory>(branch_pc, branch_bits, delay_bits);
+  }
+  else
+  {
+    ExecuteRecompilerBranchEventBoundaryImpl<PGXPMode::Disabled>(branch_pc, branch_bits, delay_bits);
+  }
+}
+
+} // namespace CPU
+
 void CPU::DispatchInterrupt()
 {
+  const bool irq_before_delay_slot = g_state.next_instruction_is_branch_delay_slot;
+  const u32 irq_pre_npc = g_state.npc;
+
   // If the instruction we're about to execute is a GTE instruction, delay dispatching the interrupt until the next
   // instruction. For some reason, if we don't do this, we end up with incorrectly sorted polygons and flickering..
   SafeReadInstruction(g_state.pc, &g_state.next_instruction.bits);
@@ -2000,6 +2090,11 @@ void CPU::DispatchInterrupt()
     Cop0Registers::CAUSE::MakeValueForException(Exception::INT, g_state.next_instruction_is_branch_delay_slot,
                                                 g_state.branch_was_taken, g_state.next_instruction.cop.cop_n),
     g_state.pc);
+
+  // RaiseException() normally sees pc after the next fetch, where it is already the branch continuation.
+  // At an interrupt boundary before the delay slot, pc is still the delay slot and npc is that continuation.
+  if (irq_before_delay_slot && g_state.cop0_regs.cause.BT)
+    g_state.cop0_regs.TAR = irq_pre_npc;
 
   // Fix up downcount, the pending IRQ set it to zero.
   TimingEvents::UpdateCPUDowncount();
@@ -2475,9 +2570,18 @@ void CPU::CodeCache::InterpretCachedBlock(const Block* block)
     if (g_state.exception_raised)
       break;
 
-    // Cached Interpreter must service timing events at instruction granularity.
-    // Preserve the architectural branch + delay-slot pair before returning to
-    // the dispatcher.
+    // Service an event boundary immediately after a branch while the cached
+    // delay-slot instruction and branch continuation state are still live.
+    // If the event raises an interrupt, DispatchInterrupt() flushes the pipeline
+    // and marks the exception; otherwise continue into the already-fetched delay slot.
+    if (g_state.pending_ticks >= g_state.downcount && info->is_branch_instruction)
+    {
+      TimingEvents::RunEvents();
+
+      if (g_state.exception_raised)
+        break;
+    }
+
     const bool timing_boundary_reached =
       (g_state.pending_ticks >= g_state.downcount && !info->is_branch_instruction);
 
