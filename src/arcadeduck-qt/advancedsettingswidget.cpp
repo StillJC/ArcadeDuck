@@ -250,8 +250,6 @@ void AdvancedSettingsWidget::onResetToDefaultClicked()
   sif->DeleteValue("CDROM", "MechaconVersion");
   sif->DeleteValue("CDROM", "RegionCheck");
   sif->DeleteValue("CDROM", "AllowBootingWithoutSBIFile");
-  sif->DeleteValue("PINE", "Enabled");
-  sif->DeleteValue("PINE", "Slot");
   sif->Save();
   while (m_ui.tweakOptionTable->rowCount() > 0)
     m_ui.tweakOptionTable->removeRow(m_ui.tweakOptionTable->rowCount() - 1);

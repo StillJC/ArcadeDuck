@@ -150,9 +150,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   rewind_save_slots = static_cast<u32>(si.GetIntValue("Main", "RewindSaveSlots", 10));
   runahead_frames = static_cast<u32>(si.GetIntValue("Main", "RunaheadFrameCount", 0));
 
-  pine_enable = si.GetBoolValue("PINE", "Enabled", false);
-  pine_slot = static_cast<u16>(
-    std::min<u32>(si.GetUIntValue("PINE", "Slot", DEFAULT_PINE_SLOT), std::numeric_limits<u16>::max()));
 
   system_link_enabled = si.GetBoolValue("SystemLink", "Enabled", false);
   system_link_server_address = si.GetStringValue("SystemLink", "ServerAddress", "127.0.0.1");
@@ -481,8 +478,6 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
   si.SetIntValue("Main", "RewindSaveSlots", rewind_save_slots);
   si.SetIntValue("Main", "RunaheadFrameCount", runahead_frames);
 
-  si.SetBoolValue("PINE", "Enabled", pine_enable);
-  si.SetUIntValue("PINE", "Slot", pine_slot);
 
   if (!ignore_base)
   {

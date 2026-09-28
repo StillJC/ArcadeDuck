@@ -422,7 +422,7 @@ void CalculateRewindMemoryUsage(u32 num_saves, u32 resolution_scale, u64* ram_us
 void ClearMemorySaveStates();
 void SetRunaheadReplayFlag();
 
-/// Shared socket multiplexer, used by PINE/GDB/etc.
+/// Shared socket multiplexer used by GDB and arcade networking transports.
 SocketMultiplexer* GetSocketMultiplexer();
 void ReleaseSocketMultiplexer();
 

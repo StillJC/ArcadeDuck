@@ -99,7 +99,6 @@
     <ClCompile Include="cpu_newrec_compiler_riscv64.cpp" />
     <ClCompile Include="cpu_newrec_compiler_aarch32.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
-    <ClCompile Include="pine_server.cpp" />
     <ClCompile Include="gdb_server.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -212,7 +211,6 @@
     <ClInclude Include="cpu_newrec_compiler_aarch32.h" />
     <ClInclude Include="achievements_private.h" />
     <ClInclude Include="legacy_pad_state.h" />
-    <ClInclude Include="pine_server.h" />
     <ClInclude Include="gdb_server.h" />
   </ItemGroup>
   <ItemGroup>
