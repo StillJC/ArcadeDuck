@@ -165,9 +165,9 @@ VkInstance VulkanDevice::CreateVulkanInstance(const WindowInfo& wi, OptionalExte
   VkApplicationInfo app_info = {};
   app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   app_info.pNext = nullptr;
-  app_info.pApplicationName = "DuckStation";
+  app_info.pApplicationName = "ArcadeDuck";
   app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-  app_info.pEngineName = "DuckStation";
+  app_info.pEngineName = "ArcadeDuck";
   app_info.engineVersion = VK_MAKE_VERSION(0, 1, 0);
   app_info.apiVersion = apiVersion;
 

@@ -41,7 +41,7 @@
     <message>
         <location filename="../aboutdialog.ui" line="101"/>
         <source>ArcadeDuck</source>
-        <translation>Duckstation</translation>
+        <translation>ArcadeDuck</translation>
     </message>
 </context>
 <context>
@@ -6457,7 +6457,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6933"/>
         <source>Exit ArcadeDuck</source>
-        <translation>Sair do Duckstation</translation>
+        <translation>Sair do ArcadeDuck</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6935"/>

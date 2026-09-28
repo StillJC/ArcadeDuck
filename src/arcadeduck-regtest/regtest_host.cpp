@@ -65,7 +65,7 @@ bool RegTestHost::SetFolders()
   EmuFolders::DataRoot = EmuFolders::AppRoot;
 
 #ifdef __APPLE__
-  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/DuckStation";
+  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/ArcadeDuck";
   const char* home_dir = getenv("HOME");
   if (home_dir)
     EmuFolders::DataRoot = Path::Combine(home_dir, MAC_DATA_DIR);

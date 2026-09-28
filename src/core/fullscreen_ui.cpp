@@ -6535,7 +6535,7 @@ void FullscreenUI::DrawAboutWindow()
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_COMMENT, "Support"), false))
       ExitFullscreenAndOpenURL("https://discord.gg/fQ9HvgKCg");
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_PEOPLE_CARRY, "Contributor List"), false))
-      ExitFullscreenAndOpenURL("https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md");
+      ExitFullscreenAndOpenURL("https://github.com/StillJC/ArcadeDuck/blob/main/CONTRIBUTORS.md");
 
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close"), false) || WantsToCloseMenu())
     {

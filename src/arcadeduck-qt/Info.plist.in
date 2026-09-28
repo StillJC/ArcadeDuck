@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>DuckStation</string>
+    <string>ArcadeDuck</string>
     <key>CFBundleIconFile</key>
     <string>ArcadeDuck.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.github.stenzek.duckstation</string>
+    <string>io.github.StillJC.ArcadeDuck</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundlePackageType</key>

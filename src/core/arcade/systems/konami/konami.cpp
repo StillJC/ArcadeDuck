@@ -2076,7 +2076,7 @@ bool ReadGVDataSector(u32 lba, u8* buffer, u32* cdimage_lba, u32* track_number)
   if (track_number)
     *track_number = s_gv_runtime->data_track_number;
 
-  // DuckStation's CHD reader can expose a GV data track in either cooked
+  // The CHD reader can expose a GV data track in either cooked
   // 2048-byte form (payload begins at byte 0) or raw Mode 1/Mode 2 form.
   // Detect the standard raw-sector sync/header instead of assuming one layout
   // for every disc. Mode 1 user data begins at byte 16; Mode 2 begins at 24.

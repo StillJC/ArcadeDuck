@@ -212,7 +212,7 @@ bool Bus::AllocateMemoryMap(bool export_shared_memory, Error* error)
   INFO_LOG("Allocating{} shared memory map.", export_shared_memory ? " EXPORTED" : "");
   if (export_shared_memory)
   {
-    s_shmem_name = MemMap::GetFileMappingName("duckstation");
+    s_shmem_name = MemMap::GetFileMappingName("arcadeduck");
     INFO_LOG("Shared memory object name is \"{}\".", s_shmem_name);
   }
   s_shmem_handle = MemMap::CreateSharedMemory(s_shmem_name.c_str(), MemoryMap::TOTAL_SIZE, error);

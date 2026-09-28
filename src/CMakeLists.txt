@@ -8,7 +8,7 @@ if(WIN32 OR APPLE)
 endif()
 
 if(BUILD_NOGUI_FRONTEND)
-  add_subdirectory(duckstation-nogui)
+  add_subdirectory(arcadeduck-nogui)
 endif()
 
 if(BUILD_QT_FRONTEND)

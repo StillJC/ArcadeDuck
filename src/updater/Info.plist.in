@@ -7,7 +7,7 @@
     <key>CFBundleIconFile</key>
     <string>Updater.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.github.stenzek.duckstation.updater</string>
+    <string>io.github.StillJC.ArcadeDuck.updater</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundlePackageType</key>

@@ -208,20 +208,20 @@ elseif(APPLE)
   # Don't generate a bundle for XCode, it makes code signing fail...
   if(NOT CMAKE_GENERATOR MATCHES "Xcode")
     get_scm_version()
-    set(BUNDLE_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DuckStation.app)
+    set(BUNDLE_PATH ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ArcadeDuck.app)
     set_target_properties(arcadeduck-qt PROPERTIES
       MACOSX_BUNDLE true
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
-      OUTPUT_NAME DuckStation
+      OUTPUT_NAME ArcadeDuck
     )
 
     # Inject Qt Libraries into bundle.
     if(NOT SKIP_POSTPROCESS_BUNDLE)
       find_program(MACDEPLOYQT_EXE macdeployqt HINTS "${QT_BINARY_DIRECTORY}")
-      add_custom_target(duckstation-postprocess-bundle ALL
+      add_custom_target(arcadeduck-postprocess-bundle ALL
         COMMAND "${MACDEPLOYQT_EXE}" "${BUNDLE_PATH}" -no-strip
       )
-      add_dependencies(duckstation-postprocess-bundle arcadeduck-qt)
+      add_dependencies(arcadeduck-postprocess-bundle arcadeduck-qt)
     endif()
   endif()
 

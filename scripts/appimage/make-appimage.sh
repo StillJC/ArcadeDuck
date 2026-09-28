@@ -42,7 +42,7 @@ function retry_command {
 }
 
 if [ "$#" -ne 4 ]; then
-    echo "Syntax: $0 <path to duckstation directory> <path to build directory> <deps prefix> <output name>"
+    echo "Syntax: $0 <path to ArcadeDuck directory> <path to build directory> <deps prefix> <output name>"
     exit 1
 fi
 
@@ -52,7 +52,7 @@ DEPSDIR=$3
 NAME=$4
 
 BINARY=arcadeduck-qt
-APPDIRNAME=DuckStation.AppDir
+APPDIRNAME=ArcadeDuck.AppDir
 STRIP=strip
 
 declare -a MANUAL_LIBS=(

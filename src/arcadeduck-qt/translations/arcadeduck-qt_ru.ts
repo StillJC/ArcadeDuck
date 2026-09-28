@@ -5384,7 +5384,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6824"/>
         <source>Completely exits the application, returning you to your desktop.</source>
-        <translatorcomment>Главное меню/Выход/Выйти из DuckStation/Подсказка</translatorcomment>
+        <translatorcomment>Главное меню/Выход/Выйти из ArcadeDuck/Подсказка</translatorcomment>
         <translation>Полностью выйти из приложения, возвращая вас на рабочий стол.</translation>
     </message>
     <message>

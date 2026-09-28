@@ -144,9 +144,9 @@ bool PINEServer::Initialize(u16 slot)
 
   std::string socket_path;
   if (slot != Settings::DEFAULT_PINE_SLOT)
-    socket_path = fmt::format("{}/duckstation.sock.{}", runtime_dir, slot);
+    socket_path = fmt::format("{}/arcadeduck.sock.{}", runtime_dir, slot);
   else
-    socket_path = fmt::format("{}/duckstation.sock", runtime_dir);
+    socket_path = fmt::format("{}/arcadeduck.sock", runtime_dir);
 
   // we unlink the socket so that when releasing this thread the socket gets
   // freed even if we didn't close correctly the loop
