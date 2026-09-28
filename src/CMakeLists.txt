@@ -7,9 +7,6 @@ if(WIN32 OR APPLE)
   add_subdirectory(updater)
 endif()
 
-if(BUILD_NOGUI_FRONTEND)
-  add_subdirectory(arcadeduck-nogui)
-endif()
 
 if(BUILD_QT_FRONTEND)
   add_subdirectory(arcadeduck-qt)
