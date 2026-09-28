@@ -4605,18 +4605,6 @@ void FullscreenUI::DrawAudioSettingsPage()
 
 void FullscreenUI::DrawAchievementsSettingsPage()
 {
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-  {
-    BeginMenuButtons();
-    ActiveButton(
-      FSUI_ICONSTR(ICON_FA_BAN,
-                   FSUI_CSTR("RAIntegration is being used instead of the built-in achievements implementation.")),
-      false, false, LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
-    EndMenuButtons();
-    return;
-  }
-#endif
 
   SettingsInterface* bsi = GetEditingSettingsInterface();
 
@@ -7053,7 +7041,6 @@ TRANSLATE_NOOP("FullscreenUI", "Prevents the screen saver from activating and th
 TRANSLATE_NOOP("FullscreenUI", "Processes rendering work on a separate thread. It is recommended and enabled by default because it generally improves performance without changing emulation behavior.");
 TRANSLATE_NOOP("FullscreenUI", "Push a controller button or axis now.");
 TRANSLATE_NOOP("FullscreenUI", "Quick Save");
-TRANSLATE_NOOP("FullscreenUI", "RAIntegration is being used instead of the built-in achievements implementation.");
 TRANSLATE_NOOP("FullscreenUI", "Recommended: {}");
 TRANSLATE_NOOP("FullscreenUI", "Recompiler Fast Memory Access");
 TRANSLATE_NOOP("FullscreenUI", "Reduce Input Latency");

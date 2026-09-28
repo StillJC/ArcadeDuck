@@ -234,10 +234,6 @@ void MainWindow::initialize()
   switchToGameListView();
   updateWindowTitle();
 
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-    Achievements::RAIntegration::MainWindowChanged((void*)winId());
-#endif
 
 #ifdef _WIN32
   registerForDeviceNotifications();
@@ -1804,36 +1800,6 @@ void MainWindow::setupAdditionalUi()
     connect(action, &QAction::triggered, [scale]() { g_emu_thread->requestDisplaySize(scale); });
   }
 
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-  {
-    QMenu* raMenu = new QMenu(QStringLiteral("RAIntegration"), m_ui.menu_Tools);
-    connect(raMenu, &QMenu::aboutToShow, this, [this, raMenu]() {
-      raMenu->clear();
-
-      const auto items = Achievements::RAIntegration::GetMenuItems();
-      for (const auto& [id, title, checked] : items)
-      {
-        if (id == 0)
-        {
-          raMenu->addSeparator();
-          continue;
-        }
-
-        QAction* raAction = raMenu->addAction(QString::fromUtf8(title));
-        if (checked)
-        {
-          raAction->setCheckable(true);
-          raAction->setChecked(checked);
-        }
-
-        connect(raAction, &QAction::triggered, this,
-                [id = id]() { Host::RunOnCPUThread([id]() { Achievements::RAIntegration::ActivateMenuItem(id); }); });
-      }
-    });
-    m_ui.menu_Tools->insertMenu(m_ui.actionOpenDataDirectory, raMenu);
-  }
-#endif
 }
 
 void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevos_challenge_mode)

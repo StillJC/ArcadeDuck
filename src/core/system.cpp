@@ -1494,7 +1494,6 @@ void System::PauseSystem(bool paused)
 
     InputManager::UpdateHostMouseMode();
 
-    Achievements::OnSystemPaused(true);
 
     if (g_settings.inhibit_screensaver)
       PlatformMisc::ResumeScreensaver();
@@ -1514,7 +1513,6 @@ void System::PauseSystem(bool paused)
 
     InputManager::UpdateHostMouseMode();
 
-    Achievements::OnSystemPaused(false);
 
     if (g_settings.inhibit_screensaver)
       PlatformMisc::SuspendScreensaver();

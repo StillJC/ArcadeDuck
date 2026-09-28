@@ -49,8 +49,6 @@ bool ConfirmSystemReset();
 /// Called when the system is being shut down. If Shutdown() returns false, the shutdown should be aborted.
 bool Shutdown(bool allow_cancel);
 
-/// Called when the system is being paused and resumed.
-void OnSystemPaused(bool paused);
 
 /// Called once a frame at vsync time on the CPU thread.
 void FrameUpdate();
@@ -87,8 +85,6 @@ void ConfirmHardcoreModeDisableAsync(const char* trigger, std::function<void(boo
 /// Returns true if hardcore mode is active, and functionality should be restricted.
 bool IsHardcoreModeActive();
 
-/// RAIntegration only exists for Windows, so no point checking it on other platforms.
-bool IsUsingRAIntegration();
 
 /// Returns true if the achievement system is active. Achievements can be active without a valid client.
 bool IsActive();
@@ -149,18 +145,6 @@ bool PrepareLeaderboardsWindow();
 void DrawLeaderboardsWindow();
 
 
-#ifdef ENABLE_RAINTEGRATION
-/// Prevents the internal implementation from being used. Instead, RAIntegration will be
-/// called into when achievement-related events occur.
-void SwitchToRAIntegration();
-
-namespace RAIntegration {
-void MainWindowChanged(void* new_handle);
-void GameChanged();
-std::vector<std::tuple<int, std::string, bool>> GetMenuItems();
-void ActivateMenuItem(int item);
-} // namespace RAIntegration
-#endif
 } // namespace Achievements
 
 /// Functions implemented in the frontend.
