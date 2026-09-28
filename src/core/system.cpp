@@ -31,7 +31,6 @@
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "legacy_pad_state.h"
 #include "mdec.h"
-#include "pcdrv.h"
 #include "save_state_version.h"
 #include "sio.h"
 #include "spu.h"
@@ -2000,7 +1999,6 @@ bool System::Initialize(bool force_software_renderer, u32 ram_size, Error* error
   SPU::Initialize();
   MDEC::Initialize();
   SIO::Initialize();
-  PCDrv::Initialize();
   PostProcessing::Initialize();
 
   s_cpu_thread_handle = Threading::ThreadHandle::GetForCallingThread();
@@ -2050,7 +2048,6 @@ void System::DestroySystem()
   Arcade::Output::ClearValues();
   Arcade::Output::Shutdown();
 
-  PCDrv::Shutdown();
   SIO::Shutdown();
   MDEC::Shutdown();
   SPU::Shutdown();
@@ -2669,7 +2666,6 @@ void System::InternalReset()
   SPU::Reset();
   MDEC::Reset();
   SIO::Reset();
-  PCDrv::Reset();
   Achievements::ResetClient();
   s_frame_number = 1;
   s_internal_frame_number = 0;

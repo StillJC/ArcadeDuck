@@ -182,7 +182,6 @@
     <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
     <ClCompile Include="mdec.cpp" />
-    <ClCompile Include="pcdrv.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
@@ -307,7 +306,6 @@
     <ClInclude Include="legacy_pad_state.h" />
     <ClInclude Include="mdec.h" />
     <ClInclude Include="pad.h" />
-    <ClInclude Include="pcdrv.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="cpu_pgxp.h" />
     <ClInclude Include="pine_server.h" />

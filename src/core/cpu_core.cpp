@@ -13,7 +13,6 @@
 #include "cpu_recompiler_thunks.h"
 #include "gte.h"
 #include "host.h"
-#include "pcdrv.h"
 #include "settings.h"
 #include "system.h"
 #include "timing_event.h"
@@ -404,22 +403,7 @@ void CPU::RaiseException(Exception excode)
 
 void CPU::RaiseBreakException(u32 CAUSE_bits, u32 EPC, u32 instruction_bits)
 {
-  if (g_settings.pcdrv_enable)
-  {
-    // Load delays need to be flushed, because the break HLE might read a register which
-    // is currently being loaded, and on real hardware there isn't a hazard here.
-    FlushLoadDelay();
 
-    if (PCDrv::HandleSyscall(instruction_bits, g_state.regs))
-    {
-      // immediately return
-      g_state.npc = EPC + 4;
-      FlushPipeline();
-      return;
-    }
-  }
-
-  // normal exception
   RaiseException(CAUSE_bits, EPC, GetExceptionVector());
 }
 

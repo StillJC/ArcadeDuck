@@ -182,8 +182,6 @@ add_library(core
   mdec.h
   mips_encoder.h
   pad.h
-  pcdrv.cpp
-  pcdrv.h
   pine_server.cpp
   pine_server.h
   save_state_version.h

@@ -365,7 +365,6 @@ void CPU::NewRec::AArch64Compiler::EndBlockWithException(Exception excode)
   Flush(FLUSH_END_BLOCK | FLUSH_FOR_EXCEPTION | FLUSH_FOR_C_CALL);
 
   // TODO: flush load delay
-  // TODO: break for pcdrv
 
   EmitMov(RWARG1, Cop0Registers::CAUSE::MakeValueForException(excode, m_current_instruction_branch_delay_slot, false,
                                                               inst->cop.cop_n));

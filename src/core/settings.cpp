@@ -388,9 +388,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
 
   use_old_mdec_routines = si.GetBoolValue("Hacks", "UseOldMDECRoutines", false);
   export_shared_memory = si.GetBoolValue("Hacks", "ExportSharedMemory", false);
-  pcdrv_enable = si.GetBoolValue("PCDrv", "Enabled", false);
-  pcdrv_enable_writes = si.GetBoolValue("PCDrv", "EnableWrites", false);
-  pcdrv_root = si.GetStringValue("PCDrv", "Root");
 
   dma_max_slice_ticks = si.GetIntValue("Hacks", "DMAMaxSliceTicks", DEFAULT_DMA_MAX_SLICE_TICKS);
   dma_halt_ticks = si.GetIntValue("Hacks", "DMAHaltTicks", DEFAULT_DMA_HALT_TICKS);
@@ -667,9 +664,6 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
     si.SetIntValue("Hacks", "GPUMaxRunAhead", gpu_max_run_ahead);
   }
 
-  si.SetBoolValue("PCDrv", "Enabled", pcdrv_enable);
-  si.SetBoolValue("PCDrv", "EnableWrites", pcdrv_enable_writes);
-  si.SetStringValue("PCDrv", "Root", pcdrv_root.c_str());
 
   si.SetBoolValue("BIOS", "TTYLogging", bios_tty_logging);
   si.SetBoolValue("BIOS", "PatchFastBoot", bios_patch_fast_boot);
@@ -734,7 +728,6 @@ void Settings::Clear(SettingsInterface& si)
   si.ClearSection("CDROM");
   si.ClearSection("Audio");
   si.ClearSection("Hacks");
-  si.ClearSection("PCDrv");
   si.ClearSection("BIOS");
   si.ClearSection("ArcadeMachine");
   si.ClearSection("ArcadeOutput");
@@ -775,17 +768,9 @@ void Settings::FixIncompatibleSettings(bool display_osd_messages)
     g_settings.cdrom_mute_cd_audio = false;
     g_settings.texture_replacements.enable_vram_write_replacements = false;
     g_settings.use_old_mdec_routines = false;
-    g_settings.pcdrv_enable = false;
     g_settings.bios_patch_fast_boot = false;
   }
 
-  if (g_settings.pcdrv_enable && g_settings.pcdrv_root.empty())
-  {
-    Host::AddKeyedOSDMessage("pcdrv_disabled_no_root",
-                             TRANSLATE_STR("OSDMessage", "Disabling PCDrv because no root directory is specified."),
-                             Host::OSD_WARNING_DURATION);
-    g_settings.pcdrv_enable = false;
-  }
 
   if (g_settings.gpu_pgxp_enable)
   {
@@ -1988,7 +1973,6 @@ static const char* s_log_filters[] = {
   "MainWindow",
   "MemoryArena",
   "NoGUIHost",
-  "PCDrv",
   "PGXP",
   "PlatformMisc",
   "PostProcessing",

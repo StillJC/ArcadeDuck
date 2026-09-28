@@ -242,7 +242,6 @@ struct Settings
   u8 arcade_bust_a_move_2_region = 3;
 
   bool use_old_mdec_routines : 1 = false;
-  bool pcdrv_enable : 1 = false;
   bool export_shared_memory : 1 = false;
 
   // timing hacks section
@@ -307,8 +306,6 @@ struct Settings
   bool bios_patch_fast_boot : 1 = DEFAULT_FAST_BOOT_VALUE;
   bool enable_8mb_ram : 1 = false;
 
-  std::string pcdrv_root;
-  bool pcdrv_enable_writes = false;
 
   LOGLEVEL log_level = DEFAULT_LOG_LEVEL;
   std::string log_filter;
