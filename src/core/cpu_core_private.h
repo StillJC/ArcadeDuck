@@ -28,6 +28,10 @@ ALWAYS_INLINE static void CheckForPendingInterrupt()
 
 void DispatchInterrupt();
 
+// Rare recompiler slow path for an event boundary which lands on a branch
+// before its architectural delay slot.
+void ExecuteRecompilerBranchEventBoundary(u32 branch_pc, u32 branch_bits, u32 delay_bits);
+
 // icache stuff
 ALWAYS_INLINE static bool IsCachedAddress(VirtualMemoryAddress address)
 {
@@ -121,6 +125,36 @@ ALWAYS_INLINE static void StallUntilGTEComplete()
   g_state.pending_ticks =
     (g_state.gte_completion_tick > g_state.pending_ticks) ? g_state.gte_completion_tick : g_state.pending_ticks;
 }
+
+ALWAYS_INLINE static TickCount GetMulDivMultiplyTicks(bool signed_multiply, u32 rs)
+{
+  const u32 magnitude =
+    signed_multiply && (rs & UINT32_C(0x80000000)) ? (rs ^ UINT32_C(0xFFFFFFFF)) : rs;
+
+  if (magnitude <= UINT32_C(0x000007FF))
+    return 6;
+  if (magnitude <= UINT32_C(0x000FFFFF))
+    return 9;
+  return 13;
+}
+
+ALWAYS_INLINE static void AddMulDivTicks(TickCount ticks)
+{
+  g_state.muldiv_completion_tick = g_state.pending_ticks + ticks + 1;
+}
+
+ALWAYS_INLINE static void StallUntilMulDivComplete()
+{
+  g_state.pending_ticks =
+    (g_state.muldiv_completion_tick > g_state.pending_ticks) ? g_state.muldiv_completion_tick : g_state.pending_ticks;
+}
+
+// Runtime entry points for recompilers. Generated code synchronizes
+// pending_ticks before calling these, so the completion deadline uses the
+// same issue-cycle convention as the interpreter.
+void BeginMulDivMultiply(u32 signed_multiply, u32 rs);
+void BeginMulDivDivide();
+void StallUntilMulDivCompleteForRecompiler();
 
 // kernel call interception
 void HandleA0Syscall();
