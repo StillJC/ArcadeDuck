@@ -108,7 +108,23 @@ static u32 s_breakpoint_counter = 1;
 static u32 s_last_breakpoint_check_pc = INVALID_BREAKPOINT_PC;
 static bool s_single_step = false;
 static bool s_break_after_instruction = false;
+
 } // namespace CPU
+
+void CPU::BeginMulDivMultiply(u32 signed_multiply, u32 rs)
+{
+  AddMulDivTicks(GetMulDivMultiplyTicks(signed_multiply != 0, rs));
+}
+
+void CPU::BeginMulDivDivide()
+{
+  AddMulDivTicks(36);
+}
+
+void CPU::StallUntilMulDivCompleteForRecompiler()
+{
+  StallUntilMulDivComplete();
+}
 
 bool CPU::IsTraceEnabled()
 {
@@ -217,6 +233,7 @@ void CPU::Reset()
 
   g_state.pending_ticks = 0;
   g_state.downcount = 0;
+  g_state.muldiv_completion_tick = 0;
 }
 
 bool CPU::DoState(StateWrapper& sw)
@@ -298,6 +315,7 @@ bool CPU::DoState(StateWrapper& sw)
 
     UpdateMemoryPointers();
     g_state.gte_completion_tick = 0;
+    g_state.muldiv_completion_tick = 0;
   }
 
   return !sw.HasError();
@@ -1203,6 +1221,7 @@ restart_instruction:
 
         case InstructionFunct::mfhi:
         {
+          StallUntilMulDivComplete();
           const u32 value = g_state.regs.hi;
           WriteReg(inst.r.rd, value);
 
@@ -1223,6 +1242,7 @@ restart_instruction:
 
         case InstructionFunct::mflo:
         {
+          StallUntilMulDivComplete();
           const u32 value = g_state.regs.lo;
           WriteReg(inst.r.rd, value);
 
@@ -1245,6 +1265,7 @@ restart_instruction:
         {
           const u32 lhs = ReadReg(inst.r.rs);
           const u32 rhs = ReadReg(inst.r.rt);
+          AddMulDivTicks(GetMulDivMultiplyTicks(true, lhs));
           const u64 result =
             static_cast<u64>(static_cast<s64>(SignExtend64(lhs)) * static_cast<s64>(SignExtend64(rhs)));
 
@@ -1260,6 +1281,7 @@ restart_instruction:
         {
           const u32 lhs = ReadReg(inst.r.rs);
           const u32 rhs = ReadReg(inst.r.rt);
+          AddMulDivTicks(GetMulDivMultiplyTicks(false, lhs));
           const u64 result = ZeroExtend64(lhs) * ZeroExtend64(rhs);
 
           g_state.regs.hi = Truncate32(result >> 32);
@@ -1274,6 +1296,7 @@ restart_instruction:
         {
           const s32 num = static_cast<s32>(ReadReg(inst.r.rs));
           const s32 denom = static_cast<s32>(ReadReg(inst.r.rt));
+          AddMulDivTicks(36);
 
           if (denom == 0)
           {
@@ -1302,6 +1325,7 @@ restart_instruction:
         {
           const u32 num = ReadReg(inst.r.rs);
           const u32 denom = ReadReg(inst.r.rt);
+          AddMulDivTicks(36);
 
           if (denom == 0)
           {
@@ -2548,6 +2572,14 @@ void CPU::CodeCache::InterpretCachedBlock(const Block* block)
   do
   {
     g_state.pending_ticks++;
+
+    // Match the interpreter pipeline for uncached code: the next instruction
+    // is fetched after the current instruction's issue cycle and before the
+    // current instruction executes.
+    if (!block->HasFlag(CodeCache::BlockFlags::IsUsingICache))
+    {
+      AddPendingTicks(GetInstructionReadTicks(g_state.npc));
+    }
 
     // now executing the instruction we previously fetched
     g_state.current_instruction.bits = instruction->bits;

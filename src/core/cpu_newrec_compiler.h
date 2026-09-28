@@ -212,6 +212,9 @@ protected:
   virtual void GenerateICacheCheckAndUpdate() = 0;
   virtual void GenerateCall(const void* func, s32 arg1reg = -1, s32 arg2reg = -1, s32 arg3reg = -1) = 0;
   virtual void GenerateBranchEventBoundaryCheck() {}
+  virtual void GenerateMulDivMultiplyStart(bool, Reg) {}
+  virtual void GenerateMulDivDivideStart() {}
+  virtual void GenerateMulDivReadStall() {}
   virtual void EndBlock(const std::optional<u32>& newpc, bool do_event_test) = 0;
   virtual void EndBlockWithException(Exception excode) = 0;
   virtual const void* EndCompile(u32* code_size, u32* far_code_size) = 0;

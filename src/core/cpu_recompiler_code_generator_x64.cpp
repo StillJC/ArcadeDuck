@@ -2784,17 +2784,14 @@ void CodeGenerator::EmitICacheCheckAndUpdate()
 {
   if (!m_block->HasFlag(CodeCache::BlockFlags::IsUsingICache))
   {
-    if (m_block->HasFlag(CodeCache::BlockFlags::NeedsDynamicFetchTicks))
-    {
-      m_emit->mov(m_emit->eax, m_block->size);
-      m_emit->mul(m_emit->dword[m_emit->rip + GetFetchMemoryAccessTimePtr()]);
-      m_emit->add(m_emit->dword[GetCPUPtrReg() + OFFSETOF(State, pending_ticks)], m_emit->eax);
-    }
-    else
+    if (!m_block->HasFlag(CodeCache::BlockFlags::NeedsDynamicFetchTicks))
     {
       m_emit->add(m_emit->dword[GetCPUPtrReg() + OFFSETOF(State, pending_ticks)],
                   static_cast<u32>(m_block->uncached_fetch_ticks));
     }
+    // Dynamic BIOS fetch timing is emitted per instruction by
+    // InstructionPrologue() on x64 so wait states occur at the same pipeline
+    // position as the interpreter.
   }
   else if (m_block->icache_line_count > 0)
   {
