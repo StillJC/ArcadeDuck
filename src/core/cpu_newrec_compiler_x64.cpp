@@ -230,6 +230,27 @@ void CPU::NewRec::X64Compiler::GenerateCall(const void* func, s32 arg1reg /*= -1
   cg->call(func);
 }
 
+void CPU::NewRec::X64Compiler::GenerateMulDivMultiplyStart(bool signed_multiply, Reg rs)
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES);
+
+  MoveMIPSRegToReg(RWARG2, rs);
+  cg->mov(RWARG1, signed_multiply ? 1 : 0);
+  cg->call(&CPU::BeginMulDivMultiply);
+}
+
+void CPU::NewRec::X64Compiler::GenerateMulDivDivideStart()
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES);
+  cg->call(&CPU::BeginMulDivDivide);
+}
+
+void CPU::NewRec::X64Compiler::GenerateMulDivReadStall()
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES | FLUSH_GTE_DONE_CYCLE);
+  cg->call(&CPU::StallUntilMulDivCompleteForRecompiler);
+}
+
 void CPU::NewRec::X64Compiler::GenerateBranchEventBoundaryCheck()
 {
   DebugAssert(m_cycles > 0);
