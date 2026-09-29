@@ -2161,10 +2161,16 @@ ALWAYS_INLINE_RELEASE std::tuple<s32, s32> SPU::SampleVoice(u32 voice_index)
   {
     ADPCMBlock block;
     ReadADPCMBlock(voice.current_address, &block);
+
+    // Preserve the first repeat point across adjacent loop-start blocks.
+    // A loop-end boundary terminates the run, so the next pass can latch normally.
+    const bool continuing_loop_start_run =
+      !voice.is_first_block && voice.current_block_flags.loop_start && !voice.current_block_flags.loop_end;
+
     voice.DecodeBlock(block);
     voice.has_samples = true;
 
-    if (voice.current_block_flags.loop_start && !voice.ignore_loop_address)
+    if (voice.current_block_flags.loop_start && !continuing_loop_start_run && !voice.ignore_loop_address)
     {
       TRACE_LOG("Voice {} loop start @ 0x{:08X}", voice_index, voice.current_address);
       voice.regs.adpcm_repeat_address = voice.current_address;
