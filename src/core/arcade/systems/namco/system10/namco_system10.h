@@ -5,10 +5,15 @@
 
 #include "core/types.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
 class Error;
+
+namespace Arcade::Database {
+struct GameDefinition;
+}
 
 namespace NamcoSystem10 {
 
@@ -18,6 +23,11 @@ struct MemNLoadedContent
   std::vector<u8> nand0;
   std::vector<u8> nand1;
 };
+
+/// Loads the first supported MEM(N) bring-up target without transforming the
+/// NAND bytes. The raw 0x210-byte page image, including spare/OOB, is retained.
+std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
+                                                      const Arcade::Database::GameDefinition& game, Error* error);
 
 bool InitializeMemN(MemNLoadedContent content, Error* error);
 void Reset();

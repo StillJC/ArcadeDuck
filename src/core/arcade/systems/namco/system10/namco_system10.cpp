@@ -5,8 +5,13 @@
 
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 
+#include "core/arcade/arcade_database.h"
+
 #include "common/error.h"
 #include "common/log.h"
+#include "common/minizip_helpers.h"
+#include "common/sha1_digest.h"
+#include "common/string_util.h"
 
 #include <optional>
 #include <algorithm>
@@ -98,7 +103,181 @@ bool ReadU16Register(u16 reg, u32 byte_offset, u32 width, u32* value)
   return true;
 }
 
+bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom,
+                       std::vector<u8>* data, Error* error)
+{
+  if (rom.size != MemNRawNAND::RAW_IMAGE_SIZE || rom.offset != 0 || rom.interleave != 1 || rom.group_size != 1 ||
+      rom.skip != 0 || rom.word_swap || !rom.segments.empty())
+  {
+    Error::SetStringFmt(error,
+                        "System 10 raw NAND '{}' uses a database layout that would alter the dumped 0x210-byte "
+                        "page image.",
+                        rom.name);
+    return false;
+  }
+
+  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
+  if (!zf)
+  {
+    Error::SetStringFmt(error, "Failed to open Namco System 10 set archive '{}'.", archive_path);
+    return false;
+  }
+
+  if (unzGoToFirstFile(zf) != UNZ_OK)
+  {
+    unzClose(zf);
+    Error::SetStringFmt(error, "Namco System 10 set archive '{}' is empty or unreadable.", archive_path);
+    return false;
+  }
+
+  for (;;)
+  {
+    unz_file_info64 file_info = {};
+    char member_name[512] = {};
+    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
+    {
+      unzClose(zf);
+      Error::SetStringFmt(error, "Failed to read file information from Namco System 10 set archive '{}'.",
+                          archive_path);
+      return false;
+    }
+
+    member_name[sizeof(member_name) - 1] = '\0';
+    if (StringUtil::EqualNoCase(member_name, rom.name))
+    {
+      if (file_info.uncompressed_size != rom.size)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "System 10 NAND '{}' has size {}, expected {} bytes.", rom.name,
+                            file_info.uncompressed_size, rom.size);
+        return false;
+      }
+
+      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "System 10 NAND '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
+                            static_cast<u32>(file_info.crc), rom.crc32);
+        return false;
+      }
+
+      if (unzOpenCurrentFile(zf) != UNZ_OK)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "Failed to decompress System 10 NAND '{}' from '{}'.", rom.name, archive_path);
+        return false;
+      }
+
+      data->resize(rom.size);
+      size_t read_offset = 0;
+      while (read_offset < data->size())
+      {
+        const int bytes_read =
+          unzReadCurrentFile(zf, data->data() + read_offset, static_cast<unsigned>(data->size() - read_offset));
+        if (bytes_read <= 0)
+        {
+          unzCloseCurrentFile(zf);
+          unzClose(zf);
+          Error::SetStringFmt(error, "Failed reading System 10 NAND '{}' from '{}'.", rom.name, archive_path);
+          return false;
+        }
+
+        read_offset += static_cast<size_t>(bytes_read);
+      }
+
+      const int close_result = unzCloseCurrentFile(zf);
+      unzClose(zf);
+      if (close_result != UNZ_OK)
+      {
+        Error::SetStringFmt(error, "CRC validation failed for System 10 NAND '{}' in '{}'.", rom.name, archive_path);
+        return false;
+      }
+
+      if (!rom.sha1.empty())
+      {
+        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
+        const std::string digest_string = SHA1Digest::DigestToString(digest);
+        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
+        {
+          Error::SetStringFmt(error, "System 10 NAND '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
+                              rom.sha1);
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    const int next_result = unzGoToNextFile(zf);
+    if (next_result == UNZ_END_OF_LIST_OF_FILE)
+      break;
+    if (next_result != UNZ_OK)
+    {
+      unzClose(zf);
+      Error::SetStringFmt(error, "Failed while reading Namco System 10 set archive '{}'.", archive_path);
+      return false;
+    }
+  }
+
+  unzClose(zf);
+  Error::SetStringFmt(error, "Namco System 10 set archive '{}' does not contain required NAND '{}'.", archive_path,
+                      rom.name);
+  return false;
+}
+
 } // namespace
+
+std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
+                                                      const Arcade::Database::GameDefinition& game, Error* error)
+{
+  if (game.hardware_profile != "ns10_startrgn")
+  {
+    Error::SetStringFmt(error, "System 10 S10-01C only supports the Star Trigon MEM(N) profile; requested '{}'.",
+                        game.hardware_profile);
+    return std::nullopt;
+  }
+
+  const Arcade::Database::ROMDefinition* nand0_rom = nullptr;
+  const Arcade::Database::ROMDefinition* nand1_rom = nullptr;
+  u32 nand_region_count = 0;
+
+  for (const Arcade::Database::ROMDefinition& rom : game.roms)
+  {
+    if (rom.region == "nand0")
+    {
+      nand0_rom = &rom;
+      nand_region_count++;
+    }
+    else if (rom.region == "nand1")
+    {
+      nand1_rom = &rom;
+      nand_region_count++;
+    }
+    else if (rom.region.size() >= 4 && rom.region.compare(0, 4, "nand") == 0)
+    {
+      nand_region_count++;
+    }
+  }
+
+  if (!nand0_rom || !nand1_rom || nand_region_count != 2)
+  {
+    Error::SetStringView(error, "Star Trigon database entry must contain exactly raw NAND regions nand0 and nand1.");
+    return std::nullopt;
+  }
+
+  MemNLoadedContent content;
+  content.set_name = game.id;
+
+  if (!LoadRawNANDMember(archive_path, *nand0_rom, &content.nand0, error) ||
+      !LoadRawNANDMember(archive_path, *nand1_rom, &content.nand1, error))
+  {
+    return std::nullopt;
+  }
+
+  VERBOSE_LOG("Loaded Namco System 10 Star Trigon raw NANDs from '{}': nand0={} bytes nand1={} bytes.",
+              archive_path, content.nand0.size(), content.nand1.size());
+  return content;
+}
 
 bool InitializeMemN(MemNLoadedContent content, Error* error)
 {
