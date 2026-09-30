@@ -13,8 +13,8 @@
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
 
-#include <optional>
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <span>
 #include <utility>
@@ -38,6 +38,7 @@ static constexpr u32 LOOKUP_RAM_SIZE = 0x100000;
 struct RuntimeState
 {
   std::string set_name;
+  MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
   MemNRawNAND nand0;
   MemNRawNAND nand1;
   std::vector<u8> lookup_ram;
@@ -46,6 +47,56 @@ struct RuntimeState
 };
 
 std::optional<RuntimeState> s_runtime;
+
+// PROVEN/CORROBORATED: Star Trigon ordinary MEM(N) data is stored with a
+// pre-permute XOR of 0xAAAA and this recovered 16-bit bit permutation.
+// The array lists the source bit for output bits 15 down to 0.
+static constexpr std::array<u8, 16> STAR_TRIGON_STATIC_BIT_ORDER = {
+  14, 13, 12, 15, 9, 11, 8, 10, 4, 5, 6, 7, 0, 3, 2, 1,
+};
+
+constexpr u16 Permute16(u16 value, const std::array<u8, 16>& source_bits)
+{
+  u16 result = 0;
+  for (u32 i = 0; i < source_bits.size(); i++)
+  {
+    const u32 output_bit = 15 - i;
+    result |= static_cast<u16>(((value >> source_bits[i]) & 1u) << output_bit);
+  }
+  return result;
+}
+
+constexpr u16 DecodeStaticWord(MemNBoardProfile profile, u16 raw_word)
+{
+  switch (profile)
+  {
+    case MemNBoardProfile::StarTrigon:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), STAR_TRIGON_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::Unknown:
+    default:
+      return raw_word;
+  }
+}
+
+static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0xaaaa)) == UINT16_C(0x0000));
+static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0x5555)) == UINT16_C(0xffff));
+static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0x1234)) == UINT16_C(0x7497));
+
+bool ShouldApplyStaticTransform(const RuntimeState& runtime, const MemNRawNAND& nand)
+{
+  if (!nand.IsArrayReadActive())
+    return false;
+
+  // STRONG INFERENCE, preserved explicitly: NAND0 block 0 is the platform
+  // remap table and block 1 is the writable/settings area. Reference behavior
+  // treats these two platform blocks as plaintext while ordinary storage uses
+  // the board's static transform.
+  if (runtime.nand_device == 0 && nand.GetCurrentBlock() < 2)
+    return false;
+
+  return runtime.board_profile != MemNBoardProfile::Unknown;
+}
 
 MemNRawNAND* GetSelectedNAND(RuntimeState& runtime)
 {
@@ -267,6 +318,7 @@ std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
 
   MemNLoadedContent content;
   content.set_name = game.id;
+  content.board_profile = MemNBoardProfile::StarTrigon;
 
   if (!LoadRawNANDMember(archive_path, *nand0_rom, &content.nand0, error) ||
       !LoadRawNANDMember(archive_path, *nand1_rom, &content.nand1, error))
@@ -293,8 +345,15 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
     return false;
   }
 
+  if (content.board_profile == MemNBoardProfile::Unknown)
+  {
+    Error::SetStringView(error, "Namco System 10 MEM(N) content has no board profile.");
+    return false;
+  }
+
   RuntimeState runtime;
   runtime.set_name = std::move(content.set_name);
+  runtime.board_profile = content.board_profile;
 
   if (!runtime.nand0.Load(std::move(content.nand0), error) ||
       !runtime.nand1.Load(std::move(content.nand1), error))
@@ -369,6 +428,9 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
 
     if (width == 1)
     {
+      // OPEN: exact byte-lane behavior through the 16-bit MEM(N) host data
+      // register has not been required by the bootstrap path. Preserve the
+      // existing raw x8 diagnostic behavior until software proves otherwise.
       *value = nand->DataRead();
       return true;
     }
@@ -376,10 +438,13 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
     if (width == 2)
     {
       // MEM(N) presents two consecutive 8-bit NAND reads as one 16-bit host word,
-      // first NAND byte in the high byte.
+      // first NAND byte in the high byte. Static scrambling is a board-layer
+      // property, so the raw NAND object itself remains untouched.
+      const bool apply_static_transform = ShouldApplyStaticTransform(runtime, *nand);
       const u16 first = nand->DataRead();
       const u16 second = nand->DataRead();
-      *value = static_cast<u16>((first << 8) | second);
+      const u16 raw_word = static_cast<u16>((first << 8) | second);
+      *value = apply_static_transform ? DecodeStaticWord(runtime.board_profile, raw_word) : raw_word;
       return true;
     }
 

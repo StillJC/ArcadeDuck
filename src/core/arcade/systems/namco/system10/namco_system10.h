@@ -17,9 +17,16 @@ struct GameDefinition;
 
 namespace NamcoSystem10 {
 
+enum class MemNBoardProfile : u8
+{
+  Unknown = 0,
+  StarTrigon,
+};
+
 struct MemNLoadedContent
 {
   std::string set_name;
+  MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
   std::vector<u8> nand0;
   std::vector<u8> nand1;
 };
