@@ -50,4 +50,10 @@ u32 ReadProgramROM(u32 width, u32 offset);
 bool ReadEXP1(u32 width, u32 offset, u32* value);
 bool WriteEXP1(u32 width, u32 offset, u32 value);
 
+/// Handles the currently modeled System 10 base-board EXP3 registers:
+/// I2C clock/data plus interrupt cause/acknowledge. Attached-device contents,
+/// direct input registers, EXIO identification, and other EXP3 devices remain OPEN.
+bool ReadEXP3(u32 width, u32 offset, u32* value);
+bool WriteEXP3(u32 width, u32 offset, u32 value);
+
 } // namespace NamcoSystem10

@@ -39,6 +39,7 @@ public:
   bool IsReady() const { return true; }
   bool IsArrayReadActive() const { return m_read_mode == ReadMode::Array; }
   u32 GetCurrentPageAddress() const { return m_page_address; }
+  u32 GetCurrentColumnAddress() const { return m_column_address; }
   u32 GetCurrentBlock() const { return m_page_address / PAGES_PER_BLOCK; }
   bool IsLoaded() const { return m_raw_image.size() == RAW_IMAGE_SIZE; }
   std::span<const u8> GetRawImage() const

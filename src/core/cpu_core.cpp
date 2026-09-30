@@ -2693,13 +2693,51 @@ ALWAYS_INLINE_RELEASE bool CPU::DoInstructionRead(PhysicalMemoryAddress address,
 
     return true;
   }
-  else if (address >= BIOS_BASE && address < (BIOS_BASE + BIOS_SIZE))
+  else if (address >= BIOS_BASE &&
+           (address + (sizeof(u32) * word_count)) <= (BIOS_BASE + BIOS_MIRROR_SIZE))
   {
-    std::memcpy(data, &g_bios[(address - BIOS_BASE) & BIOS_MASK], sizeof(u32) * word_count);
-    if constexpr (add_ticks)
-      g_state.pending_ticks += g_bios_access_time[static_cast<u32>(MemoryAccessSize::Word)] * word_count;
+    // Arcade boards can expose executable program storage through the BIOS
+    // aperture without materializing it into the console's 512 KiB g_bios
+    // buffer. Keep ownership in Bus so CPU core remains board-agnostic.
+    u8* const dest = static_cast<u8*>(data);
+    bool board_backed = true;
+    for (u32 i = 0; i < word_count; i++)
+    {
+      u32 value;
+      if (!Bus::ReadBIOSInstructionWord(address + (i * sizeof(u32)), &value))
+      {
+        board_backed = false;
+        break;
+      }
 
-    return true;
+      std::memcpy(dest + (i * sizeof(u32)), &value, sizeof(value));
+    }
+
+    if (board_backed)
+    {
+      if constexpr (add_ticks)
+        g_state.pending_ticks += g_bios_access_time[static_cast<u32>(MemoryAccessSize::Word)] * word_count;
+
+      return true;
+    }
+
+    // Preserve the ordinary console BIOS instruction path exactly: only the
+    // physical 512 KiB BIOS is executable here unless an arcade board claims
+    // the wider mirror above.
+    if ((address + (sizeof(u32) * word_count)) <= (BIOS_BASE + BIOS_SIZE))
+    {
+      std::memcpy(data, &g_bios[(address - BIOS_BASE) & BIOS_MASK], sizeof(u32) * word_count);
+      if constexpr (add_ticks)
+        g_state.pending_ticks += g_bios_access_time[static_cast<u32>(MemoryAccessSize::Word)] * word_count;
+
+      return true;
+    }
+
+    if constexpr (raise_exceptions)
+      CPU::RaiseException(address, Cop0Registers::CAUSE::MakeValueForException(Exception::IBE, false, false, 0));
+
+    std::memset(data, 0, sizeof(u32) * word_count);
+    return false;
   }
   else
   {

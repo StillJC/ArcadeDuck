@@ -160,6 +160,10 @@ bool CanUseFastmemForAddress(VirtualMemoryAddress address);
 
 void SetExpansionROM(std::vector<u8> data);
 
+/// Reads one instruction word from a board-backed BIOS/program aperture.
+/// Returns false when no active arcade board owns the requested BIOS-mirror address.
+bool ReadBIOSInstructionWord(PhysicalMemoryAddress address, u32* value);
+
 /// Reads one instruction word from executable EXP1 ROM without applying bus timing or peripheral side effects.
 /// Currently used by Sony ZN, whose game program can execute directly from the expansion ROM window.
 bool ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value);

@@ -970,6 +970,24 @@ void Bus::SetExpansionROM(std::vector<u8> data)
   s_exp1_rom = std::move(data);
 }
 
+bool Bus::ReadBIOSInstructionWord(PhysicalMemoryAddress address, u32* value)
+{
+  if (!value)
+    return false;
+
+  address &= CPU::PHYSICAL_MEMORY_ADDRESS_MASK;
+  if (address < BIOS_BASE || address >= (BIOS_BASE + BIOS_MIRROR_SIZE))
+    return false;
+
+  if (NamcoSystem10::IsActive())
+  {
+    *value = NamcoSystem10::ReadProgramROM(sizeof(u32), address - BIOS_BASE);
+    return true;
+  }
+
+  return false;
+}
+
 bool Bus::ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value)
 {
   address &= CPU::PHYSICAL_MEMORY_ADDRESS_MASK;
@@ -1693,6 +1711,14 @@ template<MemoryAccessSize size>
 u32 Bus::EXP3ReadHandler(VirtualMemoryAddress address)
 {
   const u32 offset = address & EXP3_MASK;
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    u32 value;
+    if (NamcoSystem10::ReadEXP3(width, offset, &value))
+      return value;
+  }
+
   if (SonyZN::IsActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
@@ -1725,6 +1751,13 @@ template<MemoryAccessSize size>
 void Bus::EXP3WriteHandler(VirtualMemoryAddress address, u32 value)
 {
   const u32 offset = address & EXP3_MASK;
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem10::WriteEXP3(width, offset, value))
+      return;
+  }
+
   if (SonyZN::IsActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
