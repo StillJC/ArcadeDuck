@@ -3,21 +3,25 @@
 
 #pragma once
 
-// Namco System 10 experimental skeleton.
-//
-// Hardware direction:
-// - PlayStation-derived main CPU/GPU/SPU platform.
-// - Game program/data lives on interchangeable MEM boards.
-// - Known MEM-board families use mask/flash or NAND storage; later variants
-//   add auxiliary audio/media hardware.
-// - Protection/decryption belongs to the MEM-board implementation rather than
-//   the shared PlayStation core.
-// - Optional EXIO hardware should be modeled separately from the base board.
-//
-// This branch intentionally starts with a compile-only namespace. Runtime
-// integration, media loading, memory mapping, protection and game gating are
-// added as individually reviewable milestones.
+#include "core/types.h"
+
+#include <string>
+#include <vector>
+
+class Error;
 
 namespace NamcoSystem10 {
+
+struct MemNLoadedContent
+{
+  std::string set_name;
+  std::vector<u8> nand0;
+  std::vector<u8> nand1;
+};
+
+bool InitializeMemN(MemNLoadedContent content, Error* error);
+void Reset();
+void Shutdown();
+bool IsActive();
 
 } // namespace NamcoSystem10
