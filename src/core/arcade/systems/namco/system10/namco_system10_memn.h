@@ -29,6 +29,14 @@ public:
 
   bool Load(std::vector<u8> raw_image, Error* error);
 
+  void ResetInterface();
+  void CommandWrite(u8 command);
+  void AddressColumnWrite(u8 value);
+  void AddressRowLowWrite(u8 value);
+  void AddressRowHighWrite(u8 value);
+  u8 DataRead();
+
+  bool IsReady() const { return true; }
   bool IsLoaded() const { return m_raw_image.size() == RAW_IMAGE_SIZE; }
   std::span<const u8> GetRawImage() const
   {
@@ -39,7 +47,24 @@ public:
   std::span<const u8> GetPageSpare(u32 page) const;
 
 private:
+  enum class ReadMode : u8
+  {
+    None,
+    Array,
+    Id,
+    Status,
+  };
+
+  u8 ReadArrayByte();
+  void AdvanceArrayPointer();
+
   std::vector<u8> m_raw_image;
+  ReadMode m_read_mode = ReadMode::None;
+  u8 m_pointer_command = 0x00;
+  u16 m_column_address = 0;
+  u32 m_page_address = 0;
+  u32 m_serial_index = 0;
+  bool m_id_address_valid = false;
 };
 
 static_assert(MemNRawNAND::RAW_PAGE_SIZE == 0x210);

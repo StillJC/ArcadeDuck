@@ -22,6 +22,7 @@
 #include "core/arcade/systems/konami/gq/konami_gq_sound_cpu.h"
 #include "core/arcade/systems/konami/gq/konami_gq_scsi.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
+#include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "mdec.h"
@@ -1284,6 +1285,13 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     const u32 width = u32(1) << static_cast<u32>(size);
     return SonyZN::ReadEXP1(width, offset);
   }
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    u32 value = 0;
+    if (NamcoSystem10::ReadEXP1(width, offset, &value))
+      return value;
+  }
   if (NamcoSystem11::IsActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
@@ -1433,6 +1441,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     const u32 offset = address & EXP1_MASK;
     const u32 width = u32(1) << static_cast<u32>(size);
     if (SonyZN::WriteEXP1(width, offset, value))
+      return;
+  }
+
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 offset = address & EXP1_MASK;
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem10::WriteEXP1(width, offset, value))
       return;
   }
 
