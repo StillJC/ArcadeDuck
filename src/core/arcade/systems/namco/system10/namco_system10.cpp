@@ -35,6 +35,16 @@ static constexpr u32 MEMN_CONTROL_BASE = 0x470000;
 static constexpr u32 LOOKUP_RAM_BASE = 0x500000;
 static constexpr u32 LOOKUP_RAM_SIZE = 0x100000;
 
+static constexpr u32 PROGRAM_ROM_SIZE = 0x400000;
+static constexpr u32 PROGRAM_FIRST_PAGE = 0x040;
+static constexpr u32 PROGRAM_FIRST_END = 0x01c000;
+static constexpr u32 PROGRAM_FILL_END = 0x020000;
+static constexpr u32 PROGRAM_SECOND_PAGE = 0x120;
+
+static_assert(PROGRAM_FIRST_END == UINT32_C(0x0e0) * MemNRawNAND::DATA_BYTES_PER_PAGE);
+static_assert((PROGRAM_ROM_SIZE - PROGRAM_FILL_END) ==
+              UINT32_C(0x1f00) * MemNRawNAND::DATA_BYTES_PER_PAGE);
+
 struct RuntimeState
 {
   std::string set_name;
@@ -96,6 +106,60 @@ bool ShouldApplyStaticTransform(const RuntimeState& runtime, const MemNRawNAND& 
     return false;
 
   return runtime.board_profile != MemNBoardProfile::Unknown;
+}
+
+bool MapProgramWordToNAND(u32 word_offset, u32* page, u32* column)
+{
+  if (!page || !column || word_offset >= PROGRAM_ROM_SIZE || (word_offset & 1u) != 0)
+    return false;
+
+  u32 source_offset;
+  u32 first_page;
+
+  if (word_offset < PROGRAM_FIRST_END)
+  {
+    source_offset = word_offset;
+    first_page = PROGRAM_FIRST_PAGE;
+  }
+  else if (word_offset < PROGRAM_FILL_END)
+  {
+    return false;
+  }
+  else
+  {
+    source_offset = word_offset - PROGRAM_FILL_END;
+    first_page = PROGRAM_SECOND_PAGE;
+  }
+
+  *page = first_page + (source_offset / MemNRawNAND::DATA_BYTES_PER_PAGE);
+  *column = source_offset % MemNRawNAND::DATA_BYTES_PER_PAGE;
+  return true;
+}
+
+u8 ReadProgramByte(const RuntimeState& runtime, u32 offset)
+{
+  if (runtime.board_profile != MemNBoardProfile::StarTrigon || offset >= PROGRAM_ROM_SIZE)
+    return UINT8_C(0xff);
+
+  if (offset >= PROGRAM_FIRST_END && offset < PROGRAM_FILL_END)
+    return UINT8_C(0x55);
+
+  const u32 word_offset = offset & ~UINT32_C(1);
+  u32 page;
+  u32 column;
+  if (!MapProgramWordToNAND(word_offset, &page, &column))
+    return UINT8_C(0xff);
+
+  const std::span<const u8> data = runtime.nand0.GetPageData(page);
+  if (data.empty() || (column + 1) >= data.size())
+    return UINT8_C(0xff);
+
+  // Raw MEM(N) words arrive high byte first at the board. Decode the complete
+  // 16-bit word, then expose the resulting program aperture in PSX little-endian
+  // byte order. The immutable NAND image itself is never rewritten.
+  const u16 raw_word = static_cast<u16>((static_cast<u16>(data[column]) << 8) | data[column + 1]);
+  const u16 decoded_word = DecodeStaticWord(runtime.board_profile, raw_word);
+  return static_cast<u8>((decoded_word >> ((offset & 1u) * 8)) & UINT16_C(0x00ff));
 }
 
 MemNRawNAND* GetSelectedNAND(RuntimeState& runtime)
@@ -390,6 +454,22 @@ void Shutdown()
 bool IsActive()
 {
   return s_runtime.has_value();
+}
+
+u32 ReadProgramROM(u32 width, u32 offset)
+{
+  if (!s_runtime.has_value() || (width != 1 && width != 2 && width != 4) ||
+      offset >= PROGRAM_ROM_SIZE || width > (PROGRAM_ROM_SIZE - offset))
+  {
+    return UINT32_MAX;
+  }
+
+  const RuntimeState& runtime = s_runtime.value();
+  u32 value = 0;
+  for (u32 i = 0; i < width; i++)
+    value |= static_cast<u32>(ReadProgramByte(runtime, offset + i)) << (i * 8);
+
+  return value;
 }
 
 bool ReadEXP1(u32 width, u32 offset, u32* value)

@@ -1161,6 +1161,12 @@ u32 Bus::BIOSReadHandler(VirtualMemoryAddress address)
 {
   BUS_CYCLES(g_bios_access_time[static_cast<u32>(size)]);
 
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem10::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
+  }
+
   if (NamcoSystem11::IsActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
