@@ -2834,6 +2834,40 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
   }
 
+  // Point Blank 2 / Gunbarl register their DMA5 completion callback after the
+  // ROM-board transfer can already complete in the current System 12 model.
+  // Their program then waits forever for the missed completion callback.
+  //
+  // Apply the established family compatibility workaround at the loaded-ROM
+  // boundary rather than inventing behavior for the System 12 no-op strobes or
+  // changing generic PSX DMA timing. Guard the original instruction so a
+  // different program revision cannot be patched accidentally.
+  if (content.set_name == "ptblank2" || content.set_name == "gunbarl")
+  {
+    static constexpr size_t PB2_DMA_WAIT_BRANCH_OFFSET = 0x331C4;
+    static constexpr u32 PB2_DMA_WAIT_BRANCH = UINT32_C(0x1040FFFB);
+
+    if (content.program_rom.size() < (PB2_DMA_WAIT_BRANCH_OFFSET + sizeof(u32)))
+    {
+      Error::SetStringView(error, "Point Blank 2 compatibility patch is outside the loaded program ROM.");
+      return false;
+    }
+
+    u32 instruction = 0;
+    std::memcpy(&instruction, content.program_rom.data() + PB2_DMA_WAIT_BRANCH_OFFSET, sizeof(instruction));
+    if (instruction != PB2_DMA_WAIT_BRANCH)
+    {
+      Error::SetStringFmt(error,
+                          "Point Blank 2 compatibility patch validation failed at 0x{:X}: expected {:08X}, got {:08X}.",
+                          PB2_DMA_WAIT_BRANCH_OFFSET, PB2_DMA_WAIT_BRANCH, instruction);
+      return false;
+    }
+
+    static constexpr u32 MIPS_NOP = UINT32_C(0x00000000);
+    std::memcpy(content.program_rom.data() + PB2_DMA_WAIT_BRANCH_OFFSET, &MIPS_NOP, sizeof(MIPS_NOP));
+    INFO_LOG("Applied Point Blank 2/Gunbarl DMA completion-wait compatibility patch set='{}' offset={:08X}",
+             content.set_name, static_cast<u32>(PB2_DMA_WAIT_BRANCH_OFFSET));
+  }
   std::memcpy(Bus::g_bios, content.program_rom.data(), Bus::BIOS_SIZE);
 
   RuntimeState runtime;
