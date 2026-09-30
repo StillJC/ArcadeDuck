@@ -20,6 +20,9 @@ enum : u32
   SAMPLE_RATE = 44100,
 };
 
+/// Selects the board SPU base-frequency ratio relative to the ordinary
+/// 44.1 kHz PlayStation SPU clock domain. Host output remains 44.1 kHz.
+void SetHardwareClockRatio(u32 numerator, u32 denominator);
 void Initialize();
 void CPUClockChanged();
 void RestoreLegacyClockDomainFromState(bool saved_overclock_active, u32 saved_overclock_numerator,

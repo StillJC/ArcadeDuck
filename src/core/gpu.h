@@ -93,6 +93,8 @@ public:
   static void SetGQMode(bool enabled, bool use_2mb_vram = false);
   // CXD8561Q/type-2 is independent of VRAM population: ZN-1 can use 1 MiB while later boards use 2 MiB.
   static void SetCXD8561QMode(bool use_2mb_vram);
+  // System 10 CXD8561CQ has 2 MiB SGRAM and exposes the full installed aperture at reset.
+  static void SetCXD8561CQMode();
   static bool IsGQMode();
   static bool IsCXD8561QMode();
 

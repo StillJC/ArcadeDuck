@@ -27,6 +27,7 @@
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "legacy_pad_state.h"
@@ -81,6 +82,7 @@
 #include <deque>
 #include <fstream>
 #include <limits>
+#include <numeric>
 #include <thread>
 #include <zlib.h>
 #include <zstd.h>
@@ -246,6 +248,10 @@ static bool s_keep_gpu_device_on_shutdown = false;
 static ConsoleRegion s_region = ConsoleRegion::NTSC_U;
 static Arcade::VideoTimingStandard s_active_video_timing = Arcade::VideoTimingStandard::Invalid;
 static bool s_active_video_timing_is_arcade = false;
+static u32 s_machine_cpu_clock_numerator = 1;
+static u32 s_machine_cpu_clock_denominator = 1;
+u32 System::g_cpu_clock_numerator = 1;
+u32 System::g_cpu_clock_denominator = 1;
 TickCount System::g_ticks_per_second = System::MASTER_CLOCK;
 static TickCount s_max_slice_ticks = System::MASTER_CLOCK / 10;
 static u32 s_frame_number = 1;
@@ -665,6 +671,45 @@ static void SetActiveVideoTimingForConsoleRegion(ConsoleRegion region)
   s_active_video_timing_is_arcade = false;
 }
 
+static void RecomputeEffectiveCPUClockRatio()
+{
+  u64 numerator = std::max<u64>(s_machine_cpu_clock_numerator, 1u);
+  u64 denominator = std::max<u64>(s_machine_cpu_clock_denominator, 1u);
+
+  if (g_settings.cpu_overclock_active)
+  {
+    numerator *= std::max<u64>(g_settings.cpu_overclock_numerator, 1u);
+    denominator *= std::max<u64>(g_settings.cpu_overclock_denominator, 1u);
+  }
+
+  const u64 divisor = std::gcd(numerator, denominator);
+  numerator /= divisor;
+  denominator /= divisor;
+
+  DebugAssert(numerator <= std::numeric_limits<u32>::max());
+  DebugAssert(denominator <= std::numeric_limits<u32>::max());
+  System::g_cpu_clock_numerator = static_cast<u32>(numerator);
+  System::g_cpu_clock_denominator = static_cast<u32>(denominator);
+}
+
+void System::SetMachineCPUClockRatio(u32 numerator, u32 denominator)
+{
+  s_machine_cpu_clock_numerator = std::max(numerator, 1u);
+  s_machine_cpu_clock_denominator = std::max(denominator, 1u);
+  RecomputeEffectiveCPUClockRatio();
+
+  const double effective_mhz =
+    (static_cast<double>(MASTER_CLOCK) * static_cast<double>(g_cpu_clock_numerator) /
+     static_cast<double>(g_cpu_clock_denominator)) /
+    1000000.0;
+
+  INFO_LOG("CPU clock domain: machine={}/{} user={}/{} effective={}/{} ({:.6f} MHz)",
+           s_machine_cpu_clock_numerator, s_machine_cpu_clock_denominator,
+           g_settings.cpu_overclock_active ? g_settings.cpu_overclock_numerator : 1u,
+           g_settings.cpu_overclock_active ? g_settings.cpu_overclock_denominator : 1u,
+           g_cpu_clock_numerator, g_cpu_clock_denominator, effective_mhz);
+}
+
 TickCount System::GetMaxSliceTicks()
 {
   return s_max_slice_ticks;
@@ -678,6 +723,7 @@ void System::UpdateOverclock()
   if (sony_zn_active)
     SonyZN::PrepareForCPUClockChange();
 
+  RecomputeEffectiveCPUClockRatio();
   g_ticks_per_second = ScaleTicksToOverclock(MASTER_CLOCK);
   s_max_slice_ticks = ScaleTicksToOverclock(MASTER_CLOCK / 10);
 
@@ -1485,6 +1531,9 @@ void System::ResetSystem()
 
   InternalReset();
 
+  if (NamcoSystem10::IsActive())
+    NamcoSystem10::Reset();
+
   // These machine resets schedule or timestamp work against the global timing
   // epoch, so restart them only after InternalReset() has reset that epoch.
   if (NamcoSystem11::IsActive())
@@ -1831,8 +1880,13 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     SetActiveVideoTimingForConsoleRegion(s_region);
   }
 
-  // GPU construction occurs inside Initialize(), so select the board-specific
-  // VRAM and register layout before renderer resources or shaders are created.
+  // Reset pre-construction hardware clock profiles on every boot. Individual
+  // arcade handlers may replace these defaults in PrepareSharedHardware().
+  SetMachineCPUClockRatio(1, 1);
+  SPU::SetHardwareClockRatio(1, 1);
+
+  // Shared GPU/SPU/system construction occurs inside Initialize(), so select
+  // all board-specific hardware profiles before those devices are created.
   if (arcade_machine_handler)
     arcade_machine_handler->PrepareSharedHardware();
   else
@@ -2077,6 +2131,7 @@ void System::DestroySystem()
   CDROM::Shutdown();
   g_gpu.reset();
   Konami::ShutdownGQ();
+  NamcoSystem10::Shutdown();
   NamcoSystem11::Shutdown();
   SonyZN::Shutdown();
   DMA::Shutdown();

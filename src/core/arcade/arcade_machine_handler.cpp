@@ -4,12 +4,15 @@
 #include "core/arcade/arcade_machine_handler.h"
 
 #include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "core/bios.h"
 #include "core/bus.h"
 #include "core/gpu.h"
 #include "core/settings.h"
+#include "core/spu.h"
+#include "core/system.h"
 
 #include "common/error.h"
 #include "common/log.h"
@@ -112,6 +115,80 @@ public:
 private:
   std::optional<BIOS::Image> m_bios;
   std::optional<Konami::GQLoadedContent> m_content;
+};
+
+class NamcoSystem10Handler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Namco System 10 game definition.");
+      return false;
+    }
+
+    // Keep activation deliberately narrow until the first MEM(N) target has
+    // completed runtime bootstrap/protection validation.
+    if (context.canonical_game_id != "startrgn" ||
+        context.game_definition->hardware_profile != "ns10_startrgn")
+    {
+      Error::SetStringFmt(error,
+                          "Namco System 10 bring-up currently supports only Star Trigon; requested '{}' "
+                          "with profile '{}'.",
+                          context.canonical_game_id, context.game_definition->hardware_profile);
+      return false;
+    }
+
+    m_content =
+      NamcoSystem10::LoadStarTrigonContent(context.archive_path.c_str(), *context.game_definition, error);
+    return m_content.has_value();
+  }
+
+  // System 10's main PCB has 4 MiB of physically populated CPU RAM
+  // (two 1M x 16 DRAMs). The guest still selects the 0xF/16 MiB CPU-visible
+  // window at runtime; Bus mirrors the smaller physical backing through that
+  // wider aperture via g_ram_mask.
+  std::optional<u32> GetRAMSizeOverride() const override { return Bus::RAM_4MB_SIZE; }
+
+  void PrepareSharedHardware() const override
+  {
+    // System 10 uses a 101.4912 MHz master oscillator instead of the
+    // PlayStation 67.7376 MHz source. Both reduce to the exact 881/588 ratio
+    // at the CPU/GPU execution domain. Keep this machine-native ratio separate
+    // from the user's optional CPU clock control.
+    System::SetMachineCPUClockRatio(881, 588);
+
+    // CXD2938Q is clocked from 101.4912 MHz / 2. Its 44.1 kHz host stream is
+    // retained, while voice progression uses the corresponding 66.075 kHz
+    // base frequency (again 881/588 of the ordinary PS1 SPU base).
+    SPU::SetHardwareClockRatio(881, 588);
+
+    // System 10 uses CXD8561CQ with 2 MiB SGRAM.
+    GPU::SetCXD8561CQMode();
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_content.has_value())
+    {
+      Error::SetStringView(error, "Invalid Namco System 10 Star Trigon boot content.");
+      return false;
+    }
+
+    if (!NamcoSystem10::InitializeMemN(std::move(*m_content), error))
+      return false;
+
+    INFO_LOG("NamcoSystem10.Loader active canonical_set='{}' profile='{}' physical_ram={} MiB.",
+             context.canonical_game_id, context.game_definition->hardware_profile,
+             Bus::RAM_4MB_SIZE / (1024 * 1024));
+    return true;
+  }
+
+private:
+  std::optional<NamcoSystem10::MemNLoadedContent> m_content;
 };
 
 class NamcoSystem11Handler final : public MachineHandler
@@ -1092,6 +1169,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<KonamiGVHandler>();
   if (id == "konami_gq")
     return std::make_unique<KonamiGQHandler>();
+  if (id == "namco_system10")
+    return std::make_unique<NamcoSystem10Handler>();
   if (id == "namco_system11")
     return std::make_unique<NamcoSystem11Handler>();
   if (id == "capcom_zn1")

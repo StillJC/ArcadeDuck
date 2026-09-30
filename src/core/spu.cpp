@@ -445,6 +445,9 @@ struct SPUState
 ALIGN_TO_CACHE_LINE static SPUState s_state;
 ALIGN_TO_CACHE_LINE static std::array<u8, RAM_SIZE> s_ram{};
 
+static u32 s_hardware_clock_numerator = 1;
+static u32 s_hardware_clock_denominator = 1;
+
 struct GVMixProfile
 {
   s32 spu_numerator;
@@ -489,13 +492,30 @@ ALWAYS_INLINE_RELEASE static s32 ApplyGVMixScale(s32 sample, s32 numerator, s32 
 }
 } // namespace SPU
 
+void SPU::SetHardwareClockRatio(u32 numerator, u32 denominator)
+{
+  s_hardware_clock_numerator = std::max(numerator, 1u);
+  s_hardware_clock_denominator = std::max(denominator, 1u);
+}
+
 void SPU::Initialize()
 {
-  // (X * D) / N / 768 -> (X * D) / (N * 768)
-  s_state.cpu_overclock_active = g_settings.cpu_overclock_active;
-  s_state.cpu_overclock_denominator = std::max(g_settings.cpu_overclock_denominator, 1u);
+  // Keep the output stream at 44.1 kHz. The effective CPU-clock ratio controls
+  // when each output frame is produced; the separate hardware ratio below
+  // controls how quickly SPU voices advance through source samples.
+  s_state.cpu_overclock_active = System::IsCPUClockScaled();
+  s_state.cpu_overclock_denominator = System::GetCPUClockDenominator();
   s_state.cpu_ticks_per_spu_tick = System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK);
-  s_state.cpu_tick_divider = static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK);
+  s_state.cpu_tick_divider =
+    static_cast<TickCount>(static_cast<u64>(System::GetCPUClockNumerator()) * SYSCLK_TICKS_PER_SPU_TICK);
+
+  const double base_frequency =
+    static_cast<double>(SAMPLE_RATE) * static_cast<double>(s_hardware_clock_numerator) /
+    static_cast<double>(s_hardware_clock_denominator);
+  INFO_LOG("SPU clock domain: cpu={}/{} hardware={}/{} output={} Hz base={:.3f} Hz",
+           System::GetCPUClockNumerator(), System::GetCPUClockDenominator(),
+           s_hardware_clock_numerator, s_hardware_clock_denominator,
+           static_cast<u32>(SAMPLE_RATE), base_frequency);
   s_state.tick_event.SetInterval(s_state.cpu_ticks_per_spu_tick);
   s_state.tick_event.SetPeriod(s_state.cpu_ticks_per_spu_tick);
   s_state.null_audio_stream = AudioStream::CreateNullStream(SAMPLE_RATE, g_settings.audio_stream_parameters.buffer_ms);
@@ -595,10 +615,11 @@ void SPU::CPUClockChanged()
   // Install the newly selected conversion state only after old-domain work has
   // been retired. Execute()/InternalGeneratePendingSamples() use these cached
   // parameters rather than already-updated g_settings.
-  s_state.cpu_overclock_active = g_settings.cpu_overclock_active;
-  s_state.cpu_overclock_denominator = std::max(g_settings.cpu_overclock_denominator, 1u);
+  s_state.cpu_overclock_active = System::IsCPUClockScaled();
+  s_state.cpu_overclock_denominator = System::GetCPUClockDenominator();
   s_state.cpu_ticks_per_spu_tick = System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK);
-  s_state.cpu_tick_divider = static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK);
+  s_state.cpu_tick_divider =
+    static_cast<TickCount>(static_cast<u64>(System::GetCPUClockNumerator()) * SYSCLK_TICKS_PER_SPU_TICK);
 
   // Preserve the fractional position within the current 44.1 kHz frame. The
   // representation changes with the overclock ratio:
@@ -771,9 +792,10 @@ bool SPU::DoCompatibleState(StateWrapper& sw)
   // clock domain correctly before System::UpdateOverclock() adapts it.
   sw.DoEx(&s_state.cpu_ticks_per_spu_tick, 72, System::ScaleTicksToOverclock(SYSCLK_TICKS_PER_SPU_TICK));
   sw.DoEx(&s_state.cpu_tick_divider, 72,
-          static_cast<TickCount>(g_settings.cpu_overclock_numerator * SYSCLK_TICKS_PER_SPU_TICK));
-  sw.DoEx(&s_state.cpu_overclock_active, 72, g_settings.cpu_overclock_active);
-  sw.DoEx(&s_state.cpu_overclock_denominator, 72, std::max(g_settings.cpu_overclock_denominator, 1u));
+          static_cast<TickCount>(static_cast<u64>(System::GetCPUClockNumerator()) *
+                                 SYSCLK_TICKS_PER_SPU_TICK));
+  sw.DoEx(&s_state.cpu_overclock_active, 72, System::IsCPUClockScaled());
+  sw.DoEx(&s_state.cpu_overclock_denominator, 72, System::GetCPUClockDenominator());
 
   sw.Do(&s_state.SPUCNT.bits);
   sw.Do(&s_state.SPUSTAT.bits);
@@ -2194,25 +2216,39 @@ ALWAYS_INLINE_RELEASE std::tuple<s32, s32> SPU::SampleVoice(u32 voice_index)
   if (voice.adsr_phase != ADSRPhase::Off)
     voice.TickADSR();
 
-  // Pitch modulation
-  u16 step = voice.regs.adpcm_sample_rate;
+  // Pitch modulation in the ordinary PS1 fixed-point domain.
+  u16 pitch_step = voice.regs.adpcm_sample_rate;
   if (IsPitchModulationEnabled(voice_index))
   {
     const s32 factor = std::clamp<s32>(s_state.voices[voice_index - 1].last_volume, -0x8000, 0x7FFF) + 0x8000;
-    step = Truncate16(static_cast<u32>((SignExtend32(step) * factor) >> 15));
+    pitch_step = Truncate16(static_cast<u32>((SignExtend32(pitch_step) * factor) >> 15));
   }
-  step = std::min<u16>(step, 0x3FFF);
 
-  // Shouldn't ever overflow because if sample_index == 27, step == 0x4000 there won't be a carry out from the
-  // interpolation index. If there is a carry out, bit 12 will never be 1, so it'll never add more than 4 to
-  // sample_index, which should never be >27.
+  // Preserve the ordinary PS1 14-bit pitch domain first, then apply the
+  // board oscillator ratio. On System 10, a valid 0x3FFF pitch can therefore
+  // advance faster than 0x3FFF fixed-point units per 44.1 kHz output frame.
+  u32 step = std::min<u32>(pitch_step, 0x3FFF);
+  if (s_hardware_clock_numerator != s_hardware_clock_denominator)
+  {
+    step = static_cast<u32>((static_cast<u64>(step) * s_hardware_clock_numerator) /
+                            s_hardware_clock_denominator);
+  }
+
+  // VoiceCounter stores only a five-bit sample index. Adding the System 10
+  // scaled step directly to the packed bitfield can carry past bit 16 and wrap
+  // the sample index before the block-boundary test. Accumulate the fractional
+  // phase and sample index separately, then repack them after handling the
+  // possible 28-sample ADPCM block crossing.
   DebugAssert(voice.counter.sample_index < NUM_SAMPLES_PER_ADPCM_BLOCK);
-  voice.counter.bits += step;
+  const u32 phase = (voice.counter.bits & UINT32_C(0x0FFF)) + step;
+  u32 sample_index = static_cast<u32>(voice.counter.sample_index.GetValue()) + (phase >> 12);
+  DebugAssert(sample_index < (NUM_SAMPLES_PER_ADPCM_BLOCK * 2));
+  voice.counter.bits = phase & UINT32_C(0x0FFF);
 
-  if (voice.counter.sample_index >= NUM_SAMPLES_PER_ADPCM_BLOCK)
+  if (sample_index >= NUM_SAMPLES_PER_ADPCM_BLOCK)
   {
     // next block
-    voice.counter.sample_index -= NUM_SAMPLES_PER_ADPCM_BLOCK;
+    sample_index -= NUM_SAMPLES_PER_ADPCM_BLOCK;
     voice.has_samples = false;
     voice.is_first_block = false;
     voice.current_address += 2;
@@ -2242,6 +2278,8 @@ ALWAYS_INLINE_RELEASE std::tuple<s32, s32> SPU::SampleVoice(u32 voice_index)
       }
     }
   }
+
+  voice.counter.sample_index = Truncate8(sample_index);
 
   // apply per-channel volume
   const s32 left = ApplyVolume(volume, voice.left_volume.current_level);

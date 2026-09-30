@@ -182,20 +182,23 @@ static bool CompressAndWriteTextureToFile(u32 width, u32 height, std::string fil
                                           bool display_osd_message, bool use_thread);
 static void JoinScreenshotThreads();
 
-static void SetArcadeGPUHardwareMode(bool gq_mode, bool cxd8561q_mode, bool use_2mb_vram)
+static void SetArcadeGPUHardwareMode(bool gq_mode, bool cxd8561q_mode, bool use_2mb_vram,
+                                     bool full_vram_addressable)
 {
   s_gq_gpu_mode = gq_mode;
   s_cxd8561q_gpu_mode = cxd8561q_mode;
   // Physical population and address decoder range are separate on the v2 GPU.
-  // CXD8538Q/type-1 exposes its 2 MiB layout directly; CXD8561Q/type-2 starts
-  // with the upper Y address bit gated until GP1(09h).0 enables it.
+  // The existing CXD8561Q path retains its gated upper-Y model. System 10's
+  // CXD8561CQ profile exposes its full populated 2 MiB SGRAM aperture.
   g_vram_height = use_2mb_vram ? VRAM_GQ_HEIGHT : VRAM_HEIGHT;
-  g_vram_address_height = gq_mode ? g_vram_height : VRAM_HEIGHT;
+  g_vram_address_height = (gq_mode || full_vram_addressable) ? g_vram_height : VRAM_HEIGHT;
   g_vram_height_mask = g_vram_address_height - 1;
   g_vram_size = VRAM_WIDTH * g_vram_height * sizeof(u16);
 
   const char* const layout =
-    gq_mode ? "CXD8538Q/type-1" : (cxd8561q_mode ? "CXD8561Q/type-2" : "standard PS1/GV");
+    gq_mode ? "CXD8538Q/type-1" :
+              (cxd8561q_mode ? (full_vram_addressable ? "CXD8561CQ/type-2" : "CXD8561Q/type-2") :
+                               "standard PS1/GV");
   INFO_LOG("GPU hardware layout: {} physical VRAM={}x{} ({} bytes), addressable={}x{}", layout,
            static_cast<u32>(VRAM_WIDTH), g_vram_height, g_vram_size, static_cast<u32>(VRAM_WIDTH),
            g_vram_address_height);
@@ -205,12 +208,20 @@ void GPU::SetGQMode(bool enabled, bool use_2mb_vram)
 {
   // Preserve the legacy SetGQMode(false, true) meaning for any out-of-tree callers,
   // but current arcade handlers use the explicit CXD8561Q selector below.
-  SetArcadeGPUHardwareMode(enabled, (!enabled && use_2mb_vram), (enabled || use_2mb_vram));
+  SetArcadeGPUHardwareMode(enabled, (!enabled && use_2mb_vram), (enabled || use_2mb_vram), false);
 }
 
 void GPU::SetCXD8561QMode(bool use_2mb_vram)
 {
-  SetArcadeGPUHardwareMode(false, true, use_2mb_vram);
+  SetArcadeGPUHardwareMode(false, true, use_2mb_vram, false);
+}
+
+void GPU::SetCXD8561CQMode()
+{
+  // System 10 has 2 MiB physically populated SGRAM and uses the full
+  // 1024-line type-2 address aperture. CXD8561CQ-specific GP1(09h) behavior
+  // remains OPEN and is intentionally not inferred here.
+  SetArcadeGPUHardwareMode(false, true, true, true);
 }
 
 bool GPU::IsGQMode()

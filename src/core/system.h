@@ -119,6 +119,8 @@ enum class BootMode
 using GameHash = u64;
 
 extern TickCount g_ticks_per_second;
+extern u32 g_cpu_clock_numerator;
+extern u32 g_cpu_clock_denominator;
 
 /// Returns true if the filename is a save state.
 bool IsSaveStateFilename(std::string_view path);
@@ -163,28 +165,47 @@ ALWAYS_INLINE TickCount GetTicksPerSecond()
   return g_ticks_per_second;
 }
 
+ALWAYS_INLINE bool IsCPUClockScaled()
+{
+  return g_cpu_clock_numerator != g_cpu_clock_denominator;
+}
+
+ALWAYS_INLINE u32 GetCPUClockNumerator()
+{
+  return g_cpu_clock_numerator;
+}
+
+ALWAYS_INLINE u32 GetCPUClockDenominator()
+{
+  return g_cpu_clock_denominator;
+}
+
+// The effective CPU clock is the machine-native ratio multiplied by the
+// user's optional CPU clock control. The historical function names remain to
+// avoid a broad unrelated churn in timing clients.
 ALWAYS_INLINE_RELEASE TickCount ScaleTicksToOverclock(TickCount ticks)
 {
-  if (!g_settings.cpu_overclock_active)
+  if (!IsCPUClockScaled())
     return ticks;
 
-  return static_cast<TickCount>(((static_cast<u64>(static_cast<u32>(ticks)) * g_settings.cpu_overclock_numerator) +
-                                 (g_settings.cpu_overclock_denominator - 1)) /
-                                g_settings.cpu_overclock_denominator);
+  return static_cast<TickCount>(((static_cast<u64>(static_cast<u32>(ticks)) * g_cpu_clock_numerator) +
+                                 (g_cpu_clock_denominator - 1)) /
+                                g_cpu_clock_denominator);
 }
 
 ALWAYS_INLINE_RELEASE TickCount UnscaleTicksToOverclock(TickCount ticks, TickCount* remainder)
 {
-  if (!g_settings.cpu_overclock_active)
+  if (!IsCPUClockScaled())
     return ticks;
 
   const u64 num =
-    (static_cast<u32>(ticks) * static_cast<u64>(g_settings.cpu_overclock_denominator)) + static_cast<u32>(*remainder);
-  const TickCount t = static_cast<u32>(num / g_settings.cpu_overclock_numerator);
-  *remainder = static_cast<u32>(num % g_settings.cpu_overclock_numerator);
+    (static_cast<u32>(ticks) * static_cast<u64>(g_cpu_clock_denominator)) + static_cast<u32>(*remainder);
+  const TickCount t = static_cast<u32>(num / g_cpu_clock_numerator);
+  *remainder = static_cast<u32>(num % g_cpu_clock_numerator);
   return t;
 }
 
+void SetMachineCPUClockRatio(u32 numerator, u32 denominator);
 TickCount GetMaxSliceTicks();
 void UpdateOverclock();
 

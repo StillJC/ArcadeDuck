@@ -65,7 +65,8 @@ public:
   /// Returns a board RAM override, or no value to retain the generic configured RAM size.
   virtual std::optional<u32> GetRAMSizeOverride() const { return std::nullopt; }
 
-  /// Applies board-specific configuration which must precede shared GPU/system construction.
+  /// Applies board-specific configuration which must precede shared construction.
+  /// This includes board-native CPU/SPU clock domains as well as GPU layout.
   virtual void PrepareSharedHardware() const = 0;
 
   /// Installs validated firmware/content and initializes board devices after shared initialization.
