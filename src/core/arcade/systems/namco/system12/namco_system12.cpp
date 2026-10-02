@@ -246,6 +246,7 @@ struct RuntimeState
   u32 h8_rtc_millisecond_accumulator = 0;
 
   bool h8_vblank = false;
+
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
@@ -257,6 +258,7 @@ struct RuntimeState
 
   Arcade::H8::H83002Intc h8_intc;
   Arcade::Audio::NamcoC352 c352;
+  u32 h8_c352_instruction_clocks = 0;
   bool mainboard_reset_pending = false;
   bool boot_warm_reset_completed = false;
   bool cold_boot_h8_released = true;
@@ -1633,6 +1635,23 @@ u8 ReadH8JAMMAInput(u32 offset)
   }
 }
 
+void H8AdvanceC352ToCurrentInstructionCycle(RuntimeState& runtime)
+{
+  if (!runtime.h8_cpu)
+    return;
+
+  const u32 current_clocks =
+    (runtime.h8_cpu->cycles > 0) ? static_cast<u32>(runtime.h8_cpu->cycles) : 0;
+
+  if (current_clocks <= runtime.h8_c352_instruction_clocks)
+    return;
+
+  const u32 delta = current_clocks - runtime.h8_c352_instruction_clocks;
+  runtime.c352.AdvanceH8Clocks(
+    delta, std::span<const u8>(runtime.content.c352_samples));
+  runtime.h8_c352_instruction_clocks = current_clocks;
+}
+
 h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
 {
   RuntimeState* const runtime = static_cast<RuntimeState*>(opaque);
@@ -1652,6 +1671,7 @@ h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
     const u32 offset = static_cast<u32>(address - H8_SHARED_BASE);
     const u32 psx_index = offset ^ UINT32_C(1);
     value->u = runtime->shared_ram[psx_index];
+
 
     // Attack Pla Rail coin-mailbox diagnostic only. The PSX writes the
     // decrement request at shared offset 0x3300 and the H8 publishes the
@@ -1700,7 +1720,10 @@ h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
 
   if (address >= H8_C352_BASE && address <= H8_C352_END)
   {
-
+    // MAME updates the C352 stream at the H8 register-access boundary.
+    // Bring only the C352 forward through the cycles already consumed by
+    // this instruction before performing the register read.
+    H8AdvanceC352ToCurrentInstructionCycle(*runtime);
     value->u = runtime->c352.ReadH8Byte(static_cast<u32>(address - H8_C352_BASE));
     return TRUE;
   }
@@ -1952,9 +1975,11 @@ h8_bool H8BusWrite(void* opaque, unsigned address, h8_byte_t value)
 
   if (address >= H8_C352_BASE && address <= H8_C352_END)
   {
-
+    // MAME updates the C352 stream at the H8 register-access boundary.
+    // Bring only the C352 forward through the cycles already consumed by
+    // this instruction before performing the register write.
+    H8AdvanceC352ToCurrentInstructionCycle(*runtime);
     runtime->c352.WriteH8Byte(static_cast<u32>(address - H8_C352_BASE), value.u);
-
     return TRUE;
   }
 
@@ -2139,7 +2164,7 @@ void H8CollectInterruptSources(RuntimeState& runtime)
     runtime.h8_intc.InternalInterrupt(*vector);
 }
 
-void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks)
+void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_c352)
 {
   if (h8_clocks == 0)
     return;
@@ -2149,7 +2174,9 @@ void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks)
   H8SCI0CyberLeadAdvance(runtime, h8_clocks);
   H8SCI1Advance(runtime, h8_clocks);
   runtime.h8_cyberlead.AdvanceLED(h8_clocks, H8_CLOCK_HZ);
-  runtime.c352.AdvanceH8Clocks(h8_clocks, std::span<const u8>(runtime.content.c352_samples));
+
+  if (advance_c352)
+    runtime.c352.AdvanceH8Clocks(h8_clocks, std::span<const u8>(runtime.content.c352_samples));
 }
 
 u32 H8ServiceInterrupts(RuntimeState& runtime)
@@ -2301,6 +2328,7 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
   {
     h8_last_step_pc = static_cast<u32>(h8.cpu.pc);
 
+
     if (runtime.content.set_name == "aplarail")
     {
       const u32 step_pc = h8_last_step_pc;
@@ -2397,6 +2425,7 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
       runtime.h8_aplarail_prev_step_pc = step_pc;
     }
 
+    runtime.h8_c352_instruction_clocks = 0;
     h8_step(&h8);
 
     if (h8.error_code != H8_DEBUG_NO_ERROR)
@@ -2406,14 +2435,28 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
     // instruction always includes at least the two-state opcode fetch.
     const u32 instruction_clocks =
       (h8.cycles > 0) ? static_cast<u32>(h8.cycles) : UINT32_C(2);
-    H8AdvanceClockedDevices(runtime, instruction_clocks);
+    const u32 c352_instruction_clocks =
+      std::min(runtime.h8_c352_instruction_clocks, instruction_clocks);
+
+    // All non-C352 clocked devices still advance at instruction completion.
+    // C352 has already been advanced to any in-instruction register-access
+    // points; only the remaining instruction clocks are advanced here.
+    H8AdvanceClockedDevices(runtime, instruction_clocks, false);
+    if (instruction_clocks > c352_instruction_clocks)
+    {
+      runtime.c352.AdvanceH8Clocks(
+        instruction_clocks - c352_instruction_clocks,
+        std::span<const u8>(runtime.content.c352_samples));
+    }
+    runtime.h8_c352_instruction_clocks = 0;
+
     runtime.h8_cycle_balance -= static_cast<s64>(instruction_clocks);
 
     H8CollectInterruptSources(runtime);
     const u32 interrupt_clocks = H8ServiceInterrupts(runtime);
     if (interrupt_clocks != 0)
     {
-      H8AdvanceClockedDevices(runtime, interrupt_clocks);
+      H8AdvanceClockedDevices(runtime, interrupt_clocks, true);
       runtime.h8_cycle_balance -= static_cast<s64>(interrupt_clocks);
       H8CollectInterruptSources(runtime);
     }
@@ -2466,8 +2509,11 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_timer16.Reset();
   runtime.h8_intc.Reset();
   runtime.c352.Reset();
+  runtime.h8_c352_instruction_clocks = 0;
 
   runtime.h8_peripherals.Reset();
+
+
   runtime.h8_scheduler_count = 0;
   runtime.h8_cycle_balance = 0;
   runtime.h8_cycle_fraction = 0;
@@ -2904,6 +2950,7 @@ void Reset()
   s_runtime->mainboard_reset_pending = false;
   s_runtime->boot_warm_reset_completed = false;
   s_runtime->cold_boot_h8_released = !s_runtime->content.requires_ram_preserving_boot_reset;
+
   s_runtime->cold_boot_config_header.fill(0);
   s_runtime->cold_boot_config_feed_words = 0;
   s_runtime->cold_boot_config_finalize_words = 0;
@@ -2960,6 +3007,7 @@ void SetVBlank(bool state)
   if (runtime.h8_vblank == state)
     return;
 
+
   runtime.h8_vblank = state;
   runtime.h8_sub_portb =
     static_cast<u8>((runtime.h8_sub_portb & UINT8_C(0x7F)) |
@@ -2969,11 +3017,21 @@ void SetVBlank(bool state)
   runtime.h8_peripherals.SetADCTrigger(state);
   H8CollectInterruptSources(runtime);
 
+  // System 12 H8 VBlank interleave.
+  //
+  // The PSX CRTC event can cross active-display and VBlank boundaries in one
+  // callback. On real hardware the H8 continues executing between those
+  // signal changes; MAME obtains that naturally from its multi-CPU scheduler.
+  // Service the H8 immediately on the falling edge so PB7/IRQ/ADC state is
+  // observable before a same-callback rising edge replaces it.
+  if (!state && runtime.h8_timing_event && runtime.h8_timing_event->IsActive())
+    runtime.h8_timing_event->InvokeEarly(true);
+
 
   const u32 interrupt_clocks = H8ServiceInterrupts(runtime);
   if (interrupt_clocks != 0)
   {
-    H8AdvanceClockedDevices(runtime, interrupt_clocks);
+    H8AdvanceClockedDevices(runtime, interrupt_clocks, true);
     runtime.h8_cycle_balance -= static_cast<s64>(interrupt_clocks);
     H8CollectInterruptSources(runtime);
   }
@@ -3253,7 +3311,6 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return false;
 
   RuntimeState& runtime = *s_runtime;
-
   if (offset >= BANK_REGISTER_BASE && offset <= BANK_REGISTER_END)
   {
     SetBank(runtime, static_cast<u16>(value));
@@ -3277,6 +3334,16 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
 
   if (offset >= WAIT_PACING_STROBE_BASE && offset <= WAIT_PACING_STROBE_END)
     return true;
+
+  // Golgo 13 continuously writes zero to the legacy gun-output window at
+  // 0x1F788002 once normal rendering begins. The base System 12 map has no
+  // write-side state for this location, so consume this known no-op here
+  // instead of falling through to the generic EXP1 warning path.
+  if (runtime.content.machine_config == "golgo13" &&
+      offset == UINT32_C(0x788002) && value == UINT32_C(0))
+  {
+    return true;
+  }
 
   if (offset >= SHARED_RAM_BASE && offset <= SHARED_RAM_END)
   {
@@ -3727,8 +3794,8 @@ void DMARead(u32* destination, u32 word_count)
     }
   }
 
-  runtime.dma_transfer_count++;
 
+  runtime.dma_transfer_count++;
   if (copied_words < word_count && runtime.dma_transfer_count <= 64)
   {
     WARNING_LOG("System12 DMA5 transfer truncated: requested={} copied={} source={:08X} region_size={:08X}",
