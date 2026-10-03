@@ -447,7 +447,7 @@ static void state_refresh_filter_2(struct qsound_chip *chip)
 		chip->alt_filter[ch].tap_count = 44;
 	
 		for (int i = 0; i < 44; i++)
-				chip->alt_filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
+				chip->alt_filter[ch].taps[i] = get_filter_coefficient(chip->alt_filter[ch].table_pos, i);
 	}
 	
 	chip->state = chip->next_state = STATE_NORMAL2;
