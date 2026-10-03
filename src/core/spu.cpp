@@ -1683,7 +1683,7 @@ void SPU::DMARead(u32* words, u32 word_count)
   u32 halfword_count = word_count * 2;
 
   const u32 size = s_state.transfer_fifo.GetSize();
-  if (word_count > size)
+  if (halfword_count > size)
   {
     u16 fill_value = 0;
     if (size > 0)
