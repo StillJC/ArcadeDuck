@@ -230,6 +230,75 @@ void CPU::NewRec::X64Compiler::GenerateCall(const void* func, s32 arg1reg /*= -1
   cg->call(func);
 }
 
+void CPU::NewRec::X64Compiler::GenerateMulDivMultiplyStart(bool signed_multiply, Reg rs)
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES);
+
+  MoveMIPSRegToReg(RWARG2, rs);
+  cg->mov(RWARG1, signed_multiply ? 1 : 0);
+  cg->call(&CPU::BeginMulDivMultiply);
+}
+
+void CPU::NewRec::X64Compiler::GenerateMulDivDivideStart()
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES);
+  cg->call(&CPU::BeginMulDivDivide);
+}
+
+void CPU::NewRec::X64Compiler::GenerateMulDivReadStall()
+{
+  Flush(FLUSH_FOR_C_CALL | FLUSH_CYCLES | FLUSH_GTE_DONE_CYCLE);
+  cg->call(&CPU::StallUntilMulDivCompleteForRecompiler);
+}
+
+void CPU::NewRec::X64Compiler::GenerateBranchEventBoundaryCheck()
+{
+  DebugAssert(m_cycles > 0);
+  DebugAssert((inst + 1) < (m_block->Instructions() + m_block->size));
+
+  // m_cycles includes the branch's own cycle. If pending + m_cycles has not
+  // reached the deadline, retain the existing generated branch path.
+  Label continue_execution;
+  cg->mov(RWARG1, cg->dword[PTR(&g_state.pending_ticks)]);
+  if (m_cycles == 1)
+    cg->inc(RWARG1);
+  else
+    cg->add(RWARG1, m_cycles);
+
+  cg->cmp(RWARG1, cg->dword[PTR(&g_state.downcount)]);
+  cg->jl(continue_execution, CodeGenerator::T_NEAR);
+
+  // Cold side exit. Save compiler state so code generation for the normal
+  // path continues unchanged after emitting this exit.
+  BackupHostState();
+
+  const TickCount saved_cycles = m_cycles;
+  DebugAssert(saved_cycles >= 1);
+
+  // Commit only work preceding the branch. The helper accounts for the
+  // branch cycle itself and decides whether the event belongs before the
+  // branch or between the branch and its delay slot.
+  m_cycles = saved_cycles - 1;
+
+  Flush(FLUSH_FLUSH_MIPS_REGISTERS |
+        FLUSH_CYCLES |
+        FLUSH_LOAD_DELAY |
+        FLUSH_GTE_DONE_CYCLE);
+
+  cg->mov(RWARG1, m_current_instruction_pc);
+  cg->mov(RWARG2, inst->bits);
+  cg->mov(RWARG3, (inst + 1)->bits);
+  cg->call(&CPU::ExecuteRecompilerBranchEventBoundary);
+
+  // The helper either raised an exception or completed branch + delay slot.
+  // In either case, return through the normal timing-aware dispatcher.
+  cg->jmp(CodeCache::g_check_events_and_dispatch);
+
+  RestoreHostState();
+
+  cg->L(continue_execution);
+}
+
 void CPU::NewRec::X64Compiler::EndBlock(const std::optional<u32>& newpc, bool do_event_test)
 {
   if (newpc.has_value())
