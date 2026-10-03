@@ -134,7 +134,7 @@ static void state_refresh_filter_2(struct qsound_chip *chip);
 static void state_normal_update(struct qsound_chip *chip);
 
 static inline int16_t get_sample(struct qsound_chip *chip, uint16_t bank,uint16_t address);
-static inline int16_t* get_filter_table(struct qsound_chip *chip, uint16_t offset);
+static inline int16_t get_filter_coefficient(uint16_t base, unsigned index);
 static inline int16_t pcm_update(struct qsound_chip *chip, struct qsound_voice *v, int32_t *echo_out);
 static inline void adpcm_update(struct qsound_chip *chip, int voice_no, int nibble);
 static inline int16_t echo(struct qsound_echo *r,int32_t input);
@@ -302,18 +302,23 @@ static inline int16_t get_sample(struct qsound_chip *chip, uint16_t bank,uint16_
 	return (int16_t)((sample_data << 8) | (sample_data << 0));	// MAME currently expands the 8 bit ROM data to 16 bits this way.
 }
 
-static inline int16_t* get_filter_table(struct qsound_chip *chip, uint16_t offset)
+static inline int16_t get_filter_coefficient(uint16_t base, unsigned index)
 {
-	int index;
-	
-	if (offset >= 0xf2e && offset < 0xfff)
-		return (int16_t*)&qsound_filter_data2[offset-0xf2e];	// overlapping filter data
-	
-	index = (offset-0xd53)/95;
-	if(index >= 0 && index < 5)
-		return (int16_t*)&qsound_filter_data[index];	// normal tables
-	
-	return NULL;	// no filter found.
+  if (base >= 0x1000)
+    return 0;
+
+  const uint16_t offset = (base + index) & 0x0FFF;
+
+  if (offset >= 0xD53 && offset <= 0xF2D)
+  {
+    const unsigned table_index = offset - 0xD53;
+    return qsound_filter_data[table_index / 95][table_index % 95];
+  }
+
+  if (offset >= 0xF2E && offset <= 0xFFE)
+    return qsound_filter_data2[offset - 0xF2E];
+
+  return 0;
 }
 
 /********************************************************************/
@@ -415,16 +420,13 @@ static void state_init(struct qsound_chip *chip)
 // Updates filter parameters for mode 1
 static void state_refresh_filter_1(struct qsound_chip *chip)
 {
-	const int16_t *table;
-	
 	for(int ch=0; ch<2; ch++)
 	{
 		chip->filter[ch].delay_pos = 0;
 		chip->filter[ch].tap_count = 95;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->filter[ch].taps, table, 95 * sizeof(int16_t));
+		for (int i = 0; i < 95; i++)
+				chip->filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
 	}
 	
 	chip->state = chip->next_state = STATE_NORMAL1;
@@ -433,23 +435,19 @@ static void state_refresh_filter_1(struct qsound_chip *chip)
 // Updates filter parameters for mode 2
 static void state_refresh_filter_2(struct qsound_chip *chip)
 {
-	const int16_t *table;
-	
 	for(int ch=0; ch<2; ch++)
 	{
 		chip->filter[ch].delay_pos = 0;
 		chip->filter[ch].tap_count = 45;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->filter[ch].taps, table, 45 * sizeof(int16_t));
+		for (int i = 0; i < 45; i++)
+				chip->filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
 		
 		chip->alt_filter[ch].delay_pos = 0;
 		chip->alt_filter[ch].tap_count = 44;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->alt_filter[ch].taps, table, 44 * sizeof(int16_t));
+		for (int i = 0; i < 44; i++)
+				chip->alt_filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
 	}
 	
 	chip->state = chip->next_state = STATE_NORMAL2;
