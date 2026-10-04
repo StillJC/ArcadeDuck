@@ -603,6 +603,7 @@ struct RuntimeState
   // as contiguous host windows: U56, U55, U29.
   GNetTE28F160FlashState gnet_wave_flash[GNET_WAVE_FLASH_COUNT];
   bool gnet_fc_flash_dirty = false;
+  bool gnet_zoom_flash_dirty = false;
   std::string taito_fx1b_fram_path;
   bool taito_fx1b_fram_dirty = false;
   std::array<u8, TAITO_FX1B_FRAM_SIZE> taito_fx1b_fram{};
@@ -6853,6 +6854,20 @@ static void ExecuteGNetATACommand(RuntimeState& runtime, u8 command)
 
   runtime.gnet_ata_error = 0;
 
+  if (!runtime.gnet_pccard_type2 && !runtime.gnet_pccard_type3 &&
+      runtime.gnet_pccard_type1_state != GNetType1LockState::Unlocked)
+  {
+    runtime.gnet_ata_transfer_mode = GNetATATransferMode::None;
+    runtime.gnet_ata_data_position = 0;
+    runtime.gnet_ata_sectors_remaining = 0;
+    runtime.gnet_ata_status = GNET_ATA_STATUS_DSC | GNET_ATA_STATUS_ERR;
+
+    if (runtime.gnet_ata_command_trace_count < 64)
+      DEV_LOG("SonyZN.GNet Type1 locked command=0x{:02X} -> ERR", command);
+    runtime.gnet_ata_command_trace_count++;
+    return;
+  }
+
   if (runtime.gnet_pccard_type2 && runtime.gnet_pccard_type2_locked &&
       command != UINT8_C(0xfe) && command != UINT8_C(0xfc))
   {
@@ -7370,7 +7385,10 @@ static bool WriteGNetU30Flash(RuntimeState& runtime, u32 width, u32 offset, u32 
     runtime.gnet_u30_flash[offset] = static_cast<u8>(new_word);
     runtime.gnet_u30_flash[offset + 1] = static_cast<u8>(new_word >> 8);
     if (new_word != old_word)
+    {
       runtime.gnet_fc_flash_dirty = true;
+      CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, UINT32_C(0x800000));
+    }
     runtime.gnet_u30_flash_status = UINT16_C(0x0080);
     runtime.gnet_u30_flash_mode = GNetU30FlashMode::ReadStatus;
     if (runtime.gnet_u30_program_word_count < 16)
@@ -7398,6 +7416,7 @@ static bool WriteGNetU30Flash(RuntimeState& runtime, u32 width, u32 offset, u32 
     }
     std::fill_n(runtime.gnet_u30_flash.begin() + block_base, GNET_U30_BLOCK_SIZE, UINT8_C(0xff));
     runtime.gnet_fc_flash_dirty = true;
+    CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, UINT32_C(0x800000));
     runtime.gnet_u30_flash_status = UINT16_C(0x0080);
     runtime.gnet_u30_flash_mode = GNetU30FlashMode::ReadStatus;
     runtime.gnet_u30_erase_block_count++;
@@ -7589,7 +7608,10 @@ static bool WriteGNetU27Flash(RuntimeState& runtime, u32 width, u32 offset, u32 
     runtime.gnet_u27_flash[offset] = static_cast<u8>(new_word);
     runtime.gnet_u27_flash[offset + 1] = static_cast<u8>(new_word >> 8);
     if (new_word != old_word)
+    {
       runtime.gnet_fc_flash_dirty = true;
+      runtime.gnet_zoom_flash_dirty = true;
+    }
     runtime.gnet_u27_flash_status = UINT16_C(0x0080);
     runtime.gnet_u27_flash_mode = GNetU27FlashMode::ReadStatus;
 
@@ -7625,6 +7647,7 @@ static bool WriteGNetU27Flash(RuntimeState& runtime, u32 width, u32 offset, u32 
 
     std::fill_n(runtime.gnet_u27_flash.begin() + block_base, block_size, UINT8_C(0xff));
     runtime.gnet_fc_flash_dirty = true;
+    runtime.gnet_zoom_flash_dirty = true;
     runtime.gnet_u27_flash_status = UINT16_C(0x0080);
     runtime.gnet_u27_flash_mode = GNetU27FlashMode::ReadStatus;
     runtime.gnet_u27_erase_block_count++;
@@ -7806,7 +7829,10 @@ static bool WriteGNetWaveFlash(RuntimeState& runtime, u32 flash_index, u32 width
     flash.data[offset] = static_cast<u8>(new_word);
     flash.data[offset + 1] = static_cast<u8>(new_word >> 8);
     if (new_word != old_word)
+    {
       runtime.gnet_fc_flash_dirty = true;
+      runtime.gnet_zoom_flash_dirty = true;
+    }
     flash.status = UINT16_C(0x0080);
     flash.mode = GNetU30FlashMode::ReadStatus;
 
@@ -7840,6 +7866,7 @@ static bool WriteGNetWaveFlash(RuntimeState& runtime, u32 flash_index, u32 width
 
     std::fill_n(flash.data.begin() + block_base, GNET_WAVE_FLASH_BLOCK_SIZE, UINT8_C(0xff));
     runtime.gnet_fc_flash_dirty = true;
+    runtime.gnet_zoom_flash_dirty = true;
     flash.status = UINT16_C(0x0080);
     flash.mode = GNetU30FlashMode::ReadStatus;
     flash.erase_block_count++;
@@ -8301,6 +8328,7 @@ static bool EnsureGNetZoomInitialized(RuntimeState& runtime)
     ERROR_LOG("SonyZN.GNet failed to initialize ZOOM from installed U27/U56/U55/U29 flash contents.");
     return false;
   }
+  runtime.gnet_zoom_flash_dirty = false;
 
   INFO_LOG(
     "SonyZN.GNet ZOOM initialized from installed flash u27={}B waves={}B shared={}B "
@@ -8691,7 +8719,17 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
       {
         s_runtime->taito_zoom_reg_address = 0;
         if (TaitoFX1BZoom::IsActive())
-          TaitoFX1BZoom::Reset();
+        {
+          if (s_runtime->gnet_zoom_flash_dirty)
+          {
+            TaitoFX1BZoom::Shutdown();
+            EnsureGNetZoomInitialized(*s_runtime);
+          }
+          else
+          {
+            TaitoFX1BZoom::Reset(false);
+          }
+        }
         else
           EnsureGNetZoomInitialized(*s_runtime);
       }

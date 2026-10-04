@@ -57,6 +57,8 @@ constexpr u8 GNET_COMM_TRANSPORT_VERSION = 1;
 constexpr u8 GNET_COMM_PACKET_FRAME = 1;
 constexpr size_t TRANSPORT_HEADER_SIZE = 12;
 constexpr size_t TRANSPORT_PACKET_SIZE = TRANSPORT_HEADER_SIZE + NODE_FRAME_SIZE;
+constexpr size_t TRANSPORT_SOCKET_BUFFER_SIZE = 4096;
+constexpr size_t MAX_PENDING_RX_FRAMES = TRANSPORT_SOCKET_BUFFER_SIZE / TRANSPORT_PACKET_SIZE;
 constexpr std::array<u8, 4> TRANSPORT_MAGIC = {'G', 'N', 'C', 'L'};
 
 class LinkSocket;
@@ -85,6 +87,7 @@ struct State
   u32 transport_tx_sequence = 0;
   u32 transport_tx_count = 0;
   u32 transport_rx_count = 0;
+  u32 transport_rx_drop_count = 0;
   u32 transport_relay_count = 0;
   SocketMultiplexer* transport_multiplexer = nullptr;
   std::shared_ptr<ListenSocket> transport_listener;
@@ -96,7 +99,8 @@ class LinkSocket final : public BufferedStreamSocket
 {
 public:
   LinkSocket(SocketMultiplexer& multiplexer, SocketDescriptor descriptor)
-    : BufferedStreamSocket(multiplexer, descriptor, 4096, 4096)
+    : BufferedStreamSocket(multiplexer, descriptor, TRANSPORT_SOCKET_BUFFER_SIZE,
+                           TRANSPORT_SOCKET_BUFFER_SIZE)
   {
   }
 
@@ -294,10 +298,22 @@ bool ValidateTransportPacket(std::span<const u8> packet)
 
 void QueueReceivedFrame(u8 source_node, u32 sequence, std::span<const u8, NODE_FRAME_SIZE> payload)
 {
+  std::deque<PendingFrame>& queue = s_state.pending_rx[source_node];
+  if (queue.size() >= MAX_PENDING_RX_FRAMES)
+  {
+    s_state.transport_rx_drop_count++;
+    if (s_state.transport_rx_drop_count <= 8)
+    {
+      WARNING_LOG("TaitoGNetComm system link receive queue full for cabinet={} seq={}; dropping frame",
+                  source_node + 1, sequence);
+    }
+    return;
+  }
+
   PendingFrame pending;
   pending.sequence = sequence;
   std::copy(payload.begin(), payload.end(), pending.payload.begin());
-  s_state.pending_rx[source_node].push_back(std::move(pending));
+  queue.push_back(std::move(pending));
 }
 
 bool TryDeliverPendingFrame(u8 source_node)
@@ -364,7 +380,8 @@ void HandleTransportPacket(LinkSocket* source, std::span<const u8> packet)
   if (GetCabinetIndex() == 0)
   {
     u32 relayed = 0;
-    for (const std::shared_ptr<LinkSocket>& peer : s_state.transport_peers)
+    const std::vector<std::shared_ptr<LinkSocket>> peers = s_state.transport_peers;
+    for (const std::shared_ptr<LinkSocket>& peer : peers)
     {
       if (peer && peer.get() != source && peer->IsConnected() && peer->SendPacket(packet))
         relayed++;
@@ -625,7 +642,8 @@ void HandleMainToCommDoorbell()
     std::copy_n(s_state.ram.begin() + frame_offset, NODE_FRAME_SIZE, payload.begin());
 
     bool sent = false;
-    for (const std::shared_ptr<LinkSocket>& peer : s_state.transport_peers)
+    const std::vector<std::shared_ptr<LinkSocket>> peers = s_state.transport_peers;
+    for (const std::shared_ptr<LinkSocket>& peer : peers)
     {
       if (peer && peer->IsConnected() && peer->SendFrame(payload))
         sent = true;

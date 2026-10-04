@@ -167,7 +167,7 @@ systems:
     supportsLightgun: false
     supportsTrackball: false
     supportsSpecialControls: true
-    supportsNetwork: false
+    supportsNetwork: true
     properties:
       sonyBoard: "COH-3002T"
       archivePolicy: "complete_non_merged"
