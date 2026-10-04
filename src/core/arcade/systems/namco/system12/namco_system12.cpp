@@ -185,6 +185,7 @@ struct RuntimeState
   std::unique_ptr<TimingEvent> h8_timing_event;
   TickCount h8_scheduler_interval_ticks = System::MASTER_CLOCK / 1000;
   u32 h8_scheduler_rate_hz = 1000;
+  u32 h8_scheduler_tick_fraction = 0;
   s64 h8_cycle_balance = 0;
   u32 h8_cycle_fraction = 0;
   u32 h8_rtc_scheduler_fraction = 0;
@@ -2275,53 +2276,43 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
 
   runtime.h8_scheduler_count++;
 
-  const u32 elapsed_events = std::max<u32>(1, static_cast<u32>(
-    (static_cast<u64>(ticks) + static_cast<u64>(runtime.h8_scheduler_interval_ticks) - 1) /
-    static_cast<u64>(runtime.h8_scheduler_interval_ticks)));
 
-  if (runtime.h8_scheduler_rate_hz == 1000)
-  {
-    // Preserve the established 1 kHz System 12 path exactly for all
-    // non-CyberLead profiles.
-    const u32 bounded_events = std::min<u32>(elapsed_events, 8);
+  const u64 scheduler_ticks =
+    static_cast<u64>(ticks) + runtime.h8_scheduler_tick_fraction;
+  const u32 elapsed_events =
+    static_cast<u32>(scheduler_ticks / static_cast<u64>(runtime.h8_scheduler_interval_ticks));
+  runtime.h8_scheduler_tick_fraction =
+    static_cast<u32>(scheduler_ticks % static_cast<u64>(runtime.h8_scheduler_interval_ticks));
 
-    AdvanceH8RTC(runtime, elapsed_events);
+  const u32 max_catchup_events =
+    (runtime.h8_scheduler_rate_hz == 1000) ?
+      8 : std::max<u32>(1, (runtime.h8_scheduler_rate_hz * 8) / 1000);
+  const u32 bounded_events = std::min<u32>(elapsed_events, max_catchup_events);
 
-    const u64 cycle_numerator =
-      (static_cast<u64>(H8_CLOCK_HZ) * bounded_events) + runtime.h8_cycle_fraction;
-    runtime.h8_cycle_balance += static_cast<s64>(cycle_numerator / 1000);
-    runtime.h8_cycle_fraction = static_cast<u32>(cycle_numerator % 1000);
-  }
-  else
-  {
-    // Match the fine interleave MAME requests for the Cyber Lead device.
-    // Keep the same maximum catch-up horizon as the old path: 8 ms.
-    const u32 max_catchup_events =
-      std::max<u32>(1, (runtime.h8_scheduler_rate_hz * 8) / 1000);
-    const u32 bounded_events =
-      std::min<u32>(elapsed_events, max_catchup_events);
+  const u64 ticks_per_second =
+    static_cast<u64>(std::max<TickCount>(System::GetTicksPerSecond(), 1));
 
-    // RTC is wall-time based, so account all elapsed scheduler events.
-    const u64 rtc_numerator =
-      (static_cast<u64>(elapsed_events) * 1000) +
-      runtime.h8_rtc_scheduler_fraction;
-    const u32 elapsed_milliseconds =
-      static_cast<u32>(rtc_numerator / runtime.h8_scheduler_rate_hz);
-    runtime.h8_rtc_scheduler_fraction =
-      static_cast<u32>(rtc_numerator % runtime.h8_scheduler_rate_hz);
+  // RTC follows elapsed emulated time, including time beyond the bounded H8
+  // execution catch-up window.
+  const u64 rtc_numerator =
+    (static_cast<u64>(ticks) * 1000) + runtime.h8_rtc_scheduler_fraction;
+  const u32 elapsed_milliseconds =
+    static_cast<u32>(rtc_numerator / ticks_per_second);
+  runtime.h8_rtc_scheduler_fraction =
+    static_cast<u32>(rtc_numerator % ticks_per_second);
+  if (elapsed_milliseconds != 0)
+    AdvanceH8RTC(runtime, elapsed_milliseconds);
 
-    if (elapsed_milliseconds != 0)
-      AdvanceH8RTC(runtime, elapsed_milliseconds);
-
-    // Preserve the exact 16.9344 MHz H8 rate at the finer scheduler quantum.
-    const u64 cycle_numerator =
-      (static_cast<u64>(H8_CLOCK_HZ) * bounded_events) +
-      runtime.h8_cycle_fraction;
-    runtime.h8_cycle_balance +=
-      static_cast<s64>(cycle_numerator / runtime.h8_scheduler_rate_hz);
-    runtime.h8_cycle_fraction =
-      static_cast<u32>(cycle_numerator % runtime.h8_scheduler_rate_hz);
-  }
+  // InvokeEarly() can split one scheduler interval into multiple callbacks.
+  // Convert the actual elapsed ticks to H8 clocks instead of rounding every
+  // callback up to a full scheduler quantum.
+  const u64 max_catchup_ticks =
+    static_cast<u64>(runtime.h8_scheduler_interval_ticks) * max_catchup_events;
+  const u64 bounded_ticks = std::min<u64>(static_cast<u64>(ticks), max_catchup_ticks);
+  const u64 cycle_numerator =
+    (static_cast<u64>(H8_CLOCK_HZ) * bounded_ticks) + runtime.h8_cycle_fraction;
+  runtime.h8_cycle_balance += static_cast<s64>(cycle_numerator / ticks_per_second);
+  runtime.h8_cycle_fraction = static_cast<u32>(cycle_numerator % ticks_per_second);
 
   u32 h8_last_step_pc = static_cast<u32>(h8.cpu.pc);
   while (runtime.h8_cycle_balance > 0 && h8.error_code == H8_DEBUG_NO_ERROR)
@@ -2608,6 +2599,7 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_scheduler_rate_hz =
     (runtime.h8_jvs.profile == JVSProfile::CyberLead) ?
       CYBERLEAD_SCHEDULER_HZ : 1000;
+  runtime.h8_scheduler_tick_fraction = 0;
   runtime.h8_rtc_scheduler_fraction = 0;
 
   runtime.h8_scheduler_interval_ticks =
