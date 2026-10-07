@@ -1,5 +1,12 @@
 // SPDX-FileCopyrightText: 2026 StillJC
+// SPDX-FileCopyrightText: Andreas Naive
+// SPDX-FileCopyrightText: smf
+// SPDX-FileCopyrightText: windyfairy
 // SPDX-License-Identifier: GPL-3.0-only
+//
+// Namco System 10 protection datasets, static transforms, and documented board
+// behavior are adapted from/corroborated against MAME's BSD-3-Clause
+// namcos10.cpp and ns10crypt.cpp implementations. See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 

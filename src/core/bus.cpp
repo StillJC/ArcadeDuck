@@ -2346,7 +2346,8 @@ void Bus::UpdateMappedRAMSize()
   // PSX RAM configuration register window decoding. The selected value controls
   // the CPU-visible aperture only; RAMRead/WriteHandler still masks accesses by
   // g_ram_mask, so smaller physical RAM repeats through a larger selected window.
-  // This matches the hardware-oriented mapping used by MAME's PSX core.
+  // Case grouping is adapted from MAME's BSD-3-Clause PSX core (smf).
+  // See THIRD-PARTY-LICENSES.txt.
   switch (s_RAM_SIZE.memory_window.GetValue())
   {
     case 0x0:
