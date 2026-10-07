@@ -145,6 +145,7 @@ static std::array<float, 4> s_pointer_absolute_display_rect = {};
 static std::array<std::array<float, 2>, InputManager::MAX_POINTER_DEVICES> s_raw_pointer_virtual_positions = {};
 static std::array<bool, InputManager::MAX_POINTER_DEVICES> s_raw_pointer_virtual_position_initialized = {};
 static std::mutex s_raw_pointer_virtual_position_mutex;
+static float s_raw_pointer_virtual_scale = 1.0f;
 
 // Window size, used for clamping the mouse position in raw input modes.
 static std::array<float, 2> s_window_size = {};
@@ -562,6 +563,13 @@ void InputManager::SetRawPointerVirtualPosition(u32 index, float x, float y)
   }};
   s_raw_pointer_virtual_position_initialized[index] = true;
 }
+
+void InputManager::SetRawPointerVirtualScale(float scale)
+{
+  std::lock_guard<std::mutex> lock(s_raw_pointer_virtual_position_mutex);
+  s_raw_pointer_virtual_scale = std::max(scale, 0.01f);
+}
+
 std::pair<float, float> InputManager::UpdateRawPointerVirtualPosition(u32 index, float delta_x, float delta_y)
 {
   if (index >= MAX_POINTER_DEVICES)
@@ -578,8 +586,10 @@ std::pair<float, float> InputManager::UpdateRawPointerVirtualPosition(u32 index,
   if (s_window_size[0] <= 0.0f || s_window_size[1] <= 0.0f)
     return {position[0], position[1]};
 
-  position[0] = std::clamp(position[0] + (delta_x / s_window_size[0]), -0.25f, 1.25f);
-  position[1] = std::clamp(position[1] + (delta_y / s_window_size[1]), -0.25f, 1.25f);
+  position[0] =
+    std::clamp(position[0] + ((delta_x * s_raw_pointer_virtual_scale) / s_window_size[0]), -0.25f, 1.25f);
+  position[1] =
+    std::clamp(position[1] + ((delta_y * s_raw_pointer_virtual_scale) / s_window_size[1]), -0.25f, 1.25f);
   return {position[0], position[1]};
 }
 
