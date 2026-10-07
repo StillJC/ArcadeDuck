@@ -2343,28 +2343,41 @@ void Bus::SetHandlers()
 void Bus::UpdateMappedRAMSize()
 {
   u32 mapped_size = 0;
+  // PSX RAM configuration register window decoding. The selected value controls
+  // the CPU-visible aperture only; RAMRead/WriteHandler still masks accesses by
+  // g_ram_mask, so smaller physical RAM repeats through a larger selected window.
+  // This matches the hardware-oriented mapping used by MAME's PSX core.
   switch (s_RAM_SIZE.memory_window.GetValue())
   {
+    case 0x0:
+    case 0x1:
+      mapped_size = 0x100000;
+      break;
+
+    case 0x4:
     case 0x8: // Konami GV
+    case 0x9:
       mapped_size = RAM_2MB_SIZE;
       break;
 
-    case 0xC: // ZN-1, Konami GQ, Namco System 11, Twinkle, System 573
+    case 0x2:
+    case 0x3: // ZN-2 / Namco System 12
+    case 0x5:
+    case 0x6:
+    case 0xC: // ZN-1 / GQ / System 11 / Twinkle / System 573
       mapped_size = RAM_4MB_SIZE;
       break;
 
-    case 0x3: // ZN-2
-    case 0xB: // Primal Rage 2
+    case 0x7:
+    case 0xA:
+    case 0xB: // console / Primal Rage 2
+    case 0xD:
+    case 0xE:
       mapped_size = RAM_8MB_SIZE;
       break;
 
-    case 0xF: // Namco System 10, Namco System 12
+    case 0xF: // Namco System 10 / Namco System 12
       mapped_size = RAM_16MB_SIZE;
-      break;
-
-    default:
-      WARNING_LOG("Unknown arcade RAM window 0x{:X} (register 0x{:08X}); RAM will be unmapped.",
-                  s_RAM_SIZE.memory_window.GetValue(), s_RAM_SIZE.bits);
       break;
   }
 
