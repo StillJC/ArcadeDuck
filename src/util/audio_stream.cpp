@@ -315,7 +315,13 @@ void AudioStream::ReadFrames(SampleType* samples, u32 num_frames)
       m_low_latency_reset_requested.store(true, std::memory_order_release);
     }
 
-    m_filling.store(true, std::memory_order_relaxed);
+    // Low Latency already stretches a partial callback across the requested
+    // output and raises its adaptive target when repeated underruns occur.
+    // Entering the refill state after every partial underrun turns a brief
+    // starvation into a much longer audible mute while the full target
+    // refills. Only force refill when the callback had no audio at all.
+    if (m_parameters.stretch_mode != AudioStretchMode::LowLatency || available_frames == 0)
+      m_filling.store(true, std::memory_order_relaxed);
   }
 
   if (frames_to_read > 0)
@@ -499,7 +505,8 @@ void AudioStream::AllocateBuffer()
       GetAlignedBufferSize((m_sample_rate * m_parameters.low_latency_buffer_ms) / 1000u), CHUNK_SIZE);
     const u32 backend_period = m_backend_period_frames.load(std::memory_order_relaxed);
     const u32 backend_safe_target =
-      (backend_period > 0) ? GetAlignedBufferSize(backend_period * 2u) : requested_target;
+      (backend_period > 0) ?
+        GetAlignedBufferSize(backend_period + ((backend_period * 2u) / 3u)) : requested_target;
 
     m_target_buffer_size = std::max(requested_target, backend_safe_target);
     m_low_latency_effective_target_frames.store(m_target_buffer_size, std::memory_order_relaxed);
@@ -917,7 +924,8 @@ void AudioStream::LowLatencyObserveCallback(u32 num_frames)
   DEV_LOG("Low Latency confirmed backend callback period: {} frames (previous hint={} frames).", num_frames,
           previous_period);
 
-  const u32 safe_target = std::min(GetAlignedBufferSize(num_frames * 2u), LowLatencyGetMaximumTargetFrames());
+  const u32 safe_target = std::min(GetAlignedBufferSize(num_frames + ((num_frames * 2u) / 3u)),
+                                   LowLatencyGetMaximumTargetFrames());
   const u32 current_target = LowLatencyGetEffectiveTargetFrames();
   if (safe_target <= current_target)
     return;
