@@ -14,10 +14,23 @@ namespace NamcoSystem10 {
 
 bool MemNRawNAND::Load(std::vector<u8> raw_image, Error* error)
 {
-  if (raw_image.size() != RAW_IMAGE_SIZE)
+  if (raw_image.size() == K9F2808_RAW_IMAGE_SIZE)
   {
-    Error::SetStringFmt(error, "Namco System 10 MEM(N) NAND image has invalid size {} (expected {}).",
-                        raw_image.size(), RAW_IMAGE_SIZE);
+    m_block_count = K9F2808_BLOCK_COUNT;
+    m_device_code = UINT8_C(0x73);
+    m_row_high_mask = UINT8_C(0x7f);
+  }
+  else if (raw_image.size() == K9F5608_RAW_IMAGE_SIZE)
+  {
+    m_block_count = K9F5608_BLOCK_COUNT;
+    m_device_code = UINT8_C(0x75);
+    m_row_high_mask = UINT8_C(0xff);
+  }
+  else
+  {
+    Error::SetStringFmt(error,
+                        "Namco System 10 MEM(N) NAND image has invalid size {} (expected {} or {}).",
+                        raw_image.size(), K9F2808_RAW_IMAGE_SIZE, K9F5608_RAW_IMAGE_SIZE);
     return false;
   }
 
@@ -149,8 +162,10 @@ void MemNRawNAND::AddressRowHighWrite(u8 value)
   if (m_read_mode != ReadMode::Array && m_write_mode == WriteMode::None)
     return;
 
-  // The K9F2808U0B has 32K pages. The third address cycle supplies A17-A23.
-  m_page_address = (m_page_address & UINT32_C(0x00ff)) | (static_cast<u32>(value & 0x7fu) << 8);
+  // K9F2808U0B uses A17-A23 here; K9F5608U0D extends the same cycle
+  // through A24. The device geometry selected at Load() supplies the mask.
+  m_page_address = (m_page_address & UINT32_C(0x00ff)) |
+                   (static_cast<u32>(value & m_row_high_mask) << 8);
 }
 
 u8 MemNRawNAND::DataRead()
@@ -165,8 +180,8 @@ u8 MemNRawNAND::DataRead()
       if (!m_id_address_valid)
         return UINT8_C(0xff);
 
-      // Samsung manufacturer code, K9F2808U0B device code.
-      static constexpr u8 id_bytes[] = {UINT8_C(0xec), UINT8_C(0x73)};
+      // Samsung manufacturer code followed by the geometry-specific device code.
+      const u8 id_bytes[] = {UINT8_C(0xec), m_device_code};
       const u8 value = (m_serial_index < std::size(id_bytes)) ? id_bytes[m_serial_index] : UINT8_C(0xff);
       m_serial_index++;
       return value;
@@ -196,7 +211,7 @@ void MemNRawNAND::DataWrite(u8 value)
 
 void MemNRawNAND::CommitProgram()
 {
-  if (!IsLoaded() || m_page_address >= (PAGES_PER_BLOCK * BLOCK_COUNT))
+  if (!IsLoaded() || m_page_address >= GetPageCount())
     return;
 
   const size_t page_offset = static_cast<size_t>(m_page_address) * RAW_PAGE_SIZE;
@@ -219,7 +234,7 @@ void MemNRawNAND::CommitProgram()
 
 void MemNRawNAND::CommitErase()
 {
-  if (!IsLoaded() || m_page_address >= (PAGES_PER_BLOCK * BLOCK_COUNT))
+  if (!IsLoaded() || m_page_address >= GetPageCount())
     return;
 
   const u32 block = m_page_address / PAGES_PER_BLOCK;
@@ -236,7 +251,7 @@ void MemNRawNAND::CommitErase()
 
 u8 MemNRawNAND::ReadArrayByte()
 {
-  if (!IsLoaded() || m_page_address >= (PAGES_PER_BLOCK * BLOCK_COUNT) || m_column_address >= RAW_PAGE_SIZE)
+  if (!IsLoaded() || m_page_address >= GetPageCount() || m_column_address >= RAW_PAGE_SIZE)
     return UINT8_C(0xff);
 
   const std::span<const u8> page = GetRawPage(m_page_address);
@@ -277,7 +292,7 @@ void MemNRawNAND::AdvanceArrayPointer()
 
 std::span<const u8> MemNRawNAND::GetRawPage(u32 page) const
 {
-  if (!IsLoaded() || page >= (PAGES_PER_BLOCK * BLOCK_COUNT))
+  if (!IsLoaded() || page >= GetPageCount())
     return {};
 
   const size_t offset = static_cast<size_t>(page) * RAW_PAGE_SIZE;

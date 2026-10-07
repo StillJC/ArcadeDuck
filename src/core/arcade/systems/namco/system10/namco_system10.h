@@ -96,6 +96,10 @@ u32 ReadProgramROM(u32 width, u32 offset);
 bool ReadEXP1(u32 width, u32 offset, u32* value);
 bool WriteEXP1(u32 width, u32 offset, u32 value);
 
+/// Reads MEM(N) data through System 10's PlayStation PIO DMA channel 5 path.
+/// Returns false when no MEM(N) runtime is active.
+bool DMARead(u32* words, u32 word_count);
+
 /// Handles the currently modeled System 10 base-board EXP3 registers:
 /// I2C clock/data plus interrupt cause/acknowledge. Attached-device contents,
 /// direct input registers, EXIO identification, and other EXP3 devices remain OPEN.

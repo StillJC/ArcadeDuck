@@ -1374,14 +1374,15 @@ bool LoadMemNPersistence(RuntimeState& runtime, Error* error)
       continue;
 
     std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(path.c_str(), error);
-    if (!data || data->size() != MemNRawNAND::RAW_IMAGE_SIZE)
+    const size_t expected_size = runtime.nands[index].GetRawImage().size();
+    if (!data || data->size() != expected_size)
     {
       const size_t actual_size = data ? data->size() : 0;
       Error::SetStringFmt(error, "Namco System 10 MEM(N) NAND '{}' has invalid size {}; expected {} bytes.",
-                          path, actual_size, MemNRawNAND::RAW_IMAGE_SIZE);
+                          path, actual_size, expected_size);
       ERROR_LOG("System 10 MEM(N) malformed persistence canonical_set='{}' nand={} path='{}' actual_size={} "
                 "expected_size={}.",
-                runtime.set_name, index, path, actual_size, MemNRawNAND::RAW_IMAGE_SIZE);
+                runtime.set_name, index, path, actual_size, expected_size);
       return false;
     }
 
@@ -2254,7 +2255,9 @@ bool ReadU32Register(u32 reg, u32 byte_offset, u32 width, u32* value)
 bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom,
                        std::vector<u8>* data, Error* error)
 {
-  if (rom.size != MemNRawNAND::RAW_IMAGE_SIZE || rom.offset != 0 || rom.interleave != 1 || rom.group_size != 1 ||
+  const bool supported_raw_size =
+    (rom.size == MemNRawNAND::K9F2808_RAW_IMAGE_SIZE || rom.size == MemNRawNAND::K9F5608_RAW_IMAGE_SIZE);
+  if (!supported_raw_size || rom.offset != 0 || rom.interleave != 1 || rom.group_size != 1 ||
       rom.skip != 0 || rom.word_swap || !rom.segments.empty())
   {
     Error::SetStringFmt(error,
@@ -2688,8 +2691,12 @@ std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
 
   for (size_t index = 0; index < nand_region_count; index++)
   {
-    if (!nand_roms[index] || nand_roms[index]->size != MemNRawNAND::RAW_IMAGE_SIZE)
+    if (!nand_roms[index] ||
+        (nand_roms[index]->size != MemNRawNAND::K9F2808_RAW_IMAGE_SIZE &&
+         nand_roms[index]->size != MemNRawNAND::K9F5608_RAW_IMAGE_SIZE))
+    {
       return std::nullopt;
+    }
   }
 
   *eligible = true;
@@ -3110,9 +3117,11 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     if (width != 1 && width != 2 && width != 4)
       return false;
 
-    // Preserve the software-written selector instead of clamping it. The first
-    // MEM(N) target (Star Trigon) physically populates NAND 0 and NAND 1.
-    runtime.nand_device = static_cast<u16>(value);
+    // The MEM(N) CPLD accepts a new NAND selector only while control bit 2 is
+    // clear. Software sets bit 2 while accessing the command/address/data
+    // registers, which keeps the selected device stable for that transaction.
+    if ((runtime.control_latch & UINT16_C(0x0004)) == 0)
+      runtime.nand_device = static_cast<u16>(value);
     return true;
   }
 
@@ -3141,6 +3150,27 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   return false;
 }
 
+
+
+bool DMARead(u32* words, u32 word_count)
+{
+  if (!words || !s_runtime.has_value() || s_runtime->media_type != MediaType::MemN)
+    return false;
+
+  for (u32 index = 0; index < word_count; index++)
+  {
+    u32 low = 0;
+    u32 high = 0;
+    if (!ReadEXP1(2, MEMN_DATA_BASE, &low) || !ReadEXP1(2, MEMN_DATA_BASE, &high))
+      return false;
+
+    // PIO DMA exposes the MEM(N) x16 data register as consecutive little-endian
+    // halfwords in PSX RAM: first NAND word in bits 0-15, second in bits 16-31.
+    words[index] = (low & UINT32_C(0xffff)) | ((high & UINT32_C(0xffff)) << 16);
+  }
+
+  return true;
+}
 
 bool ReadEXP3(u32 width, u32 offset, u32* value)
 {

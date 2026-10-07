@@ -25,8 +25,10 @@ public:
   static constexpr u32 SPARE_BYTES_PER_PAGE = 0x10;
   static constexpr u32 RAW_PAGE_SIZE = DATA_BYTES_PER_PAGE + SPARE_BYTES_PER_PAGE;
   static constexpr u32 PAGES_PER_BLOCK = 32;
-  static constexpr u32 BLOCK_COUNT = 1024;
-  static constexpr u32 RAW_IMAGE_SIZE = RAW_PAGE_SIZE * PAGES_PER_BLOCK * BLOCK_COUNT;
+  static constexpr u32 K9F2808_BLOCK_COUNT = 1024;
+  static constexpr u32 K9F5608_BLOCK_COUNT = 2048;
+  static constexpr u32 K9F2808_RAW_IMAGE_SIZE = RAW_PAGE_SIZE * PAGES_PER_BLOCK * K9F2808_BLOCK_COUNT;
+  static constexpr u32 K9F5608_RAW_IMAGE_SIZE = RAW_PAGE_SIZE * PAGES_PER_BLOCK * K9F5608_BLOCK_COUNT;
 
   bool Load(std::vector<u8> raw_image, Error* error);
 
@@ -45,7 +47,12 @@ public:
   u32 GetCurrentPageAddress() const { return m_page_address; }
   u32 GetCurrentColumnAddress() const { return m_column_address; }
   u32 GetCurrentBlock() const { return m_page_address / PAGES_PER_BLOCK; }
-  bool IsLoaded() const { return m_raw_image.size() == RAW_IMAGE_SIZE; }
+  u32 GetBlockCount() const { return m_block_count; }
+  bool IsLoaded() const
+  {
+    return m_block_count != 0 &&
+           m_raw_image.size() == (static_cast<size_t>(RAW_PAGE_SIZE) * PAGES_PER_BLOCK * m_block_count);
+  }
   std::span<const u8> GetRawImage() const
   {
     return std::span<const u8>(m_raw_image.data(), m_raw_image.size());
@@ -74,6 +81,7 @@ private:
   void AdvanceArrayPointer();
   void CommitProgram();
   void CommitErase();
+  u32 GetPageCount() const { return PAGES_PER_BLOCK * m_block_count; }
 
   std::vector<u8> m_raw_image;
   ReadMode m_read_mode = ReadMode::None;
@@ -84,10 +92,14 @@ private:
   bool m_id_address_valid = false;
   WriteMode m_write_mode = WriteMode::None;
   std::array<u8, RAW_PAGE_SIZE> m_program_buffer = {};
+  u32 m_block_count = 0;
+  u8 m_device_code = 0xff;
+  u8 m_row_high_mask = 0;
   bool m_dirty = false;
 };
 
 static_assert(MemNRawNAND::RAW_PAGE_SIZE == 0x210);
-static_assert(MemNRawNAND::RAW_IMAGE_SIZE == 0x1080000);
+static_assert(MemNRawNAND::K9F2808_RAW_IMAGE_SIZE == 0x1080000);
+static_assert(MemNRawNAND::K9F5608_RAW_IMAGE_SIZE == 0x2100000);
 
 } // namespace NamcoSystem10

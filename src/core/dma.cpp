@@ -11,6 +11,7 @@
 #include "gpu.h"
 #include "imgui.h"
 #include "interrupt_controller.h"
+#include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/konami/gq/konami_gq_scsi.h"
 #include "core/arcade/systems/sony/zn/acclaim_ata.h"
 #include "core/arcade/systems/sony/zn/time_warner_ata.h"
@@ -923,7 +924,10 @@ TickCount DMA::TransferDeviceToMemory(u32 address, u32 increment, u32 word_count
       break;
 
     case Channel::PIO:
-      if (SonyZN::AcclaimATA::IsActive())
+      if (NamcoSystem10::DMARead(dest_pointer, word_count))
+      {
+      }
+      else if (SonyZN::AcclaimATA::IsActive())
       {
         SonyZN::AcclaimATA::DMARead(dest_pointer, word_count);
       }
