@@ -5,6 +5,7 @@
 
 #include "core/types.h"
 
+#include <array>
 #include <span>
 #include <vector>
 
@@ -35,8 +36,11 @@ public:
   void AddressRowLowWrite(u8 value);
   void AddressRowHighWrite(u8 value);
   u8 DataRead();
+  void DataWrite(u8 value);
 
   bool IsReady() const { return true; }
+  bool IsDirty() const { return m_dirty; }
+  void ClearDirty() { m_dirty = false; }
   bool IsArrayReadActive() const { return m_read_mode == ReadMode::Array; }
   u32 GetCurrentPageAddress() const { return m_page_address; }
   u32 GetCurrentColumnAddress() const { return m_column_address; }
@@ -59,8 +63,17 @@ private:
     Status,
   };
 
+  enum class WriteMode : u8
+  {
+    None,
+    Program,
+    Erase,
+  };
+
   u8 ReadArrayByte();
   void AdvanceArrayPointer();
+  void CommitProgram();
+  void CommitErase();
 
   std::vector<u8> m_raw_image;
   ReadMode m_read_mode = ReadMode::None;
@@ -69,6 +82,9 @@ private:
   u32 m_page_address = 0;
   u32 m_serial_index = 0;
   bool m_id_address_valid = false;
+  WriteMode m_write_mode = WriteMode::None;
+  std::array<u8, RAW_PAGE_SIZE> m_program_buffer = {};
+  bool m_dirty = false;
 };
 
 static_assert(MemNRawNAND::RAW_PAGE_SIZE == 0x210);

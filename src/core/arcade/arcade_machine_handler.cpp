@@ -130,21 +130,35 @@ public:
       return false;
     }
 
-    // Keep activation deliberately narrow until the first MEM(N) target has
-    // completed runtime bootstrap/protection validation.
-    if (context.canonical_game_id != "startrgn" ||
-        context.game_definition->hardware_profile != "ns10_startrgn")
+    m_memn_content.reset();
+    m_memm_content.reset();
+
+    const NamcoSystem10::BoardProfile* profile =
+      NamcoSystem10::FindBoardProfile(context.game_definition->hardware_profile);
+    if (!profile)
     {
-      Error::SetStringFmt(error,
-                          "Namco System 10 bring-up currently supports only Star Trigon; requested '{}' "
-                          "with profile '{}'.",
-                          context.canonical_game_id, context.game_definition->hardware_profile);
+      Error::SetStringFmt(error, "Namco System 10 profile '{}' is not implemented.",
+                          context.game_definition->hardware_profile);
       return false;
     }
 
-    m_content =
-      NamcoSystem10::LoadStarTrigonContent(context.archive_path.c_str(), *context.game_definition, error);
-    return m_content.has_value();
+    switch (profile->kind)
+    {
+      case NamcoSystem10::BoardKind::MemN:
+        m_memn_content =
+          NamcoSystem10::LoadStarTrigonContent(context.archive_path.c_str(), *context.game_definition, error);
+        return m_memn_content.has_value();
+
+      case NamcoSystem10::BoardKind::MemM:
+        m_memm_content =
+          NamcoSystem10::LoadMrDriller2Content(context.archive_path.c_str(), *context.game_definition, error);
+        return m_memm_content.has_value();
+
+      default:
+        Error::SetStringFmt(error, "Namco System 10 board profile '{}' has an unsupported media type.",
+                            context.game_definition->hardware_profile);
+        return false;
+    }
   }
 
   // System 10's main PCB has 4 MiB of physically populated CPU RAM
@@ -172,13 +186,18 @@ public:
 
   bool Initialize(const BootContext& context, Error* error) override
   {
-    if (!m_content.has_value())
+    bool initialized = false;
+    if (m_memn_content.has_value())
+      initialized = NamcoSystem10::InitializeMemN(std::move(*m_memn_content), error);
+    else if (m_memm_content.has_value())
+      initialized = NamcoSystem10::InitializeMemM(std::move(*m_memm_content), error);
+    else
     {
-      Error::SetStringView(error, "Invalid Namco System 10 Star Trigon boot content.");
+      Error::SetStringView(error, "Invalid Namco System 10 boot content.");
       return false;
     }
 
-    if (!NamcoSystem10::InitializeMemN(std::move(*m_content), error))
+    if (!initialized)
       return false;
 
     INFO_LOG("NamcoSystem10.Loader active canonical_set='{}' profile='{}' physical_ram={} MiB.",
@@ -188,7 +207,8 @@ public:
   }
 
 private:
-  std::optional<NamcoSystem10::MemNLoadedContent> m_content;
+  std::optional<NamcoSystem10::MemNLoadedContent> m_memn_content;
+  std::optional<NamcoSystem10::MemMLoadedContent> m_memm_content;
 };
 
 class NamcoSystem11Handler final : public MachineHandler

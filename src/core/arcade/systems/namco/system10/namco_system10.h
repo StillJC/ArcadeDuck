@@ -7,6 +7,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class Error;
@@ -17,26 +18,71 @@ struct GameDefinition;
 
 namespace NamcoSystem10 {
 
+enum class BoardKind : u8
+{
+  MemN = 0,
+  MemM,
+};
+
 enum class MemNBoardProfile : u8
 {
   Unknown = 0,
   StarTrigon,
+  Gamshara,
+  KonoTako,
+  Panikuru,
+  KNPuzzle,
+  MrDrillerG,
+  GJSpace,
+  Chocovader,
 };
 
 struct MemNLoadedContent
 {
   std::string set_name;
   MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
-  std::vector<u8> nand0;
-  std::vector<u8> nand1;
+  std::vector<std::vector<u8>> nands;
 };
+
+enum class MemMBoardProfile : u8
+{
+  Unknown = 0,
+  MrDriller2,
+};
+
+struct MemMLoadedContent
+{
+  std::string set_name;
+  MemMBoardProfile board_profile = MemMBoardProfile::Unknown;
+  std::vector<u8> program_flash;
+  std::vector<u8> data_rom;
+};
+
+struct BoardProfile
+{
+  std::string_view hardware_profile;
+  BoardKind kind;
+  MemNBoardProfile memn_profile = MemNBoardProfile::Unknown;
+  MemMBoardProfile memm_profile = MemMBoardProfile::Unknown;
+};
+
+const BoardProfile* FindBoardProfile(std::string_view hardware_profile);
+
+/// Loads the Mr. Driller 2 MEM(M) board without modifying the dumped flash or
+/// mask-ROM bytes. Static/dynamic board transforms are applied at read time.
+std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
+                                                       const Arcade::Database::GameDefinition& game, Error* error);
 
 /// Loads the first supported MEM(N) bring-up target without transforming the
 /// NAND bytes. The raw 0x210-byte page image, including spare/OOB, is retained.
 std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
                                                       const Arcade::Database::GameDefinition& game, Error* error);
 
+std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
+  const char* archive_path, const Arcade::Database::GameDefinition& game, bool* eligible, Error* error);
+
 bool InitializeMemN(MemNLoadedContent content, Error* error);
+bool InitializeMemM(MemMLoadedContent content, Error* error);
 void Reset();
 void Shutdown();
 bool IsActive();

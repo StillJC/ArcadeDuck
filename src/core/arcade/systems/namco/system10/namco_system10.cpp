@@ -6,13 +6,17 @@
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_input.h"
+#include "core/cpu_core.h"
 #include "core/interrupt_controller.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 
 #include "common/error.h"
+#include "common/file_system.h"
 #include "common/log.h"
 #include "common/minizip_helpers.h"
+#include "common/path.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
 
@@ -40,6 +44,72 @@ static constexpr u32 MEMN_CONTROL_BASE = 0x470000;
 static constexpr u32 LOOKUP_RAM_BASE = 0x500000;
 static constexpr u32 LOOKUP_RAM_SIZE = 0x100000;
 
+// MEM(M) Type-1 board. Physical 0x1F300000/0x1F400000 live in EXP1,
+// while physical 0x1FB40000 is EXP3 offset 0x140000.
+static constexpr u32 MEMM_CRYPTO_SWITCH_BASE = 0x300000;
+static constexpr u32 MEMM_RANGE_BASE = 0x400000;
+static constexpr u32 MEMM_RANGE_SIZE = 0x200000;
+static constexpr u32 MEMM_BANK_EXP3_BASE = 0x140000;
+static constexpr u32 MEMM_BANK_EXP3_SIZE = 0x20000;
+static constexpr u32 MEMM_PROGRAM_FLASH_SIZE = 0x800000;
+static constexpr u32 MEMM_DATA_ROM_SIZE = 0x2000000;
+static constexpr u32 MEMM_BOOT_DECODE_SIZE = 0x62000;
+static constexpr u32 MEMM_TRACE_EVENT_LIMIT = 128;
+
+// Intel 28F640J5 geometry, x16 mode.
+// 64 Mbit / 8 MiB total, 64 symmetric 128 KiB erase blocks,
+// and one 32-byte (16-word) write buffer.
+static constexpr u32 MEMM_FLASH_WORD_COUNT = MEMM_PROGRAM_FLASH_SIZE / 2;
+static constexpr u32 MEMM_FLASH_BLOCK_SIZE = 0x20000;
+static constexpr u32 MEMM_FLASH_BLOCK_WORDS = MEMM_FLASH_BLOCK_SIZE / 2;
+static constexpr u32 MEMM_FLASH_BLOCK_COUNT = MEMM_PROGRAM_FLASH_SIZE / MEMM_FLASH_BLOCK_SIZE;
+static constexpr u32 MEMM_FLASH_WRITE_BUFFER_WORDS = 16;
+
+static constexpr u16 MEMM_FLASH_STATUS_READY = UINT16_C(0x0080);
+static constexpr u16 MEMM_FLASH_STATUS_ERASE_ERROR = UINT16_C(0x0020);
+static constexpr u16 MEMM_FLASH_STATUS_PROGRAM_ERROR = UINT16_C(0x0010);
+static constexpr u16 MEMM_FLASH_STATUS_PROTECT_ERROR = UINT16_C(0x0002);
+static constexpr u16 MEMM_FLASH_MAKER_ID = UINT16_C(0x0089);
+static constexpr u16 MEMM_FLASH_DEVICE_ID = UINT16_C(0x0015);
+
+enum class MediaType : u8
+{
+  None = 0,
+  MemN,
+  MemM,
+};
+
+enum class Intel28F640J5Mode : u8
+{
+  Array = 0,
+  Identifier,
+  Query,
+  Status,
+  ProgramData,
+  EraseConfirm,
+  LockConfirm,
+  ConfigurationConfirm,
+  WriteBufferCount,
+  WriteBufferData,
+  WriteBufferConfirm,
+};
+
+struct Intel28F640J5State
+{
+  Intel28F640J5Mode mode = Intel28F640J5Mode::Array;
+  u16 status = MEMM_FLASH_STATUS_READY;
+  bool master_lock = false;
+  std::array<bool, MEMM_FLASH_BLOCK_COUNT> block_locked = {};
+  u8 sts_configuration = 0;
+
+  u32 setup_word_address = 0;
+  u32 write_buffer_block_word = 0;
+  u32 write_buffer_start_word = 0;
+  u32 write_buffer_count = 0;
+  u32 write_buffer_received = 0;
+  std::array<u16, MEMM_FLASH_WRITE_BUFFER_WORDS> write_buffer = {};
+};
+
 // PROVEN at runtime on Star Trigon: the firmware writes 0x8000 here immediately
 // before copying the protected program beginning at logical NAND block 10.
 // The 0x380000 alias is retained from the independent System 10 RE dossier.
@@ -51,6 +121,10 @@ static constexpr u32 TYPE2_TRACE_WORD_LIMIT = 128;
 // 0x1FBA000A after the protected Star Trigon program enters ResetGraph.
 // The clock/data interpretation is CORROBORATED by the System 10 behavioral
 // reference; the identity/content of the attached I2C device remains OPEN.
+static constexpr u32 EXP3_SYSTEM_SWITCH_BASE = 0x1a0000;
+static constexpr u32 EXP3_EXIO_IDENT_BASE = 0x1a0002;
+static constexpr u32 EXP3_PLAYER_INPUT_BASE = 0x1a0004;
+static constexpr u32 EXP3_PLAYER_INPUT_SIZE = 4;
 static constexpr u32 EXP3_I2C_CLOCK_BASE = 0x1a0008;
 static constexpr u32 EXP3_I2C_DATA_BASE = 0x1a000a;
 static constexpr u32 EXP3_INTERRUPT_ACK_BASE = 0x1a0012;
@@ -66,6 +140,8 @@ static constexpr u32 I2C_TRACE_EVENT_LIMIT = 64;
 static constexpr u16 BASEBOARD_IO_INTERRUPT_BIT = UINT16_C(0x0008);
 static constexpr u32 BASEBOARD_IO_INTERRUPT_HZ = 100;
 static constexpr u32 BASEBOARD_IRQ_TRACE_LIMIT = 16;
+static constexpr u32 BASEBOARD_INPUT_TRACE_LIMIT = 32;
+static constexpr u32 EXIO_IDENT_TRACE_LIMIT = 16;
 
 static constexpr u32 PROGRAM_ROM_SIZE = 0x400000;
 static constexpr u32 PROGRAM_FIRST_PAGE = 0x040;
@@ -90,7 +166,175 @@ struct Type2State
   // History index 0 is the most recently consumed protected word.
   std::array<u16, 3> cipher_history = {};
   std::array<u16, 3> plain_history = {};
+  u64 previous_cipherwords = 0;
+  u64 previous_plainwords = 0;
   u16 mask = 0;
+};
+
+// Gamshara KC020A Type-2 profile data. The linear masks and initialization
+// behavior are derived from MAME's BSD-3-Clause System 10 decrypter dataset
+// (Andreas Naive; namcos10 driver by smf/windyfairy).
+struct Type2LinearLogic
+{
+  std::array<u64, 16> cipher_masks;
+  std::array<u64, 16> plain_masks;
+  u16 xor_mask;
+};
+
+static constexpr Type2LinearLogic GAMSHARA_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x0000000000000028), UINT64_C(0x0000cae83f389fd9),
+    UINT64_C(0x0000000000001000), UINT64_C(0x0000000042823402),
+    UINT64_C(0x0000cae8736a0592), UINT64_C(0x0000cae8736a8596),
+    UINT64_C(0x000000008b4095b9), UINT64_C(0x0000000000002100),
+    UINT64_C(0x0000000004018228), UINT64_C(0x0000000000000042),
+    UINT64_C(0x0000000000000818), UINT64_C(0x0000000000004010),
+    UINT64_C(0x000000008b4099f1), UINT64_C(0x00000000044bce08),
+    UINT64_C(0x00000000000000c1), UINT64_C(0x0000000042823002),
+  },
+  {
+    UINT64_C(0x0000000000000028), UINT64_C(0x00000904c2048dd9),
+    UINT64_C(0x0000000000008000), UINT64_C(0x0000000054021002),
+    UINT64_C(0x00000904e0078592), UINT64_C(0x00000904e00785b2),
+    UINT64_C(0x00000000440097f9), UINT64_C(0x0000000000002104),
+    UINT64_C(0x0000000029018308), UINT64_C(0x0000000000000042),
+    UINT64_C(0x0000000000000850), UINT64_C(0x0000000000004012),
+    UINT64_C(0x000000004400d1f1), UINT64_C(0x000000006001ce08),
+    UINT64_C(0x00000000000000c8), UINT64_C(0x0000000054023002),
+  },
+  UINT16_C(0x25ab),
+};
+
+static constexpr Type2LinearLogic KONOTAKO_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x000000000000004c), UINT64_C(0x00000000d39e3d3d),
+    UINT64_C(0x0000000000001110), UINT64_C(0x0000000000002200),
+    UINT64_C(0x000000003680c008), UINT64_C(0x0000000000000281),
+    UINT64_C(0x0000000000005002), UINT64_C(0x00002a7371895a47),
+    UINT64_C(0x0000000000000003), UINT64_C(0x00002a7371897a4e),
+    UINT64_C(0x00002a73aea17a41), UINT64_C(0x00002a73fd895a4f),
+    UINT64_C(0x000000005328200a), UINT64_C(0x0000000000000010),
+    UINT64_C(0x0000000000000040), UINT64_C(0x0000000000000200),
+  },
+  {
+    UINT64_C(0x000000000000008c), UINT64_C(0x0000000053003d25),
+    UINT64_C(0x0000000000001120), UINT64_C(0x0000000000002200),
+    UINT64_C(0x0000000037004008), UINT64_C(0x0000000000000282),
+    UINT64_C(0x0000000000006002), UINT64_C(0x0000060035005a47),
+    UINT64_C(0x0000000000000003), UINT64_C(0x0000060035001a4e),
+    UINT64_C(0x0000060025007a41), UINT64_C(0x00000600b5005a2f),
+    UINT64_C(0x000000009000200b), UINT64_C(0x0000000000000310),
+    UINT64_C(0x0000000000001840), UINT64_C(0x0000000000000400),
+  },
+  UINT16_C(0x0748),
+};
+
+
+static constexpr Type2LinearLogic PANIKURU_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x0000000000000130), UINT64_C(0x0000000018802004), UINT64_C(0x0000b04a04781081), UINT64_C(0x0000000006802000),
+    UINT64_C(0x0000000000000c02), UINT64_C(0x0000000042040020), UINT64_C(0x0000000000000003), UINT64_C(0x0000b040c00c0940),
+    UINT64_C(0x0000000000000009), UINT64_C(0x00001020a0010400), UINT64_C(0x0000000010204104), UINT64_C(0x000000005a840004),
+    UINT64_C(0x0000000000000290), UINT64_C(0x0000000010204380), UINT64_C(0x0000000000001041), UINT64_C(0x0000000000006100),
+  },
+  {
+    UINT64_C(0x0000000000000120), UINT64_C(0x0000000028002004), UINT64_C(0x0000010800480001), UINT64_C(0x0000000006040100),
+    UINT64_C(0x0000000000000c00), UINT64_C(0x0000000042000820), UINT64_C(0x0000000000001003), UINT64_C(0x0000910212040100),
+    UINT64_C(0x0000000000008009), UINT64_C(0x0000900021018000), UINT64_C(0x0000000090004104), UINT64_C(0x000000006a004004),
+    UINT64_C(0x0000000000000214), UINT64_C(0x0000000090004190), UINT64_C(0x0000000000001040), UINT64_C(0x0000000000006008),
+  },
+  UINT16_C(0x7c29),
+};
+
+static constexpr Type2LinearLogic KNPUZZLE_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x00000000c0a4208c), UINT64_C(0x00000000204100a8), UINT64_C(0x000000000c0306a0), UINT64_C(0x000000000819e944),
+    UINT64_C(0x0000000000001400), UINT64_C(0x0000000000000061), UINT64_C(0x000000000141401c), UINT64_C(0x0000000000000020),
+    UINT64_C(0x0000000001418010), UINT64_C(0x00008d6a1eb690cf), UINT64_C(0x00008d6a4d3b90ce), UINT64_C(0x0000000000004201),
+    UINT64_C(0x00000000012c00a2), UINT64_C(0x000000000c0304a4), UINT64_C(0x0000000000000500), UINT64_C(0x0000000000000980),
+  },
+  {
+    UINT64_C(0x000000002a22608c), UINT64_C(0x00000000002300a8), UINT64_C(0x0000000000390ea0), UINT64_C(0x000000000100a9c4),
+    UINT64_C(0x0000000000001400), UINT64_C(0x0000000000000041), UINT64_C(0x0000000003014014), UINT64_C(0x0000000000000022),
+    UINT64_C(0x0000000003010110), UINT64_C(0x00000800031a80cf), UINT64_C(0x00000800003398de), UINT64_C(0x0000000000004200),
+    UINT64_C(0x00000000012a04a2), UINT64_C(0x00000000003984a4), UINT64_C(0x0000000000000700), UINT64_C(0x0000000000000882),
+  },
+  UINT16_C(0x01e2),
+};
+
+static constexpr Type2LinearLogic MRDRILLERG_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x0000115c68620401), UINT64_C(0x0000008102802094), UINT64_C(0x00000081a65270a8), UINT64_C(0x0000000000810010),
+    UINT64_C(0x00004c2c080f3059), UINT64_C(0x00000081470a9500), UINT64_C(0x000000816a123009), UINT64_C(0x00000081a2b23038),
+    UINT64_C(0x00002d18a06b9000), UINT64_C(0x000001186c02000c), UINT64_C(0x00000081a2b2704c), UINT64_C(0x0000702811016302),
+    UINT64_C(0x00000081470a1122), UINT64_C(0x0000000000006200), UINT64_C(0x00009170ac403013), UINT64_C(0x0000000000001044),
+  },
+  {
+    UINT64_C(0x0000115c68620401), UINT64_C(0x0000008102802094), UINT64_C(0x00000081a65270a8), UINT64_C(0x0000000000810010),
+    UINT64_C(0x00004c2c080f3059), UINT64_C(0x00000081470a9500), UINT64_C(0x000000816a123009), UINT64_C(0x00000081a2b23038),
+    UINT64_C(0x00002d18a06b9000), UINT64_C(0x000001186c02000c), UINT64_C(0x00000081a2b2704c), UINT64_C(0x0000702811016302),
+    UINT64_C(0x00000081470a1122), UINT64_C(0x0000000000006200), UINT64_C(0x00009170ac403013), UINT64_C(0x0000000000001044),
+  },
+  UINT16_C(0x0000),
+};
+
+static constexpr Type2LinearLogic GJSPACE_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x0000000000000240), UINT64_C(0x0000d617eb0f1ab1), UINT64_C(0x00000000451111c0), UINT64_C(0x00000000013b1f44),
+    UINT64_C(0x0000aab0b356abce), UINT64_C(0x00007ca76b89602a), UINT64_C(0x0000000000001800), UINT64_C(0x00000000031d1303),
+    UINT64_C(0x0000000000000801), UINT64_C(0x0000000030111160), UINT64_C(0x0000000001ab3978), UINT64_C(0x00000000c131b160),
+    UINT64_C(0x0000000000001110), UINT64_C(0x0000000000008002), UINT64_C(0x00000000e1113540), UINT64_C(0x0000d617fdce8bfc),
+  },
+  {
+    UINT64_C(0x0000000000008240), UINT64_C(0x000000002f301ab1), UINT64_C(0x00000000050011c0), UINT64_C(0x00000000412817c4),
+    UINT64_C(0x00000004c338abc6), UINT64_C(0x000000046108602a), UINT64_C(0x0000000000005800), UINT64_C(0x00000000c3081347),
+    UINT64_C(0x0000000000000801), UINT64_C(0x0000000061001160), UINT64_C(0x0000000061183978), UINT64_C(0x00000000e520b142),
+    UINT64_C(0x0000000000001101), UINT64_C(0x000000000000a002), UINT64_C(0x0000000029001740), UINT64_C(0x00000000a4309bfc),
+  },
+  UINT16_C(0x2e7f),
+};
+
+static constexpr Type2LinearLogic CHOCOVADER_TYPE2_LOGIC = {
+  {
+    UINT64_C(0x00005239351ec1da), UINT64_C(0x0000000000008090), UINT64_C(0x0000000048264808), UINT64_C(0x0000000000004820),
+    UINT64_C(0x0000000000000500), UINT64_C(0x0000000058ff5a54), UINT64_C(0x00000000d8220208), UINT64_C(0x00005239351e91d3),
+    UINT64_C(0x000000009a1dfaff), UINT64_C(0x0000000090040001), UINT64_C(0x0000000000000100), UINT64_C(0x0000000000001408),
+    UINT64_C(0x0000000032efd3f1), UINT64_C(0x00000000000000d0), UINT64_C(0x0000000032efd2d7), UINT64_C(0x0000000000000840),
+  },
+  {
+    UINT64_C(0x00002000410485da), UINT64_C(0x0000000000008081), UINT64_C(0x0000000008044088), UINT64_C(0x0000000000004802),
+    UINT64_C(0x0000000000000500), UINT64_C(0x00000000430cda54), UINT64_C(0x0000000010000028), UINT64_C(0x00002000410491db),
+    UINT64_C(0x000000001100fafe), UINT64_C(0x0000000018040001), UINT64_C(0x0000000000000010), UINT64_C(0x0000000000000508),
+    UINT64_C(0x000000006800d3f5), UINT64_C(0x0000000000000058), UINT64_C(0x000000006800d2d5), UINT64_C(0x0000000000001840),
+  },
+  UINT16_C(0x5b22),
+};
+
+static constexpr std::array<u16, 16> TYPE2_INITIAL_CIPHER_HISTORY = {
+  UINT16_C(0x0000), UINT16_C(0x9000), UINT16_C(0x9100), UINT16_C(0x1800),
+  UINT16_C(0x0800), UINT16_C(0x1000), UINT16_C(0x8100), UINT16_C(0x8000),
+  UINT16_C(0x8900), UINT16_C(0x0100), UINT16_C(0x1900), UINT16_C(0x9900),
+  UINT16_C(0x8800), UINT16_C(0x1100), UINT16_C(0x9800), UINT16_C(0x0900),
+};
+
+static constexpr std::array<u16, 16> PANIKURU_TYPE2_INITIAL_CIPHER_HISTORY = {
+  UINT16_C(0x0000), UINT16_C(0x020e), UINT16_C(0x0412), UINT16_C(0x0411),
+  UINT16_C(0x0204), UINT16_C(0x001b), UINT16_C(0x0009), UINT16_C(0x0207),
+  UINT16_C(0x2040), UINT16_C(0x2440), UINT16_C(0x0012), UINT16_C(0x0001),
+  UINT16_C(0x0614), UINT16_C(0x000a), UINT16_C(0x0214), UINT16_C(0x041b),
+};
+
+static constexpr std::array<u16, 16> MRDRILLERG_TYPE2_INITIAL_CIPHER_HISTORY = {
+  UINT16_C(0x0000), UINT16_C(0x0000), UINT16_C(0x0000), UINT16_C(0x2000),
+  UINT16_C(0x801a), UINT16_C(0x6000), UINT16_C(0x0002), UINT16_C(0x0000),
+  UINT16_C(0x0000), UINT16_C(0x0018), UINT16_C(0x0000), UINT16_C(0x0420),
+  UINT16_C(0x0000), UINT16_C(0x8800), UINT16_C(0x0000), UINT16_C(0xc000),
+};
+
+struct Type1State
+{
+  u16 mask = 0;
+  u32 counter = 0;
 };
 
 // CORROBORATED, not locally hardware-proven: this reduced Star Trigon model
@@ -176,12 +420,29 @@ struct I2CState
 struct RuntimeState
 {
   std::string set_name;
+  MediaType media_type = MediaType::None;
+
   MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
-  MemNRawNAND nand0;
-  MemNRawNAND nand1;
+  std::vector<MemNRawNAND> nands;
   std::vector<u8> lookup_ram;
   u16 control_latch = 0;
   u16 nand_device = 0;
+
+  MemMBoardProfile memm_board_profile = MemMBoardProfile::Unknown;
+  std::vector<u8> memm_program_flash;
+  std::vector<u8> memm_data_rom;
+  std::string memm_persistence_directory;
+  std::string memm_flash_path;
+  bool memm_flash_dirty = false;
+  u32 memm_bank = 0;
+  bool memm_direct_access = false;
+  Intel28F640J5State memm_flash;
+  bool type1_enabled = false;
+  u8 type1_iv = 0;
+  u32 type1_generation = 0;
+  u32 type1_trace_words = 0;
+  u32 memm_trace_events = 0;
+  Type1State type1_state;
 
   bool type2_enabled = false;
   bool type2_transform_supported = false;
@@ -191,6 +452,20 @@ struct RuntimeState
   Type2State type2_state;
 
   I2CState i2c;
+
+  // Main-board JAMMA/system input state. The System 10 test switch is a
+  // maintained cabinet switch, so ArcadeDuck latches the momentary UI binding
+  // on its rising edge.
+  bool test_switch_was_pressed = false;
+  bool test_switch_latched = false;
+
+  // Optional expansion-board identifier serializer. No EXIO board is populated
+  // for the current Star Trigon / Mr. Driller 2 targets, so the serialized
+  // response is 0xff.
+  s8 exio_ident_bit = 0;
+  u32 exio_ident_byte = 0;
+  u32 exio_ident_trace_events = 0;
+  u32 baseboard_input_trace_events = 0;
 
   u16 baseboard_interrupt_status = 0;
   u32 baseboard_irq_trace_events = 0;
@@ -204,6 +479,54 @@ std::unique_ptr<TimingEvent> s_baseboard_io_event;
 // The array lists the source bit for output bits 15 down to 0.
 static constexpr std::array<u8, 16> STAR_TRIGON_STATIC_BIT_ORDER = {
   14, 13, 12, 15, 9, 11, 8, 10, 4, 5, 6, 7, 0, 3, 2, 1,
+};
+
+static constexpr std::array<u8, 16> GAMSHARA_STATIC_BIT_ORDER = {
+  13, 12, 15, 14, 8, 9, 11, 10, 5, 7, 4, 6, 0, 1, 2, 3,
+};
+
+static constexpr std::array<u8, 16> KONOTAKO_STATIC_BIT_ORDER = {
+  14, 15, 12, 13, 8, 9, 11, 10, 5, 4, 7, 6, 0, 1, 3, 2,
+};
+
+static constexpr std::array<u8, 16> PANIKURU_STATIC_BIT_ORDER = {
+  14, 12, 15, 13, 8, 9, 10, 11, 4, 7, 6, 5, 1, 0, 3, 2,
+};
+static constexpr std::array<u8, 16> KNPUZZLE_STATIC_BIT_ORDER = {
+  14, 15, 12, 13, 10, 8, 11, 9, 4, 5, 6, 7, 1, 3, 0, 2,
+};
+static constexpr std::array<u8, 16> MRDRILLERG_STATIC_BIT_ORDER = {
+  14, 12, 15, 13, 10, 9, 8, 11, 4, 5, 6, 7, 0, 1, 3, 2,
+};
+static constexpr std::array<u8, 16> GJSPACE_STATIC_BIT_ORDER = {
+  8, 10, 6, 5, 7, 14, 4, 15, 13, 9, 1, 0, 2, 11, 12, 3,
+};
+static constexpr std::array<u8, 16> CHOCOVADER_STATIC_BIT_ORDER = {
+  13, 12, 14, 15, 9, 8, 10, 11, 4, 7, 6, 5, 0, 3, 2, 1,
+};
+
+// CORROBORATED behavior for the KC001A MEM(M) board used by Mr. Driller 2.
+// These bit orders describe observable transforms; they are kept profile-local
+// instead of treating them as universal System 10 behavior.
+static constexpr std::array<u8, 16> MRDRILLER2_STATIC_BIT_ORDER = {
+  12, 13, 15, 14, 11, 10, 9, 8, 7, 6, 4, 1, 2, 5, 0, 3,
+};
+static constexpr std::array<u8, 16> MRDRILLER2_TYPE1_OUTPUT_BIT_ORDER = {
+  9, 13, 15, 7, 14, 8, 6, 10, 11, 12, 3, 5, 0, 1, 4, 2,
+};
+static constexpr std::array<u8, 16> MRDRILLER2_TYPE1_CIPHER_FEEDBACK_BIT_ORDER = {
+  6, 11, 3, 1, 13, 5, 15, 10, 2, 9, 8, 4, 0, 12, 7, 14,
+};
+static constexpr std::array<u8, 16> MRDRILLER2_TYPE1_PLAIN_FEEDBACK_BIT_ORDER = {
+  9, 7, 5, 2, 14, 4, 13, 8, 0, 15, 10, 1, 3, 6, 12, 11,
+};
+
+// The reverse-engineered equivalent-state initialization currently available
+// for Type-1. Value 16 is the published placeholder for IVs whose independent
+// hardware value remains unknown; preserve it explicitly rather than inventing
+// a different seed.
+static constexpr std::array<u16, 16> MRDRILLER2_TYPE1_INITIAL_MASK = {
+  16, 16, 16, 0, 4, 9, 16, 16, 16, 8, 16, 1, 16, 9, 16, 5,
 };
 
 constexpr u16 Permute16(u16 value, const std::array<u8, 16>& source_bits)
@@ -224,10 +547,80 @@ constexpr u16 DecodeStaticWord(MemNBoardProfile profile, u16 raw_word)
     case MemNBoardProfile::StarTrigon:
       return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), STAR_TRIGON_STATIC_BIT_ORDER);
 
+    case MemNBoardProfile::Gamshara:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), GAMSHARA_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::KonoTako:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), KONOTAKO_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::Panikuru:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), PANIKURU_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::KNPuzzle:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), KNPUZZLE_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::MrDrillerG:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), MRDRILLERG_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::GJSpace:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), GJSPACE_STATIC_BIT_ORDER);
+
+    case MemNBoardProfile::Chocovader:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), CHOCOVADER_STATIC_BIT_ORDER);
+
     case MemNBoardProfile::Unknown:
     default:
       return raw_word;
   }
+}
+
+constexpr u16 DecodeMemMStaticWord(MemMBoardProfile profile, u16 raw_word)
+{
+  switch (profile)
+  {
+    case MemMBoardProfile::MrDriller2:
+      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), MRDRILLER2_STATIC_BIT_ORDER);
+
+    case MemMBoardProfile::Unknown:
+    default:
+      return raw_word;
+  }
+}
+
+constexpr u32 BitValue(u32 value, u32 bit)
+{
+  return (value >> bit) & 1u;
+}
+
+constexpr u16 DecodeMrDriller2Type1Word(Type1State& state, u16 cipher_word)
+{
+  const u16 permuted_cipher = Permute16(cipher_word, MRDRILLER2_TYPE1_OUTPUT_BIT_ORDER);
+  const u16 plain_word = static_cast<u16>(permuted_cipher ^ state.mask);
+  const u32 counter = state.counter;
+
+  u16 nonlinear = 0;
+  nonlinear |= static_cast<u16>(BitValue(counter, 4) << 15);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 2) ^ BitValue(cipher_word, 5)) << 14);
+  nonlinear |= static_cast<u16>(BitValue(cipher_word, 0) << 13);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 4) | BitValue(cipher_word, 5)) << 12);
+  nonlinear |= static_cast<u16>(BitValue(counter, 0) << 11);
+  nonlinear |= static_cast<u16>(BitValue(cipher_word, 6) << 10);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 4) & BitValue(counter, 1)) << 8);
+  nonlinear |= static_cast<u16>(BitValue(counter, 3) << 6);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 3) | BitValue(counter, 7)) << 5);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 2) ^ BitValue(counter, 3)) << 4);
+  nonlinear |= static_cast<u16>(BitValue(counter, 2) << 3);
+  nonlinear |= static_cast<u16>((BitValue(cipher_word, 7) & BitValue(counter, 7)) << 2);
+  nonlinear |= static_cast<u16>(BitValue(counter, 5) << 1);
+  nonlinear |= static_cast<u16>(BitValue(cipher_word, 7) | BitValue(counter, 1));
+
+  state.mask =
+    static_cast<u16>(nonlinear ^
+                     Permute16(cipher_word, MRDRILLER2_TYPE1_CIPHER_FEEDBACK_BIT_ORDER) ^
+                     Permute16(plain_word, MRDRILLER2_TYPE1_PLAIN_FEEDBACK_BIT_ORDER) ^
+                     UINT16_C(0xecbe));
+  state.counter++;
+  return plain_word;
 }
 
 static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0xaaaa)) == UINT16_C(0x0000));
@@ -284,6 +677,120 @@ constexpr u16 DecodeStarTrigonType2Word(Type2State& state, u16 cipher_word)
   return plain_word;
 }
 
+constexpr u32 Parity64(u64 value)
+{
+  return std::popcount(value) & 1u;
+}
+
+constexpr u16 ComputeLinearType2NextMask(const Type2LinearLogic& logic, u64 previous_cipherwords,
+                                         u64 previous_plainwords, u16 nonlinear)
+{
+  u16 mask = 0;
+  for (s32 bit = 15; bit >= 0; bit--)
+  {
+    mask = static_cast<u16>(mask << 1);
+    mask ^= static_cast<u16>(Parity64(logic.cipher_masks[static_cast<size_t>(bit)] & previous_cipherwords));
+    mask ^= static_cast<u16>(Parity64(logic.plain_masks[static_cast<size_t>(bit)] & previous_plainwords));
+  }
+
+  return static_cast<u16>(mask ^ logic.xor_mask ^ nonlinear);
+}
+
+constexpr u16 DecodeGamsharaType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
+  const u16 nonlinear = static_cast<u16>(((previous_masks >> 7) & (previous_masks >> 13) & UINT64_C(1)) << 2);
+  state.mask = ComputeLinearType2NextMask(GAMSHARA_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, nonlinear);
+  return plain_word;
+}
+
+constexpr u16 DecodeKonoTakoType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
+  const u16 nonlinear = static_cast<u16>(((previous_masks >> 7) & (previous_masks >> 15) & UINT64_C(1)) << 15);
+  state.mask = ComputeLinearType2NextMask(KONOTAKO_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, nonlinear);
+  return plain_word;
+}
+
+constexpr u16 DecodePanikuruType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u16 a = static_cast<u16>(Parity64(UINT64_C(0x0000000088300281) & state.previous_cipherwords) ^
+                                 Parity64(UINT64_C(0x0000000004600281) & state.previous_plainwords));
+  const u16 b = static_cast<u16>(Parity64(UINT64_C(0x0000a13140090000) & state.previous_cipherwords) ^
+                                 Parity64(UINT64_C(0x0000806240090000) & state.previous_plainwords));
+  state.mask = ComputeLinearType2NextMask(PANIKURU_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, static_cast<u16>((a & b) << 2));
+  return plain_word;
+}
+
+constexpr u16 DecodeKNPuzzleType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
+  const u16 nonlinear = static_cast<u16>(((previous_masks >> 19) &
+    (Parity64(UINT64_C(0x0000000014001290) & state.previous_cipherwords) ^
+     Parity64(UINT64_C(0x0000000000021290) & state.previous_plainwords)) & UINT64_C(1)) << 1);
+  state.mask = ComputeLinearType2NextMask(KNPUZZLE_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, nonlinear);
+  return plain_word;
+}
+
+constexpr u16 DecodeMrDrillerGType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
+  const u16 nonlinear = static_cast<u16>((Parity64(previous_masks & UINT64_C(0x120100400000)) &
+                                          Parity64(previous_masks & UINT64_C(0x011800020000))) * 0x11);
+  state.mask = ComputeLinearType2NextMask(MRDRILLERG_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, nonlinear);
+  return plain_word;
+}
+
+constexpr u16 DecodeGJSpaceType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+  state.mask = ComputeLinearType2NextMask(GJSPACE_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, 0);
+  return plain_word;
+}
+
+constexpr u16 DecodeChocovaderType2Word(Type2State& state, u16 cipher_word)
+{
+  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
+  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
+  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
+
+  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
+  const u16 nonlinear = static_cast<u16>(((previous_masks >> 9) &
+    (Parity64(UINT64_C(0x0000000010065810) & state.previous_cipherwords) ^
+     Parity64(UINT64_C(0x0000000021005810) & state.previous_plainwords)) & UINT64_C(1)) << 10);
+  state.mask = ComputeLinearType2NextMask(CHOCOVADER_TYPE2_LOGIC, state.previous_cipherwords,
+                                          state.previous_plainwords, nonlinear);
+  return plain_word;
+}
+
 constexpr bool ValidateStarTrigonType2KnownAnswer()
 {
   // First 32 bytes of the protected stream captured by S10-02A. The plaintext
@@ -314,10 +821,45 @@ constexpr bool ValidateStarTrigonType2KnownAnswer()
 
 static_assert(ValidateStarTrigonType2KnownAnswer());
 
+void ResetType1State(RuntimeState& runtime, u8 iv)
+{
+  runtime.type1_state = {};
+  runtime.type1_state.mask = MRDRILLER2_TYPE1_INITIAL_MASK[iv & 0x0f];
+  runtime.type1_trace_words = 0;
+}
+
 void ResetType2State(RuntimeState& runtime)
 {
   runtime.type2_state = {};
   runtime.type2_trace_words = 0;
+}
+
+void InitializeType2State(RuntimeState& runtime, u8 iv)
+{
+  ResetType2State(runtime);
+  switch (runtime.board_profile)
+  {
+    case MemNBoardProfile::Panikuru:
+      runtime.type2_state.previous_cipherwords = PANIKURU_TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
+      break;
+
+    case MemNBoardProfile::MrDrillerG:
+      runtime.type2_state.previous_cipherwords = MRDRILLERG_TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
+      break;
+
+    case MemNBoardProfile::Gamshara:
+    case MemNBoardProfile::KonoTako:
+    case MemNBoardProfile::KNPuzzle:
+    case MemNBoardProfile::GJSpace:
+    case MemNBoardProfile::Chocovader:
+      runtime.type2_state.previous_cipherwords = TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
+      break;
+
+    case MemNBoardProfile::StarTrigon:
+    case MemNBoardProfile::Unknown:
+    default:
+      break;
+  }
 }
 
 void ResetI2CState(RuntimeState& runtime)
@@ -432,6 +974,142 @@ void WriteI2CDataLine(RuntimeState& runtime, u16 value)
   UpdateI2CState(runtime);
 }
 
+void ResetBaseboardInputState(RuntimeState& runtime)
+{
+  runtime.test_switch_was_pressed = false;
+  runtime.test_switch_latched = false;
+  runtime.exio_ident_bit = 0;
+  runtime.exio_ident_byte = 0;
+  runtime.exio_ident_trace_events = 0;
+  runtime.baseboard_input_trace_events = 0;
+}
+
+u16 ReadBaseboardSystemSwitches()
+{
+  // Main-board DSW1 and the still-unidentified/JVS-sense bit are active-low.
+  // No title-specific DIP override is required for the current System 10
+  // targets, so their normal cabinet state is all ones.
+  return UINT16_C(0xffff);
+}
+
+u16 ReadEXIOIdentifier(RuntimeState& runtime)
+{
+  // The base board shifts one expansion-board ID bit onto both low return bits.
+  // A board-less cabinet reports 0xff, so every serialized bit is high. After
+  // 0x20 response bytes the line remains in the high/high idle state.
+  constexpr u8 response = UINT8_C(0xff);
+
+  u16 result;
+  if (runtime.exio_ident_byte >= 0x20)
+  {
+    result = UINT16_C(0x0003);
+  }
+  else
+  {
+    const bool bit = ((response >> runtime.exio_ident_bit) & 1u) != 0;
+    result = bit ? UINT16_C(0x0003) : UINT16_C(0x0000);
+
+    runtime.exio_ident_bit--;
+    if (runtime.exio_ident_bit < 0)
+    {
+      runtime.exio_ident_bit = 7;
+      runtime.exio_ident_byte++;
+    }
+  }
+
+  if (runtime.exio_ident_trace_events < EXIO_IDENT_TRACE_LIMIT)
+  {
+    INFO_LOG("System10 base-board EXIO ID read byte={} bit={} value=0x{:04X}",
+             runtime.exio_ident_byte, runtime.exio_ident_bit, result);
+    runtime.exio_ident_trace_events++;
+  }
+
+  return result;
+}
+
+void ResetEXIOIdentifier(RuntimeState& runtime)
+{
+  runtime.exio_ident_bit = 7;
+  runtime.exio_ident_byte = 0;
+  runtime.exio_ident_trace_events = 0;
+}
+
+bool ReadU32Register(u32 reg, u32 byte_offset, u32 width, u32* value);
+
+u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
+{
+  u32 value = UINT32_MAX;
+
+  const auto clear_if_pressed = [&value](bool pressed, u32 bit) {
+    if (pressed)
+      value &= ~(UINT32_C(1) << bit);
+  };
+
+  // Main-board IN1 is active-low. Player 1 occupies bits 0-7 plus 17-19.
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Right"), 0);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Left"), 1);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Down"), 2);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Up"), 3);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button1"), 4);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button2"), 5);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button3"), 6);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Start"), 7);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button4"), 17);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button5"), 18);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button6"), 19);
+
+  // Player 2 occupies bits 8-15 plus 21-23.
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Right"), 8);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Left"), 9);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Down"), 10);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Up"), 11);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button1"), 12);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button2"), 13);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button3"), 14);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Start"), 15);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button4"), 21);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button5"), 22);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button6"), 23);
+
+  // Two physical coin inputs occupy bits 29/28 respectively.
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Coin"), 29);
+  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Coin"), 28);
+
+  // The System 10 TEST input is a maintained slide switch. Convert the normal
+  // momentary ArcadeDuck operator binding to a latched state on each press.
+  const bool test_pressed = ArcadeInput::IsOperatorPressed("Test");
+  if (test_pressed && !runtime.test_switch_was_pressed)
+    runtime.test_switch_latched = !runtime.test_switch_latched;
+  runtime.test_switch_was_pressed = test_pressed;
+
+  clear_if_pressed(runtime.test_switch_latched, 30);
+  clear_if_pressed(ArcadeInput::IsOperatorPressed("Service"), 31);
+
+  return value;
+}
+
+bool ReadBaseboardPlayerRegister(RuntimeState& runtime, u32 width, u32 offset, u32* value)
+{
+  if (offset < EXP3_PLAYER_INPUT_BASE ||
+      offset >= (EXP3_PLAYER_INPUT_BASE + EXP3_PLAYER_INPUT_SIZE))
+  {
+    return false;
+  }
+
+  const u32 input_value = ReadBaseboardPlayerInputs(runtime);
+  const bool handled =
+    ReadU32Register(input_value, offset - EXP3_PLAYER_INPUT_BASE, width, value);
+
+  if (handled && runtime.baseboard_input_trace_events < BASEBOARD_INPUT_TRACE_LIMIT)
+  {
+    INFO_LOG("System10 base-board input read offset=0x{:06X} width={} register=0x{:08X} value=0x{:08X}",
+             offset, width, input_value, *value);
+    runtime.baseboard_input_trace_events++;
+  }
+
+  return handled;
+}
+
 TickCount GetBaseboardIOIntervalTicks()
 {
   return std::max<TickCount>(
@@ -526,8 +1204,18 @@ bool HandleType2SwitchWrite(RuntimeState& runtime, u32 width, u32 offset, u32 va
     runtime.type2_iv = static_cast<u8>(reg & UINT16_C(0x000f));
     runtime.type2_generation++;
     runtime.type2_transform_supported =
-      (runtime.board_profile == MemNBoardProfile::StarTrigon && runtime.type2_iv == 0);
-    ResetType2State(runtime);
+      (runtime.board_profile == MemNBoardProfile::StarTrigon && runtime.type2_iv == 0) ||
+      (runtime.board_profile == MemNBoardProfile::Gamshara) ||
+      (runtime.board_profile == MemNBoardProfile::KonoTako) ||
+      (runtime.board_profile == MemNBoardProfile::Panikuru) ||
+      (runtime.board_profile == MemNBoardProfile::KNPuzzle) ||
+      (runtime.board_profile == MemNBoardProfile::MrDrillerG) ||
+      (runtime.board_profile == MemNBoardProfile::GJSpace) ||
+      (runtime.board_profile == MemNBoardProfile::Chocovader);
+    if (runtime.type2_transform_supported)
+      InitializeType2State(runtime, runtime.type2_iv);
+    else
+      ResetType2State(runtime);
 
     INFO_LOG("System10 Type2 activate generation={} alias=0x{:06X} value=0x{:04X} iv={} supported={}",
              runtime.type2_generation, offset, reg, runtime.type2_iv,
@@ -560,6 +1248,854 @@ bool ShouldApplyStaticTransform(const RuntimeState& runtime, const MemNRawNAND& 
   return runtime.board_profile != MemNBoardProfile::Unknown;
 }
 
+bool ReadVectorWordLE(std::span<const u8> bytes, u64 word_index, u16* value)
+{
+  if (!value)
+    return false;
+
+  const u64 byte_offset = word_index * 2;
+  if (byte_offset + 1 >= bytes.size())
+    return false;
+
+  *value = static_cast<u16>(static_cast<u16>(bytes[static_cast<size_t>(byte_offset)]) |
+                            (static_cast<u16>(bytes[static_cast<size_t>(byte_offset + 1)]) << 8));
+  return true;
+}
+
+u32 GetMemMFlashAbsoluteWordAddress(const RuntimeState& runtime, u32 range_word_offset)
+{
+  return (runtime.memm_bank * UINT32_C(0x100000)) + range_word_offset;
+}
+
+u32 GetMemMFlashBlockIndex(u32 word_address)
+{
+  return word_address / MEMM_FLASH_BLOCK_WORDS;
+}
+
+bool ReadMemMFlashArrayWord(const RuntimeState& runtime, u32 word_address, u16* value)
+{
+  if (!value || word_address >= MEMM_FLASH_WORD_COUNT)
+    return false;
+
+  return ReadVectorWordLE(std::span<const u8>(runtime.memm_program_flash.data(),
+                                               runtime.memm_program_flash.size()),
+                          word_address, value);
+}
+
+bool WriteMemMFlashArrayWord(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  if (word_address >= MEMM_FLASH_WORD_COUNT)
+    return false;
+
+  const size_t byte_offset = static_cast<size_t>(word_address) * 2;
+  const u16 current = static_cast<u16>(static_cast<u16>(runtime.memm_program_flash[byte_offset]) |
+                                       (static_cast<u16>(runtime.memm_program_flash[byte_offset + 1]) << 8));
+
+  // NOR programming can only change erased 1 bits to 0 bits. A 0->1 request
+  // requires an erase and is reported as a program error.
+  if ((value & static_cast<u16>(~current)) != 0)
+    return false;
+
+  const u16 programmed = static_cast<u16>(current & value);
+  if (programmed != current)
+  {
+    runtime.memm_program_flash[byte_offset] = static_cast<u8>(programmed);
+    runtime.memm_program_flash[byte_offset + 1] = static_cast<u8>(programmed >> 8);
+    runtime.memm_flash_dirty = true;
+  }
+  return true;
+}
+
+bool LoadMemMProgramFlashPersistence(RuntimeState& runtime, Error* error)
+{
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  runtime.memm_persistence_directory = Path::Combine(nvram_root, runtime.set_name);
+  runtime.memm_flash_path = Path::Combine(runtime.memm_persistence_directory, "28f640j5");
+  runtime.memm_flash_dirty = false;
+
+  if (!FileSystem::FileExists(runtime.memm_flash_path.c_str()))
+    return true;
+
+  std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.memm_flash_path.c_str(), error);
+  if (!data || data->size() != MEMM_PROGRAM_FLASH_SIZE)
+  {
+    const size_t actual_size = data ? data->size() : 0;
+    Error::SetStringFmt(error, "Namco System 10 MEM(M) flash '{}' has invalid size {}; expected {} bytes.",
+                        runtime.memm_flash_path, actual_size, MEMM_PROGRAM_FLASH_SIZE);
+    ERROR_LOG("System 10 MEM(M) flash malformed persistence canonical_set='{}' path='{}' actual_size={} "
+              "expected_size={}.",
+              runtime.set_name, runtime.memm_flash_path, actual_size, MEMM_PROGRAM_FLASH_SIZE);
+    return false;
+  }
+
+  std::copy(data->begin(), data->end(), runtime.memm_program_flash.begin());
+  VERBOSE_LOG("System 10 MEM(M) flash loaded canonical_set='{}' path='{}'.",
+              runtime.set_name, runtime.memm_flash_path);
+  return true;
+}
+
+void SaveMemMProgramFlashPersistence(RuntimeState& runtime)
+{
+  if (!runtime.memm_flash_dirty)
+    return;
+
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(runtime.memm_persistence_directory.c_str(), false) ||
+      !FileSystem::WriteBinaryFile(runtime.memm_flash_path.c_str(), runtime.memm_program_flash.data(),
+                                   runtime.memm_program_flash.size()))
+  {
+    ERROR_LOG("System 10 MEM(M) flash save failed canonical_set='{}' path='{}'.",
+              runtime.set_name, runtime.memm_flash_path);
+    return;
+  }
+
+  runtime.memm_flash_dirty = false;
+  VERBOSE_LOG("System 10 MEM(M) flash saved canonical_set='{}' path='{}'.",
+              runtime.set_name, runtime.memm_flash_path);
+}
+
+bool LoadMemNPersistence(RuntimeState& runtime, Error* error)
+{
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  const std::string persistence_directory = Path::Combine(nvram_root, runtime.set_name);
+
+  for (size_t index = 0; index < runtime.nands.size(); index++)
+  {
+    const std::string path = Path::Combine(persistence_directory, std::string("nand") + std::to_string(index));
+    if (!FileSystem::FileExists(path.c_str()))
+      continue;
+
+    std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(path.c_str(), error);
+    if (!data || data->size() != MemNRawNAND::RAW_IMAGE_SIZE)
+    {
+      const size_t actual_size = data ? data->size() : 0;
+      Error::SetStringFmt(error, "Namco System 10 MEM(N) NAND '{}' has invalid size {}; expected {} bytes.",
+                          path, actual_size, MemNRawNAND::RAW_IMAGE_SIZE);
+      ERROR_LOG("System 10 MEM(N) malformed persistence canonical_set='{}' nand={} path='{}' actual_size={} "
+                "expected_size={}.",
+                runtime.set_name, index, path, actual_size, MemNRawNAND::RAW_IMAGE_SIZE);
+      return false;
+    }
+
+    std::vector<u8> raw_image(data->begin(), data->end());
+    if (!runtime.nands[index].Load(std::move(raw_image), error))
+      return false;
+
+    VERBOSE_LOG("System 10 MEM(N) NAND loaded canonical_set='{}' nand={} path='{}'.",
+                runtime.set_name, index, path);
+  }
+
+  return true;
+}
+
+void SaveMemNPersistence(RuntimeState& runtime)
+{
+  bool has_dirty_nand = false;
+  for (const MemNRawNAND& nand : runtime.nands)
+    has_dirty_nand |= nand.IsDirty();
+
+  if (!has_dirty_nand)
+    return;
+
+  const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
+  const std::string persistence_directory = Path::Combine(nvram_root, runtime.set_name);
+  if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
+      !FileSystem::CreateDirectory(persistence_directory.c_str(), false))
+  {
+    ERROR_LOG("System 10 MEM(N) persistence directory creation failed canonical_set='{}' path='{}'.",
+              runtime.set_name, persistence_directory);
+    return;
+  }
+
+  for (size_t index = 0; index < runtime.nands.size(); index++)
+  {
+    MemNRawNAND& nand = runtime.nands[index];
+    if (!nand.IsDirty())
+      continue;
+
+    const std::string path = Path::Combine(persistence_directory, std::string("nand") + std::to_string(index));
+    const std::span<const u8> raw_image = nand.GetRawImage();
+    if (!FileSystem::WriteBinaryFile(path.c_str(), raw_image.data(), raw_image.size()))
+    {
+      ERROR_LOG("System 10 MEM(N) NAND save failed canonical_set='{}' nand={} path='{}'.",
+                runtime.set_name, index, path);
+      continue;
+    }
+
+    nand.ClearDirty();
+    VERBOSE_LOG("System 10 MEM(N) NAND saved canonical_set='{}' nand={} path='{}'.",
+                runtime.set_name, index, path);
+  }
+}
+
+void ResetIntel28F640J5Interface(RuntimeState& runtime)
+{
+  runtime.memm_flash.mode = Intel28F640J5Mode::Array;
+  runtime.memm_flash.status = MEMM_FLASH_STATUS_READY;
+  runtime.memm_flash.setup_word_address = 0;
+  runtime.memm_flash.write_buffer_block_word = 0;
+  runtime.memm_flash.write_buffer_start_word = 0;
+  runtime.memm_flash.write_buffer_count = 0;
+  runtime.memm_flash.write_buffer_received = 0;
+  runtime.memm_flash.write_buffer.fill(UINT16_C(0xffff));
+
+  // J5 lock bits power up clear. They are volatile device state; the flash
+  // array contents themselves are deliberately not reset here.
+  runtime.memm_flash.master_lock = false;
+  runtime.memm_flash.block_locked.fill(false);
+  runtime.memm_flash.sts_configuration = 0;
+}
+
+u16 ReadIntel28F640J5Identifier(const RuntimeState& runtime, u32 word_address)
+{
+  switch (word_address & UINT32_C(0xff))
+  {
+    case 0:
+      return MEMM_FLASH_MAKER_ID;
+
+    case 1:
+      return MEMM_FLASH_DEVICE_ID;
+
+    case 2:
+    {
+      const u32 block = GetMemMFlashBlockIndex(word_address);
+      return (block < MEMM_FLASH_BLOCK_COUNT && runtime.memm_flash.block_locked[block]) ?
+               UINT16_C(0x0001) :
+               UINT16_C(0x0000);
+    }
+
+    case 3:
+      return runtime.memm_flash.master_lock ? UINT16_C(0x0001) : UINT16_C(0x0000);
+
+    default:
+      return UINT16_C(0x0000);
+  }
+}
+
+u16 ReadIntel28F640J5Query(u32 word_address)
+{
+  // Intel 28F640J5 CFI data in x16 mode. Query values occupy the low byte;
+  // the upper byte is zero.
+  switch (word_address & UINT32_C(0xff))
+  {
+    case 0x10: return UINT16_C(0x0051); // Q
+    case 0x11: return UINT16_C(0x0052); // R
+    case 0x12: return UINT16_C(0x0059); // Y
+    case 0x13: return UINT16_C(0x0001); // Intel command set
+    case 0x14: return UINT16_C(0x0000);
+    case 0x15: return UINT16_C(0x0031); // primary extended query table
+    case 0x16: return UINT16_C(0x0000);
+    case 0x17: return UINT16_C(0x0000); // no alternate command set
+    case 0x18: return UINT16_C(0x0000);
+    case 0x19: return UINT16_C(0x0000);
+    case 0x1a: return UINT16_C(0x0000);
+
+    case 0x1b: return UINT16_C(0x0045); // VCC min 4.5 V
+    case 0x1c: return UINT16_C(0x0055); // VCC max 5.5 V
+    case 0x1d: return UINT16_C(0x0000);
+    case 0x1e: return UINT16_C(0x0000);
+    case 0x1f: return UINT16_C(0x0007);
+    case 0x20: return UINT16_C(0x0007);
+    case 0x21: return UINT16_C(0x000a);
+    case 0x22: return UINT16_C(0x0000);
+    case 0x23: return UINT16_C(0x0004);
+    case 0x24: return UINT16_C(0x0004);
+    case 0x25: return UINT16_C(0x0004);
+    case 0x26: return UINT16_C(0x0000);
+
+    case 0x27: return UINT16_C(0x0017); // 2^23 bytes = 8 MiB
+    case 0x28: return UINT16_C(0x0002); // x8/x16 async
+    case 0x29: return UINT16_C(0x0000);
+    case 0x2a: return UINT16_C(0x0005); // 2^5-byte write buffer
+    case 0x2b: return UINT16_C(0x0000);
+    case 0x2c: return UINT16_C(0x0001); // one symmetric erase region
+    case 0x2d: return UINT16_C(0x003f); // 63 + 1 = 64 blocks
+    case 0x2e: return UINT16_C(0x0000);
+    case 0x2f: return UINT16_C(0x0000);
+    case 0x30: return UINT16_C(0x0002); // 0x0200 * 256 = 128 KiB
+
+    default:
+      return UINT16_C(0x0000);
+  }
+}
+
+u16 ReadIntel28F640J5Word(const RuntimeState& runtime, u32 range_word_offset)
+{
+  const u32 word_address = GetMemMFlashAbsoluteWordAddress(runtime, range_word_offset);
+
+  switch (runtime.memm_flash.mode)
+  {
+    case Intel28F640J5Mode::Identifier:
+      return ReadIntel28F640J5Identifier(runtime, word_address);
+
+    case Intel28F640J5Mode::Query:
+      return ReadIntel28F640J5Query(word_address);
+
+    case Intel28F640J5Mode::WriteBufferCount:
+      // Extended status register: write buffer available.
+      return UINT16_C(0x0080);
+
+    case Intel28F640J5Mode::Status:
+    case Intel28F640J5Mode::ProgramData:
+    case Intel28F640J5Mode::EraseConfirm:
+    case Intel28F640J5Mode::LockConfirm:
+    case Intel28F640J5Mode::ConfigurationConfirm:
+    case Intel28F640J5Mode::WriteBufferData:
+    case Intel28F640J5Mode::WriteBufferConfirm:
+      return runtime.memm_flash.status;
+
+    case Intel28F640J5Mode::Array:
+    default:
+    {
+      u16 word = UINT16_C(0xffff);
+      ReadMemMFlashArrayWord(runtime, word_address, &word);
+      return word;
+    }
+  }
+}
+
+void FinishIntel28F640J5Operation(RuntimeState& runtime)
+{
+  runtime.memm_flash.status |= MEMM_FLASH_STATUS_READY;
+  runtime.memm_flash.mode = Intel28F640J5Mode::Status;
+}
+
+void SetIntel28F640J5SequenceError(RuntimeState& runtime)
+{
+  runtime.memm_flash.status |=
+    MEMM_FLASH_STATUS_READY | MEMM_FLASH_STATUS_ERASE_ERROR | MEMM_FLASH_STATUS_PROGRAM_ERROR;
+  runtime.memm_flash.mode = Intel28F640J5Mode::Status;
+}
+
+void HandleIntel28F640J5Program(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  const u32 block = GetMemMFlashBlockIndex(word_address);
+  if (block >= MEMM_FLASH_BLOCK_COUNT)
+  {
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR;
+    FinishIntel28F640J5Operation(runtime);
+    return;
+  }
+
+  if (runtime.memm_flash.block_locked[block])
+  {
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR | MEMM_FLASH_STATUS_PROTECT_ERROR;
+    FinishIntel28F640J5Operation(runtime);
+    return;
+  }
+
+  if (!WriteMemMFlashArrayWord(runtime, word_address, value))
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR;
+
+  FinishIntel28F640J5Operation(runtime);
+}
+
+void HandleIntel28F640J5Erase(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  if ((value & UINT16_C(0x00ff)) != UINT16_C(0x00d0))
+  {
+    SetIntel28F640J5SequenceError(runtime);
+    return;
+  }
+
+  const u32 block = GetMemMFlashBlockIndex(word_address);
+  if (block >= MEMM_FLASH_BLOCK_COUNT)
+  {
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_ERASE_ERROR;
+    FinishIntel28F640J5Operation(runtime);
+    return;
+  }
+
+  if (runtime.memm_flash.block_locked[block])
+  {
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_ERASE_ERROR | MEMM_FLASH_STATUS_PROTECT_ERROR;
+    FinishIntel28F640J5Operation(runtime);
+    return;
+  }
+
+  const size_t byte_base = static_cast<size_t>(block) * MEMM_FLASH_BLOCK_SIZE;
+  const auto block_begin = runtime.memm_program_flash.begin() + byte_base;
+  const bool changed = std::any_of(block_begin, block_begin + MEMM_FLASH_BLOCK_SIZE,
+                                   [](u8 value) { return value != UINT8_C(0xff); });
+  std::fill_n(block_begin, MEMM_FLASH_BLOCK_SIZE, UINT8_C(0xff));
+  runtime.memm_flash_dirty |= changed;
+  FinishIntel28F640J5Operation(runtime);
+}
+
+void HandleIntel28F640J5LockConfirm(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  switch (value & UINT16_C(0x00ff))
+  {
+    case 0x01:
+    {
+      const u32 block = GetMemMFlashBlockIndex(word_address);
+      if (block >= MEMM_FLASH_BLOCK_COUNT)
+      {
+        SetIntel28F640J5SequenceError(runtime);
+        return;
+      }
+
+      if (runtime.memm_flash.master_lock)
+      {
+        runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR | MEMM_FLASH_STATUS_PROTECT_ERROR;
+      }
+      else
+      {
+        runtime.memm_flash.block_locked[block] = true;
+      }
+      FinishIntel28F640J5Operation(runtime);
+      return;
+    }
+
+    case 0xd0:
+      if (runtime.memm_flash.master_lock)
+      {
+        runtime.memm_flash.status |= MEMM_FLASH_STATUS_ERASE_ERROR | MEMM_FLASH_STATUS_PROTECT_ERROR;
+      }
+      else
+      {
+        runtime.memm_flash.block_locked.fill(false);
+      }
+      FinishIntel28F640J5Operation(runtime);
+      return;
+
+    case 0xf1:
+      // The J5 requires RP# at VHH to set the master lock bit. System 10's
+      // board-level RP# drive has not been independently traced; current MAME
+      // exposes this operation as available. Keep that unknown isolated here.
+      runtime.memm_flash.master_lock = true;
+      FinishIntel28F640J5Operation(runtime);
+      return;
+
+    default:
+      SetIntel28F640J5SequenceError(runtime);
+      return;
+  }
+}
+
+void HandleIntel28F640J5Configuration(RuntimeState& runtime, u16 value)
+{
+  if ((value & UINT16_C(0xfffc)) != 0)
+  {
+    SetIntel28F640J5SequenceError(runtime);
+    return;
+  }
+
+  runtime.memm_flash.sts_configuration = static_cast<u8>(value & UINT16_C(0x0003));
+  FinishIntel28F640J5Operation(runtime);
+}
+
+void HandleIntel28F640J5WriteBufferData(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  if (runtime.memm_flash.write_buffer_received == 0)
+    runtime.memm_flash.write_buffer_start_word = word_address;
+
+  const u32 expected_word =
+    runtime.memm_flash.write_buffer_start_word + runtime.memm_flash.write_buffer_received;
+  const u32 block_base = word_address & ~(MEMM_FLASH_BLOCK_WORDS - 1);
+
+  if (word_address != expected_word || block_base != runtime.memm_flash.write_buffer_block_word ||
+      runtime.memm_flash.write_buffer_received >= runtime.memm_flash.write_buffer_count)
+  {
+    SetIntel28F640J5SequenceError(runtime);
+    return;
+  }
+
+  runtime.memm_flash.write_buffer[runtime.memm_flash.write_buffer_received] = value;
+  runtime.memm_flash.write_buffer_received++;
+
+  if (runtime.memm_flash.write_buffer_received == runtime.memm_flash.write_buffer_count)
+    runtime.memm_flash.mode = Intel28F640J5Mode::WriteBufferConfirm;
+}
+
+void HandleIntel28F640J5WriteBufferConfirm(RuntimeState& runtime, u32 word_address, u16 value)
+{
+  if ((value & UINT16_C(0x00ff)) != UINT16_C(0x00d0) ||
+      (word_address & ~(MEMM_FLASH_BLOCK_WORDS - 1)) != runtime.memm_flash.write_buffer_block_word)
+  {
+    SetIntel28F640J5SequenceError(runtime);
+    return;
+  }
+
+  const u32 block = GetMemMFlashBlockIndex(runtime.memm_flash.write_buffer_start_word);
+  if (block >= MEMM_FLASH_BLOCK_COUNT || runtime.memm_flash.block_locked[block])
+  {
+    runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR;
+    if (block < MEMM_FLASH_BLOCK_COUNT && runtime.memm_flash.block_locked[block])
+      runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROTECT_ERROR;
+    FinishIntel28F640J5Operation(runtime);
+    return;
+  }
+
+  // Validate the complete buffer before changing the array.
+  for (u32 i = 0; i < runtime.memm_flash.write_buffer_count; i++)
+  {
+    const u32 target_word = runtime.memm_flash.write_buffer_start_word + i;
+    u16 current = UINT16_C(0xffff);
+    if (!ReadMemMFlashArrayWord(runtime, target_word, &current) ||
+        (runtime.memm_flash.write_buffer[i] & static_cast<u16>(~current)) != 0)
+    {
+      runtime.memm_flash.status |= MEMM_FLASH_STATUS_PROGRAM_ERROR;
+      FinishIntel28F640J5Operation(runtime);
+      return;
+    }
+  }
+
+  for (u32 i = 0; i < runtime.memm_flash.write_buffer_count; i++)
+  {
+    const u32 target_word = runtime.memm_flash.write_buffer_start_word + i;
+    WriteMemMFlashArrayWord(runtime, target_word, runtime.memm_flash.write_buffer[i]);
+  }
+
+  FinishIntel28F640J5Operation(runtime);
+}
+
+void WriteIntel28F640J5Word(RuntimeState& runtime, u32 range_word_offset, u16 value)
+{
+  // Current MAME forwards MEM(M) flash writes using the 2 MiB range offset
+  // directly. The exact effect of the external System 10 bank selector on
+  // flash write address lines is not documented, so keep that unknown isolated
+  // rather than asserting an unverified high-address mapping.
+  const u32 word_address = range_word_offset;
+  const u8 command = static_cast<u8>(value);
+
+  switch (runtime.memm_flash.mode)
+  {
+    case Intel28F640J5Mode::ProgramData:
+      HandleIntel28F640J5Program(runtime, word_address, value);
+      return;
+
+    case Intel28F640J5Mode::EraseConfirm:
+      HandleIntel28F640J5Erase(runtime, word_address, value);
+      return;
+
+    case Intel28F640J5Mode::LockConfirm:
+      HandleIntel28F640J5LockConfirm(runtime, word_address, value);
+      return;
+
+    case Intel28F640J5Mode::ConfigurationConfirm:
+      HandleIntel28F640J5Configuration(runtime, value);
+      return;
+
+    case Intel28F640J5Mode::WriteBufferCount:
+    {
+      const u32 count_minus_one = value & UINT16_C(0x00ff);
+      if (count_minus_one >= MEMM_FLASH_WRITE_BUFFER_WORDS)
+      {
+        SetIntel28F640J5SequenceError(runtime);
+        return;
+      }
+
+      runtime.memm_flash.write_buffer_count = count_minus_one + 1;
+      runtime.memm_flash.write_buffer_received = 0;
+      runtime.memm_flash.write_buffer_start_word = 0;
+      runtime.memm_flash.write_buffer.fill(UINT16_C(0xffff));
+      runtime.memm_flash.mode = Intel28F640J5Mode::WriteBufferData;
+      return;
+    }
+
+    case Intel28F640J5Mode::WriteBufferData:
+      HandleIntel28F640J5WriteBufferData(runtime, word_address, value);
+      return;
+
+    case Intel28F640J5Mode::WriteBufferConfirm:
+      HandleIntel28F640J5WriteBufferConfirm(runtime, word_address, value);
+      return;
+
+    case Intel28F640J5Mode::Array:
+    case Intel28F640J5Mode::Identifier:
+    case Intel28F640J5Mode::Query:
+    case Intel28F640J5Mode::Status:
+    default:
+      break;
+  }
+
+  switch (command)
+  {
+    case 0xff:
+    case 0xf0:
+      runtime.memm_flash.mode = Intel28F640J5Mode::Array;
+      return;
+
+    case 0x90:
+      runtime.memm_flash.mode = Intel28F640J5Mode::Identifier;
+      return;
+
+    case 0x98:
+      runtime.memm_flash.mode = Intel28F640J5Mode::Query;
+      return;
+
+    case 0x70:
+      runtime.memm_flash.mode = Intel28F640J5Mode::Status;
+      return;
+
+    case 0x50:
+      runtime.memm_flash.status = MEMM_FLASH_STATUS_READY;
+      runtime.memm_flash.mode = Intel28F640J5Mode::Status;
+      return;
+
+    case 0x40:
+    case 0x10:
+      runtime.memm_flash.mode = Intel28F640J5Mode::ProgramData;
+      runtime.memm_flash.setup_word_address = word_address;
+      return;
+
+    case 0x20:
+      runtime.memm_flash.mode = Intel28F640J5Mode::EraseConfirm;
+      runtime.memm_flash.setup_word_address = word_address;
+      return;
+
+    case 0x60:
+      runtime.memm_flash.mode = Intel28F640J5Mode::LockConfirm;
+      runtime.memm_flash.setup_word_address = word_address;
+      return;
+
+    case 0xb8:
+      runtime.memm_flash.mode = Intel28F640J5Mode::ConfigurationConfirm;
+      runtime.memm_flash.setup_word_address = word_address;
+      return;
+
+    case 0xe8:
+      runtime.memm_flash.write_buffer_block_word = word_address & ~(MEMM_FLASH_BLOCK_WORDS - 1);
+      runtime.memm_flash.write_buffer_count = 0;
+      runtime.memm_flash.write_buffer_received = 0;
+      runtime.memm_flash.mode = Intel28F640J5Mode::WriteBufferCount;
+      return;
+
+    case 0xb0:
+    case 0xd0:
+      // Suspend/resume only matter while the WSM is busy. Program/erase
+      // operations are presently functionally completed at command completion.
+      runtime.memm_flash.mode = Intel28F640J5Mode::Status;
+      return;
+
+    default:
+      SetIntel28F640J5SequenceError(runtime);
+      return;
+  }
+}
+
+bool ReadMemMRange(RuntimeState& runtime, u32 width, u32 offset, u32* value)
+{
+  if (!value || offset < MEMM_RANGE_BASE || offset >= (MEMM_RANGE_BASE + MEMM_RANGE_SIZE) ||
+      width > ((MEMM_RANGE_BASE + MEMM_RANGE_SIZE) - offset))
+  {
+    return false;
+  }
+
+  // The MEM(M) range is a 16-bit device, but the PSX CPU can issue byte reads.
+  // Mr. Driller 2's software decoder does exactly that with LBU while consuming
+  // compressed streams, starting at arbitrary (including odd) offsets, from both
+  // the mask-ROM banks (0x10-0x1F) and the direct-read program-flash banks
+  // (0x00-0x0F, statically unscrambled). A direct byte read exposes the addressed
+  // byte lane of the same 16-bit word a halfword read would return and has no
+  // side effects.
+  //
+  // Keep flash-command and active Type1 byte-read behavior out of this change:
+  // both have stateful 16-bit semantics that need independent evidence before
+  // defining how byte accesses affect them.
+  if (width == 1)
+  {
+    if (!runtime.memm_direct_access || runtime.type1_enabled || runtime.memm_bank >= 0x20)
+      return false;
+
+    const u32 range_byte = offset - MEMM_RANGE_BASE;
+    const u64 bank_word = static_cast<u64>(range_byte / 2);
+    u16 word = UINT16_C(0xffff);
+    if (runtime.memm_bank < 0x10)
+    {
+      if (ReadVectorWordLE(std::span<const u8>(runtime.memm_program_flash.data(),
+                                               runtime.memm_program_flash.size()),
+                           static_cast<u64>(runtime.memm_bank) * UINT64_C(0x100000) + bank_word, &word))
+      {
+        word = DecodeMemMStaticWord(runtime.memm_board_profile, word);
+      }
+      else
+      {
+        word = UINT16_C(0xffff);
+      }
+    }
+    else if (!ReadVectorWordLE(std::span<const u8>(runtime.memm_data_rom.data(), runtime.memm_data_rom.size()),
+                               static_cast<u64>(runtime.memm_bank - 0x10) * UINT64_C(0x100000) + bank_word,
+                               &word))
+    {
+      word = UINT16_C(0xffff);
+    }
+
+    *value = static_cast<u32>((word >> ((range_byte & 1u) * 8)) & UINT16_C(0x00ff));
+    return true;
+  }
+
+  if ((width != 2 && width != 4) || (offset & 1u) != 0)
+    return false;
+
+  const u32 first_word = (offset - MEMM_RANGE_BASE) / 2;
+  const u32 word_count = width / 2;
+  u32 result = 0;
+
+  for (u32 i = 0; i < word_count; i++)
+  {
+    const u32 range_word = first_word + i;
+    u16 word = UINT16_C(0xffff);
+
+    if (!runtime.memm_direct_access)
+    {
+      word = ReadIntel28F640J5Word(runtime, range_word);
+    }
+    else
+    {
+      const bool program_flash = runtime.memm_bank < 0x10;
+      const bool data_rom = runtime.memm_bank >= 0x10 && runtime.memm_bank < 0x20;
+      if (program_flash)
+      {
+        const u64 bank_word = static_cast<u64>(runtime.memm_bank) * UINT64_C(0x100000) + range_word;
+        if (!ReadVectorWordLE(std::span<const u8>(runtime.memm_program_flash.data(),
+                                                  runtime.memm_program_flash.size()),
+                              bank_word, &word))
+        {
+          word = UINT16_C(0xffff);
+        }
+      }
+      else if (data_rom)
+      {
+        const u64 bank_word =
+          static_cast<u64>(runtime.memm_bank - 0x10) * UINT64_C(0x100000) + range_word;
+        if (!ReadVectorWordLE(std::span<const u8>(runtime.memm_data_rom.data(),
+                                                  runtime.memm_data_rom.size()),
+                              bank_word, &word))
+        {
+          word = UINT16_C(0xffff);
+        }
+      }
+      else
+      {
+        word = UINT16_C(0xffff);
+      }
+
+      const u16 source_word = word;
+
+      if (runtime.type1_enabled)
+      {
+        const u16 cipher = word;
+        word = DecodeMrDriller2Type1Word(runtime.type1_state, cipher);
+
+        if (runtime.type1_trace_words < MEMM_TRACE_EVENT_LIMIT)
+        {
+          INFO_LOG("System10 MEM(M) Type1 gen={} word={} iv={} bank=0x{:02X} range=0x{:06X} "
+                   "cipher=0x{:04X} plain=0x{:04X} next_mask=0x{:04X} counter={}",
+                   runtime.type1_generation, runtime.type1_trace_words, runtime.type1_iv,
+                   runtime.memm_bank, range_word, cipher, word, runtime.type1_state.mask,
+                   runtime.type1_state.counter);
+          runtime.type1_trace_words++;
+        }
+      }
+      else if (program_flash)
+      {
+        word = DecodeMemMStaticWord(runtime.memm_board_profile, word);
+      }
+
+    }
+
+    result |= static_cast<u32>(word) << (i * 16);
+  }
+
+  *value = result;
+  return true;
+}
+
+bool WriteMemMRange(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (offset < MEMM_RANGE_BASE || offset >= (MEMM_RANGE_BASE + MEMM_RANGE_SIZE) ||
+      (width != 2 && width != 4) || (offset & 1u) != 0 ||
+      width > ((MEMM_RANGE_BASE + MEMM_RANGE_SIZE) - offset))
+  {
+    return false;
+  }
+
+  if (runtime.memm_direct_access)
+  {
+    // Raw/decrypted window accesses are ROM-like. Flash command writes are
+    // accepted only through the direct-flash path selected by the board.
+    return true;
+  }
+
+  const u32 first_word = (offset - MEMM_RANGE_BASE) / 2;
+  const u32 word_count = width / 2;
+  for (u32 i = 0; i < word_count; i++)
+    WriteIntel28F640J5Word(runtime, first_word + i, static_cast<u16>(value >> (i * 16)));
+
+  return true;
+}
+
+bool HandleMemMCryptoSwitchWrite(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (offset != MEMM_CRYPTO_SWITCH_BASE || (width != 2 && width != 4))
+    return false;
+
+  const u16 reg = static_cast<u16>(value);
+  if ((reg & UINT16_C(0x8000)) != 0)
+  {
+    runtime.type1_enabled = true;
+    runtime.type1_iv = static_cast<u8>(reg & UINT16_C(0x000f));
+    runtime.type1_generation++;
+    ResetType1State(runtime, runtime.type1_iv);
+
+    INFO_LOG("System10 MEM(M) Type1 activate generation={} value=0x{:04X} iv={} seed=0x{:04X}",
+             runtime.type1_generation, reg, runtime.type1_iv, runtime.type1_state.mask);
+  }
+  else
+  {
+    INFO_LOG("System10 MEM(M) Type1 disable generation={} value=0x{:04X} prior_iv={}",
+             runtime.type1_generation, reg, runtime.type1_iv);
+    runtime.type1_enabled = false;
+    runtime.type1_state = {};
+    runtime.type1_trace_words = 0;
+  }
+
+  return true;
+}
+
+bool ReadMemMBank(RuntimeState& runtime, u32 width, u32 offset, u32* value)
+{
+  if (!value || offset < MEMM_BANK_EXP3_BASE || offset >= (MEMM_BANK_EXP3_BASE + MEMM_BANK_EXP3_SIZE) ||
+      (width != 1 && width != 2 && width != 4))
+  {
+    return false;
+  }
+
+  runtime.memm_direct_access = true;
+  *value = 0;
+
+  if (runtime.memm_trace_events < MEMM_TRACE_EVENT_LIMIT)
+  {
+    INFO_LOG("System10 MEM(M) bank read offset=0x{:06X} width={} bank=0x{:02X} -> direct/raw",
+             offset, width, runtime.memm_bank);
+    runtime.memm_trace_events++;
+  }
+  return true;
+}
+
+bool WriteMemMBank(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (offset < MEMM_BANK_EXP3_BASE || offset >= (MEMM_BANK_EXP3_BASE + MEMM_BANK_EXP3_SIZE) ||
+      (width != 2 && width != 4) || (offset & 1u) != 0)
+  {
+    return false;
+  }
+
+  runtime.memm_bank = (offset - MEMM_BANK_EXP3_BASE) / 2;
+  runtime.memm_direct_access = runtime.memm_bank >= 0x10;
+
+  if (runtime.memm_trace_events < MEMM_TRACE_EVENT_LIMIT)
+  {
+    INFO_LOG("System10 MEM(M) bank write bank=0x{:02X} direct={} width={} value=0x{:08X}",
+             runtime.memm_bank, runtime.memm_direct_access, width, value);
+    runtime.memm_trace_events++;
+  }
+  return true;
+}
+
 bool MapProgramWordToNAND(u32 word_offset, u32* page, u32* column)
 {
   if (!page || !column || word_offset >= PROGRAM_ROM_SIZE || (word_offset & 1u) != 0)
@@ -590,7 +2126,31 @@ bool MapProgramWordToNAND(u32 word_offset, u32* page, u32* column)
 
 u8 ReadProgramByte(const RuntimeState& runtime, u32 offset)
 {
-  if (runtime.board_profile != MemNBoardProfile::StarTrigon || offset >= PROGRAM_ROM_SIZE)
+  if (offset >= PROGRAM_ROM_SIZE)
+    return UINT8_C(0xff);
+
+  if (runtime.media_type == MediaType::MemM)
+  {
+    // MEM(M) exposes the statically decoded first 0x62000 bytes of the 1A
+    // program flash as the boot aperture. The rest of the 4 MiB BIOS window is
+    // the board's 0x55 fill until software switches to the banked interface.
+    if (runtime.memm_board_profile != MemMBoardProfile::MrDriller2 || offset >= MEMM_BOOT_DECODE_SIZE)
+      return UINT8_C(0x55);
+
+    const u32 word_offset = offset & ~UINT32_C(1);
+    u16 raw_word = UINT16_C(0xffff);
+    if (!ReadVectorWordLE(std::span<const u8>(runtime.memm_program_flash.data(),
+                                              runtime.memm_program_flash.size()),
+                          word_offset / 2, &raw_word))
+    {
+      return UINT8_C(0xff);
+    }
+
+    const u16 decoded_word = DecodeMemMStaticWord(runtime.memm_board_profile, raw_word);
+    return static_cast<u8>((decoded_word >> ((offset & 1u) * 8)) & UINT16_C(0x00ff));
+  }
+
+  if (runtime.media_type != MediaType::MemN)
     return UINT8_C(0xff);
 
   if (offset >= PROGRAM_FIRST_END && offset < PROGRAM_FILL_END)
@@ -602,7 +2162,10 @@ u8 ReadProgramByte(const RuntimeState& runtime, u32 offset)
   if (!MapProgramWordToNAND(word_offset, &page, &column))
     return UINT8_C(0xff);
 
-  const std::span<const u8> data = runtime.nand0.GetPageData(page);
+  if (runtime.nands.empty())
+    return UINT8_C(0xff);
+
+  const std::span<const u8> data = runtime.nands[0].GetPageData(page);
   if (data.empty() || (column + 1) >= data.size())
     return UINT8_C(0xff);
 
@@ -616,22 +2179,18 @@ u8 ReadProgramByte(const RuntimeState& runtime, u32 offset)
 
 MemNRawNAND* GetSelectedNAND(RuntimeState& runtime)
 {
-  if (runtime.nand_device == 0)
-    return &runtime.nand0;
-  if (runtime.nand_device == 1)
-    return &runtime.nand1;
+  if (runtime.nand_device >= runtime.nands.size())
+    return nullptr;
 
-  return nullptr;
+  return &runtime.nands[runtime.nand_device];
 }
 
 const MemNRawNAND* GetSelectedNAND(const RuntimeState& runtime)
 {
-  if (runtime.nand_device == 0)
-    return &runtime.nand0;
-  if (runtime.nand_device == 1)
-    return &runtime.nand1;
+  if (runtime.nand_device >= runtime.nands.size())
+    return nullptr;
 
-  return nullptr;
+  return &runtime.nands[runtime.nand_device];
 }
 
 bool ReadLittleEndian(std::span<const u8> bytes, u32 offset, u32 width, u32* value)
@@ -667,6 +2226,21 @@ bool ReadU16Register(u16 reg, u32 byte_offset, u32 width, u32* value)
     return false;
 
   *value = (static_cast<u32>(reg) >> (byte_offset * 8)) & ((width == 1) ? UINT32_C(0xff) : UINT32_C(0xffff));
+  return true;
+}
+
+bool ReadU32Register(u32 reg, u32 byte_offset, u32 width, u32* value)
+{
+  if (!value || byte_offset >= sizeof(reg) || (width != 1 && width != 2 && width != 4) ||
+      width > (sizeof(reg) - byte_offset))
+  {
+    return false;
+  }
+
+  const u32 mask = (width == 1) ? UINT32_C(0xff) :
+                   (width == 2) ? UINT32_C(0xffff) :
+                                  UINT32_MAX;
+  *value = (reg >> (byte_offset * 8)) & mask;
   return true;
 }
 
@@ -792,58 +2366,340 @@ bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::ROMDefi
   return false;
 }
 
+bool LoadSimpleROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom,
+                         std::span<u8> destination, Error* error)
+{
+  if (rom.interleave != 1 || rom.group_size != 1 || rom.skip != 0 || rom.word_swap || !rom.segments.empty() ||
+      rom.offset > destination.size() || rom.size > (destination.size() - rom.offset))
+  {
+    Error::SetStringFmt(error, "System 10 ROM '{}' uses an unsupported layout for direct MEM(M) loading.", rom.name);
+    return false;
+  }
+
+  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
+  if (!zf)
+  {
+    Error::SetStringFmt(error, "Failed to open Namco System 10 set archive '{}'.", archive_path);
+    return false;
+  }
+
+  if (unzGoToFirstFile(zf) != UNZ_OK)
+  {
+    unzClose(zf);
+    Error::SetStringFmt(error, "Namco System 10 set archive '{}' is empty or unreadable.", archive_path);
+    return false;
+  }
+
+  for (;;)
+  {
+    unz_file_info64 file_info = {};
+    char member_name[512] = {};
+    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
+    {
+      unzClose(zf);
+      Error::SetStringFmt(error, "Failed to read file information from Namco System 10 set archive '{}'.",
+                          archive_path);
+      return false;
+    }
+
+    member_name[sizeof(member_name) - 1] = '\0';
+    if (StringUtil::EqualNoCase(member_name, rom.name))
+    {
+      if (file_info.uncompressed_size != rom.size)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "System 10 ROM '{}' has size {}, expected {} bytes.", rom.name,
+                            file_info.uncompressed_size, rom.size);
+        return false;
+      }
+
+      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "System 10 ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
+                            static_cast<u32>(file_info.crc), rom.crc32);
+        return false;
+      }
+
+      if (unzOpenCurrentFile(zf) != UNZ_OK)
+      {
+        unzClose(zf);
+        Error::SetStringFmt(error, "Failed to decompress System 10 ROM '{}' from '{}'.", rom.name, archive_path);
+        return false;
+      }
+
+      std::span<u8> output = destination.subspan(rom.offset, rom.size);
+      size_t read_offset = 0;
+      while (read_offset < output.size())
+      {
+        const int bytes_read =
+          unzReadCurrentFile(zf, output.data() + read_offset, static_cast<unsigned>(output.size() - read_offset));
+        if (bytes_read <= 0)
+        {
+          unzCloseCurrentFile(zf);
+          unzClose(zf);
+          Error::SetStringFmt(error, "Failed reading System 10 ROM '{}' from '{}'.", rom.name, archive_path);
+          return false;
+        }
+        read_offset += static_cast<size_t>(bytes_read);
+      }
+
+      const int close_result = unzCloseCurrentFile(zf);
+      unzClose(zf);
+      if (close_result != UNZ_OK)
+      {
+        Error::SetStringFmt(error, "CRC validation failed for System 10 ROM '{}' in '{}'.", rom.name, archive_path);
+        return false;
+      }
+
+      if (!rom.sha1.empty())
+      {
+        auto digest = SHA1Digest::GetDigest(std::span<const u8>(output.data(), output.size()));
+        const std::string digest_string = SHA1Digest::DigestToString(digest);
+        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
+        {
+          Error::SetStringFmt(error, "System 10 ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
+                              rom.sha1);
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    const int next_result = unzGoToNextFile(zf);
+    if (next_result == UNZ_END_OF_LIST_OF_FILE)
+      break;
+    if (next_result != UNZ_OK)
+    {
+      unzClose(zf);
+      Error::SetStringFmt(error, "Failed while reading Namco System 10 set archive '{}'.", archive_path);
+      return false;
+    }
+  }
+
+  unzClose(zf);
+  Error::SetStringFmt(error, "Namco System 10 set archive '{}' does not contain required ROM '{}'.", archive_path,
+                      rom.name);
+  return false;
+}
+
+static constexpr std::array<BoardProfile, 9> s_board_profiles = {{
+  {"ns10_startrgn", BoardKind::MemN, MemNBoardProfile::StarTrigon, MemMBoardProfile::Unknown},
+  {"ns10_gamshara", BoardKind::MemN, MemNBoardProfile::Gamshara, MemMBoardProfile::Unknown},
+  {"ns10_konotako", BoardKind::MemN, MemNBoardProfile::KonoTako, MemMBoardProfile::Unknown},
+  {"ns10_panikuru", BoardKind::MemN, MemNBoardProfile::Panikuru, MemMBoardProfile::Unknown},
+  {"ns10_knpuzzle", BoardKind::MemN, MemNBoardProfile::KNPuzzle, MemMBoardProfile::Unknown},
+  {"ns10_mrdrilrg", BoardKind::MemN, MemNBoardProfile::MrDrillerG, MemMBoardProfile::Unknown},
+  {"ns10_gjspace", BoardKind::MemN, MemNBoardProfile::GJSpace, MemMBoardProfile::Unknown},
+  {"ns10_chocovdr", BoardKind::MemN, MemNBoardProfile::Chocovader, MemMBoardProfile::Unknown},
+  {"ns10_mrdrilr2", BoardKind::MemM, MemNBoardProfile::Unknown, MemMBoardProfile::MrDriller2},
+}};
+
 } // namespace
 
-std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
-                                                      const Arcade::Database::GameDefinition& game, Error* error)
+const BoardProfile* FindBoardProfile(std::string_view hardware_profile)
 {
-  if (game.hardware_profile != "ns10_startrgn")
+  const auto it = std::find_if(s_board_profiles.begin(), s_board_profiles.end(),
+                               [hardware_profile](const BoardProfile& profile) {
+                                 return profile.hardware_profile == hardware_profile;
+                               });
+  return (it != s_board_profiles.end()) ? &(*it) : nullptr;
+}
+
+std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
+                                                       const Arcade::Database::GameDefinition& game, Error* error)
+{
+  if (game.hardware_profile != "ns10_mrdrilr2")
   {
-    Error::SetStringFmt(error, "System 10 S10-01C only supports the Star Trigon MEM(N) profile; requested '{}'.",
+    Error::SetStringFmt(error, "System 10 MEM(M) loader requires profile 'ns10_mrdrilr2'; requested '{}'.",
                         game.hardware_profile);
     return std::nullopt;
   }
 
-  const Arcade::Database::ROMDefinition* nand0_rom = nullptr;
-  const Arcade::Database::ROMDefinition* nand1_rom = nullptr;
-  u32 nand_region_count = 0;
+  if (game.id != "mrdrilr2" && game.id != "mrdrilr2j" && game.id != "mrdrilr2u")
+  {
+    Error::SetStringFmt(error, "System 10 MEM(M) bring-up does not recognize set '{}'.", game.id);
+    return std::nullopt;
+  }
+
+  const Arcade::Database::ROMDefinition* flash_rom = nullptr;
+  std::vector<const Arcade::Database::ROMDefinition*> data_roms;
 
   for (const Arcade::Database::ROMDefinition& rom : game.roms)
   {
-    if (rom.region == "nand0")
+    if (rom.region == "nand")
     {
-      nand0_rom = &rom;
-      nand_region_count++;
+      if (flash_rom)
+      {
+        Error::SetStringView(error, "Mr. Driller 2 database entry contains more than one MEM(M) program flash ROM.");
+        return std::nullopt;
+      }
+      flash_rom = &rom;
     }
-    else if (rom.region == "nand1")
+    else if (rom.region == "data")
     {
-      nand1_rom = &rom;
-      nand_region_count++;
-    }
-    else if (rom.region.size() >= 4 && rom.region.compare(0, 4, "nand") == 0)
-    {
-      nand_region_count++;
+      data_roms.push_back(&rom);
     }
   }
 
-  if (!nand0_rom || !nand1_rom || nand_region_count != 2)
+  if (!flash_rom || flash_rom->offset != 0 || flash_rom->size != MEMM_PROGRAM_FLASH_SIZE)
   {
-    Error::SetStringView(error, "Star Trigon database entry must contain exactly raw NAND regions nand0 and nand1.");
+    Error::SetStringView(error, "Mr. Driller 2 requires one 8 MiB MEM(M) program flash ROM in region 'nand'.");
     return std::nullopt;
+  }
+
+  if (data_roms.empty())
+  {
+    Error::SetStringView(error, "Mr. Driller 2 requires MEM(M) mask-ROM data in region 'data'.");
+    return std::nullopt;
+  }
+
+  MemMLoadedContent content;
+  content.set_name = game.id;
+  content.board_profile = MemMBoardProfile::MrDriller2;
+  content.program_flash.resize(MEMM_PROGRAM_FLASH_SIZE, UINT8_C(0xff));
+  content.data_rom.resize(MEMM_DATA_ROM_SIZE, UINT8_C(0xff));
+
+  if (!LoadSimpleROMMember(archive_path, *flash_rom,
+                           std::span<u8>(content.program_flash.data(), content.program_flash.size()), error))
+  {
+    return std::nullopt;
+  }
+
+  for (const Arcade::Database::ROMDefinition* rom : data_roms)
+  {
+    if (!LoadSimpleROMMember(archive_path, *rom,
+                             std::span<u8>(content.data_rom.data(), content.data_rom.size()), error))
+    {
+      return std::nullopt;
+    }
+  }
+
+  INFO_LOG("Loaded Namco System 10 Mr. Driller 2 MEM(M) set='{}' flash={} bytes data={} bytes.",
+           content.set_name, content.program_flash.size(), content.data_rom.size());
+  return content;
+}
+
+std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
+                                                      const Arcade::Database::GameDefinition& game, Error* error)
+{
+  const BoardProfile* profile = FindBoardProfile(game.hardware_profile);
+  if (!profile || profile->kind != BoardKind::MemN || profile->memn_profile == MemNBoardProfile::Unknown)
+  {
+    Error::SetStringFmt(error, "System 10 MEM(N) loader has no supported profile '{}'.",
+                        game.hardware_profile);
+    return std::nullopt;
+  }
+
+  static constexpr size_t MAX_MEMN_NANDS = 8;
+  std::array<const Arcade::Database::ROMDefinition*, MAX_MEMN_NANDS> nand_roms = {};
+  size_t nand_region_count = 0;
+
+  for (const Arcade::Database::ROMDefinition& rom : game.roms)
+  {
+    if (rom.region.size() != 5 || rom.region.compare(0, 4, "nand") != 0 ||
+        rom.region[4] < '0' || rom.region[4] > '7')
+    {
+      continue;
+    }
+
+    const size_t index = static_cast<size_t>(rom.region[4] - '0');
+    if (nand_roms[index])
+    {
+      Error::SetStringFmt(error, "System 10 MEM(N) profile '{}' defines duplicate region '{}'.",
+                          game.hardware_profile, rom.region);
+      return std::nullopt;
+    }
+
+    nand_roms[index] = &rom;
+    nand_region_count++;
+  }
+
+  if (nand_region_count < 2 || !nand_roms[0] || !nand_roms[1])
+  {
+    Error::SetStringFmt(error,
+                        "System 10 MEM(N) profile '{}' requires sequential raw NAND regions beginning at "
+                        "nand0/nand1.",
+                        game.hardware_profile);
+    return std::nullopt;
+  }
+
+  for (size_t index = 0; index < nand_region_count; index++)
+  {
+    if (!nand_roms[index])
+    {
+      Error::SetStringFmt(error, "System 10 MEM(N) profile '{}' is missing nand{} before its final NAND region.",
+                          game.hardware_profile, index);
+      return std::nullopt;
+    }
   }
 
   MemNLoadedContent content;
   content.set_name = game.id;
-  content.board_profile = MemNBoardProfile::StarTrigon;
+  content.board_profile = profile->memn_profile;
+  content.nands.resize(nand_region_count);
 
-  if (!LoadRawNANDMember(archive_path, *nand0_rom, &content.nand0, error) ||
-      !LoadRawNANDMember(archive_path, *nand1_rom, &content.nand1, error))
+  for (size_t index = 0; index < nand_region_count; index++)
   {
-    return std::nullopt;
+    if (!LoadRawNANDMember(archive_path, *nand_roms[index], &content.nands[index], error))
+      return std::nullopt;
   }
 
-  VERBOSE_LOG("Loaded Namco System 10 Star Trigon raw NANDs from '{}': nand0={} bytes nand1={} bytes.",
-              archive_path, content.nand0.size(), content.nand1.size());
+  VERBOSE_LOG("Loaded Namco System 10 MEM(N) profile='{}' raw NANDs from '{}': count={}.",
+              game.hardware_profile, archive_path, content.nands.size());
+  return content;
+}
+
+std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
+  const char* archive_path, const Arcade::Database::GameDefinition& game, bool* eligible, Error* error)
+{
+  *eligible = false;
+
+  static constexpr size_t MAX_MEMN_NANDS = 8;
+  std::array<const Arcade::Database::ROMDefinition*, MAX_MEMN_NANDS> nand_roms = {};
+  size_t nand_region_count = 0;
+
+  for (const Arcade::Database::ROMDefinition& rom : game.roms)
+  {
+    if (rom.region.size() != 5 || rom.region.compare(0, 4, "nand") != 0 ||
+        rom.region[4] < '0' || rom.region[4] > '7')
+    {
+      continue;
+    }
+
+    const size_t index = static_cast<size_t>(rom.region[4] - '0');
+    if (nand_roms[index])
+      return std::nullopt;
+
+    nand_roms[index] = &rom;
+    nand_region_count++;
+  }
+
+  if (nand_region_count < 2 || !nand_roms[0] || !nand_roms[1])
+    return std::nullopt;
+
+  for (size_t index = 0; index < nand_region_count; index++)
+  {
+    if (!nand_roms[index] || nand_roms[index]->size != MemNRawNAND::RAW_IMAGE_SIZE)
+      return std::nullopt;
+  }
+
+  *eligible = true;
+  MemNLoadedContent content;
+  content.set_name = game.id;
+  content.board_profile = MemNBoardProfile::Unknown;
+  content.nands.resize(nand_region_count);
+
+  for (size_t index = 0; index < nand_region_count; index++)
+  {
+    if (!LoadRawNANDMember(archive_path, *nand_roms[index], &content.nands[index], error))
+      return std::nullopt;
+  }
+
+  WARNING_LOG("Namco System 10 experimental MEM(N) probe set='{}' profile='{}': loading {} raw NAND regions with "
+              "raw word semantics only; profile crypto and board-specific devices remain unmodeled.",
+              game.id, game.hardware_profile, nand_region_count);
   return content;
 }
 
@@ -861,28 +2717,81 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
     return false;
   }
 
-  if (content.board_profile == MemNBoardProfile::Unknown)
+  RuntimeState runtime;
+  runtime.set_name = std::move(content.set_name);
+  runtime.media_type = MediaType::MemN;
+  runtime.board_profile = content.board_profile;
+
+  if (content.nands.size() < 2)
   {
-    Error::SetStringView(error, "Namco System 10 MEM(N) content has no board profile.");
+    Error::SetStringView(error, "Namco System 10 MEM(N) content must contain at least two NAND devices.");
+    return false;
+  }
+
+  runtime.nands.resize(content.nands.size());
+  for (size_t index = 0; index < content.nands.size(); index++)
+  {
+    if (!runtime.nands[index].Load(std::move(content.nands[index]), error))
+      return false;
+  }
+
+  if (!LoadMemNPersistence(runtime, error))
+    return false;
+
+  runtime.lookup_ram.resize(LOOKUP_RAM_SIZE, 0);
+
+  ResetI2CState(runtime);
+  ResetBaseboardInputState(runtime);
+
+  VERBOSE_LOG("Namco System 10 MEM(N) runtime initialized set='{}' NAND devices={}.", runtime.set_name,
+              runtime.nands.size());
+
+  s_runtime = std::move(runtime);
+  ResetBaseboardInterruptState(*s_runtime, true);
+  return true;
+}
+
+bool InitializeMemM(MemMLoadedContent content, Error* error)
+{
+  if (s_runtime.has_value())
+  {
+    Error::SetStringView(error, "Namco System 10 runtime is already active.");
+    return false;
+  }
+
+  if (content.set_name.empty())
+  {
+    Error::SetStringView(error, "Namco System 10 MEM(M) content has no set identity.");
+    return false;
+  }
+
+  if (content.board_profile == MemMBoardProfile::Unknown ||
+      content.program_flash.size() != MEMM_PROGRAM_FLASH_SIZE ||
+      content.data_rom.size() != MEMM_DATA_ROM_SIZE)
+  {
+    Error::SetStringView(error, "Namco System 10 MEM(M) content has an invalid board profile or ROM layout.");
     return false;
   }
 
   RuntimeState runtime;
   runtime.set_name = std::move(content.set_name);
-  runtime.board_profile = content.board_profile;
-
-  if (!runtime.nand0.Load(std::move(content.nand0), error) ||
-      !runtime.nand1.Load(std::move(content.nand1), error))
-  {
+  runtime.media_type = MediaType::MemM;
+  runtime.memm_board_profile = content.board_profile;
+  runtime.memm_program_flash = std::move(content.program_flash);
+  runtime.memm_data_rom = std::move(content.data_rom);
+  if (!LoadMemMProgramFlashPersistence(runtime, error))
     return false;
-  }
 
-  runtime.lookup_ram.resize(LOOKUP_RAM_SIZE, 0);
-
+  runtime.memm_bank = 0;
+  runtime.memm_direct_access = false;
+  ResetIntel28F640J5Interface(runtime);
+  ResetType1State(runtime, 0);
+  runtime.type1_enabled = false;
   ResetI2CState(runtime);
+  ResetBaseboardInputState(runtime);
 
-  VERBOSE_LOG("Namco System 10 MEM(N) runtime initialized set='{}' nand0={} nand1={}.", runtime.set_name,
-              runtime.nand0.GetRawImage().size(), runtime.nand1.GetRawImage().size());
+  INFO_LOG("Namco System 10 MEM(M) runtime initialized set='{}' flash={} data={}.",
+           runtime.set_name, runtime.memm_program_flash.size(), runtime.memm_data_rom.size());
 
   s_runtime = std::move(runtime);
   ResetBaseboardInterruptState(*s_runtime, true);
@@ -894,24 +2803,48 @@ void Reset()
   if (!s_runtime.has_value())
     return;
 
-  s_runtime->nand0.ResetInterface();
-  s_runtime->nand1.ResetInterface();
-  s_runtime->control_latch = 0;
-  s_runtime->nand_device = 0;
-  s_runtime->type2_enabled = false;
-  s_runtime->type2_transform_supported = false;
-  s_runtime->type2_iv = 0;
-  s_runtime->type2_generation = 0;
-  ResetType2State(*s_runtime);
-  ResetI2CState(*s_runtime);
-  ResetBaseboardInterruptState(*s_runtime, true);
-  std::fill(s_runtime->lookup_ram.begin(), s_runtime->lookup_ram.end(), 0);
+  RuntimeState& runtime = *s_runtime;
+  if (runtime.media_type == MediaType::MemN)
+  {
+    for (MemNRawNAND& nand : runtime.nands)
+      nand.ResetInterface();
+    runtime.control_latch = 0;
+    runtime.nand_device = 0;
+    runtime.type2_enabled = false;
+    runtime.type2_transform_supported = false;
+    runtime.type2_iv = 0;
+    runtime.type2_generation = 0;
+    ResetType2State(runtime);
+    std::fill(runtime.lookup_ram.begin(), runtime.lookup_ram.end(), 0);
+  }
+  else if (runtime.media_type == MediaType::MemM)
+  {
+    runtime.memm_bank = 0;
+    runtime.memm_direct_access = false;
+    ResetIntel28F640J5Interface(runtime);
+    runtime.type1_enabled = false;
+    runtime.type1_iv = 0;
+    runtime.type1_generation = 0;
+    runtime.type1_state = {};
+    runtime.type1_trace_words = 0;
+    runtime.memm_trace_events = 0;
+  }
+
+  ResetI2CState(runtime);
+  ResetBaseboardInputState(runtime);
+  ResetBaseboardInterruptState(runtime, true);
 }
 
 void Shutdown()
 {
   if (s_runtime.has_value())
+  {
+    if (s_runtime->media_type == MediaType::MemM)
+      SaveMemMProgramFlashPersistence(*s_runtime);
+    else if (s_runtime->media_type == MediaType::MemN)
+      SaveMemNPersistence(*s_runtime);
     ResetBaseboardInterruptState(*s_runtime, false);
+  }
 
   s_baseboard_io_event.reset();
   s_runtime.reset();
@@ -944,6 +2877,16 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
     return false;
 
   RuntimeState& runtime = s_runtime.value();
+
+  if (runtime.media_type == MediaType::MemM)
+  {
+    if (offset >= MEMM_RANGE_BASE && offset < (MEMM_RANGE_BASE + MEMM_RANGE_SIZE))
+      return ReadMemMRange(runtime, width, offset, value);
+    return false;
+  }
+
+  if (runtime.media_type != MediaType::MemN)
+    return false;
 
   if (offset >= LOOKUP_RAM_BASE && offset < (LOOKUP_RAM_BASE + LOOKUP_RAM_SIZE))
   {
@@ -998,9 +2941,48 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
         // before the protected copy from logical block 10. CORROBORATED by the
         // captured stream: dynamic decode consumes the raw word directly; the
         // ordinary static transform is not part of this active path.
-        const u16 plain_word = runtime.type2_transform_supported ?
-                                 DecodeStarTrigonType2Word(runtime.type2_state, raw_word) :
-                                 raw_word;
+        u16 plain_word = raw_word;
+        if (runtime.type2_transform_supported)
+        {
+          switch (runtime.board_profile)
+          {
+            case MemNBoardProfile::StarTrigon:
+              plain_word = DecodeStarTrigonType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::Gamshara:
+              plain_word = DecodeGamsharaType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::KonoTako:
+              plain_word = DecodeKonoTakoType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::Panikuru:
+              plain_word = DecodePanikuruType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::KNPuzzle:
+              plain_word = DecodeKNPuzzleType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::MrDrillerG:
+              plain_word = DecodeMrDrillerGType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::GJSpace:
+              plain_word = DecodeGJSpaceType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::Chocovader:
+              plain_word = DecodeChocovaderType2Word(runtime.type2_state, raw_word);
+              break;
+
+            case MemNBoardProfile::Unknown:
+            default:
+              break;
+          }
+        }
 
         if (runtime.type2_trace_words < TYPE2_TRACE_WORD_LIMIT)
         {
@@ -1037,6 +3019,18 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return false;
 
   RuntimeState& runtime = s_runtime.value();
+
+  if (runtime.media_type == MediaType::MemM)
+  {
+    if (HandleMemMCryptoSwitchWrite(runtime, width, offset, value))
+      return true;
+    if (offset >= MEMM_RANGE_BASE && offset < (MEMM_RANGE_BASE + MEMM_RANGE_SIZE))
+      return WriteMemMRange(runtime, width, offset, value);
+    return false;
+  }
+
+  if (runtime.media_type != MediaType::MemN)
+    return false;
 
   if (offset >= LOOKUP_RAM_BASE && offset < (LOOKUP_RAM_BASE + LOOKUP_RAM_SIZE))
   {
@@ -1085,6 +3079,25 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return true;
   }
 
+  if (offset == MEMN_DATA_BASE)
+  {
+    if (!nand || (width != 1 && width != 2))
+      return false;
+
+    if (width == 1)
+    {
+      nand->DataWrite(static_cast<u8>(value));
+    }
+    else
+    {
+      // The 16-bit host register mirrors the read path: the first x8 NAND byte
+      // occupies the high byte of the host word.
+      nand->DataWrite(static_cast<u8>(value >> 8));
+      nand->DataWrite(static_cast<u8>(value));
+    }
+    return true;
+  }
+
   if (offset == MEMN_DEVICE_BASE)
   {
     if (width != 1 && width != 2 && width != 4)
@@ -1118,7 +3131,6 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return false;
   }
 
-  // NAND data program/erase is intentionally deferred.
   return false;
 }
 
@@ -1129,6 +3141,29 @@ bool ReadEXP3(u32 width, u32 offset, u32* value)
     return false;
 
   RuntimeState& runtime = s_runtime.value();
+
+  if (runtime.media_type == MediaType::MemM &&
+      offset >= MEMM_BANK_EXP3_BASE && offset < (MEMM_BANK_EXP3_BASE + MEMM_BANK_EXP3_SIZE))
+  {
+    return ReadMemMBank(runtime, width, offset, value);
+  }
+
+  if (offset >= EXP3_SYSTEM_SWITCH_BASE && offset < (EXP3_SYSTEM_SWITCH_BASE + 2))
+  {
+    return ReadU16Register(ReadBaseboardSystemSwitches(), offset - EXP3_SYSTEM_SWITCH_BASE, width, value);
+  }
+
+  if (offset == EXP3_EXIO_IDENT_BASE && width == 2)
+  {
+    *value = ReadEXIOIdentifier(runtime);
+    return true;
+  }
+
+  if (offset >= EXP3_PLAYER_INPUT_BASE &&
+      offset < (EXP3_PLAYER_INPUT_BASE + EXP3_PLAYER_INPUT_SIZE))
+  {
+    return ReadBaseboardPlayerRegister(runtime, width, offset, value);
+  }
 
   if (offset == EXP3_I2C_CLOCK_BASE && width == 4)
   {
@@ -1165,8 +3200,20 @@ bool WriteEXP3(u32 width, u32 offset, u32 value)
 
   RuntimeState& runtime = s_runtime.value();
 
+  if (runtime.media_type == MediaType::MemM &&
+      offset >= MEMM_BANK_EXP3_BASE && offset < (MEMM_BANK_EXP3_BASE + MEMM_BANK_EXP3_SIZE))
+  {
+    return WriteMemMBank(runtime, width, offset, value);
+  }
+
   if (HandleBaseboardInterruptAck(runtime, width, offset))
     return true;
+
+  if (offset == EXP3_EXIO_IDENT_BASE && width == 2)
+  {
+    ResetEXIOIdentifier(runtime);
+    return true;
+  }
 
   if (offset == EXP3_I2C_CLOCK_BASE && (width == 1 || width == 2))
   {

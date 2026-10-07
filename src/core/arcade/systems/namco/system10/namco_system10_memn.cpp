@@ -5,6 +5,7 @@
 
 #include "common/error.h"
 
+#include <algorithm>
 #include <iterator>
 
 #include <utility>
@@ -21,6 +22,7 @@ bool MemNRawNAND::Load(std::vector<u8> raw_image, Error* error)
   }
 
   m_raw_image = std::move(raw_image);
+  m_dirty = false;
   ResetInterface();
   return true;
 }
@@ -33,6 +35,8 @@ void MemNRawNAND::ResetInterface()
   m_page_address = 0;
   m_serial_index = 0;
   m_id_address_valid = false;
+  m_write_mode = WriteMode::None;
+  m_program_buffer.fill(UINT8_C(0xff));
 }
 
 void MemNRawNAND::CommandWrite(u8 command)
@@ -44,15 +48,46 @@ void MemNRawNAND::CommandWrite(u8 command)
     case 0x00:
     case 0x01:
     case 0x50:
+      m_write_mode = WriteMode::None;
       m_pointer_command = command;
       m_read_mode = ReadMode::Array;
       break;
 
     case 0x70:
+      m_write_mode = WriteMode::None;
       m_read_mode = ReadMode::Status;
       break;
 
+    case 0x80:
+      m_read_mode = ReadMode::None;
+      m_write_mode = WriteMode::Program;
+      m_column_address = 0;
+      m_page_address = 0;
+      m_program_buffer.fill(UINT8_C(0xff));
+      break;
+
+    case 0x10:
+      if (m_write_mode == WriteMode::Program)
+        CommitProgram();
+      m_write_mode = WriteMode::None;
+      m_read_mode = ReadMode::None;
+      break;
+
+    case 0x60:
+      m_read_mode = ReadMode::None;
+      m_write_mode = WriteMode::Erase;
+      m_page_address = 0;
+      break;
+
+    case 0xd0:
+      if (m_write_mode == WriteMode::Erase)
+        CommitErase();
+      m_write_mode = WriteMode::None;
+      m_read_mode = ReadMode::None;
+      break;
+
     case 0x90:
+      m_write_mode = WriteMode::None;
       m_read_mode = ReadMode::Id;
       m_id_address_valid = false;
       break;
@@ -62,8 +97,7 @@ void MemNRawNAND::CommandWrite(u8 command)
       break;
 
     default:
-      // S10-01B is intentionally read-side only. Program/erase commands are
-      // left unimplemented until a title demonstrates that they are required.
+      m_write_mode = WriteMode::None;
       m_read_mode = ReadMode::None;
       break;
   }
@@ -80,6 +114,17 @@ void MemNRawNAND::AddressColumnWrite(u8 value)
     return;
   }
 
+  if (m_write_mode == WriteMode::Program)
+  {
+    if (m_pointer_command == 0x01)
+      m_column_address = static_cast<u16>(0x100u + value);
+    else if (m_pointer_command == 0x50)
+      m_column_address = static_cast<u16>(DATA_BYTES_PER_PAGE + (value & 0x0fu));
+    else
+      m_column_address = value;
+    return;
+  }
+
   if (m_read_mode != ReadMode::Array)
     return;
 
@@ -93,7 +138,7 @@ void MemNRawNAND::AddressColumnWrite(u8 value)
 
 void MemNRawNAND::AddressRowLowWrite(u8 value)
 {
-  if (m_read_mode != ReadMode::Array)
+  if (m_read_mode != ReadMode::Array && m_write_mode == WriteMode::None)
     return;
 
   m_page_address = (m_page_address & UINT32_C(0x7f00)) | value;
@@ -101,7 +146,7 @@ void MemNRawNAND::AddressRowLowWrite(u8 value)
 
 void MemNRawNAND::AddressRowHighWrite(u8 value)
 {
-  if (m_read_mode != ReadMode::Array)
+  if (m_read_mode != ReadMode::Array && m_write_mode == WriteMode::None)
     return;
 
   // The K9F2808U0B has 32K pages. The third address cycle supplies A17-A23.
@@ -134,6 +179,58 @@ u8 MemNRawNAND::DataRead()
     case ReadMode::None:
     default:
       return UINT8_C(0xff);
+  }
+}
+
+
+void MemNRawNAND::DataWrite(u8 value)
+{
+  if (m_write_mode != WriteMode::Program || m_column_address >= RAW_PAGE_SIZE)
+    return;
+
+  // NAND page programming can only clear bits. Buffer the complete transaction
+  // and apply it only after the 10h program-confirm command.
+  m_program_buffer[m_column_address] &= value;
+  m_column_address++;
+}
+
+void MemNRawNAND::CommitProgram()
+{
+  if (!IsLoaded() || m_page_address >= (PAGES_PER_BLOCK * BLOCK_COUNT))
+    return;
+
+  const size_t page_offset = static_cast<size_t>(m_page_address) * RAW_PAGE_SIZE;
+  for (size_t index = 0; index < RAW_PAGE_SIZE; index++)
+  {
+    const u8 current = m_raw_image[page_offset + index];
+    const u8 programmed = static_cast<u8>(current & m_program_buffer[index]);
+    if (programmed != current)
+    {
+      m_raw_image[page_offset + index] = programmed;
+      m_dirty = true;
+    }
+  }
+
+  // The small-page NAND pointer for the second 256-byte area resets to the
+  // first area after every program operation. The spare-area pointer remains.
+  if (m_pointer_command == 0x01)
+    m_pointer_command = 0x00;
+}
+
+void MemNRawNAND::CommitErase()
+{
+  if (!IsLoaded() || m_page_address >= (PAGES_PER_BLOCK * BLOCK_COUNT))
+    return;
+
+  const u32 block = m_page_address / PAGES_PER_BLOCK;
+  const size_t block_offset = static_cast<size_t>(block) * PAGES_PER_BLOCK * RAW_PAGE_SIZE;
+  const size_t block_size = static_cast<size_t>(PAGES_PER_BLOCK) * RAW_PAGE_SIZE;
+  const auto first = m_raw_image.begin() + static_cast<std::ptrdiff_t>(block_offset);
+  const auto last = first + static_cast<std::ptrdiff_t>(block_size);
+  if (std::any_of(first, last, [](u8 value) { return value != UINT8_C(0xff); }))
+  {
+    std::fill(first, last, UINT8_C(0xff));
+    m_dirty = true;
   }
 }
 
