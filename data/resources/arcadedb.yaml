@@ -11361,11 +11361,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11424,11 +11423,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11487,11 +11485,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11550,11 +11547,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
