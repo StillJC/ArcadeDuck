@@ -22,6 +22,8 @@ enum : u32
 
 void Initialize();
 void CPUClockChanged();
+void RestoreLegacyClockDomainFromState(bool saved_overclock_active, u32 saved_overclock_numerator,
+                                       u32 saved_overclock_denominator);
 void Shutdown();
 void Reset();
 bool DoState(StateWrapper& sw);

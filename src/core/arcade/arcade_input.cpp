@@ -663,7 +663,16 @@ bool IsDigitalPressed(u32 port, std::string_view key)
     return false;
 
   const std::optional<Control> control = GetControl(key);
-  return control.has_value() && IsPressed(s_ports[port], control.value());
+  if (!control.has_value())
+    return false;
+
+  // Direction consumers should observe the configured joystick topology.
+  // Four-way layouts use the existing last-pressed arbitration; eight-way
+  // and non-directional controls retain their previous raw pressed behavior.
+  if (control.value() <= Control::Down)
+    return GetFourWayDirection(s_ports[port], control.value());
+
+  return IsPressed(s_ports[port], control.value());
 }
 
 float GetAnalogValue(u32 port, std::string_view key)

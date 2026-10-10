@@ -21,8 +21,9 @@ struct GameDefinition;
 
 namespace SonyZN {
 
-struct CapcomZN1Content
+struct CapcomZNContent
 {
+  bool is_zn2 = false;
   std::string set_name;
   bool use_2mb_vram = false;
   bool qsound_enabled = true;
@@ -148,7 +149,7 @@ std::optional<BIOS::Image> LoadFirmwareBIOS(const char* firmware_archive_path,
                                             const Arcade::Database::FirmwareDefinition& firmware,
                                             std::string_view bios_variant, Error* error);
 
-std::optional<CapcomZN1Content> LoadCapcomZN1Content(const char* archive_path,
+std::optional<CapcomZNContent> LoadCapcomZNContent(const char* archive_path,
                                                     const Arcade::Database::GameDefinition& game,
                                                     const char* firmware_archive_path,
                                                     const Arcade::Database::FirmwareDefinition& firmware,
@@ -194,8 +195,8 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
                                                   const Arcade::Database::FirmwareDefinition& firmware,
                                                   Error* error);
 
-bool InitializeCapcomZN1(const BIOS::Image& bios, CapcomZN1Content content, std::string_view persistence_directory,
-                         Error* error);
+bool InitializeCapcomZN(const BIOS::Image& bios, CapcomZNContent content, std::string_view persistence_directory,
+                        Error* error);
 bool InitializeVideoSystemZN1(const BIOS::Image& bios, VideoSystemZN1Content content,
                               std::string_view persistence_directory, Error* error);
 bool InitializeAtlusZN1(const BIOS::Image& bios, AtlusZN1Content content, std::string_view persistence_directory,
@@ -214,6 +215,9 @@ bool InitializeTaitoFX1B(const BIOS::Image& bios, TaitoFX1BContent content, std:
                          Error* error);
 bool InitializeTecmoTPS(const BIOS::Image& bios, TecmoTPSContent content, std::string_view persistence_directory,
                         Error* error);
+void PrepareForCPUClockChange();
+void CompleteCPUClockChange();
+void PrepareForTimingEpochReset();
 void Reset();
 void Shutdown();
 bool IsActive();

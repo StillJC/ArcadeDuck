@@ -16,6 +16,7 @@ void Reset();
 void Shutdown();
 bool IsActive();
 
+void PrepareForCPUClockChange();
 void WriteCommand(u8 value);
 void GenerateAudioFrame(s32* left, s32* right);
 

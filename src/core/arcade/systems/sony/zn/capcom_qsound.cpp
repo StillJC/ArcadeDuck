@@ -12,6 +12,7 @@
 #include "common/log.h"
 
 #include <array>
+#include <deque>
 #include <vector>
 
 Log_SetChannel(SonyZNQSound);
@@ -70,6 +71,11 @@ struct State
   u64 native_sample_phase = 0;
   u32 native_sample_rate = 0;
 
+  // Preserve every native QSound DSP sample in production order. The sound CPU
+  // can run ahead of the 44.1 kHz output timeline when SynchronizeHostTime()
+  // services command-latch writes, so a single "last sample" slot is not enough.
+  std::deque<std::array<s32, 2>> native_sample_queue;
+  u64 output_sample_phase = 0;
   s32 last_output_left = 0;
   s32 last_output_right = 0;
 
@@ -188,8 +194,13 @@ void GenerateNativeSample()
   int16_t right = 0;
   int16_t* outputs[2] = {&left, &right};
   qsound_stream_update(&s_state.qsound, outputs, 1);
-  s_state.last_output_left = static_cast<s32>(left);
-  s_state.last_output_right = static_cast<s32>(right);
+
+  // Do not publish directly to the SPU-facing "last sample" here. Host-time
+  // synchronization is allowed to advance the Z80/QSound timeline ahead of
+  // audio output, and publishing only the newest result would discard every
+  // intermediate PCM frame generated during that catch-up.
+  s_state.native_sample_queue.push_back(
+    {static_cast<s32>(left), static_cast<s32>(right)});
   s_state.native_samples++;
 }
 
@@ -350,6 +361,8 @@ void Reset()
   s_state.total_cycles = 0;
   s_state.irq_cycle_phase = 0;
   s_state.native_sample_phase = 0;
+  s_state.native_sample_queue.clear();
+  s_state.output_sample_phase = 0;
   s_state.last_output_left = 0;
   s_state.last_output_right = 0;
   s_state.command_writes = 0;
@@ -398,6 +411,16 @@ void Shutdown()
 bool IsActive()
 {
   return s_state.active;
+}
+
+void PrepareForCPUClockChange()
+{
+  // System::UpdateOverclock() calls this while the old global tick rate is
+  // still active. Settle every tick accumulated in that clock domain now, so
+  // a later SynchronizeHostTime() cannot reinterpret that interval using the
+  // new rate. The existing rate-change handling will rebase only the fractional
+  // remainder when the next post-change synchronization occurs.
+  SynchronizeHostTime();
 }
 
 void WriteCommand(u8 value)
@@ -453,6 +476,33 @@ void GenerateAudioFrame(s32* left, s32* right)
   s_state.audio_target_cycles += s_state.cycle_fraction / SPU::SAMPLE_RATE;
   s_state.cycle_fraction %= SPU::SAMPLE_RATE;
   RunToTarget(s_state.audio_target_cycles);
+
+  // QSound's DSP native rate is lower than the 44.1 kHz PSX SPU mix rate.
+  // Consume queued native samples in order at exactly that rate and hold the
+  // most recently consumed sample between native updates. If host-time command
+  // synchronization generated PCM early, those samples now remain queued until
+  // the audio timeline reaches them instead of being collapsed to the newest one.
+  if (s_state.native_sample_rate != 0)
+  {
+    s_state.output_sample_phase += s_state.native_sample_rate;
+    // Do not consume the phase obligation until the corresponding native PCM
+    // frame actually exists. Integer Z80 target rounding can leave production
+    // one native sample behind at an output boundary; subtracting the period
+    // while the queue is empty would permanently lose that requested slot.
+    //
+    // QSound's native rate is below the SPU output rate, so at most one native
+    // transition belongs in a single 44.1 kHz output frame. If an obligation
+    // was delayed, preserve any additional debt for later output frames rather
+    // than collapsing multiple queued native samples into one SPU frame.
+    if (s_state.output_sample_phase >= SPU::SAMPLE_RATE && !s_state.native_sample_queue.empty())
+    {
+      const std::array<s32, 2> sample = s_state.native_sample_queue.front();
+      s_state.native_sample_queue.pop_front();
+      s_state.output_sample_phase -= SPU::SAMPLE_RATE;
+      s_state.last_output_left = sample[0];
+      s_state.last_output_right = sample[1];
+    }
+  }
 
   *left = s_state.last_output_left;
   *right = s_state.last_output_right;
