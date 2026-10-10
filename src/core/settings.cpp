@@ -86,7 +86,7 @@ float SettingInfo::FloatStepValue() const
 
 #if defined(_WIN32)
 const MediaCaptureBackend Settings::DEFAULT_MEDIA_CAPTURE_BACKEND = MediaCaptureBackend::MediaFoundation;
-#elif !defined(__ANDROID__)
+#else
 const MediaCaptureBackend Settings::DEFAULT_MEDIA_CAPTURE_BACKEND = MediaCaptureBackend::FFmpeg;
 #endif
 
@@ -150,9 +150,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   rewind_save_slots = static_cast<u32>(si.GetIntValue("Main", "RewindSaveSlots", 10));
   runahead_frames = static_cast<u32>(si.GetIntValue("Main", "RunaheadFrameCount", 0));
 
-  pine_enable = si.GetBoolValue("PINE", "Enabled", false);
-  pine_slot = static_cast<u16>(
-    std::min<u32>(si.GetUIntValue("PINE", "Slot", DEFAULT_PINE_SLOT), std::numeric_limits<u16>::max()));
 
   system_link_enabled = si.GetBoolValue("SystemLink", "Enabled", false);
   system_link_server_address = si.GetStringValue("SystemLink", "ServerAddress", "127.0.0.1");
@@ -388,9 +385,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
 
   use_old_mdec_routines = si.GetBoolValue("Hacks", "UseOldMDECRoutines", false);
   export_shared_memory = si.GetBoolValue("Hacks", "ExportSharedMemory", false);
-  pcdrv_enable = si.GetBoolValue("PCDrv", "Enabled", false);
-  pcdrv_enable_writes = si.GetBoolValue("PCDrv", "EnableWrites", false);
-  pcdrv_root = si.GetStringValue("PCDrv", "Root");
 
   dma_max_slice_ticks = si.GetIntValue("Hacks", "DMAMaxSliceTicks", DEFAULT_DMA_MAX_SLICE_TICKS);
   dma_halt_ticks = si.GetIntValue("Hacks", "DMAHaltTicks", DEFAULT_DMA_HALT_TICKS);
@@ -409,7 +403,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   achievements_encore_mode = si.GetBoolValue("Cheevos", "EncoreMode", false);
   achievements_spectator_mode = si.GetBoolValue("Cheevos", "SpectatorMode", false);
   achievements_unofficial_test_mode = si.GetBoolValue("Cheevos", "UnofficialTestMode", false);
-  achievements_use_raintegration = si.GetBoolValue("Cheevos", "UseRAIntegration", false);
   achievements_notification_duration =
     si.GetIntValue("Cheevos", "NotificationsDuration", DEFAULT_ACHIEVEMENT_NOTIFICATION_TIME);
   achievements_leaderboard_duration =
@@ -449,14 +442,6 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   texture_replacements.dump_vram_write_height_threshold =
     si.GetIntValue("TextureReplacements", "DumpVRAMWriteHeightThreshold", 128);
 
-#ifdef __ANDROID__
-  // No expansion due to license incompatibility.
-  audio_expansion_mode = AudioExpansionMode::Disabled;
-
-  // Android users are incredibly silly and don't understand that stretch is in the aspect ratio list...
-  if (si.GetBoolValue("Display", "Stretch", false))
-    display_aspect_ratio = DisplayAspectRatio::MatchWindow;
-#endif
 }
 
 void Settings::Save(SettingsInterface& si, bool ignore_base) const
@@ -492,8 +477,6 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
   si.SetIntValue("Main", "RewindSaveSlots", rewind_save_slots);
   si.SetIntValue("Main", "RunaheadFrameCount", runahead_frames);
 
-  si.SetBoolValue("PINE", "Enabled", pine_enable);
-  si.SetUIntValue("PINE", "Slot", pine_slot);
 
   if (!ignore_base)
   {
@@ -675,9 +658,6 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
     si.SetIntValue("Hacks", "GPUMaxRunAhead", gpu_max_run_ahead);
   }
 
-  si.SetBoolValue("PCDrv", "Enabled", pcdrv_enable);
-  si.SetBoolValue("PCDrv", "EnableWrites", pcdrv_enable_writes);
-  si.SetStringValue("PCDrv", "Root", pcdrv_root.c_str());
 
   si.SetBoolValue("BIOS", "TTYLogging", bios_tty_logging);
   si.SetBoolValue("BIOS", "PatchFastBoot", bios_patch_fast_boot);
@@ -693,7 +673,6 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
   si.SetBoolValue("Cheevos", "EncoreMode", achievements_encore_mode);
   si.SetBoolValue("Cheevos", "SpectatorMode", achievements_spectator_mode);
   si.SetBoolValue("Cheevos", "UnofficialTestMode", achievements_unofficial_test_mode);
-  si.SetBoolValue("Cheevos", "UseRAIntegration", achievements_use_raintegration);
   si.SetIntValue("Cheevos", "NotificationsDuration", achievements_notification_duration);
   si.SetIntValue("Cheevos", "LeaderboardsDuration", achievements_leaderboard_duration);
 
@@ -742,7 +721,6 @@ void Settings::Clear(SettingsInterface& si)
   si.ClearSection("CDROM");
   si.ClearSection("Audio");
   si.ClearSection("Hacks");
-  si.ClearSection("PCDrv");
   si.ClearSection("BIOS");
   si.ClearSection("ArcadeMachine");
   si.ClearSection("ArcadeOutput");
@@ -783,17 +761,9 @@ void Settings::FixIncompatibleSettings(bool display_osd_messages)
     g_settings.cdrom_mute_cd_audio = false;
     g_settings.texture_replacements.enable_vram_write_replacements = false;
     g_settings.use_old_mdec_routines = false;
-    g_settings.pcdrv_enable = false;
     g_settings.bios_patch_fast_boot = false;
   }
 
-  if (g_settings.pcdrv_enable && g_settings.pcdrv_root.empty())
-  {
-    Host::AddKeyedOSDMessage("pcdrv_disabled_no_root",
-                             TRANSLATE_STR("OSDMessage", "Disabling PCDrv because no root directory is specified."),
-                             Host::OSD_WARNING_DURATION);
-    g_settings.pcdrv_enable = false;
-  }
 
   if (g_settings.gpu_pgxp_enable)
   {
@@ -825,22 +795,6 @@ void Settings::FixIncompatibleSettings(bool display_osd_messages)
   {
     WARNING_LOG("mmap fastmem is not available on this platform, using LUT instead.");
     g_settings.cpu_fastmem_mode = CPUFastmemMode::LUT;
-  }
-#endif
-
-#if defined(__ANDROID__) && defined(__arm__) && !defined(__aarch64__) && !defined(_M_ARM64)
-  if (g_settings.rewind_enable)
-  {
-    Host::AddKeyedOSDMessage("rewind_disabled_android",
-                             TRANSLATE_STR("OSDMessage", "Rewind is not supported on 32-bit ARM for Android."), 30.0f);
-    g_settings.rewind_enable = false;
-  }
-  if (g_settings.IsRunaheadEnabled())
-  {
-    Host::AddKeyedOSDMessage("rewind_disabled_android",
-                             TRANSLATE_STR("OSDMessage", "Runahead is not supported on 32-bit ARM for Android."),
-                             30.0f);
-    g_settings.runahead_frames = 0;
   }
 #endif
 
@@ -1437,15 +1391,9 @@ const char* Settings::GetDisplayCropModeDisplayName(DisplayCropMode crop_mode)
 }
 
 static constexpr const std::array s_display_aspect_ratio_names = {
-#ifndef __ANDROID__
   TRANSLATE_NOOP("DisplayAspectRatio", "Auto (Game Native)"),
   TRANSLATE_NOOP("DisplayAspectRatio", "Stretch To Fill"),
   TRANSLATE_NOOP("DisplayAspectRatio", "Custom"),
-#else
-  "Auto (Game Native)",
-  "Auto (Match Window)",
-  "Custom",
-#endif
   "4:3",
   "16:9",
   "19:9",
@@ -2018,7 +1966,6 @@ static const char* s_log_filters[] = {
   "MainWindow",
   "MemoryArena",
   "NoGUIHost",
-  "PCDrv",
   "PGXP",
   "PlatformMisc",
   "PostProcessing",
@@ -2042,10 +1989,8 @@ static const char* s_log_filters[] = {
   "WAVWriter",
   "WindowInfo",
 
-#ifndef __ANDROID__
   "CubebAudioStream",
   "SDLAudioStream",
-#endif
 
 #ifdef ENABLE_OPENGL
   "OpenGLContext",

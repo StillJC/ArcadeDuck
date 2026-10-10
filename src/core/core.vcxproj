@@ -182,12 +182,10 @@
     <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
     <ClCompile Include="mdec.cpp" />
-    <ClCompile Include="pcdrv.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="cpu_pgxp.cpp" />
-    <ClCompile Include="pine_server.cpp" />
     <ClCompile Include="settings.cpp" />
     <ClCompile Include="sio.cpp" />
     <ClCompile Include="spu.cpp" />
@@ -307,10 +305,8 @@
     <ClInclude Include="legacy_pad_state.h" />
     <ClInclude Include="mdec.h" />
     <ClInclude Include="pad.h" />
-    <ClInclude Include="pcdrv.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="cpu_pgxp.h" />
-    <ClInclude Include="pine_server.h" />
     <ClInclude Include="save_state_version.h" />
     <ClInclude Include="settings.h" />
     <ClInclude Include="shader_cache_version.h" />
@@ -332,9 +328,7 @@
     <ProjectReference Include="..\..\dep\minizip\minizip.vcxproj">
       <Project>{8bda439c-6358-45fb-9994-2ff083babe06}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\..\dep\rainterface\rainterface.vcxproj" Condition="'$(Platform)'!='ARM64'">
-      <Project>{e4357877-d459-45c7-b8f6-dcbb587bb528}</Project>
-    </ProjectReference>
+
     <ProjectReference Include="..\..\dep\rapidyaml\rapidyaml.vcxproj">
       <Project>{1ad23a8a-4c20-434c-ae6b-0e07759eeb1e}</Project>
     </ProjectReference>

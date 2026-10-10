@@ -1,6 +1,6 @@
 # ArcadeDuck universal arcade database.
 # Game archives are always complete non-merged sets. Parent relationships are metadata only.
-# The title field contains only the game name; region/revision/board qualifiers use dedicated fields.
+# The title field keeps the canonical game/edition name; region, board revision, and set notes use dedicated fields.
 schemaVersion: 1
 
 systems:
@@ -2848,7 +2848,7 @@ games:
       - { id: "eeprom", type: "eeprom_93c46_16", size: 0x80 }
 
   # BEGIN ARCADEDUCK UNIVERSAL GAME CATALOG 20260803
-  # The title field contains only the game name. Region, revision, board code, and set notes are separate metadata.
+  # Canonical edition/subtitle text stays in title; region, board revision, board code, and set notes are separate metadata.
 
   tekken:
     archive: "tekken.zip"
@@ -3027,12 +3027,12 @@ games:
 
   tekken2:
     archive: "tekken2.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "World"
-    revision: "Ver.B; TES2/VER.D"
+    revision: "TES2/VER.D"
     boardCode: "TES2"
     hardwareProfile: "tekken2"
     setFormat: "non_merged"
@@ -3072,13 +3072,13 @@ games:
 
   tekken2b:
     archive: "tekken2b.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "World"
-    revision: "Ver.B; TES2/VER.B"
+    revision: "TES2/VER.B"
     boardCode: "TES2"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3118,13 +3118,13 @@ games:
 
   tekken2ud:
     archive: "tekken2ud.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "US"
-    revision: "Ver.B; TES3/VER.D"
+    revision: "TES3/VER.D"
     boardCode: "TES3"
     hardwareProfile: "tekken2"
     setFormat: "non_merged"
@@ -3164,13 +3164,13 @@ games:
 
   tekken2ub:
     archive: "tekken2ub.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "US"
-    revision: "Ver.B; TES3/VER.B"
+    revision: "TES3/VER.B"
     boardCode: "TES3"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3210,13 +3210,13 @@ games:
 
   tekken2jc:
     archive: "tekken2jc.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "Japan"
-    revision: "Ver.B; TES1/VER.C"
+    revision: "TES1/VER.C"
     boardCode: "TES1"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3256,13 +3256,13 @@ games:
 
   tekken2jb:
     archive: "tekken2jb.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "Japan"
-    revision: "Ver.B; TES1/VER.B"
+    revision: "TES1/VER.B"
     boardCode: "TES1"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3394,12 +3394,12 @@ games:
 
   souledge:
     archive: "souledge.zip"
-    title: "Soul Edge"
+    title: "Soul Edge Ver. II"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "Asia"
-    revision: "Ver. II; SO4/VER.C"
+    revision: "SO4/VER.C"
     boardCode: "SO4"
     hardwareProfile: "souledge"
     setFormat: "non_merged"
@@ -3451,13 +3451,13 @@ games:
 
   souledgeuc:
     archive: "souledgeuc.zip"
-    title: "Soul Edge"
+    title: "Soul Edge Ver. II"
     parent: "souledge"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "US"
-    revision: "Ver. II; SO3/VER.C"
+    revision: "SO3/VER.C"
     boardCode: "SO3"
     hardwareProfile: "souledge"
     setFormat: "non_merged"
@@ -9126,11 +9126,11 @@ games:
 
   gdarius2:
     archive: "gdarius2.zip"
-    title: "G-Darius"
+    title: "G-Darius Ver.2"
     system: "taito_fx1"
     manufacturer: "Taito"
     year: 1997
-    revision: "Ver.2; Ver 2.03J"
+    revision: "Ver 2.03J"
     hardwareProfile: "coh1002tb"
     setFormat: "non_merged"
     status: "working"
@@ -14785,12 +14785,12 @@ games:
 
   dstage:
     archive: "dstage.zip"
-    title: "Dancing Stage"
+    title: "Dancing Stage - Internet Ranking Ver"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Europe"
-    revision: "Internet Ranking Ver; GC845 VER. EBA"
+    revision: "GC845 VER. EBA"
     boardCode: "GC845"
     hardwareProfile: "dsftkd"
     setFormat: "non_merged"
@@ -14909,13 +14909,13 @@ games:
 
   ddrj:
     archive: "ddrj.zip"
-    title: "Dance Dance Revolution"
+    title: "Dance Dance Revolution - Internet Ranking Ver"
     parent: "dstage"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1998
     region: "Japan"
-    revision: "Internet Ranking Ver; GC845 VER. JBA"
+    revision: "GC845 VER. JBA"
     boardCode: "GC845"
     hardwareProfile: "ddr"
     setFormat: "non_merged"
@@ -15576,12 +15576,12 @@ games:
 
   gtrfrks:
     archive: "gtrfrks.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Europe"
-    revision: "Ver 1.01; GQ886 VER. EAD"
+    revision: "GQ886 VER. EAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -15616,13 +15616,13 @@ games:
 
   gtrfrksu:
     archive: "gtrfrksu.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "USA"
-    revision: "Ver 1.01; GQ886 VER. UAD"
+    revision: "GQ886 VER. UAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -15657,13 +15657,13 @@ games:
 
   gtrfrksj:
     archive: "gtrfrksj.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Ver 1.01; GQ886 VER. JAD"
+    revision: "GQ886 VER. JAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -15698,13 +15698,13 @@ games:
 
   gtrfrksa:
     archive: "gtrfrksa.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Asia"
-    revision: "Ver 1.01; GQ886 VER. AAD"
+    revision: "GQ886 VER. AAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -16270,13 +16270,13 @@ games:
 
   ddr2ml:
     archive: "ddr2ml.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAC"
+    revision: "GE885 VER. JAC"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -16311,13 +16311,13 @@ games:
 
   ddr2mla:
     archive: "ddr2mla.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAB"
+    revision: "GE885 VER. JAB"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -16353,13 +16353,13 @@ games:
 
   ddr2mlb:
     archive: "ddr2mlb.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAA"
+    revision: "GE885 VER. JAA"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -16802,12 +16802,12 @@ games:
 
   gtrfrk2m:
     archive: "gtrfrk2m.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Ver 1.01"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Ver 1.01; GQ883 VER. JAD"
+    revision: "GQ883 VER. JAD"
     boardCode: "GQ883"
     hardwareProfile: "gtrfrk2m"
     setFormat: "non_merged"
@@ -17059,13 +17059,13 @@ games:
 
   gtrfrk2ml1:
     archive: "gtrfrk2ml1.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Link Kit 1"
     parent: "gtrfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Kit 1; GE929 VER. JAA"
+    revision: "GE929 VER. JAA"
     boardCode: "GE929"
     hardwareProfile: "gtrfrk2ml"
     setFormat: "non_merged"
@@ -17102,13 +17102,13 @@ games:
 
   gtrfrk2ml2:
     archive: "gtrfrk2ml2.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Link Kit 2"
     parent: "gtrfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Kit 2; GC929 VER. JBB"
+    revision: "GC929 VER. JBB"
     boardCode: "GC929"
     hardwareProfile: "gtrfrk2ml"
     setFormat: "non_merged"
@@ -17261,12 +17261,12 @@ games:
 
   ddr3mk:
     archive: "ddr3mk.zip"
-    title: "Dance Dance Revolution 3rd Mix"
+    title: "Dance Dance Revolution 3rd Mix - Ver.Korea2"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
     region: "Korea"
-    revision: "Ver.Korea2; GN887 VER. KBA"
+    revision: "GN887 VER. KBA"
     boardCode: "GN887"
     hardwareProfile: "ddr3m"
     setFormat: "non_merged"
@@ -17307,13 +17307,13 @@ games:
 
   ddr3mka:
     archive: "ddr3mka.zip"
-    title: "Dance Dance Revolution 3rd Mix"
+    title: "Dance Dance Revolution 3rd Mix - Ver.Korea"
     parent: "ddr3mk"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
     region: "Korea"
-    revision: "Ver.Korea; GN887 VER. KAA"
+    revision: "GN887 VER. KAA"
     boardCode: "GN887"
     hardwareProfile: "ddr3m"
     setFormat: "non_merged"
@@ -17583,12 +17583,12 @@ games:
 
   hypbbc2p:
     archive: "hypbbc2p.zip"
-    title: "Hyper Bishi Bashi Champ"
+    title: "Hyper Bishi Bashi Champ - 2 Player"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "2 Player; GX908 1999/08/24 VER. JAA"
+    revision: "GX908 1999/08/24 VER. JAA"
     boardCode: "GX908"
     hardwareProfile: "hypbbc2p"
     setFormat: "non_merged"
@@ -17627,13 +17627,13 @@ games:
 
   hypbbc2pk:
     archive: "hypbbc2pk.zip"
-    title: "Hyper Bishi Bashi Champ"
+    title: "Hyper Bishi Bashi Champ - 2 Player"
     parent: "hypbbc2p"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Korea"
-    revision: "2 Player; GX908 1999/08/24 VER. KAA"
+    revision: "GX908 1999/08/24 VER. KAA"
     boardCode: "GX908"
     hardwareProfile: "hypbbc2p"
     setFormat: "non_merged"
@@ -17905,13 +17905,13 @@ games:
 
   drmn2mpu:
     archive: "drmn2mpu.zip"
-    title: "DrumMania 2nd Mix"
+    title: "DrumMania 2nd Mix Session Power Up Kit"
     parent: "pcnfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Session Power Up Kit; GE912 VER. JAB"
+    revision: "GE912 VER. JAB"
     boardCode: "GE912"
     hardwareProfile: "drmn2m"
     setFormat: "non_merged"
@@ -18912,12 +18912,12 @@ games:
 
   gtfrk3mb:
     archive: "gtfrk3mb.zip"
-    title: "Guitar Freaks 3rd Mix"
+    title: "Guitar Freaks 3rd Mix - security cassette versionup"
     parent: "gtrfrk3m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
-    revision: "security cassette versionup; 949JAZ02"
+    revision: "949JAZ02"
     boardCode: "949JAZ02"
     hardwareProfile: "gtrfrk5m"
     setFormat: "non_merged"
@@ -21246,13 +21246,13 @@ games:
 
   drmn7m:
     archive: "drmn7m.zip"
-    title: "DrumMania 7th Mix"
+    title: "DrumMania 7th Mix power-up ver."
     parent: "pcnfrk7m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2002
     region: "Japan"
-    revision: "power-up ver.; G*C07 VER. JBA"
+    revision: "G*C07 VER. JBA"
     boardCode: "G*C07"
     hardwareProfile: "drmn4m"
     setFormat: "non_merged"
@@ -21342,12 +21342,12 @@ games:
 
   gtrfrk8m:
     archive: "gtrfrk8m.zip"
-    title: "Guitar Freaks 8th Mix"
+    title: "Guitar Freaks 8th Mix power-up ver."
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2002
     region: "Japan"
-    revision: "power-up ver.; G*C08 VER. JBA"
+    revision: "G*C08 VER. JBA"
     boardCode: "G*C08"
     hardwareProfile: "gtrfrk7m"
     setFormat: "non_merged"

@@ -648,7 +648,6 @@ std::optional<BIOS::Image> BIOS::FindBIOSImageInDirectory(ConsoleRegion region, 
 
   if (!image.has_value())
   {
-#ifndef __ANDROID__
     Error::SetStringFmt(
       error,
       TRANSLATE_FS("System", "No BIOS image found.\n\nArcadeDuck requires PS1 based arcade BIOS in order to "
@@ -656,10 +655,6 @@ std::optional<BIOS::Image> BIOS::FindBIOSImageInDirectory(ConsoleRegion region, 
                              "(borrowing doesn't count).\n\nOnce dumped, this BIOS image should be placed in the bios "
                              "folder within the data directory (Tools Menu -> Open Data Directory)."),
       Settings::GetConsoleRegionName(region));
-#else
-    Error::SetStringFmt(error, TRANSLATE_FS("System", "No BIOS image found."),
-                        Settings::GetConsoleRegionName(region));
-#endif
     return image;
   }
 

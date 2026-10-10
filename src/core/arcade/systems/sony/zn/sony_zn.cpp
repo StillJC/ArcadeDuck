@@ -103,6 +103,7 @@ static constexpr u32 BAM2_CD_DATA_SECTOR_SIZE = 2048;
 static constexpr u32 BAM2_CD_MODE1_DATA_OFFSET = 16;
 static constexpr u32 BAM2_PCM_BUFFER_SIZE = 0x20000;
 static constexpr u32 BAM2_PCM_PREFETCH_BYTES_PER_FRAME = 0x1000;
+static constexpr u32 BAM2_H8_PLAY_COMPLETION_FRAMES = 100;
 static constexpr u32 TAITO_BANK_SIZE = 0x800000;
 static constexpr u32 TAITO_EXP1_SIZE = 0x800000;
 static constexpr u32 TECMO_BANK_SIZE = 0x800000;
@@ -382,9 +383,10 @@ struct RuntimeState
   BustAMove2Media bam2_media = BustAMove2Media::HardDisk;
   std::array<u16, 4> bam2_mcu_ports{};
   bool bam2_outputs_initialized = false;
-  u16 bam2_h8_status = UINT16_C(0x0004);
+  u16 bam2_h8_status = UINT16_C(0x0000);
   u16 bam2_h8_opcode = 0;
   bool bam2_h8_waiting_for_argument = false;
+  u32 bam2_h8_play_completion_frames = 0;
   bool bam2_test_switch_latched = false;
   bool bam2_test_was_pressed = false;
   u16 bam2_selected_track = 0;
@@ -410,6 +412,7 @@ struct RuntimeState
   u32 bam2_pcm_buffer_read = 0;
   u32 bam2_pcm_buffer_write = 0;
   u32 bam2_pcm_buffered_bytes = 0;
+
   bool tecmo_gr2_link_enabled = false;
 
   std::string taito_fx1b_fram_path;
@@ -2358,14 +2361,17 @@ bool PrefetchBAM2PCM(RuntimeState& runtime, u32 max_bytes)
 
 void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
 {
-  runtime.bam2_h8_status = UINT16_C(0x0004);
+  // The working BAM2 HLE clears the response when an argument is accepted.
+  // PLAY later raises bit 2 asynchronously after 100 screen periods.
+  runtime.bam2_h8_status = UINT16_C(0x0000);
 
   switch (opcode)
   {
     case 0x0081:
-    case 0x0087:
     {
-      const u16 track = static_cast<u16>((opcode == 0x0081 ? 1 : 129) + (argument & UINT16_C(0x00ff)));
+      // 0x81 is the sole file/track-select command. The protocol passes a
+      // zero-based virtual file ID; ArcadeDuck's internal track IDs are 1-based.
+      const u16 track = static_cast<u16>(1 + (argument & UINT16_C(0x00ff)));
       if (!IsBAM2TrackValid(runtime, track))
       {
         runtime.bam2_selected_track = 0;
@@ -2373,9 +2379,8 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
         return;
       }
 
-      // The game can re-issue SELECT for the track which is already playing.
-      // Re-preparing that same active track discards the live PCM ring and
-      // creates an artificial underrun before the next PLAY command.
+      // Re-selecting the already-playing track must not discard the live PCM
+      // ring. This keeps ArcadeDuck's previously-confirmed retry protection.
       if (runtime.bam2_pcm_playing && runtime.bam2_selected_track == track)
         return;
 
@@ -2389,20 +2394,26 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
     }
 
     case 0x0082:
+      // bam2up schedules PLAY completion before attempting play_audio().
+      // This matters during the boot-time timing probe, where no file has yet
+      // been selected: audio does not start, but response bit 2 still appears
+      // after 100 screen periods.
+      runtime.bam2_h8_play_completion_frames = BAM2_H8_PLAY_COMPLETION_FRAMES;
+
       if (!IsBAM2TrackValid(runtime, runtime.bam2_selected_track))
       {
-        runtime.bam2_h8_status = UINT16_C(0x0001);
+        runtime.bam2_pcm_playing = false;
         return;
       }
 
-      // Track selection normally precedes PLAY by about a second, allowing
-      // ProcessFrame() to stage media data. A repeated PLAY restarts the track.
+      // PCM starts immediately. The H8 response remains 0 while the game polls
+      // for the delayed 0x0004 completion flag.
       if (runtime.bam2_pcm_output_bytes != 0)
         ResetBAM2PCMBuffer(runtime);
       if (runtime.bam2_pcm_buffered_bytes < 4 &&
           !PrefetchBAM2PCM(runtime, BAM2_PCM_PREFETCH_BYTES_PER_FRAME))
       {
-        runtime.bam2_h8_status = UINT16_C(0x0001);
+        runtime.bam2_pcm_playing = false;
         return;
       }
 
@@ -2414,15 +2425,31 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
       return;
 
     case 0x0084:
-    case 0x0088:
+      // Mounted media => response 0.
       return;
 
     case 0x0086:
       runtime.bam2_tc9293_attenuation = static_cast<u8>(argument & UINT16_C(0x007f));
       return;
 
+    case 0x0087:
+      // Boot-time drive/media probe. The clean trace proves the game issues
+      // exactly 0x7f, 0x1c and 0x1b here; this is not a second track selector.
+      if (argument == UINT16_C(0x007f))
+      {
+        runtime.bam2_h8_status = UINT16_C(0x0001);
+      }
+      else if (runtime.bam2_media == BustAMove2Media::HardDisk &&
+               (argument == UINT16_C(0x001b) || argument == UINT16_C(0x001c)))
+      {
+        runtime.bam2_h8_status = static_cast<u16>((~argument) & UINT16_C(0x0001));
+      }
+      return;
+
+    case 0x0088:
+      return;
+
     default:
-      runtime.bam2_h8_status = UINT16_C(0x0001);
       return;
   }
 }
@@ -2433,7 +2460,6 @@ void WriteBAM2H8CommandWord(RuntimeState& runtime, u16 value)
   {
     runtime.bam2_h8_opcode = value;
     runtime.bam2_h8_waiting_for_argument = true;
-    runtime.bam2_h8_status = UINT16_C(0x0004);
     return;
   }
 
@@ -2453,7 +2479,6 @@ void WriteBAM2H8CommandWord(RuntimeState& runtime, u16 value)
       case 0x0086:
       case 0x0087:
       case 0x0088:
-        runtime.bam2_h8_status = UINT16_C(0x0004);
         return;
 
       default:
@@ -2470,6 +2495,7 @@ u16 ReadBAM2MCUPort(RuntimeState& runtime, u32 port)
 {
   if ((port & 3u) == 2)
     return runtime.bam2_h8_status;
+
   return runtime.bam2_mcu_ports[port & 3u];
 }
 
@@ -2515,7 +2541,7 @@ void ApplyBAM2MCUPortWrite(RuntimeState& runtime, u32 port)
       // The game writes 0x0007 before a command sequence and 0x0001 when
       // acknowledging a stream error. Both clear the externally-visible
       // command/error result before the next H8 transaction.
-      runtime.bam2_h8_status = UINT16_C(0x0004);
+      runtime.bam2_h8_status = UINT16_C(0x0000);
       break;
 
     case 3:
@@ -2640,6 +2666,7 @@ bool ReadBAM2PCMFrame(RuntimeState& runtime, s16* left, s16* right)
 
   *left = static_cast<s16>(ReadBAM2LE16(frame.data()));
   *right = static_cast<s16>(ReadBAM2LE16(frame.data() + 2));
+
   return true;
 }
 
@@ -4839,9 +4866,10 @@ void Reset()
     s_runtime->bam2_mcu_ports.fill(0);
     s_runtime->bam2_mcu_ports[0] = 1;
     s_runtime->bam2_outputs_initialized = false;
-    s_runtime->bam2_h8_status = UINT16_C(0x0004);
+    s_runtime->bam2_h8_status = UINT16_C(0x0000);
     s_runtime->bam2_h8_opcode = 0;
     s_runtime->bam2_h8_waiting_for_argument = false;
+    s_runtime->bam2_h8_play_completion_frames = 0;
     s_runtime->bam2_selected_track = 0;
     s_runtime->bam2_tc9293_attenuation = 0;
     s_runtime->bam2_pcm_playing = false;
@@ -4935,10 +4963,12 @@ void ApplySPUOutputGain(s32* left, s32* right)
   if (!s_runtime)
     return;
 
-  // Base ZN routes the onboard SPU at 0.35. Atlus ZN-1 and Taito FX-1B
-  // override that board-level route to 0.175 and 0.30 respectively.
+  // Base ZN routes the onboard SPU at 0.35. Bust-A-Move 2, Atlus ZN-1,
+  // and Taito FX-1B use unity gain for their onboard SPU route.
   u32 gain_per_thousand = 350;
-  if (s_runtime->board_type == BoardType::AtlusZN1)
+  if (s_runtime->board_type == BoardType::BustAMove2ZN1)
+    gain_per_thousand = 1000;
+  else if (s_runtime->board_type == BoardType::AtlusZN1)
     gain_per_thousand = 1000;
   else if (s_runtime->board_type == BoardType::TaitoFX1B)
     gain_per_thousand = 1000;
@@ -4956,6 +4986,16 @@ void ProcessFrame()
   {
     TecmoGR2Link::ProcessFrame();
     return;
+  }
+
+  if (s_runtime->board_type == BoardType::BustAMove2ZN1 &&
+      s_runtime->bam2_h8_play_completion_frames != 0)
+  {
+    s_runtime->bam2_h8_play_completion_frames--;
+    if (s_runtime->bam2_h8_play_completion_frames == 0)
+    {
+      s_runtime->bam2_h8_status |= UINT16_C(0x0004);
+    }
   }
 
   if (s_runtime->board_type == BoardType::BustAMove2ZN1 && s_runtime->bam2_selected_track != 0)

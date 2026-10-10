@@ -375,9 +375,6 @@ void Timer::NanoSleep(std::uint64_t ns)
   {
     Sleep(static_cast<std::uint32_t>(ns / 1000000));
   }
-#elif defined(__ANDROID__)
-  // Round down to the next millisecond.
-  usleep(static_cast<useconds_t>((ns / 1000000) * 1000));
 #else
   const struct timespec ts = {0, static_cast<long>(ns)};
   nanosleep(&ts, nullptr);

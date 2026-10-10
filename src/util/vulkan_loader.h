@@ -14,8 +14,6 @@ class Error;
 #include "common/windows_headers.h"
 #elif defined(__APPLE__)
 #define VK_USE_PLATFORM_METAL_EXT
-#elif defined(__ANDROID__)
-#define VK_USE_PLATFORM_ANDROID_KHR
 #else
 #ifdef ENABLE_X11
 #define VK_USE_PLATFORM_XLIB_KHR

@@ -59,7 +59,7 @@ def run_regression_tests(runner, gamedir, destdir, dump_interval, frames, parall
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate frame dump images for regression tests")
-    parser.add_argument("-runner", action="store", required=True, help="Path to DuckStation regression test runner")
+    parser.add_argument("-runner", action="store", required=True, help="Path to ArcadeDuck regression test runner")
     parser.add_argument("-gamedir", action="store", required=True, help="Directory containing game images")
     parser.add_argument("-destdir", action="store", required=True, help="Base directory to dump frames to")
     parser.add_argument("-dumpinterval", action="store", type=int, default=600, help="Interval to dump frames at")

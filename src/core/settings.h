@@ -95,7 +95,6 @@ struct Settings
   bool enable_cheats : 1 = false;
   bool disable_all_enhancements : 1 = false;
   bool enable_discord_presence : 1 = false;
-  bool pine_enable : 1 = false;
 
   // Network transport for supported linked arcade hardware.
   bool system_link_enabled : 1 = false;
@@ -110,7 +109,6 @@ struct Settings
   float rewind_save_frequency = 10.0f;
   u32 rewind_save_slots = 10;
   u32 runahead_frames = 0;
-  u16 pine_slot = DEFAULT_PINE_SLOT;
 
   GPURenderer gpu_renderer = DEFAULT_GPU_RENDERER;
   std::string gpu_adapter;
@@ -242,7 +240,6 @@ struct Settings
   u8 arcade_bust_a_move_2_region = 3;
 
   bool use_old_mdec_routines : 1 = false;
-  bool pcdrv_enable : 1 = false;
   bool export_shared_memory : 1 = false;
 
   // timing hacks section
@@ -261,7 +258,6 @@ struct Settings
   bool achievements_encore_mode : 1 = false;
   bool achievements_spectator_mode : 1 = false;
   bool achievements_unofficial_test_mode : 1 = false;
-  bool achievements_use_raintegration : 1 = false;
   s32 achievements_notification_duration = DEFAULT_ACHIEVEMENT_NOTIFICATION_TIME;
   s32 achievements_leaderboard_duration = DEFAULT_LEADERBOARD_NOTIFICATION_TIME;
 
@@ -307,8 +303,6 @@ struct Settings
   bool bios_patch_fast_boot : 1 = DEFAULT_FAST_BOOT_VALUE;
   bool enable_8mb_ram : 1 = false;
 
-  std::string pcdrv_root;
-  bool pcdrv_enable_writes = false;
 
   LOGLEVEL log_level = DEFAULT_LOG_LEVEL;
   std::string log_filter;
@@ -509,38 +503,25 @@ struct Settings
 
   static constexpr SaveStateCompressionMode DEFAULT_SAVE_STATE_COMPRESSION_MODE = SaveStateCompressionMode::ZstDefault;
 
-#ifndef __ANDROID__
   static const MediaCaptureBackend DEFAULT_MEDIA_CAPTURE_BACKEND;
   static constexpr const char* DEFAULT_MEDIA_CAPTURE_CONTAINER = "mp4";
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_WIDTH = 640;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_HEIGHT = 480;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_VIDEO_BITRATE = 6000;
   static constexpr u32 DEFAULT_MEDIA_CAPTURE_AUDIO_BITRATE = 128;
-#endif
 
   // Enable console logging by default on Linux platforms.
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__)
   static constexpr bool DEFAULT_LOG_TO_CONSOLE = true;
 #else
   static constexpr bool DEFAULT_LOG_TO_CONSOLE = false;
 #endif
 
-  // Android doesn't create settings until they're first opened, so we have to override the defaults here.
-#ifndef __ANDROID__
   static constexpr bool DEFAULT_SAVE_STATE_BACKUPS = true;
   static constexpr bool DEFAULT_FAST_BOOT_VALUE = false;
   static constexpr bool DEFAULT_THREADED_PRESENTATION = false;
-#else
-  static constexpr bool DEFAULT_SAVE_STATE_BACKUPS = false;
-  static constexpr bool DEFAULT_FAST_BOOT_VALUE = true;
-  static constexpr bool DEFAULT_THREADED_PRESENTATION = true;
-#endif
 
-  // PINE uses a concept of "slot" to be able to communicate with multiple
-  // emulators at the same time, each slot should be unique to each emulator to
-  // allow PnP and configurable by the end user so that several runs don't
-  // conflict with each others
-  static constexpr u16 DEFAULT_PINE_SLOT = 28011;
+
 };
 
 extern Settings g_settings;

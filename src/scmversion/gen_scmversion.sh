@@ -23,12 +23,16 @@ TAG=$(git describe --tags --always | tr -d '\r\n')
 DATE=$(git log -1 --date=iso8601-strict --format=%cd)
 if [ -n "${ARCADEDUCK_CI_BUILD:-}" ]; then
   BUILD="${ARCADEDUCK_CI_BUILD}"
-elif git merge-base --is-ancestor "${BASELINE}" HEAD 2>/dev/null; then
-  BUILD=$(git rev-list --count "${BASELINE}..HEAD" 2>/dev/null | tr -d '\r\n')
 else
-  # Sanitized public history does not contain the historical GPL baseline.
-  # Count commits available in this repository instead.
-  BUILD=$(git rev-list --count HEAD 2>/dev/null | tr -d '\r\n')
+  # The public ArcadeDuck repository may not contain the historical GPL baseline commit object.
+  # If the baseline exists, keep using the original baseline-relative count.
+  # Otherwise, use the current repository commit count for local/non-CI builds.
+  if git cat-file -e "${BASELINE}^{commit}" 2>/dev/null; then
+    BUILD=$(git rev-list --count "${BASELINE}..HEAD" 2>/dev/null | tr -d '\r\n')
+  else
+    echo "INFO: GPL baseline commit is not present in this repository; using repository commit count."
+    BUILD=$(git rev-list --count HEAD 2>/dev/null | tr -d '\r\n')
+  fi
 fi
 
 if [ -z "$VERSION" ]; then

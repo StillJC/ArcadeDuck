@@ -200,11 +200,6 @@ bool QtHost::PerformEarlyHardwareChecks()
 
 bool QtHost::EarlyProcessStartup()
 {
-  // Config-based RAIntegration switch must happen before the main window is displayed.
-#ifdef ENABLE_RAINTEGRATION
-  if (!Achievements::IsUsingRAIntegration() && Host::GetBaseBoolSettingValue("Cheevos", "UseRAIntegration", false))
-    Achievements::SwitchToRAIntegration();
-#endif
 
   Error error;
   if (System::Internal::ProcessStartup(&error)) [[likely]]
@@ -624,15 +619,15 @@ bool QtHost::SetDataDirectory()
   // override individual folders through settings when they explicitly want data stored elsewhere.
   EmuFolders::DataRoot = EmuFolders::AppRoot;
 #elif defined(__linux__) || defined(__FreeBSD__)
-  // Use $XDG_CONFIG_HOME/duckstation if it exists.
+  // Use $XDG_CONFIG_HOME/arcadeduck if it exists.
   const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
   if (xdg_config_home && Path::IsAbsolute(xdg_config_home))
   {
-    EmuFolders::DataRoot = Path::RealPath(Path::Combine(xdg_config_home, "duckstation"));
+    EmuFolders::DataRoot = Path::RealPath(Path::Combine(xdg_config_home, "arcadeduck"));
   }
   else
   {
-    // Use ~/.local/share/duckstation otherwise.
+    // Use ~/.local/share/arcadeduck otherwise.
     const char* home_dir = getenv("HOME");
     if (home_dir)
     {
@@ -641,11 +636,11 @@ bool QtHost::SetDataDirectory()
       const std::string share_dir(Path::Combine(local_dir, "share"));
       FileSystem::EnsureDirectoryExists(local_dir.c_str(), false);
       FileSystem::EnsureDirectoryExists(share_dir.c_str(), false);
-      EmuFolders::DataRoot = Path::RealPath(Path::Combine(share_dir, "duckstation"));
+      EmuFolders::DataRoot = Path::RealPath(Path::Combine(share_dir, "arcadeduck"));
     }
   }
 #elif defined(__APPLE__)
-  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/DuckStation";
+  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/ArcadeDuck";
   const char* home_dir = getenv("HOME");
   if (home_dir)
     EmuFolders::DataRoot = Path::RealPath(Path::Combine(home_dir, MAC_DATA_DIR));
@@ -2290,9 +2285,6 @@ void QtHost::PrintCommandLineVersion()
   std::fprintf(stderr, "  -settings <filename>: Loads a custom settings configuration from the\n"
                        "    specified filename. Default settings applied if file not found.\n");
   std::fprintf(stderr, "  -earlyconsole: Creates console as early as possible, for logging.\n");
-#ifdef ENABLE_RAINTEGRATION
-  std::fprintf(stderr, "  -raintegration: Use RAIntegration instead of built-in achievement support.\n");
-#endif
   std::fprintf(stderr, "  --: Signals that no more arguments will follow and the remaining\n"
                        "    parameters make up the filename. Use when the filename contains\n"
                        "    spaces or starts with a dash.\n");
@@ -2409,13 +2401,6 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         s_cleanup_after_update = AutoUpdaterDialog::isSupported();
         continue;
       }
-#ifdef ENABLE_RAINTEGRATION
-      else if (CHECK_ARG("-raintegration"))
-      {
-        Achievements::SwitchToRAIntegration();
-        continue;
-      }
-#endif
       else if (CHECK_ARG("--"))
       {
         no_more_args = true;

@@ -29,9 +29,12 @@ FOR /F "tokens=* USEBACKQ" %%g IN (`git log -1 --date=iso8601-strict "--format=%
 IF DEFINED ARCADEDUCK_CI_BUILD (
   SET "BUILD=%ARCADEDUCK_CI_BUILD%"
 ) ELSE (
-  git merge-base --is-ancestor "%BASELINE%" HEAD >NUL 2>&1
+  REM The public ArcadeDuck repository may not contain the historical GPL baseline commit object.
+  REM If the baseline exists, keep using the original baseline-relative count.
+  REM Otherwise, use the current repository commit count for local/non-CI builds.
+  git cat-file -e %BASELINE%^{commit} 2>NUL
   IF ERRORLEVEL 1 (
-    REM Sanitized public history does not contain the historical GPL baseline.
+    ECHO INFO: GPL baseline commit is not present in this repository; using repository commit count.
     FOR /F "tokens=* USEBACKQ" %%g IN (`git rev-list --count HEAD`) do (SET "BUILD=%%g")
   ) ELSE (
     FOR /F "tokens=* USEBACKQ" %%g IN (`git rev-list --count %BASELINE%..HEAD`) do (SET "BUILD=%%g")

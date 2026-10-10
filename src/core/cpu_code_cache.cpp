@@ -861,16 +861,10 @@ template<PGXPMode pgxp_mode>
       {
         CheckAndUpdateICacheTags(block->icache_line_count);
       }
-      else if (block->HasFlag(BlockFlags::NeedsDynamicFetchTicks))
-      {
-        AddPendingTicks(
-          static_cast<TickCount>(block->size * static_cast<u32>(*Bus::GetMemoryAccessTimePtr(
-                                                 block->pc & PHYSICAL_MEMORY_ADDRESS_MASK, MemoryAccessSize::Word))));
-      }
-      else
-      {
-        AddPendingTicks(block->uncached_fetch_ticks);
-      }
+      // Uncached instruction fetch timing is charged at instruction
+      // granularity by InterpretCachedBlock(), matching the interpreter's
+      // fetch-before-execute pipeline position. Dynamic BIOS timing is
+      // therefore observed at the individual instruction fetch.
 
       InterpretCachedBlock<pgxp_mode>(block);
 
