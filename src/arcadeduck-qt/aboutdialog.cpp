@@ -16,12 +16,24 @@
 #include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QEvent>
+#include <QtCore/QFile>
+#include <QtCore/QStandardPaths>
 #include <QtCore/QString>
+#include <QtCore/QTimer>
 #include <QtGui/QFont>
+#include <QtGui/QMouseEvent>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
+#include <QtWidgets/QLabel>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QTextBrowser>
+
+#ifdef _WIN32
+#include "common/windows_headers.h"
+#include <mmsystem.h>
+#endif
 
 AboutDialog::AboutDialog(QWidget* parent /* = nullptr */) : QDialog(parent)
 {
@@ -29,6 +41,9 @@ AboutDialog::AboutDialog(QWidget* parent /* = nullptr */) : QDialog(parent)
 
   setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
   setFixedSize(geometry().width(), geometry().height());
+
+  m_normal_title = m_ui.title->text();
+  m_ui.icon->installEventFilter(this);
 
   if (const QString& exo2_family = QtHost::GetExo2FontFamily(); !exo2_family.isEmpty())
   {
@@ -68,7 +83,185 @@ p, li { white-space: pre-wrap; }
                               .arg(tr("License")));
 }
 
-AboutDialog::~AboutDialog() = default;
+AboutDialog::~AboutDialog()
+{
+  stopLogoAudio();
+}
+
+bool AboutDialog::eventFilter(QObject* watched, QEvent* event)
+{
+  if (watched == m_ui.icon && event->type() == QEvent::MouseButtonRelease)
+  {
+    const QMouseEvent* mouse_event = static_cast<QMouseEvent*>(event);
+    if (mouse_event->button() == Qt::LeftButton && !m_logo_sequence_active)
+    {
+      if (!m_logo_click_timer.isValid() || m_logo_click_timer.elapsed() > 4000)
+        m_logo_click_count = 0;
+
+      m_logo_click_timer.restart();
+      if (++m_logo_click_count >= 7)
+      {
+        m_logo_click_count = 0;
+        startLogoSequence();
+      }
+    }
+  }
+
+  return QDialog::eventFilter(watched, event);
+}
+
+void AboutDialog::startLogoSequence()
+{
+  static constexpr const char* frame_paths[] = {
+    ":/aboutfx/seq0.png",
+    ":/aboutfx/seq1.png",
+    ":/aboutfx/seq2.png",
+    ":/aboutfx/seq3.png",
+  };
+
+  for (int i = 0; i < 4; i++)
+  {
+    const QPixmap frame(QString::fromLatin1(frame_paths[i]));
+    if (frame.isNull())
+      return;
+
+    m_logo_frames[i] = frame.scaledToHeight(100, Qt::FastTransformation);
+  }
+
+  m_logo_sequence_active = true;
+  m_logo_frame = 0;
+  static constexpr char mode_suffix[] = {81, 85, 65, 67, 75, 32, 77, 79, 68, 69, 0};
+  m_ui.title->setText(QStringLiteral("%1 — %2").arg(m_normal_title, QString::fromLatin1(mode_suffix)));
+
+  m_logo_animation = new QLabel(this);
+  m_logo_animation->setAttribute(Qt::WA_TransparentForMouseEvents);
+  m_logo_animation->setAlignment(Qt::AlignCenter);
+  m_logo_animation->setFixedSize(120, 110);
+  m_logo_animation->setPixmap(m_logo_frames[0]);
+  m_logo_animation->move(-m_logo_animation->width(), height() - m_logo_animation->height() - 6);
+  m_logo_animation->show();
+  m_logo_animation->raise();
+
+  m_logo_timer = new QTimer(this);
+  m_logo_timer->setTimerType(Qt::PreciseTimer);
+  m_logo_timer->setInterval(16);
+  connect(m_logo_timer, &QTimer::timeout, this, &AboutDialog::updateLogoSequence);
+
+  startLogoAudio();
+  m_logo_animation_timer.restart();
+  m_logo_timer->start();
+}
+
+void AboutDialog::updateLogoSequence()
+{
+  static constexpr qint64 animation_duration_ms = 8000;
+  static constexpr qint64 frame_duration_ms = 120;
+
+  const qint64 elapsed = m_logo_animation_timer.elapsed();
+  if (elapsed >= animation_duration_ms)
+  {
+    stopLogoSequence();
+    return;
+  }
+
+  const int next_frame = static_cast<int>((elapsed / frame_duration_ms) % 4);
+  if (next_frame != m_logo_frame)
+  {
+    m_logo_frame = next_frame;
+    m_logo_animation->setPixmap(m_logo_frames[m_logo_frame]);
+  }
+
+  const int travel_distance = width() + m_logo_animation->width();
+  const int x = -m_logo_animation->width() + static_cast<int>((travel_distance * elapsed) / animation_duration_ms);
+  m_logo_animation->move(x, height() - m_logo_animation->height() - 6);
+}
+
+void AboutDialog::stopLogoSequence()
+{
+  if (m_logo_timer)
+  {
+    m_logo_timer->stop();
+    m_logo_timer->deleteLater();
+    m_logo_timer = nullptr;
+  }
+
+  if (m_logo_animation)
+  {
+    m_logo_animation->deleteLater();
+    m_logo_animation = nullptr;
+  }
+
+  stopLogoAudio();
+  m_ui.title->setText(m_normal_title);
+  m_logo_sequence_active = false;
+}
+
+void AboutDialog::startLogoAudio()
+{
+#ifdef _WIN32
+  using MciSendStringW = MCIERROR(WINAPI*)(LPCWSTR, LPWSTR, UINT, HWND);
+
+  const HMODULE winmm = LoadLibraryW(L"winmm.dll");
+  if (!winmm)
+    return;
+
+  const auto mci_send_string =
+    reinterpret_cast<MciSendStringW>(GetProcAddress(winmm, "mciSendStringW"));
+  if (!mci_send_string)
+  {
+    FreeLibrary(winmm);
+    return;
+  }
+
+  const QString temp_directory = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+  if (temp_directory.isEmpty())
+  {
+    FreeLibrary(winmm);
+    return;
+  }
+
+  m_logo_audio_path = QDir(temp_directory).filePath(QStringLiteral("ArcadeDuck_aboutfx.mp3"));
+  if (!QFile::exists(m_logo_audio_path) &&
+      !QFile::copy(QStringLiteral(":/aboutfx/seq.mp3"), m_logo_audio_path))
+  {
+    m_logo_audio_path.clear();
+    FreeLibrary(winmm);
+    return;
+  }
+
+  mci_send_string(L"close arcadeduck_aboutfx", nullptr, 0, nullptr);
+  const QString open_command =
+    QStringLiteral("open \"%1\" type mpegvideo alias arcadeduck_aboutfx").arg(QDir::toNativeSeparators(m_logo_audio_path));
+  if (mci_send_string(reinterpret_cast<LPCWSTR>(open_command.utf16()), nullptr, 0, nullptr) == 0)
+    mci_send_string(L"play arcadeduck_aboutfx from 0", nullptr, 0, nullptr);
+
+  FreeLibrary(winmm);
+#endif
+}
+
+void AboutDialog::stopLogoAudio()
+{
+#ifdef _WIN32
+  using MciSendStringW = MCIERROR(WINAPI*)(LPCWSTR, LPWSTR, UINT, HWND);
+
+  if (const HMODULE winmm = LoadLibraryW(L"winmm.dll"))
+  {
+    if (const auto mci_send_string =
+          reinterpret_cast<MciSendStringW>(GetProcAddress(winmm, "mciSendStringW")))
+    {
+      mci_send_string(L"stop arcadeduck_aboutfx", nullptr, 0, nullptr);
+      mci_send_string(L"close arcadeduck_aboutfx", nullptr, 0, nullptr);
+    }
+    FreeLibrary(winmm);
+  }
+
+  if (!m_logo_audio_path.isEmpty())
+  {
+    QFile::remove(m_logo_audio_path);
+    m_logo_audio_path.clear();
+  }
+#endif
+}
 
 void AboutDialog::showThirdPartyNotices(QWidget* parent)
 {
