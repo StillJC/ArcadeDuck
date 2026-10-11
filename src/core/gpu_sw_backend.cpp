@@ -262,6 +262,8 @@ void GPU_SW_Backend::DrawRectangle(const GPUBackendDrawRectangleCommand* cmd)
   const s32 origin_y = cmd->y;
   const auto [r, g, b] = UnpackColorRGB24(cmd->color);
   const auto [origin_texcoord_x, origin_texcoord_y] = UnpackTexcoord(cmd->texcoord);
+  const s32 texcoord_step_x = cmd->draw_mode.texture_x_flip ? -1 : 1;
+  const s32 texcoord_step_y = cmd->draw_mode.texture_y_flip ? -1 : 1;
 
   for (u32 offset_y = 0; offset_y < cmd->height; offset_y++)
   {
@@ -273,7 +275,9 @@ void GPU_SW_Backend::DrawRectangle(const GPUBackendDrawRectangleCommand* cmd)
     }
 
     const u32 draw_y = static_cast<u32>(y) & g_vram_height_mask;
-    const u8 texcoord_y = Truncate8(ZeroExtend32(origin_texcoord_y) + offset_y);
+    const s32 stepped_texcoord_y =
+      static_cast<s32>(origin_texcoord_y) + (static_cast<s32>(offset_y) * texcoord_step_y);
+    const u8 texcoord_y = Truncate8(static_cast<u32>(stepped_texcoord_y));
 
     for (u32 offset_x = 0; offset_x < cmd->width; offset_x++)
     {
@@ -281,7 +285,9 @@ void GPU_SW_Backend::DrawRectangle(const GPUBackendDrawRectangleCommand* cmd)
       if (x < static_cast<s32>(m_drawing_area.left) || x > static_cast<s32>(m_drawing_area.right))
         continue;
 
-      const u8 texcoord_x = Truncate8(ZeroExtend32(origin_texcoord_x) + offset_x);
+      const s32 stepped_texcoord_x =
+        static_cast<s32>(origin_texcoord_x) + (static_cast<s32>(offset_x) * texcoord_step_x);
+      const u8 texcoord_x = Truncate8(static_cast<u32>(stepped_texcoord_x));
 
       ShadePixel<texture_enable, raw_texture_enable, transparency_enable, false>(cmd, static_cast<u32>(x), draw_y, r, g,
                                                                                  b, texcoord_x, texcoord_y);
