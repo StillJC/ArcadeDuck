@@ -139,6 +139,18 @@ static constexpr u32 RECOMPILER_CODE_CACHE_SIZE = 48 * 1024 * 1024;
 static constexpr u32 RECOMPILER_FAR_CODE_CACHE_SIZE = 16 * 1024 * 1024;
 #endif
 
+#if defined(CPU_ARCH_X64)
+// The legacy x64 recompiler emits substantially more far code than NewRec. Keep the existing
+// 32 MiB near region while giving legacy blocks a 32 MiB far region.
+static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = 64 * 1024 * 1024;
+static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = 32 * 1024 * 1024;
+static constexpr u32 RECOMPILER_CODE_CACHE_ALLOCATION_SIZE = LEGACY_RECOMPILER_CODE_CACHE_SIZE;
+#else
+static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = RECOMPILER_CODE_CACHE_SIZE;
+static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = RECOMPILER_FAR_CODE_CACHE_SIZE;
+static constexpr u32 RECOMPILER_CODE_CACHE_ALLOCATION_SIZE = RECOMPILER_CODE_CACHE_SIZE;
+#endif
+
 // On Linux ARM32/ARM64, we use a dedicated section in the ELF for storing code.
 // This is because without ASLR, or on certain ASLR offsets, the sbrk() heap ends up immediately following the text/data
 // sections, which means there isn't a large enough gap to fit within range on ARM32.
@@ -146,7 +158,7 @@ static constexpr u32 RECOMPILER_FAR_CODE_CACHE_SIZE = 16 * 1024 * 1024;
 #define USE_CODE_BUFFER_SECTION 1
 #ifdef __clang__
 #pragma clang section bss = ".jitstorage"
-__attribute__((aligned(HOST_PAGE_SIZE))) static u8 s_code_buffer_ptr[RECOMPILER_CODE_CACHE_SIZE];
+__attribute__((aligned(HOST_PAGE_SIZE))) static u8 s_code_buffer_ptr[RECOMPILER_CODE_CACHE_ALLOCATION_SIZE];
 #pragma clang section bss = ""
 #endif
 #else
@@ -188,9 +200,9 @@ bool CPU::CodeCache::ProcessStartup(Error* error)
            static_cast<void*>(s_code_buffer_ptr), std::abs(static_cast<ptrdiff_t>(s_code_buffer_ptr - module_base)),
            (std::abs(static_cast<ptrdiff_t>(s_code_buffer_ptr - module_base)) + (1024 * 1024 - 1)) / (1024 * 1024));
   const bool code_buffer_allocated =
-    MemMap::MemProtect(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_SIZE, PageProtect::ReadWriteExecute);
+    MemMap::MemProtect(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_ALLOCATION_SIZE, PageProtect::ReadWriteExecute);
 #else
-  s_code_buffer_ptr = static_cast<u8*>(MemMap::AllocateJITMemory(RECOMPILER_CODE_CACHE_SIZE));
+  s_code_buffer_ptr = static_cast<u8*>(MemMap::AllocateJITMemory(RECOMPILER_CODE_CACHE_ALLOCATION_SIZE));
   const bool code_buffer_allocated = (s_code_buffer_ptr != nullptr);
 #endif
   if (!code_buffer_allocated) [[unlikely]]
@@ -213,7 +225,7 @@ void CPU::CodeCache::ProcessShutdown()
   DeallocateLUTs();
 
 #ifndef USE_CODE_BUFFER_SECTION
-  MemMap::ReleaseJITMemory(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_SIZE);
+  MemMap::ReleaseJITMemory(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_ALLOCATION_SIZE);
 #endif
 }
 
@@ -1487,14 +1499,19 @@ void CPU::CodeCache::ResetCodeBuffer()
 {
   s_code_ptr = static_cast<u8*>(s_code_buffer_ptr);
   s_free_code_ptr = s_code_ptr;
-  s_code_size = RECOMPILER_CODE_CACHE_SIZE - RECOMPILER_FAR_CODE_CACHE_SIZE;
+
+  const bool legacy_recompiler = (g_settings.cpu_execution_mode == CPUExecutionMode::Recompiler);
+  const u32 code_capacity = legacy_recompiler ? LEGACY_RECOMPILER_CODE_CACHE_SIZE : RECOMPILER_CODE_CACHE_SIZE;
+  const u32 far_code_capacity =
+    legacy_recompiler ? LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE : RECOMPILER_FAR_CODE_CACHE_SIZE;
+  s_code_size = code_capacity - far_code_capacity;
   s_code_used = 0;
 
   // Use half the far code size when using newrec and memory exceptions aren't enabled. It's only used for backpatching.
   const u32 far_code_size =
     (g_settings.cpu_execution_mode == CPUExecutionMode::NewRec && !g_settings.cpu_recompiler_memory_exceptions) ?
-      (RECOMPILER_FAR_CODE_CACHE_SIZE / 2) :
-      RECOMPILER_FAR_CODE_CACHE_SIZE;
+      (far_code_capacity / 2) :
+      far_code_capacity;
   s_far_code_size = far_code_size;
   s_far_code_ptr = (far_code_size > 0) ? (static_cast<u8*>(s_code_ptr) + s_code_size) : nullptr;
   s_free_far_code_ptr = s_far_code_ptr;
@@ -1502,8 +1519,8 @@ void CPU::CodeCache::ResetCodeBuffer()
 
   MemMap::BeginCodeWrite();
 
-  std::memset(s_code_ptr, 0, RECOMPILER_CODE_CACHE_SIZE);
-  MemMap::FlushInstructionCache(s_code_ptr, RECOMPILER_CODE_CACHE_SIZE);
+  std::memset(s_code_ptr, 0, code_capacity);
+  MemMap::FlushInstructionCache(s_code_ptr, code_capacity);
 
   MemMap::EndCodeWrite();
 }
