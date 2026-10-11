@@ -370,6 +370,7 @@ struct RuntimeState
   u16 acclaim_rax_host_latch = 0xffff;
   u8 security_select = 0;
   u8 coin = 0;
+  u16 zn2_spu_hack = 0;
   std::string persistence_directory;
   std::string at28_path;
   bool at28_dirty = false;
@@ -5912,13 +5913,14 @@ u32 ReadEXP3(u32 width, u32 offset)
   {
     return 0;
   }
-  // COH-3002C BIOS/game software probes 0x1FA60000. The MAME/MiSTer bit-3 toggle
-  // is not required by validated software, so retain the observed-safe zero read until
-  // the underlying hardware source is identified.
+  // COH-3002C software observes a bit-3 transition at this 16-bit register.
+  // MAME models the value as toggling on every read; MiSTer independently found
+  // ZN-2 software can stall when this register is held at a constant zero.
   if (s_runtime->board_type == BoardType::CapcomZN2 &&
       offset >= ZN2_UNKNOWN_1FA60000_BASE && offset <= ZN2_UNKNOWN_1FA60000_END)
   {
-    return 0;
+    s_runtime->zn2_spu_hack ^= UINT16_C(0x0008);
+    return ReadHalfwordPortWindow(s_runtime->zn2_spu_hack, width, offset - ZN2_UNKNOWN_1FA60000_BASE);
   }
 
   if (offset == BOARD_CONFIG)
