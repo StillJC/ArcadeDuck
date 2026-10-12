@@ -1091,10 +1091,10 @@ controlLayouts:
         displayName: "Button 2 — Secondary / ranged attack"
         kind: "button"
       - key: "Button3"
-        displayName: "Button 3 — Guard"
+        displayName: "Button 3 — Jump"
         kind: "button"
       - key: "Button4"
-        displayName: "Button 4 — Jump"
+        displayName: "Button 4 — Guard"
         kind: "button"
 
   tgmj:
