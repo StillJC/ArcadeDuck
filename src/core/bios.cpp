@@ -336,7 +336,7 @@ std::optional<BIOS::Image> BIOS::LoadKonamiGVImageFromDirectory(const char* dire
 
       image.hash = MD5Digest::HashData(image.data);
       image.info = nullptr;
-      INFO_LOG("Loaded validated Konami GV BIOS member '{}' from '{}'.", s_konami_gv_member_name, archive_path);
+      INFO_LOG("Loaded Konami GV BIOS member '{}' from '{}'.", s_konami_gv_member_name, archive_path);
       return image;
     }
 
@@ -447,7 +447,7 @@ std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(const char* archiv
 
       image.hash = MD5Digest::HashData(image.data);
       image.info = nullptr;
-      INFO_LOG("Loaded validated Konami GQ BIOS member '{}' from '{}'.", s_konami_gq_member_name, archive_path);
+      INFO_LOG("Loaded Konami GQ BIOS member '{}' from '{}'.", s_konami_gq_member_name, archive_path);
       return image;
     }
 

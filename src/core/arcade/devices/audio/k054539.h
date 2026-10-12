@@ -60,8 +60,8 @@ public:
   // native 48 kHz frame.
   void SetAuxInput(s32 word_a, s32 word_b);
 
-  // Separate AXDA latch for the isolated Phase-3L17 shadow-TMS loop.
-  // It never participates in the audible/provisional board path.
+  // Separate AXDA latch for the isolated shadow-TMS loop.
+  // It never participates in the audible board path.
   void SetGQShadowAuxInput(s32 word_a, s32 word_b);
 
   // Separate AXDA latch for the optional RVVOL-pair diagnostic loop.
@@ -69,24 +69,14 @@ public:
   void SetGQRVVAuxInput(s32 word_a, s32 word_b);
 
   // aux_send_* exposes the pre-AXDA stereo mix used as the GQ DSP send.
-  // gq_source_slots exposes the twelve silicon mixer inputs in hardware order:
-  // MUXH A/B, MUXF_REG for channels 0-7, AXDA A/B. The decoded PCM sample
-  // is not MUXF_REG and remains available separately through RawChannelFrame.
-  // gq_muxf_paths exposes the exact odd-control source selected for each
-  // channel. gq_muxf_shadow exposes the reconstructed MUXF_REG word when
-  // gq_muxf_shadow_valid is set. The qualified set includes the zero-MULA
-  // DLAT_A path plus the exact DLAT_B case where the even MULA byte is zero.
-  // The AXDT shadow frames expose the
-  // exact per-channel REGEE/REGEF contribution and the ROMB addresses used by
-  // those output events. gq_axdt_channel_mix applies the reconstructed
-  // active channel-slot updates in hardware slot order (channels 0-7 ==
-  // slots 2-9) with exact 16-bit wrap. gq_axdt_full_mix extends that shadow
-  // through all twelve slots: previous REGEE/REGEF feedback at slots 0/1,
-  // every channel MUXF source including inactive feedback tails at slots 2-9,
-  // and AXDA A/B at slots 10/11. These optional shadows are evaluated only
-  // when requested by a diagnostic caller and never replace the audible/DSP-send
-  // path. A validity flag is clear rather than guessing whenever a required
-  // source is not reconstructed.
+  // gq_source_slots exposes the twelve mixer inputs in hardware order:
+  // MUXH A/B, channel MUXF_REG sources, and AXDA A/B.
+  // gq_muxf_paths and gq_muxf_shadow expose the selected MUXF source and
+  // reconstructed register value when valid. The AXDT shadow outputs expose
+  // reconstructed REGEE/REGEF contributions and ROMB addresses, while the
+  // full mix extends this across all twelve slots with 16-bit wrap.
+  // These shadows are diagnostic-only; unresolved sources clear validity
+  // instead of being approximated.
   void GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output = nullptr,
                      s32* aux_send_left = nullptr, s32* aux_send_right = nullptr,
                      RawChannelFrame* raw_channel_output = nullptr,
@@ -156,7 +146,7 @@ private:
   std::array<s32, 2> m_gq_rvv_aux_input = {};
   // CPU access to 0x000-0x1FF reaches the same 0x100-byte internal RAM because
   // K054539 A8 is not decoded. Keep an alias-resolved GQ shadow for the
-  // special mixer parameter words without changing the established PCM path.
+  // special mixer parameter words without changing the PCM path.
   std::array<u8, 0x100> m_gq_internal_ram_cpu_shadow = {};
   // Full twelve-slot REGEE/REGEF shadow output from the previous native frame.
   // REGEEB/REGEFB latch these words at the final-output load edge and MUXH
@@ -167,13 +157,13 @@ private:
   std::array<u16, 2> m_gq_axdt_closed_loop_feedback = {};
   bool m_gq_axdt_closed_loop_feedback_valid = true;
   // Independent previous-frame feedback for the optional RVVOL-pair
-  // diagnostic. Keeping it separate prevents diagnostic state from contaminating
-  // either the established shadow or audible path.
+  // diagnostic. Separate feedback prevents diagnostic state from affecting
+  // the primary shadow or audible path.
   std::array<u16, 2> m_gq_axdt_rvv_loop_feedback = {};
   bool m_gq_axdt_rvv_loop_feedback_valid = true;
   // Independent previous-frame feedback for the optional signed-MULB
-  // diagnostic. This isolates multiplier signedness from the established
-  // unsigned shadow and from the audible DSP path.
+  // diagnostic. This isolates multiplier signedness from the primary
+  // unsigned shadow and audible DSP path.
   std::array<u16, 2> m_gq_axdt_signed_feedback = {};
   bool m_gq_axdt_signed_feedback_valid = true;
   // Physical REGEA-F state is 16-bit. Keep raw words here and sign-extend only

@@ -310,9 +310,9 @@ static void BuildIdentifyData()
 
 static TickCount GetIntersectorDelayTicks()
 {
-  // ATA READ SECTORS drops DRQ/DMARQ between sector data phases. MAME's
-  // ATA mass-storage model uses a 400 ns sequential-sector gap; at the PSX
-  // clock this is only a handful of cycles, but the scheduler boundary is
+  // ATA READ SECTORS drops DRQ/DMARQ between sector data phases. Use a
+  // 400 ns sequential-sector gap; at the PSX clock this is only a handful of
+  // cycles, but the scheduler boundary is
   // essential because it lets the just-completed DMA5 transfer retire before
   // the next DMARQ assertion.
   constexpr u64 INTERSECTOR_NANOSECONDS = 400;

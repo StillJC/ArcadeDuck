@@ -1784,7 +1784,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     }
   }
 
-  // Arcade boards supply and install their own validated BIOS after Bus initialization.
+  // Arcade boards supply and install their own BIOS after Bus initialization.
   if (parameters.boot_classification == SystemBootClassification::Standard && !SetBootMode(boot_mode, error))
   {
     s_state = State::Shutdown;

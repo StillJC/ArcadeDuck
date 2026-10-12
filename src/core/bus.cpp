@@ -1287,14 +1287,14 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     if (offset < 0x20)
     {
       const u32 value = KonamiGQScsi::ReadRegister(width, offset);
-      const KonamiGQScsi::MigrationStopReason stop_reason = KonamiGQScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGQScsi::MigrationStopReason::None)
+      const KonamiGQScsi::DeferredStopReason stop_reason = KonamiGQScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGQScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GQ NCR53CF96 encountered an unimplemented controller command 0x{:02X}.",
                                 KonamiGQScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GQ SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGQScsi::GetTargetCommandOpcode());
         else
@@ -1332,16 +1332,14 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     if (offset < 0x20)
     {
       const u32 value = KonamiGVScsi::ReadRegister(width, offset);
-      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
+      const KonamiGVScsi::DeferredStopReason stop_reason = KonamiGVScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGVScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
-          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGVScsi::GetTargetCommandOpcode());
         else
@@ -1461,14 +1459,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     if (offset < 0x20)
     {
       KonamiGQScsi::WriteRegister(width, offset, value, CPU::g_state.pc);
-      const KonamiGQScsi::MigrationStopReason stop_reason = KonamiGQScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGQScsi::MigrationStopReason::None)
+      const KonamiGQScsi::DeferredStopReason stop_reason = KonamiGQScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGQScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GQ NCR53CF96 encountered an unimplemented controller command 0x{:02X}.",
                                 KonamiGQScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GQ SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGQScsi::GetTargetCommandOpcode());
         else
@@ -1523,16 +1521,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     if (offset < 0x20)
     {
       KonamiGVScsi::WriteRegister(width, offset, value, CPU::g_state.pc);
-      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
+      const KonamiGVScsi::DeferredStopReason stop_reason = KonamiGVScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGVScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
-          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGVScsi::GetTargetCommandOpcode());
         else
@@ -1874,7 +1870,7 @@ void Bus::HWHandlers::MemCtrl2Write(PhysicalMemoryAddress address, u32 value)
 
   DEV_LOG("RAM size register set to 0x{:08X}", s_RAM_SIZE.bits);
 
-  // MAME refreshes the RAM map when any byte in bits 8-15 changes.
+  // Refresh the RAM map when any byte in bits 8-15 changes.
   if (((s_RAM_SIZE.bits ^ old_ram_size_reg.bits) & UINT32_C(0x0000FF00)) != 0)
     UpdateMappedRAMSize();
 }

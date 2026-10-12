@@ -85,10 +85,10 @@ std::optional<Image> LoadImageFromFile(const char* filename, Error* error);
 /// Loads and validates the Konami GV BIOS directly from konamigv.zip in a BIOS directory.
 std::optional<Image> LoadKonamiGVImageFromDirectory(const char* directory, Error* error);
 
-/// Loads and validates the Konami GQ BIOS directly from a recognized MAME set archive.
+/// Loads the Konami GQ BIOS directly from a recognized MAME set archive and validates its contents.
 std::optional<Image> LoadKonamiGQImageFromArchive(const char* archive_path, Error* error);
 
-/// Returns true when a validated Konami GV BIOS archive exists in a BIOS directory.
+/// Returns true when a valid Konami GV BIOS archive exists in a BIOS directory.
 bool HasValidKonamiGVBIOS(const char* directory);
 
 bool IsValidBIOSForRegion(ConsoleRegion console_region, ConsoleRegion bios_region);

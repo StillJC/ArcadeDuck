@@ -89,7 +89,7 @@ static constexpr u32 BACKGROUND_CONTROLLER_POLLING_INTERVAL = 100;
 /// Poll at half the vsync rate for FSUI to reduce the chance of getting a press+release in the same frame.
 static constexpr u32 FULLSCREEN_UI_CONTROLLER_POLLING_INTERVAL = 8;
 
-/// Poll at 1ms when running GDB server. We can get rid of this once we move networking to its own thread.
+/// Poll at 1 ms while the GDB server uses the Qt host polling path.
 static constexpr u32 GDB_SERVER_POLLING_INTERVAL = 1;
 
 //////////////////////////////////////////////////////////////////////////
@@ -2559,7 +2559,7 @@ int main(int argc, char* argv[])
   if (!QtHost::EarlyProcessStartup())
     return EXIT_FAILURE;
 
-  // Remove any previous-version remanants.
+  // Remove any previous-version remnants.
   if (s_cleanup_after_update)
     AutoUpdaterDialog::cleanupAfterUpdate();
 

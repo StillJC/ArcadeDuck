@@ -120,43 +120,43 @@
     <ClCompile Include="arcade\systems\konami\gq\konami_gq_tms57002_ops.cpp">
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-    <ClCompile Include="m37710\m37710.cpp">
+    <ClCompile Include="arcade\third_party\m37710\m37710.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
       <TreatWarningAsError>false</TreatWarningAsError>
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-    <ClCompile Include="m37710\m37710o0.cpp">
+    <ClCompile Include="arcade\third_party\m37710\m37710o0.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
       <TreatWarningAsError>false</TreatWarningAsError>
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-    <ClCompile Include="m37710\m37710o1.cpp">
+    <ClCompile Include="arcade\third_party\m37710\m37710o1.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
       <TreatWarningAsError>false</TreatWarningAsError>
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-    <ClCompile Include="m37710\m37710o2.cpp">
+    <ClCompile Include="arcade\third_party\m37710\m37710o2.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
       <TreatWarningAsError>false</TreatWarningAsError>
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-    <ClCompile Include="m37710\m37710o3.cpp">
+    <ClCompile Include="arcade\third_party\m37710\m37710o3.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
       <TreatWarningAsError>false</TreatWarningAsError>
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
-        <ClCompile Include="musashi\m68k_bus.cpp" />
-    <ClCompile Include="musashi\m68kcpu.c">
+        <ClCompile Include="arcade\third_party\musashi\m68k_bus.cpp" />
+    <ClCompile Include="arcade\third_party\musashi\m68kcpu.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
@@ -166,7 +166,7 @@
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4101;4189;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
           <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-variable %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
-    <ClCompile Include="musashi\m68kops.c">
+    <ClCompile Include="arcade\third_party\musashi\m68kops.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
       <ForcedIncludeFiles></ForcedIncludeFiles>
@@ -290,15 +290,15 @@
     <ClInclude Include="arcade\systems\konami\gq\konami_gq_sound_cpu.h" />
     <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.h" />
     <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.hxx" />
-    <ClInclude Include="m37710\m37710.h" />
-    <ClInclude Include="m37710\m37710cm.h" />
-    <ClInclude Include="m37710\m37710il.h" />
-    <ClInclude Include="m37710\m37710op.h" />
-        <ClInclude Include="musashi\m68k_bus.h" />
-    <ClInclude Include="musashi\m68k.h" />
-    <ClInclude Include="musashi\m68kconf.h" />
-    <ClInclude Include="musashi\m68kcpu.h" />
-    <ClInclude Include="musashi\m68kops.h" />
+    <ClInclude Include="arcade\third_party\m37710\m37710.h" />
+    <ClInclude Include="arcade\third_party\m37710\m37710cm.h" />
+    <ClInclude Include="arcade\third_party\m37710\m37710il.h" />
+    <ClInclude Include="arcade\third_party\m37710\m37710op.h" />
+        <ClInclude Include="arcade\third_party\musashi\m68k_bus.h" />
+    <ClInclude Include="arcade\third_party\musashi\m68k.h" />
+    <ClInclude Include="arcade\third_party\musashi\m68kconf.h" />
+    <ClInclude Include="arcade\third_party\musashi\m68kcpu.h" />
+    <ClInclude Include="arcade\third_party\musashi\m68kops.h" />
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
     <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />

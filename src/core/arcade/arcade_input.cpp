@@ -287,7 +287,7 @@ void OnDigital(u32 port_index, Control control, s32 value)
       port.direction_order[static_cast<u32>(control)] = ++port.direction_sequence;
     if (port.type == Arcade::ArcadeControllerType::Tokimeki)
     {
-      // Legacy GSR binding names control the combined PoC excitement level for profile compatibility.
+      // Legacy GSR binding names control the combined excitement level for profile compatibility.
       if (control == Control::GSRIncrease)
         Konami::AdjustGVTokimekiExcitement(+1);
       if (control == Control::GSRDecrease)

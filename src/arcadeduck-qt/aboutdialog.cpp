@@ -287,7 +287,7 @@ void AboutDialog::showThirdPartyNotices(QWidget* parent)
   }
   else
   {
-    tb->setText(tr("Missing thirdparty.html file. You should request it from where-ever you obtained ArcadeDuck."));
+    tb->setText(tr("Missing thirdparty.html file. You should request it from wherever you obtained ArcadeDuck."));
   }
   layout->addWidget(tb, 1);
 

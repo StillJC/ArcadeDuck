@@ -68,7 +68,7 @@ public:
   /// Applies board-specific configuration which must precede shared GPU/system construction.
   virtual void PrepareSharedHardware() const = 0;
 
-  /// Installs validated firmware/content and initializes board devices after shared initialization.
+  /// Installs board firmware/content and initializes board devices after shared initialization.
   virtual bool Initialize(const BootContext& context, Error* error) = 0;
 
   /// Returns an installed BIOS whose identity should be published by System, when applicable.

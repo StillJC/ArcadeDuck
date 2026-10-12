@@ -153,23 +153,23 @@ add_library(core
   arcade/systems/konami/gq/konami_gq_tms57002.h
   arcade/systems/konami/gq/konami_gq_tms57002.hxx
   arcade/systems/konami/gq/konami_gq_tms57002_ops.cpp
-  m37710/m37710.cpp
-  m37710/m37710.h
-  m37710/m37710cm.h
-  m37710/m37710il.h
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
-  m37710/m37710op.h
-  musashi/m68k.h
-  musashi/m68k_bus.cpp
-  musashi/m68k_bus.h
-  musashi/m68kconf.h
-  musashi/m68kcpu.c
-  musashi/m68kcpu.h
-  musashi/m68kops.c
-  musashi/m68kops.h
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710.h
+  arcade/third_party/m37710/m37710cm.h
+  arcade/third_party/m37710/m37710il.h
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710op.h
+  arcade/third_party/musashi/m68k.h
+  arcade/third_party/musashi/m68k_bus.cpp
+  arcade/third_party/musashi/m68k_bus.h
+  arcade/third_party/musashi/m68kconf.h
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kcpu.h
+  arcade/third_party/musashi/m68kops.c
+  arcade/third_party/musashi/m68kops.h
   arcade/systems/konami/gv/konami_gv_cdrom.cpp
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp
@@ -219,14 +219,14 @@ set(NEWREC_SOURCES
 target_precompile_headers(core PRIVATE "pch.h")
 set_property(TARGET core PROPERTY C_STANDARD 11)
 set_source_files_properties(
-  m37710/m37710.cpp
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
   arcade/third_party/adsp2181/adsp2181_core.c
-  musashi/m68kcpu.c
-  musashi/m68kops.c
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kops.c
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 # ArcadeDuck reviewed imported/adapted core warning isolation (MSVC only).
@@ -261,17 +261,17 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   )
 
   set_source_files_properties(
-    m37710/m37710.cpp
-    m37710/m37710o0.cpp
-    m37710/m37710o1.cpp
-    m37710/m37710o2.cpp
-    m37710/m37710o3.cpp
+    arcade/third_party/m37710/m37710.cpp
+    arcade/third_party/m37710/m37710o0.cpp
+    arcade/third_party/m37710/m37710o1.cpp
+    arcade/third_party/m37710/m37710o2.cpp
+    arcade/third_party/m37710/m37710o3.cpp
     PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244"
   )
 
   set_source_files_properties(
-    musashi/m68kcpu.c
-    musashi/m68kops.c
+    arcade/third_party/musashi/m68kcpu.c
+    arcade/third_party/musashi/m68kops.c
     PROPERTIES COMPILE_OPTIONS "/wd4101;/wd4189;/wd4244;/wd4245;/wd4702"
   )
 endif()

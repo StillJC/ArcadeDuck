@@ -139,7 +139,6 @@ struct GQRuntimeState
   std::array<float, 3> lightgun_normalized_x = {{0.5f, 0.5f, 0.5f}};
   std::array<float, 3> lightgun_normalized_y = {{0.5f, 0.5f, 0.5f}};
   bool test_pressed = false;
-  bool input_access_logged = false;
   bool bios_installed = false;
   bool active = false;
 };
@@ -236,9 +235,6 @@ struct GVRuntimeState
   u32 tokimeki_printer_current_image = 0;
   std::vector<u32> tokimeki_printer_page;
   bool tokimeki_printer_save_pending = false;
-  bool eeprom_access_logged = false;
-  bool sharp_flash_access_logged = false;
-  bool fujitsu_flash_access_logged = false;
   bool input_access_logged = false;
   bool watchdog_access_logged = false;
   bool game_specific_access_logged = false;
@@ -385,7 +381,7 @@ static u16 SwapEEPROMWord16(u16 value)
   return static_cast<u16>((value >> 8) | (value << 8));
 }
 
-static void ConvertEEPROMDumpToMAMEOrder(std::array<u8, 0x80>& eeprom)
+static void ConvertEEPROMDumpToStorageOrder(std::array<u8, 0x80>& eeprom)
 {
   for (size_t i = 0; i < eeprom.size(); i += 2)
     std::swap(eeprom[i], eeprom[i + 1]);
@@ -401,12 +397,12 @@ static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
   {
     runtime.eeprom = runtime.default_eeprom;
 
-    // The *.25c member is a raw ROM dump. The working PoC converts every
-    // 16-bit word once when seeding NVRAM so the persisted file uses MAME's
-    // 93C46 word order.
-    ConvertEEPROMDumpToMAMEOrder(runtime.eeprom);
+    // The *.25c member is a raw ROM dump. Convert every 16-bit word once
+    // when seeding NVRAM so the persisted file uses the board model's
+    // 93C46 storage order.
+    ConvertEEPROMDumpToStorageOrder(runtime.eeprom);
     persistence_changed = true;
-    VERBOSE_LOG("KonamiGV.EEPROM converted_default_to_mame_order canonical_set='{}'", runtime.set_name);
+    VERBOSE_LOG("KonamiGV.EEPROM converted_default_to_storage_order canonical_set='{}'", runtime.set_name);
   }
   else
   {
@@ -424,8 +420,8 @@ static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
 
   if (IsSet(runtime, "kdeadeye") && IsSharpFlashFilled(runtime, GV_SHARP_FLASH_ERASED_VALUE))
   {
-    // Exact working-PoC first-boot state. Dead Eye enters its real Sharp-flash
-    // initializer when persisted EEPROM bytes 2/3 are 47 56. The game restores
+    // Dead Eye enters its Sharp-flash initializer when persisted EEPROM bytes
+    // 2/3 are 47 56. The game restores
     // the normal 56 47 value after flash programming completes.
     if (runtime.eeprom[2] == 0x56 && runtime.eeprom[3] == 0x47)
     {
@@ -588,8 +584,8 @@ static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
 
   std::memcpy(runtime.sharp_flash.data(), data->data(), runtime.sharp_flash.size());
 
-  // Preserve initialized flash, but normalize the all-zero placeholder produced
-  // by early PoC builds to the erased state used by the actual Sharp device.
+  // Preserve initialized flash, but normalize the all-zero placeholder written
+  // by older builds to the erased state used by the Sharp device.
   if (IsSharpFlashFilled(runtime, 0x00))
   {
     std::fill(runtime.sharp_flash.begin(), runtime.sharp_flash.end(), GV_SHARP_FLASH_ERASED_VALUE);
@@ -1224,8 +1220,6 @@ static void WriteFujitsuFlashImpl(GVRuntimeState& runtime, u32 size, u32 offset,
   }
 }
 
-// Source authority: simpsons-bowling-duckstation dc6720ae7 and MAME's konamigv.cpp.
-
 static bool IsSet(const GVRuntimeState& runtime, std::string_view set_name)
 {
   return std::string_view(runtime.set_name) == set_name;
@@ -1275,7 +1269,7 @@ static void CopyTokimekiPrinterCaptureToPage(GVRuntimeState& runtime)
     return;
   }
 
-  // Match the PoC/MAME crop and 4x4 sticker-sheet geometry exactly.
+  // Crop the captured frame and arrange it as a 4x4 sticker sheet.
   constexpr u32 crop_left = 1;
   constexpr u32 crop_top = 40;
   constexpr u32 crop_right = 19;
@@ -1535,7 +1529,6 @@ static void ResetGQCabinetIO(GQRuntimeState& runtime)
   runtime.gq_output_registers.fill(0);
   runtime.gq_output_register_valid.fill(false);
   runtime.test_pressed = false;
-  runtime.input_access_logged = false;
 
   std::lock_guard<std::mutex> lock(s_lightgun_mutex);
   runtime.lightgun_normalized_x = {{0.5f, 0.5f, 0.5f}};
@@ -2032,9 +2025,6 @@ void ResetGV()
     ResetFujitsuFlash(*s_gv_runtime);
     ResetCabinetIO(*s_gv_runtime);
     KonamiGVScsi::Reset();
-    s_gv_runtime->eeprom_access_logged = false;
-    s_gv_runtime->sharp_flash_access_logged = false;
-    s_gv_runtime->fujitsu_flash_access_logged = false;
     s_gv_runtime->input_access_logged = false;
     s_gv_runtime->watchdog_access_logged = false;
     s_gv_runtime->game_specific_access_logged = false;
@@ -2204,12 +2194,6 @@ void WriteEEPROMControl(u32 value)
     return;
 
   GVRuntimeState& runtime = *s_gv_runtime;
-  if (!runtime.eeprom_access_logged)
-  {
-    DEV_LOG("KonamiGV.EXP1 first_eeprom_access canonical_set='{}'", runtime.set_name);
-    runtime.eeprom_access_logged = true;
-  }
-
   const bool di = (value & 0x01) != 0;
   const bool cs = (value & 0x02) != 0;
   const bool clk = (value & 0x04) != 0;
@@ -2233,7 +2217,7 @@ void WriteEEPROMControl(u32 value)
   if (!runtime.eeprom_cs)
     ResetEEPROMProtocol(runtime);
 
-  // Rising edge clocks data, matching the working PoC 93C46 path.
+  // Rising edge clocks data on the 93C46 path.
   if (!runtime.eeprom_clk && clk)
   {
     if (runtime.eeprom_read_bits > 0)
@@ -2422,12 +2406,11 @@ void WriteGQCabinetOutput(u32 size, u32 offset, u32 value)
 
   runtime.gq_output_registers[register_index] = current;
 
-  // 0x1F198000 bits 0..2 are the three Start button lamps. This mapping was
-  // validated directly against Crypt Killer's cabinet/service behavior.
+  // 0x1F198000 bits 0..2 are the three Start button lamps.
   //
   // Other bits in this register, and the 0x1F1A0000 register as a whole,
-  // remain latched above for hardware fidelity and future reverse engineering,
-  // but are intentionally not published until their physical function is proven.
+  // remain latched above to preserve register behavior, but remain unpublished
+  // until their physical function is known.
   if (register_index == 0)
   {
     static constexpr const char* START_LAMP_NAMES[3] = {"led0", "led1", "led2"};
@@ -2452,12 +2435,6 @@ u32 ReadGQInput(u32 size, u32 offset)
     return 0xffffffff;
 
   GQRuntimeState& runtime = *s_gq_runtime;
-  if (!runtime.input_access_logged)
-  {
-    DEV_LOG("KonamiGQ.EXP1 first_input_access canonical_set='{}'", runtime.set_name);
-    runtime.input_access_logged = true;
-  }
-
   u32 value;
   const u32 register_offset = offset & ~3U;
   switch (register_offset)
@@ -2532,11 +2509,6 @@ u32 ReadGVPlayer1Status(u32 size, u32 offset)
   if (!s_gv_runtime)
     return 0xffffffff;
   GVRuntimeState& runtime = *s_gv_runtime;
-  if (!runtime.eeprom_access_logged)
-  {
-    DEV_LOG("KonamiGV.EXP1 first_eeprom_access canonical_set='{}'", runtime.set_name);
-    runtime.eeprom_access_logged = true;
-  }
   u32 value = runtime.buttons[0];
   if (runtime.btchamp_first_boot_state == BtChampFirstBootState::HoldingTest)
     value &= ~(1U << 12);
@@ -2688,7 +2660,7 @@ void WriteGVSpecialIO(u32 size, u32 offset, u32 value)
     return;
   }
 
-  // Dead Eye DUART/control and lightgun writes are valid no-ops in the PoC.
+  // Dead Eye DUART/control and lightgun writes are currently treated as no-ops.
   if (IsSet(runtime, "kdeadeye") && offset >= 0x00680000 && offset <= 0x006800e3)
     return;
 }
@@ -2955,11 +2927,6 @@ void WriteGVEEPROM(u32 size, u32 offset, u32 value)
 
 u32 ReadSharpFlash(u32 size, u32 offset)
 {
-  if (s_gv_runtime && s_gv_runtime->sharp_flash_active && !s_gv_runtime->sharp_flash_access_logged)
-  {
-    DEV_LOG("KonamiGV.EXP1 first_sharp_flash_access canonical_set='{}'", s_gv_runtime->set_name);
-    s_gv_runtime->sharp_flash_access_logged = true;
-  }
   return s_gv_runtime ? ReadSharpFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
 }
 
@@ -2967,22 +2934,12 @@ void WriteSharpFlash(u32 size, u32 offset, u32 value)
 {
   if (s_gv_runtime)
   {
-    if (s_gv_runtime->sharp_flash_active && !s_gv_runtime->sharp_flash_access_logged)
-    {
-      DEV_LOG("KonamiGV.EXP1 first_sharp_flash_access canonical_set='{}'", s_gv_runtime->set_name);
-      s_gv_runtime->sharp_flash_access_logged = true;
-    }
     WriteSharpFlashImpl(*s_gv_runtime, size, offset, value);
   }
 }
 
 u32 ReadFujitsuFlash(u32 size, u32 offset)
 {
-  if (s_gv_runtime && s_gv_runtime->fujitsu_flash_active && !s_gv_runtime->fujitsu_flash_access_logged)
-  {
-    DEV_LOG("KonamiGV.EXP1 first_fujitsu_flash_access canonical_set='{}'", s_gv_runtime->set_name);
-    s_gv_runtime->fujitsu_flash_access_logged = true;
-  }
   return s_gv_runtime ? ReadFujitsuFlashImpl(*s_gv_runtime, size, offset) : 0xffffffff;
 }
 
@@ -2990,11 +2947,6 @@ void WriteFujitsuFlash(u32 size, u32 offset, u32 value)
 {
   if (s_gv_runtime)
   {
-    if (s_gv_runtime->fujitsu_flash_active && !s_gv_runtime->fujitsu_flash_access_logged)
-    {
-      DEV_LOG("KonamiGV.EXP1 first_fujitsu_flash_access canonical_set='{}'", s_gv_runtime->set_name);
-      s_gv_runtime->fujitsu_flash_access_logged = true;
-    }
     WriteFujitsuFlashImpl(*s_gv_runtime, size, offset, value);
   }
 }
