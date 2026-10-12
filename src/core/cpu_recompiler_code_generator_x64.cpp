@@ -2143,6 +2143,20 @@ void CodeGenerator::EmitLoadGuestRAMFastmem(const Value& address, RegSize size, 
 void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const CodeCache::InstructionInfo& info,
                                                const Value& address, RegSize size, Value& result)
 {
+  // Scratchpad is not host-page mapped, so dynamic accesses use the slowmem thunk.
+  Xbyak::Label scratchpad_slowmem;
+  Xbyak::Label fastmem_done;
+  void* scratchpad_jump_pc = nullptr;
+  Value scratchpad_check;
+  if (!address.IsConstant())
+  {
+    scratchpad_check = m_register_cache.AllocateScratch(RegSize_32);
+    EmitCopyValue(scratchpad_check.GetHostRegister(), address);
+    m_emit->and_(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR_MASK);
+    m_emit->cmp(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR);
+    m_emit->je(scratchpad_slowmem);
+  }
+
   if (g_settings.cpu_fastmem_mode == CPUFastmemMode::LUT)
   {
     EmitCopyValue(RARG1, address);
@@ -2208,6 +2222,16 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
   const u32 host_code_size =
     static_cast<u32>(static_cast<ptrdiff_t>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc)));
 
+  if (!address.IsConstant())
+  {
+    m_emit->jmp(fastmem_done);
+    m_emit->L(scratchpad_slowmem);
+    scratchpad_jump_pc = GetCurrentNearCodePointer();
+    for (u32 i = 0; i < 5; i++)
+      m_emit->nop();
+    m_emit->L(fastmem_done);
+  }
+
   // generate slowmem fallback
   m_far_emitter.align(16);
   void* thunk_host_pc = GetCurrentFarCodePointer();
@@ -2228,6 +2252,9 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
 
   SwitchToNearCode();
   m_register_cache.UninhibitAllocation();
+
+  if (scratchpad_jump_pc)
+    CPU::CodeCache::EmitJump(scratchpad_jump_pc, thunk_host_pc, false);
 
   CPU::CodeCache::AddLoadStoreInfo(host_pc, host_code_size, info.pc, thunk_host_pc);
 }
@@ -2307,6 +2334,20 @@ void CodeGenerator::EmitLoadGuestMemorySlowmem(Instruction instruction, const Co
 void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const CodeCache::InstructionInfo& info,
                                                 const Value& address, RegSize size, const Value& value)
 {
+  // Scratchpad is not host-page mapped, so dynamic accesses use the slowmem thunk.
+  Xbyak::Label scratchpad_slowmem;
+  Xbyak::Label fastmem_done;
+  void* scratchpad_jump_pc = nullptr;
+  Value scratchpad_check;
+  if (!address.IsConstant())
+  {
+    scratchpad_check = m_register_cache.AllocateScratch(RegSize_32);
+    EmitCopyValue(scratchpad_check.GetHostRegister(), address);
+    m_emit->and_(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR_MASK);
+    m_emit->cmp(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR);
+    m_emit->je(scratchpad_slowmem);
+  }
+
   if (g_settings.cpu_fastmem_mode == CPUFastmemMode::LUT)
   {
     EmitCopyValue(RARG1, address);
@@ -2405,6 +2446,16 @@ void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const C
   const u32 host_code_size =
     static_cast<u32>(static_cast<ptrdiff_t>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc)));
 
+  if (!address.IsConstant())
+  {
+    m_emit->jmp(fastmem_done);
+    m_emit->L(scratchpad_slowmem);
+    scratchpad_jump_pc = GetCurrentNearCodePointer();
+    for (u32 i = 0; i < 5; i++)
+      m_emit->nop();
+    m_emit->L(fastmem_done);
+  }
+
   // generate slowmem fallback
   m_far_emitter.align();
   const void* host_thunk_pc = GetCurrentFarCodePointer();
@@ -2423,6 +2474,9 @@ void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const C
 
   SwitchToNearCode();
   m_register_cache.UninhibitAllocation();
+
+  if (scratchpad_jump_pc)
+    CPU::CodeCache::EmitJump(scratchpad_jump_pc, host_thunk_pc, false);
 
   CPU::CodeCache::AddLoadStoreInfo(host_pc, host_code_size, info.pc, host_thunk_pc);
 }
