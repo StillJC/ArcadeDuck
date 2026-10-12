@@ -40,6 +40,7 @@ Log_SetChannel(CPU::CodeCache);
 #include "cpu_newrec_compiler.h"
 #endif
 
+#include <bitset>
 #include <map>
 #include <unordered_set>
 #include <zlib.h>
@@ -59,6 +60,8 @@ static constexpr u32 RECOMPILE_COUNT_FOR_INTERPRETER_FALLBACK = 3;
 static constexpr u32 RECOMPILE_FRAMES_FOR_INTERPRETER_FALLBACK = 15;
 static constexpr u32 INVALIDATE_COUNT_FOR_MANUAL_PROTECTION = 4;
 static constexpr u32 INVALIDATE_FRAMES_FOR_MANUAL_PROTECTION = 60;
+static constexpr u32 COMPILED_PHYSICAL_CHUNK_SHIFT = 16;
+static constexpr u32 COMPILED_PHYSICAL_CHUNK_COUNT = 1u << (32 - COMPILED_PHYSICAL_CHUNK_SHIFT);
 
 static CodeLUT DecodeCodeLUTPointer(u32 slot, CodeLUT ptr);
 static CodeLUT EncodeCodeLUTPointer(u32 slot, CodeLUT ptr);
@@ -70,6 +73,8 @@ static void ResetCodeLUT();
 static void SetCodeLUT(u32 pc, const void* function);
 static void InvalidateBlock(Block* block, BlockState new_state);
 static void ClearBlocks();
+static void MarkBlockPhysicalChunks(const Block* block);
+static bool HasCompiledBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size);
 
 static Block* LookupBlock(u32 pc);
 static Block* CreateBlock(u32 pc, const BlockInstructionList& instructions, const BlockMetadata& metadata);
@@ -97,6 +102,7 @@ static std::unique_ptr<const void*[]> s_lut_code_pointers;
 static std::unique_ptr<Block*[]> s_lut_block_pointers;
 static PageProtectionArray s_page_protection = {};
 static std::vector<Block*> s_blocks;
+static std::bitset<COMPILED_PHYSICAL_CHUNK_COUNT> s_compiled_physical_chunks;
 
 // for compiling - reuse to avoid allocations
 static BlockInstructionList s_block_instructions;
@@ -140,10 +146,10 @@ static constexpr u32 RECOMPILER_FAR_CODE_CACHE_SIZE = 16 * 1024 * 1024;
 #endif
 
 #if defined(CPU_ARCH_X64)
-// The legacy x64 recompiler emits substantially more far code than NewRec. Keep the existing
-// 32 MiB near region while giving legacy blocks a 32 MiB far region.
-static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = 64 * 1024 * 1024;
-static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = 32 * 1024 * 1024;
+// The legacy x64 recompiler emits substantially more far code than NewRec. Give legacy blocks
+// a 40 MiB near region and a 56 MiB far region while leaving NewRec's cache sizing unchanged.
+static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = 96 * 1024 * 1024;
+static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = 56 * 1024 * 1024;
 static constexpr u32 RECOMPILER_CODE_CACHE_ALLOCATION_SIZE = LEGACY_RECOMPILER_CODE_CACHE_SIZE;
 #else
 static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = RECOMPILER_CODE_CACHE_SIZE;
@@ -491,6 +497,7 @@ CPU::CodeCache::Block* CPU::CodeCache::CreateBlock(u32 pc, const BlockInstructio
 
   block->pc = pc;
   block->size = size;
+  MarkBlockPhysicalChunks(block);
   block->host_code = nullptr;
   block->next_block_in_page = nullptr;
   block->num_exit_links = 0;
@@ -735,9 +742,35 @@ void CPU::CodeCache::InvalidateAllRAMBlocks()
   Bus::ClearRAMCodePageFlags();
 }
 
+void CPU::CodeCache::MarkBlockPhysicalChunks(const Block* block)
+{
+  const PhysicalMemoryAddress block_start = VirtualAddressToPhysical(block->pc);
+  const PhysicalMemoryAddress block_end = block_start + (block->size * sizeof(Instruction)) - 1;
+  const u32 first_chunk = block_start >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+  const u32 last_chunk = block_end >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+
+  for (u32 chunk = first_chunk; chunk <= last_chunk; chunk++)
+    s_compiled_physical_chunks.set(chunk);
+}
+
+bool CPU::CodeCache::HasCompiledBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size)
+{
+  const PhysicalMemoryAddress end_address = start_address + size - 1;
+  const u32 first_chunk = start_address >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+  const u32 last_chunk = end_address >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+
+  for (u32 chunk = first_chunk; chunk <= last_chunk; chunk++)
+  {
+    if (s_compiled_physical_chunks.test(chunk))
+      return true;
+  }
+
+  return false;
+}
+
 void CPU::CodeCache::InvalidateBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size)
 {
-  if (size == 0)
+  if (size == 0 || !HasCompiledBlocksInPhysicalRange(start_address, size))
     return;
 
   const PhysicalMemoryAddress end_address = start_address + size;
@@ -781,6 +814,7 @@ void CPU::CodeCache::ClearBlocks()
     Common::AlignedFree(block);
   }
   s_blocks.clear();
+  s_compiled_physical_chunks.reset();
 
   std::memset(s_lut_block_pointers.get(), 0, sizeof(Block*) * GetLUTSlotCount(false));
 }
