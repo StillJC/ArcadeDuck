@@ -942,16 +942,8 @@ void AudioStream::LowLatencyHandleUnderrun(u32 available_frames, u32 requested_f
   static constexpr float UNDERRUN_WINDOW_SECONDS = 8.0f;
   static constexpr u32 UNDERRUNS_TO_PROMOTE = 3;
 
-  // Deep underruns normally indicate a long host-side stall rather than a steady-state queue that is slightly
-  // too small. Only shallow underruns contribute to adaptive promotion.
-  if (requested_frames == 0 || available_frames < (requested_frames / 2u))
-  {
-    m_low_latency_underrun_window_start_time = 0;
-    m_low_latency_underruns_in_window = 0;
-    DEV_LOG("Low Latency transient stall ignored for promotion (available={} requested={} target={}).",
-            available_frames, requested_frames, LowLatencyGetEffectiveTargetFrames());
+  if (requested_frames == 0)
     return;
-  }
 
   const u64 now = Common::Timer::GetCurrentValue();
   if (m_low_latency_underrun_window_start_time == 0 ||
