@@ -374,10 +374,10 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   audio_output_volume = si.GetUIntValue("Audio", "OutputVolume", 100);
   audio_fast_forward_volume = si.GetUIntValue("Audio", "FastForwardVolume", 100);
   if (si.ContainsValue("Audio", "ArcadeGainAdjustmentDB"))
-    audio_arcade_gain_adjustment_db = std::clamp(si.GetIntValue("Audio", "ArcadeGainAdjustmentDB", 0), -6, 6);
+    audio_arcade_gain_adjustment_db = std::clamp(si.GetIntValue("Audio", "ArcadeGainAdjustmentDB", 0), -30, 12);
   else if (si.ContainsValue("Audio", "ArcadeCabinetGainDB"))
     audio_arcade_gain_adjustment_db =
-      std::clamp(si.GetIntValue("Audio", "ArcadeCabinetGainDB", 12) - 12, -6, 6);
+      std::clamp(si.GetIntValue("Audio", "ArcadeCabinetGainDB", 12) - 12, -30, 12);
   else
     audio_arcade_gain_adjustment_db = 0;
 

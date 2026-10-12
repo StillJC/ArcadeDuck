@@ -4531,7 +4531,7 @@ void FullscreenUI::DrawAudioSettingsPage()
     bsi, FSUI_CSTR("Arcade Gain Adjustment"),
     FSUI_CSTR("Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the "
               "normal level; use negative or positive trim for quieter or louder playback."),
-    "Audio", "ArcadeGainAdjustmentDB", 0, -6, 6, FSUI_CSTR("%d dB"));
+    "Audio", "ArcadeGainAdjustmentDB", 0, -30, 12, FSUI_CSTR("%d dB"));
   DrawToggleSetting(bsi, FSUI_CSTR("Mute All Sound"),
                     FSUI_CSTR("Prevents the emulator from producing any audible sound."), "Audio", "OutputMuted",
                     false);
