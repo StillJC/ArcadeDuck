@@ -574,8 +574,8 @@ void Bus::RecalculateMemoryTimings()
   TRACE_LOG("SPU Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.spu_delay_size.data_bus_16bit ? 16 : 8, g_spu_access_time[0] + 1, g_spu_access_time[1] + 1,
             g_spu_access_time[2] + 1);
-  const u32 exp1_bus_width = s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u;
-  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}", exp1_bus_width, g_exp1_access_time[0] + 1,
+  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}",
+            s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u, g_exp1_access_time[0] + 1,
             g_exp1_access_time[1] + 1, g_exp1_access_time[2] + 1);
   TRACE_LOG("EXP3 Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.exp3_delay_size.data_bus_16bit ? 16 : 8, g_exp3_access_time[0] + 1,
@@ -1145,45 +1145,6 @@ template<MemoryAccessSize size>
 void Bus::RAMWriteHandler(VirtualMemoryAddress address, u32 value)
 {
   const u32 offset = address & g_ram_mask;
-
-  // Temporary Attack Pla Rail coin-state diagnostic.
-  // Runtime traces proved:
-  //   gp=0x8007175C, gp+0x47A=0x80071BD6 (cached JVS coin count)
-  //   baseline=0x80071D5C.
-  //
-  // Trace only writes which overlap either 16-bit variable. This is diagnostic
-  // only and does not alter the write.
-  constexpr u32 APLARAIL_CACHED_COIN = UINT32_C(0x00071BD6);
-  constexpr u32 APLARAIL_BASELINE_COIN = UINT32_C(0x00071D5C);
-  constexpr u32 access_bytes = UINT32_C(1) << static_cast<u32>(size);
-  const u32 access_end = offset + access_bytes;
-
-  const bool touches_aplarail_cached_coin =
-    offset < (APLARAIL_CACHED_COIN + UINT32_C(2)) &&
-    access_end > APLARAIL_CACHED_COIN;
-  const bool touches_aplarail_baseline_coin =
-    offset < (APLARAIL_BASELINE_COIN + UINT32_C(2)) &&
-    access_end > APLARAIL_BASELINE_COIN;
-
-  if (NamcoSystem12::IsActive() &&
-      (touches_aplarail_cached_coin || touches_aplarail_baseline_coin))
-  {
-    const char* const label =
-      touches_aplarail_cached_coin ? "CACHED" : "BASELINE";
-
-    u16 before = 0;
-    const u32 probe_offset =
-      touches_aplarail_cached_coin ? APLARAIL_CACHED_COIN : APLARAIL_BASELINE_COIN;
-    std::memcpy(&before, &g_ram[probe_offset], sizeof(before));
-
-    WARNING_LOG(
-      "System12 AplaRail COIN-RAM-W label={} before={:04X} addr={:08X} offset={:08X} "
-      "width={} value={:08X} pc={:08X} current_pc={:08X} instr={:08X} ra={:08X} gp={:08X}",
-      label, before, address, offset, access_bytes, value,
-      CPU::g_state.pc, CPU::g_state.current_instruction_pc,
-      CPU::g_state.current_instruction.bits, CPU::g_state.regs.ra,
-      CPU::g_state.regs.gp);
-  }
 
   if constexpr (size == MemoryAccessSize::Byte)
   {

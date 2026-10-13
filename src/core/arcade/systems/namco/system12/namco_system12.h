@@ -35,6 +35,7 @@ struct LoadedContent
   std::vector<u8> sub_program;
   std::vector<u8> c352_samples;
   std::vector<u8> cyberlead_led_firmware;
+  std::string cdxa_cdrom_path;
   bool alternate_bank = false;
   bool requires_ram_preserving_boot_reset = false;
 };

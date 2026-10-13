@@ -188,14 +188,6 @@ struct NamcoCyberLeadLEDDevice::Impl
   bool sci1_tx_pending = false;
   u8 sci1_tx_pending_byte = UINT8_C(0xFF);
 
-  u32 display_diag_count = 0;
-  u32 control_diag_count = 0;
-  u32 frame_diag_count = 0;
-  u32 nonzero_write_diag_count = 0;
-  u32 scan_probe_vblank_count = 0;
-  u32 scan_probe_write_count = 0;
-  u32 rx_diag_count = 0;
-  u32 tx_diag_count = 0;
 
   static h8_bool BusRead(void* opaque, unsigned address, h8_byte_t* value)
   {
@@ -268,14 +260,6 @@ struct NamcoCyberLeadLEDDevice::Impl
     sci1_tx_clocks_remaining = 0;
     sci1_tx_pending = false;
     sci1_tx_pending_byte = UINT8_C(0xFF);
-    display_diag_count = 0;
-    control_diag_count = 0;
-    frame_diag_count = 0;
-    nonzero_write_diag_count = 0;
-    scan_probe_vblank_count = 0;
-    scan_probe_write_count = 0;
-    rx_diag_count = 0;
-    tx_diag_count = 0;
 
     std::memset(&cpu, 0, sizeof(cpu));
     cpu.normal_mode = TRUE;
@@ -506,12 +490,6 @@ struct NamcoCyberLeadLEDDevice::Impl
       }
     }
 
-    if (rx_diag_count < 32)
-    {
-      INFO_LOG("CyberLead LED C77 SCI1 RX #{} pc={:04X} data={:02X} ssr={:02X} queued={}",
-               stats.received_wire_bytes, static_cast<u32>(cpu.cpu.pc), value, sci1_ssr, rx_count);
-      rx_diag_count++;
-    }
 
     TryStartSCI1Receive();
   }
@@ -529,12 +507,6 @@ struct NamcoCyberLeadLEDDevice::Impl
     sci1_tx_clocks_remaining = 0;
     stats.transmitted_wire_bytes++;
 
-    if (tx_diag_count < 32)
-    {
-      INFO_LOG("CyberLead LED C77 SCI1 TX #{} pc={:04X} data={:02X}",
-               stats.transmitted_wire_bytes, static_cast<u32>(cpu.cpu.pc), sci1_tx_shift);
-      tx_diag_count++;
-    }
 
     if (sci1_tx_pending)
     {
@@ -655,23 +627,6 @@ struct NamcoCyberLeadLEDDevice::Impl
       frame_state = candidate;
       stats.frame_changes++;
 
-      const u32 nonzero =
-        frame_state.intensity_counts[1] +
-        frame_state.intensity_counts[2] +
-        frame_state.intensity_counts[3];
-
-      if (frame_diag_count < 16)
-      {
-        INFO_LOG(
-          "CyberLead LED frame #{} start={:04X} scroll_x={} scroll_y={} nonzero={} "
-          "levels=[{},{},{},{}] display_writes={} control_writes={}",
-          frame_state.generation, frame_state.start_address, frame_state.scroll_x,
-          frame_state.scroll_y, nonzero, frame_state.intensity_counts[0],
-          frame_state.intensity_counts[1], frame_state.intensity_counts[2],
-          frame_state.intensity_counts[3], stats.display_ram_writes,
-          stats.display_control_writes);
-        frame_diag_count++;
-      }
     }
   }
 
@@ -699,21 +654,6 @@ struct NamcoCyberLeadLEDDevice::Impl
         continue;
       }
 
-      if (scan_probe_vblank_count < 120)
-      {
-        const u16 start = static_cast<u16>(
-          ((static_cast<u16>(display_control[7]) << 8) | display_control[6]) & UINT16_C(0x1FFF));
-        const u32 fine_scroll =
-          static_cast<u32>(~work_ram[UINT16_C(0xD0BF) - UINT16_C(0xC000)]) & 3U;
-        INFO_LOG(
-          "CyberLead LED SCAN-PROBE vblank #{} pc={:04X} start={:04X} ctrl6={:02X} ctrl7={:02X} "
-          "fine={} scroll_x={} scroll_y={} timer={:02X} cpu_steps={}",
-          scan_probe_vblank_count + 1, static_cast<u32>(cpu.cpu.pc), start,
-          display_control[6], display_control[7], fine_scroll,
-          ((start & UINT16_C(0x001F)) * 4U) + fine_scroll, start >> 5,
-          timer_tcnt, stats.cpu_steps);
-        scan_probe_vblank_count++;
-      }
 
       // MAME updates the screen immediately before asserting the vblank
       // callback. Preserve that ordering, then hold C77 IRQ6 active-low for
@@ -854,19 +794,6 @@ struct NamcoCyberLeadLEDDevice::Impl
     {
       display_ram[address - UINT16_C(0x4000)] = value;
       stats.display_ram_writes++;
-      if (display_diag_count < 16)
-      {
-        INFO_LOG("CyberLead LED display RAM write #{} pc={:04X} addr={:04X} data={:02X}",
-                 stats.display_ram_writes, static_cast<u32>(cpu.cpu.pc), address, value);
-        display_diag_count++;
-      }
-      if (value != 0 && nonzero_write_diag_count < 16)
-      {
-        INFO_LOG("CyberLead LED nonzero RAM write #{} pc={:04X} addr={:04X} data={:02X} total_writes={}",
-                 nonzero_write_diag_count + 1, static_cast<u32>(cpu.cpu.pc), address, value,
-                 stats.display_ram_writes);
-        nonzero_write_diag_count++;
-      }
       return;
     }
     if (address >= UINT16_C(0x6000) && address <= UINT16_C(0x600F))
@@ -874,28 +801,7 @@ struct NamcoCyberLeadLEDDevice::Impl
       display_control[address - UINT16_C(0x6000)] = value;
       stats.display_control_writes++;
 
-      if ((address == UINT16_C(0x6006) || address == UINT16_C(0x6007)) &&
-          scan_probe_write_count < 120)
-      {
-        const u16 start = static_cast<u16>(
-          ((static_cast<u16>(display_control[7]) << 8) | display_control[6]) & UINT16_C(0x1FFF));
-        const u32 fine_scroll =
-          static_cast<u32>(~work_ram[UINT16_C(0xD0BF) - UINT16_C(0xC000)]) & 3U;
-        INFO_LOG(
-          "CyberLead LED SCAN-PROBE start-write #{} pc={:04X} addr={:04X} data={:02X} "
-          "ctrl6={:02X} ctrl7={:02X} start={:04X} fine={} scroll_x={} scroll_y={} cpu_steps={}",
-          scan_probe_write_count + 1, static_cast<u32>(cpu.cpu.pc), address, value,
-          display_control[6], display_control[7], start, fine_scroll,
-          ((start & UINT16_C(0x001F)) * 4U) + fine_scroll, start >> 5, stats.cpu_steps);
-        scan_probe_write_count++;
-      }
 
-      if (control_diag_count < 16)
-      {
-        INFO_LOG("CyberLead LED control write #{} pc={:04X} addr={:04X} data={:02X}",
-                 stats.display_control_writes, static_cast<u32>(cpu.cpu.pc), address, value);
-        control_diag_count++;
-      }
       return;
     }
     if (address >= UINT16_C(0x7000) && address <= UINT16_C(0x7001))
@@ -1025,19 +931,6 @@ struct NamcoCyberLeadLEDDevice::Impl
     {
       work_ram[address - UINT16_C(0xC000)] = value;
 
-      if (address == UINT16_C(0xD0BF) && scan_probe_write_count < 120)
-      {
-        const u16 start = static_cast<u16>(
-          ((static_cast<u16>(display_control[7]) << 8) | display_control[6]) & UINT16_C(0x1FFF));
-        const u32 fine_scroll = static_cast<u32>(~value) & 3U;
-        INFO_LOG(
-          "CyberLead LED SCAN-PROBE fine-write #{} pc={:04X} data={:02X} start={:04X} "
-          "fine={} scroll_x={} scroll_y={} cpu_steps={}",
-          scan_probe_write_count + 1, static_cast<u32>(cpu.cpu.pc), value, start,
-          fine_scroll, ((start & UINT16_C(0x001F)) * 4U) + fine_scroll,
-          start >> 5, stats.cpu_steps);
-        scan_probe_write_count++;
-      }
     }
   }
 
@@ -1047,27 +940,6 @@ struct NamcoCyberLeadLEDDevice::Impl
       return true;
     if (wire.size() > (rx_queue.size() - rx_count))
       return false;
-
-    if (stats.queued_frames == 0)
-    {
-      // The first physical LED-link frame is the game's initial 0x71/02 setup.
-      // Re-arm the bounded scanout diagnostics here so we capture game-driven
-      // display behavior rather than only the LED firmware's startup animation.
-      frame_diag_count = 0;
-      scan_probe_vblank_count = 0;
-      scan_probe_write_count = 0;
-
-      const u16 start = static_cast<u16>(
-        ((static_cast<u16>(display_control[7]) << 8) | display_control[6]) & UINT16_C(0x1FFF));
-      const u32 fine_scroll =
-        static_cast<u32>(~work_ram[UINT16_C(0xD0BF) - UINT16_C(0xC000)]) & 3U;
-      INFO_LOG(
-        "CyberLead LED SCAN-PROBE link-rearm wire_bytes={} pc={:04X} start={:04X} "
-        "fine={} scroll_x={} scroll_y={} iscr={:02X} ier={:02X} timer={:02X} cpu_steps={}",
-        wire.size(), static_cast<u32>(cpu.cpu.pc), start, fine_scroll,
-        ((start & UINT16_C(0x001F)) * 4U) + fine_scroll, start >> 5,
-        iscr, ier, timer_tcnt, stats.cpu_steps);
-    }
 
     for (const u8 value : wire)
     {

@@ -65,6 +65,8 @@
     <ClCompile Include="interrupt_controller.cpp" />
     <ClCompile Include="arcade\devices\audio\k054539.cpp" />
     <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
+    <ClCompile Include="arcade\devices\cpu\sh7014.cpp" />
+    <ClCompile Include="arcade\devices\namco\namco_system12_cdxa.cpp" />
     <ClCompile Include="arcade\devices\security\cat702.cpp" />
     <ClCompile Include="arcade\devices\storage\chd_hard_disk.cpp" />
     <ClCompile Include="arcade\third_party\qsound_hle\qsound.cpp">
@@ -83,6 +85,7 @@
     <ClCompile Include="arcade\third_party\z80_superzazu\z80.cpp">
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4244;4805;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
+    <ClCompile Include="arcade\third_party\sh2\sh2.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\acclaim_ata.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\time_warner_ata.cpp" />
     <ClCompile Include="arcade\systems\sony\zn\acclaim_rax.cpp" />
@@ -204,6 +207,7 @@
     <ClCompile Include="arcade\devices\jvs\jvs_chain.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_cyberlead.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_cyberlead_led.cpp" />
+    <ClCompile Include="arcade\devices\jvs\namco_fca10.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_emio102.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_empri101.cpp" />
     <ClCompile Include="arcade\systems\namco\system12\namco_system12.cpp" />
@@ -286,6 +290,8 @@
     <ClInclude Include="arcade\devices\security\cat702.h" />
     <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />
     <ClInclude Include="arcade\third_party\qsound_hle\qsound.h" />
+    <ClInclude Include="arcade\devices\cpu\sh7014.h" />
+    <ClInclude Include="arcade\devices\namco\namco_system12_cdxa.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm_adpcm.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm_fm.h" />
@@ -293,6 +299,8 @@
     <ClInclude Include="arcade\third_party\ymfm\ymfm_opn.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm_ssg.h" />
     <ClInclude Include="arcade\third_party\z80_superzazu\z80.h" />
+    <ClInclude Include="arcade\third_party\sh2\sh2.h" />
+    <None Include="arcade\third_party\sh2\LICENSE" />
     <ClInclude Include="arcade\systems\sony\zn\acclaim_ata.h" />
     <ClInclude Include="arcade\systems\sony\zn\time_warner_ata.h" />
     <ClInclude Include="arcade\systems\sony\zn\acclaim_rax.h" />
@@ -343,6 +351,7 @@
     <ClInclude Include="arcade\devices\jvs\jvs_chain.h" />
     <ClInclude Include="arcade\devices\jvs\namco_cyberlead.h" />
     <ClInclude Include="arcade\devices\jvs\namco_cyberlead_led.h" />
+    <ClInclude Include="arcade\devices\jvs\namco_fca10.h" />
     <ClInclude Include="arcade\devices\jvs\namco_emio102.h" />
     <ClInclude Include="arcade\devices\jvs\namco_empri101.h" />
     <ClInclude Include="arcade\systems\namco\system12\namco_system12.h" />

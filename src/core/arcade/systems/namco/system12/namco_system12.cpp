@@ -8,9 +8,11 @@
 #include "core/arcade/devices/cpu/h8_3002_peripherals.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
+#include "core/arcade/devices/jvs/namco_fca10.h"
 #include "core/arcade/devices/jvs/jvs_chain.h"
 #include "core/arcade/devices/jvs/namco_emio102.h"
 #include "core/arcade/devices/jvs/namco_empri101.h"
+#include "core/arcade/devices/namco/namco_system12_cdxa.h"
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
@@ -20,6 +22,7 @@
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "core/settings.h"
+#include "util/cd_image.h"
 
 extern "C" {
 #include "core/arcade/third_party/h8_300h/system.h"
@@ -32,6 +35,7 @@ extern "C" {
 #include "common/minizip_helpers.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
+#include "common/timer.h"
 
 #include <algorithm>
 #include <array>
@@ -94,6 +98,8 @@ static constexpr u32 M8F4_PROGRAM_ROM_BASE = 0x04000000;
 static constexpr u32 M8F4_PROGRAM_ROM_LIMIT = 0x04400000;
 
 static constexpr u32 H8_CLOCK_HZ = 16934400;
+static constexpr u32 CDXA_SH2_CLOCK_HZ = 14745600;
+static constexpr u32 CDXA_SH2_SCHEDULER_HZ = 1000;
 
 static constexpr u32 H8_ROM_BASE = 0x000000;
 static constexpr u32 H8_ROM_END = 0x07ffff;
@@ -108,6 +114,7 @@ static constexpr u32 H8_WAIT0_END = 0x300011;
 static constexpr u32 H8_WAIT1_BASE = 0x300030;
 static constexpr u32 H8_WAIT1_END = 0x300031;
 static constexpr u32 H8_INTERNAL_BASE = 0xff0000;
+
 
 static constexpr u8 H8_JVS_SENSE_INITIALIZED = 0;
 static constexpr u8 H8_JVS_SENSE_UNINITIALIZED = 1;
@@ -144,6 +151,7 @@ enum class JVSProfile : u8
 {
   None,
   CyberLead,
+  NamcoFCA10,
   NamcoEMIO102Printer
 };
 
@@ -165,6 +173,12 @@ struct RuntimeState
   u32 dma_source = 0;
   u64 dma_transfer_count = 0;
 
+  std::unique_ptr<Arcade::Namco::System12CDXA> cdxa;
+  std::unique_ptr<TimingEvent> cdxa_timing_event;
+  TickCount cdxa_scheduler_interval_ticks = 1;
+  u32 cdxa_cycle_fraction = 0;
+  u64 cdxa_scheduler_count = 0;
+
   // M8F4 protected ROM-board state. Protection is a ROM-board capability,
   // not generic System 12 KEYCUS behavior.
   std::array<u32, 2> m8f4_challenge{};
@@ -185,30 +199,17 @@ struct RuntimeState
   std::unique_ptr<TimingEvent> h8_timing_event;
   TickCount h8_scheduler_interval_ticks = System::MASTER_CLOCK / 1000;
   u32 h8_scheduler_rate_hz = 1000;
-  u32 h8_scheduler_tick_fraction = 0;
   s64 h8_cycle_balance = 0;
   u32 h8_cycle_fraction = 0;
   u32 h8_rtc_scheduler_fraction = 0;
   std::array<u8, 0x10000> h8_internal{};
   u64 h8_scheduler_count = 0;
 
-  // Attack Pla Rail mailbox/task diagnostic state.
-  // Diagnostic only; no emulation behavior depends on these fields.
-  u32 h8_aplarail_last_irq_vector = UINT32_C(0xFFFFFFFF);
-  u32 h8_aplarail_last_irq_from_pc = 0;
-  u32 h8_aplarail_last_irq_to_pc = 0;
-  u64 h8_aplarail_last_irq_scheduler = 0;
-  u64 h8_aplarail_irq13_count = 0;
-  u64 h8_aplarail_irq26_count = 0;
-  u64 h8_aplarail_irq30_count = 0;
-  u32 h8_aplarail_prev_step_pc = UINT32_C(0xFFFFFFFF);
-  u32 h8_aplarail_task_trace_count = 0;
-  u32 h8_aplarail_irq_trace_count = 0;
-  u8 h8_irq_input = 0;
   u8 h8_jvs_sense = H8_JVS_SENSE_NONE;
   bool h8_jvs_rts = false;
   Arcade::JVS::Bus h8_jvs_bus;
   Arcade::JVS::NamcoCyberLead h8_cyberlead;
+  Arcade::JVS::NamcoFCA10 h8_fca10;
   Arcade::JVS::Chain h8_jvs_chain;
   Arcade::JVS::NamcoEMIO102 h8_emio102;
   Arcade::JVS::NamcoEMPri101 h8_empri101;
@@ -222,7 +223,6 @@ struct RuntimeState
   u32 h8_sci0_tx_clocks_remaining = 0;
   bool h8_sci0_rx_busy = false;
   u32 h8_sci0_rx_clocks_remaining = 0;
-  bool h8_sci0_pacing_logged = false;
 
   u8 h8_sci1_ssr_read = 0;
   bool h8_sci1_rx_busy = false;
@@ -248,6 +248,10 @@ struct RuntimeState
 
   bool h8_vblank = false;
 
+  bool test_switch_maintained = false;
+  bool test_switch_latched = false;
+  bool test_switch_was_pressed = false;
+
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
@@ -260,6 +264,7 @@ struct RuntimeState
   Arcade::H8::H83002Intc h8_intc;
   Arcade::Audio::NamcoC352 c352;
   u32 h8_c352_instruction_clocks = 0;
+  u64 h8_c352_deferred_clocks = 0;
   bool mainboard_reset_pending = false;
   bool boot_warm_reset_completed = false;
   bool cold_boot_h8_released = true;
@@ -272,9 +277,40 @@ struct RuntimeState
 
 std::optional<RuntimeState> s_runtime;
 
+bool UsesCDXA(const LoadedContent& content)
+{
+  return content.machine_config == "cdxa_pcb" ||
+         content.machine_config == "truckk" ||
+         content.state_class == "namcos12_cdxa_state" ||
+         content.state_class == "truckk_state";
+}
+
+bool UsesCDXA(const RuntimeState& runtime)
+{
+  return UsesCDXA(runtime.content);
+}
+
 bool IsM8F4(const RuntimeState& runtime)
 {
   return runtime.content.rom_board_profile == ROMBoardProfile::M8F4Protected;
+}
+
+bool HasMaintainedTestSwitch(const LoadedContent& content)
+{
+  return content.machine_config == "truckk" || content.machine_config == "cdxa_pcb" ||
+         content.machine_config == "golgo13" || content.machine_config == "kartduel";
+}
+
+bool ReadH8TestSwitch(RuntimeState& runtime)
+{
+  const bool pressed = ArcadeInput::IsOperatorPressed("Test");
+  if (!runtime.test_switch_maintained)
+    return pressed;
+
+  if (pressed && !runtime.test_switch_was_pressed)
+    runtime.test_switch_latched = !runtime.test_switch_latched;
+  runtime.test_switch_was_pressed = pressed;
+  return runtime.test_switch_latched;
 }
 
 u32 ReadM8F4RegisterValue(u32 width, u32 byte_offset, u32 value)
@@ -869,6 +905,7 @@ void ResetH8JVSProtocol(RuntimeState& runtime)
   JVSState& jvs = runtime.h8_jvs;
   runtime.h8_jvs_bus.Reset();
   runtime.h8_cyberlead.Reset();
+  runtime.h8_fca10.Reset();
   runtime.h8_jvs_chain.Reset();
   runtime.h8_sci0_ssr_read = 0;
   runtime.h8_sci0_tx_busy = false;
@@ -876,7 +913,6 @@ void ResetH8JVSProtocol(RuntimeState& runtime)
   runtime.h8_sci0_tx_clocks_remaining = 0;
   runtime.h8_sci0_rx_busy = false;
   runtime.h8_sci0_rx_clocks_remaining = 0;
-  runtime.h8_sci0_pacing_logged = false;
   jvs.initialize_sense_after_response = false;
 
   runtime.h8_jvs_sense = HasH8JVSDevice(runtime) ? H8_JVS_SENSE_UNINITIALIZED : H8_JVS_SENSE_NONE;
@@ -924,39 +960,6 @@ u32 H8SCI0CyberLeadFrameClocks(const RuntimeState& runtime)
 
   return std::max<u32>(UINT32_C(1), divider * UINT32_C(2) * UINT32_C(8));
 }
-void H8SCI0LogCyberLeadPacing(RuntimeState& runtime)
-{
-  if (runtime.h8_sci0_pacing_logged)
-    return;
-
-  runtime.h8_sci0_pacing_logged = true;
-
-  const u8 smr = runtime.h8_internal[UINT16_C(0xFFB0)];
-  const u8 brr = runtime.h8_internal[UINT16_C(0xFFB1)];
-  const u8 scr = runtime.h8_internal[UINT16_C(0xFFB2)];
-  const bool external_async =
-    (smr & H8_SCI_SMR_CA) == 0 && (scr & UINT8_C(0x02)) != 0;
-
-  u32 baud = CYBERLEAD_JVS_BAUD;
-  if (!external_async)
-  {
-    const u32 divider =
-      (UINT32_C(2) << (2 * (smr & H8_SCI_SMR_CKS))) *
-      (static_cast<u32>(brr) + 1);
-
-    baud =
-      ((smr & H8_SCI_SMR_CA) == 0) ?
-        (H8_CLOCK_HZ / std::max<u32>(UINT32_C(1), divider * UINT32_C(16))) :
-        (H8_CLOCK_HZ / std::max<u32>(UINT32_C(1), divider * UINT32_C(2)));
-  }
-
-  INFO_LOG(
-    "System12 CyberLead SCI0 paced transport active: SMR={:02X} BRR={:02X} "
-    "SCR={:02X} external_async={} frame_clocks={} baud={} scheduler_hz={} "
-    "tx_double_buffer=true",
-    smr, brr, scr, external_async, H8SCI0CyberLeadFrameClocks(runtime), baud,
-    runtime.h8_scheduler_rate_hz);
-}
 void H8SCI0CyberLeadStartReceive(RuntimeState& runtime)
 {
   if (!H8SCI0CyberLeadPacing(runtime) ||
@@ -979,7 +982,6 @@ void H8SCI0CyberLeadStartReceive(RuntimeState& runtime)
     return;
   }
 
-  H8SCI0LogCyberLeadPacing(runtime);
   runtime.h8_sci0_rx_busy = true;
   runtime.h8_sci0_rx_clocks_remaining = H8SCI0CyberLeadFrameClocks(runtime);
 }
@@ -1000,6 +1002,7 @@ void H8SCI0CyberLeadCompleteReceive(RuntimeState& runtime)
 
   if ((ssr & H8_SCI_SSR_RDRF) != 0)
   {
+
     ssr = static_cast<u8>(ssr | H8_SCI_SSR_ORER);
     if ((scr & H8_SCI_SCR_RIE) != 0)
       runtime.h8_intc.InternalInterrupt(UINT32_C(52)); // ERI0
@@ -1038,7 +1041,6 @@ void H8SCI0CyberLeadStartTransmit(RuntimeState& runtime)
     return;
   }
 
-  H8SCI0LogCyberLeadPacing(runtime);
 
   // TSR is empty: hardware transfers TDR -> TSR and immediately makes TDR
   // available again. This is the SCI's double-buffered transmit behavior.
@@ -1183,46 +1185,6 @@ void ProcessH8JVSPacket(RuntimeState& runtime)
   JVSState& jvs = runtime.h8_jvs;
   const std::span<const u8> packet = runtime.h8_jvs_bus.GetPacket();
 
-  // Temporary Cyber Lead frame-level diagnostic.  Open a short trace window
-  // whenever Service or Coin1 changes so we can see the exact JVS request and
-  // response bytes that the H8 firmware receives around the problem.
-  static bool s_cyberlead_diag_initialized = false;
-  static bool s_cyberlead_diag_service_previous = false;
-  static bool s_cyberlead_diag_coin_previous = false;
-  static bool s_cyberlead_diag_start_previous = false;
-  static bool s_cyberlead_diag_button1_previous = false;
-  static u32 s_cyberlead_diag_packets_remaining = 0;
-  static u64 s_cyberlead_diag_sequence = 0;
-
-  const bool cyberlead_diag_service = ArcadeInput::IsOperatorPressed("Service");
-  const bool cyberlead_diag_coin = ArcadeInput::IsDigitalPressed(0, "Coin");
-  const bool cyberlead_diag_start = ArcadeInput::IsDigitalPressed(0, "Start");
-  const bool cyberlead_diag_button1 = ArcadeInput::IsDigitalPressed(0, "Button1");
-  if (jvs.profile == JVSProfile::CyberLead)
-  {
-    const bool changed =
-      !s_cyberlead_diag_initialized ||
-      cyberlead_diag_service != s_cyberlead_diag_service_previous ||
-      cyberlead_diag_coin != s_cyberlead_diag_coin_previous ||
-      cyberlead_diag_start != s_cyberlead_diag_start_previous ||
-      cyberlead_diag_button1 != s_cyberlead_diag_button1_previous;
-
-    if (changed)
-    {
-      s_cyberlead_diag_packets_remaining = 16;
-      WARNING_LOG(
-        "System12 CyberLead FRAME-DIAG trigger seq={} Service={} Coin1={} Start={} Button1={}",
-        s_cyberlead_diag_sequence, cyberlead_diag_service, cyberlead_diag_coin,
-        cyberlead_diag_start, cyberlead_diag_button1);
-    }
-
-    s_cyberlead_diag_initialized = true;
-    s_cyberlead_diag_service_previous = cyberlead_diag_service;
-    s_cyberlead_diag_coin_previous = cyberlead_diag_coin;
-    s_cyberlead_diag_start_previous = cyberlead_diag_start;
-    s_cyberlead_diag_button1_previous = cyberlead_diag_button1;
-  }
-
   std::array<u8, 256> response{};
   u32 response_length = 0;
   bool reset_requested = false;
@@ -1237,6 +1199,15 @@ void ProcessH8JVSPacket(RuntimeState& runtime)
     reset_requested = result.reset_requested;
     initialize_sense_after_response = result.initialize_sense_after_response;
   }
+  else if (jvs.profile == JVSProfile::NamcoFCA10)
+  {
+    const Arcade::JVS::NamcoFCA10::PacketResult result =
+      runtime.h8_fca10.ProcessPacket(packet);
+    response = result.response;
+    response_length = result.response_length;
+    reset_requested = result.reset_requested;
+    initialize_sense_after_response = result.initialize_sense_after_response;
+  }
   else if (jvs.profile == JVSProfile::CyberLead)
   {
     const Arcade::JVS::NamcoCyberLead::PacketResult result =
@@ -1246,23 +1217,6 @@ void ProcessH8JVSPacket(RuntimeState& runtime)
     reset_requested = result.reset_requested;
     initialize_sense_after_response = result.initialize_sense_after_response;
 
-    if (s_cyberlead_diag_packets_remaining > 0)
-    {
-      const u64 seq = ++s_cyberlead_diag_sequence;
-      WARNING_LOG(
-        "System12 CyberLead FRAME-DIAG seq={} Service={} Coin1={} Start={} Button1={} RXlen={} TXlen={} reset={} sense_after={}",
-        seq, cyberlead_diag_service, cyberlead_diag_coin, cyberlead_diag_start,
-        cyberlead_diag_button1, packet.size(), response_length,
-        reset_requested, initialize_sense_after_response);
-
-      for (u32 i = 0; i < packet.size(); i++)
-        WARNING_LOG("System12 CyberLead FRAME-DIAG seq={} RX[{}]={:02X}", seq, i, packet[i]);
-
-      for (u32 i = 0; i < response_length; i++)
-        WARNING_LOG("System12 CyberLead FRAME-DIAG seq={} TX[{}]={:02X}", seq, i, response[i]);
-
-      s_cyberlead_diag_packets_remaining--;
-    }
   }
   else
   {
@@ -1573,14 +1527,66 @@ u8 H83002ReadPortExact(const RuntimeState& runtime, u16 ddr_reg, u16 dr_reg, u8 
     (external & static_cast<u8>(~ddr)));
 }
 
+u8 ReadTruckH8JAMMAInput(u32 offset)
+{
+  // Truck Kyosokyoku uses the motherboard's JAMMA compatibility conversion,
+  // not a JVS I/O device. MAME's truckk input profile places the cabinet's
+  // music buttons on the logical P2 left/right lines and keeps P2 Button 1
+  // asserted as the V233 valve-presence signal.
+  u8 value = UINT8_C(0xFF);
+  const auto clear_if_pressed = [&value](u8 mask, bool pressed) {
+    if (pressed)
+      value = static_cast<u8>(value & static_cast<u8>(~mask));
+  };
+
+  switch (offset & UINT32_C(3))
+  {
+    case 0:
+      // P2 compatibility byte: B1 is the active-low valve-presence signal.
+      value = static_cast<u8>(value & static_cast<u8>(~UINT8_C(0x10)));
+      clear_if_pressed(UINT8_C(0x02), ArcadeInput::IsDigitalPressed(0, "MusicPrevious"));
+      clear_if_pressed(UINT8_C(0x01), ArcadeInput::IsDigitalPressed(0, "MusicNext"));
+      return value;
+
+    case 1:
+      // P1 compatibility byte: START/B3/B2/B1/UP/DOWN/LEFT/RIGHT.
+      clear_if_pressed(UINT8_C(0x80), ArcadeInput::IsDigitalPressed(0, "View"));
+      clear_if_pressed(UINT8_C(0x40), ArcadeInput::IsDigitalPressed(0, "Horn"));
+      clear_if_pressed(UINT8_C(0x10), ArcadeInput::IsDigitalPressed(0, "Enter"));
+      clear_if_pressed(UINT8_C(0x08), ArcadeInput::IsDigitalPressed(0, "SelectUp"));
+      clear_if_pressed(UINT8_C(0x04), ArcadeInput::IsDigitalPressed(0, "SelectDown"));
+      return value;
+
+    case 2:
+      clear_if_pressed(UINT8_C(0x80), ArcadeInput::IsOperatorPressed("Service"));
+      clear_if_pressed(UINT8_C(0x40), ReadH8TestSwitch(*s_runtime));
+      clear_if_pressed(UINT8_C(0x20), ArcadeInput::IsDigitalPressed(0, "Coin"));
+      return value;
+
+    case 3:
+    default:
+      return value;
+  }
+}
+
 u8 ReadH8JAMMAInput(u32 offset)
 {
+  if (s_runtime && s_runtime->content.set_name == "truckk")
+    return ReadTruckH8JAMMAInput(offset);
   // System 12 exposes four active-low JAMMA compatibility bytes to the H8.
   // This matches the motherboard input conversion used when no external JVS
-  // I/O board is present. Buttons 7/8 are not part of ArcadeDuck's current
-  // standard arcade layout and therefore remain inactive/high.
+  // I/O board is present, including the extended Button7/Button8 lanes used
+  // by titles such as Um Jammer Lammy NOW!.
   const auto player_byte = [](u32 port) {
     u8 result = UINT8_C(0xFF);
+
+    // Um Jammer Lammy NOW! expects the otherwise-unused P2 UP/DOWN lines
+    // asserted on the JAMMA compatibility input. MAME models those two
+    // inputs as active-low unused lines specifically to clear the game's
+    // I/O hardware errors.
+    if (s_runtime && s_runtime->content.set_name == "ujlnow" && port == 1)
+      result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x0C)));
+
     const auto clear_if_pressed = [&result, port](u8 mask, const char* key) {
       if (ArcadeInput::IsDigitalPressed(port, key))
         result = static_cast<u8>(result & static_cast<u8>(~mask));
@@ -1616,9 +1622,13 @@ u8 ReadH8JAMMAInput(u32 offset)
     case 2:
       // P1 SERVICE/TEST/COIN1/COIN2/P1 B7/P2 B7/P1 B8/P2 B8.
       clear_if_pressed(UINT8_C(0x80), ArcadeInput::IsOperatorPressed("Service"));
-      clear_if_pressed(UINT8_C(0x40), ArcadeInput::IsOperatorPressed("Test"));
+      clear_if_pressed(UINT8_C(0x40), s_runtime && ReadH8TestSwitch(*s_runtime));
       clear_if_pressed(UINT8_C(0x20), ArcadeInput::IsDigitalPressed(0, "Coin"));
       clear_if_pressed(UINT8_C(0x10), ArcadeInput::IsDigitalPressed(1, "Coin"));
+      clear_if_pressed(UINT8_C(0x08), ArcadeInput::IsDigitalPressed(0, "Button7"));
+      clear_if_pressed(UINT8_C(0x04), ArcadeInput::IsDigitalPressed(1, "Button7"));
+      clear_if_pressed(UINT8_C(0x02), ArcadeInput::IsDigitalPressed(0, "Button8"));
+      clear_if_pressed(UINT8_C(0x01), ArcadeInput::IsDigitalPressed(1, "Button8"));
       return value;
 
     case 3:
@@ -1643,14 +1653,73 @@ void H8AdvanceC352ToCurrentInstructionCycle(RuntimeState& runtime)
 
   const u32 current_clocks =
     (runtime.h8_cpu->cycles > 0) ? static_cast<u32>(runtime.h8_cpu->cycles) : 0;
+  const u32 instruction_delta =
+    (current_clocks > runtime.h8_c352_instruction_clocks) ?
+      (current_clocks - runtime.h8_c352_instruction_clocks) : 0;
 
-  if (current_clocks <= runtime.h8_c352_instruction_clocks)
+  const u64 clocks = runtime.h8_c352_deferred_clocks + instruction_delta;
+  if (clocks == 0)
     return;
 
-  const u32 delta = current_clocks - runtime.h8_c352_instruction_clocks;
   runtime.c352.AdvanceH8Clocks(
-    delta, std::span<const u8>(runtime.content.c352_samples));
+    clocks, std::span<const u8>(runtime.content.c352_samples));
+  runtime.h8_c352_deferred_clocks = 0;
   runtime.h8_c352_instruction_clocks = current_clocks;
+}
+
+u16 GetTruckADCValue(u32 channel)
+{
+  // Truck uses the full 10-bit ADC range: steering on ADC0, brake on ADC1,
+  // and accelerator on ADC2. The two pedal channels are electrically reversed.
+  float normalized = 0.0f;
+  bool reverse = false;
+
+  switch (channel)
+  {
+    case 0:
+      normalized = ArcadeInput::GetAnalogValue(0, "Steering");
+      break;
+
+    case 1:
+      normalized = ArcadeInput::GetAnalogValue(0, "Brake");
+      reverse = true;
+      break;
+
+    case 2:
+      normalized = ArcadeInput::GetAnalogValue(0, "Accelerator");
+      reverse = true;
+      break;
+
+    default:
+      return UINT16_C(0x03FF);
+  }
+
+  normalized = std::clamp(normalized, 0.0f, 1.0f);
+  if (reverse)
+    normalized = 1.0f - normalized;
+
+  return static_cast<u16>((normalized * static_cast<float>(UINT16_C(0x03FF))) + 0.5f);
+}
+
+void UpdateTruckADCInputs(RuntimeState& runtime)
+{
+  if (runtime.content.set_name != "truckk")
+    return;
+
+  for (u32 channel = 0; channel < 3; channel++)
+    runtime.h8_peripherals.SetADCInput(channel, GetTruckADCValue(channel));
+}
+
+u8 ReadTruckADCRegister(u16 reg)
+{
+  const u32 channel = static_cast<u32>((reg - UINT16_C(0xFFE0)) >> 1);
+  const u16 adc = GetTruckADCValue(channel);
+
+  // H8 ADC 8-bit register reads expose the 10-bit conversion result as
+  // ADDRxH = result >> 2 and ADDRxL = result << 6.
+  return ((reg & UINT16_C(1)) != 0) ?
+    static_cast<u8>(adc << 6) :
+    static_cast<u8>(adc >> 2);
 }
 
 h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
@@ -1674,48 +1743,6 @@ h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
     value->u = runtime->shared_ram[psx_index];
 
 
-    // Attack Pla Rail coin-mailbox diagnostic only. The PSX writes the
-    // decrement request at shared offset 0x3300 and the H8 publishes the
-    // current JVS coin count at 0x32C0. Log H8 firmware reads while a coin
-    // transaction is active so we can measure where the observed ~56 ms
-    // latency actually begins.
-    if (runtime->content.set_name == "aplarail")
-    {
-      const bool mailbox_nonzero =
-        runtime->shared_ram[UINT32_C(0x3300)] != 0 ||
-        runtime->shared_ram[UINT32_C(0x3301)] != 0;
-      const bool coin_count_nonzero =
-        runtime->shared_ram[UINT32_C(0x32C0)] != 0 ||
-        runtime->shared_ram[UINT32_C(0x32C1)] != 0;
-      const bool coin_pressed = ArcadeInput::IsDigitalPressed(0, "Coin");
-
-      const bool interesting_offset =
-        (psx_index >= UINT32_C(0x32C0) && psx_index <= UINT32_C(0x32C3)) ||
-        (psx_index >= UINT32_C(0x3300) && psx_index <= UINT32_C(0x3303));
-
-      if (interesting_offset &&
-          (mailbox_nonzero || coin_count_nonzero || coin_pressed))
-      {
-        static u32 s_aplarail_h8_shared_read_count = 0;
-        if (s_aplarail_h8_shared_read_count < UINT32_C(1024))
-        {
-          WARNING_LOG(
-            "System12 AplaRail H8-SHARED-R #{} scheduler={} h8pc={:06X} "
-            "h8off={:04X} psxindex={:04X} value={:02X} "
-            "coin_pressed={} coin_count={:02X}{:02X} mailbox={:02X}{:02X}",
-            ++s_aplarail_h8_shared_read_count,
-            runtime->h8_scheduler_count,
-            runtime->h8_cpu ? static_cast<u32>(runtime->h8_cpu->cpu.pc) : 0u,
-            offset, psx_index, value->u,
-            coin_pressed,
-            runtime->shared_ram[UINT32_C(0x32C1)],
-            runtime->shared_ram[UINT32_C(0x32C0)],
-            runtime->shared_ram[UINT32_C(0x3301)],
-            runtime->shared_ram[UINT32_C(0x3300)]);
-        }
-      }
-    }
-
     return TRUE;
   }
 
@@ -1731,7 +1758,9 @@ h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
 
   if (address >= H8_JAMMA_BASE && address <= H8_JAMMA_END)
   {
-    value->u = ReadH8JAMMAInput(static_cast<u32>(address - H8_JAMMA_BASE));
+    const u32 jamma_offset = static_cast<u32>(address - H8_JAMMA_BASE);
+    value->u = (runtime->h8_jvs.profile == JVSProfile::None) ? ReadH8JAMMAInput(jamma_offset) : UINT8_C(0xFF);
+
     return TRUE;
   }
 
@@ -1875,7 +1904,8 @@ h8_bool H8BusRead(void* opaque, unsigned address, h8_byte_t* value)
       case UINT16_C(0xFFE5):
       case UINT16_C(0xFFE6):
       case UINT16_C(0xFFE7):
-        value->u = UINT8_C(0xFF);
+        value->u =
+          (runtime->content.set_name == "truckk") ? ReadTruckADCRegister(reg) : UINT8_C(0xFF);
         return TRUE;
 
       case UINT16_C(0xFFE8): // ADC status
@@ -1899,77 +1929,14 @@ h8_bool H8BusWrite(void* opaque, unsigned address, h8_byte_t value)
 
   address &= UINT32_C(0x00FFFFFF);
 
+
   if (address >= H8_SHARED_BASE && address <= H8_SHARED_END)
   {
     const u32 offset = static_cast<u32>(address - H8_SHARED_BASE);
-    static bool s_cyberlead_shared_diag_initialized = false;
-    static bool s_cyberlead_shared_diag_service_previous = false;
-    static bool s_cyberlead_shared_diag_coin_previous = false;
-    static bool s_cyberlead_shared_diag_start_previous = false;
-    static bool s_cyberlead_shared_diag_button1_previous = false;
-    static u32 s_cyberlead_shared_diag_changes_remaining = 0;
-    static u64 s_cyberlead_shared_diag_window = 0;
-
-    const bool cyberlead_shared_diag_active =
-      runtime->h8_jvs.profile == JVSProfile::CyberLead;
-    const bool cyberlead_shared_diag_service =
-      cyberlead_shared_diag_active && ArcadeInput::IsOperatorPressed("Service");
-    const bool cyberlead_shared_diag_coin =
-      cyberlead_shared_diag_active && ArcadeInput::IsDigitalPressed(0, "Coin");
-    const bool cyberlead_shared_diag_start =
-      cyberlead_shared_diag_active && ArcadeInput::IsDigitalPressed(0, "Start");
-    const bool cyberlead_shared_diag_button1 =
-      cyberlead_shared_diag_active && ArcadeInput::IsDigitalPressed(0, "Button1");
-
-    if (cyberlead_shared_diag_active)
-    {
-      if (!s_cyberlead_shared_diag_initialized)
-      {
-        s_cyberlead_shared_diag_initialized = true;
-        s_cyberlead_shared_diag_service_previous = cyberlead_shared_diag_service;
-        s_cyberlead_shared_diag_coin_previous = cyberlead_shared_diag_coin;
-        s_cyberlead_shared_diag_start_previous = cyberlead_shared_diag_start;
-        s_cyberlead_shared_diag_button1_previous = cyberlead_shared_diag_button1;
-      }
-      else if (cyberlead_shared_diag_service != s_cyberlead_shared_diag_service_previous ||
-               cyberlead_shared_diag_coin != s_cyberlead_shared_diag_coin_previous ||
-               cyberlead_shared_diag_start != s_cyberlead_shared_diag_start_previous ||
-               cyberlead_shared_diag_button1 != s_cyberlead_shared_diag_button1_previous)
-      {
-        s_cyberlead_shared_diag_window++;
-        s_cyberlead_shared_diag_changes_remaining = 128;
-        WARNING_LOG(
-          "System12 CyberLead SHARED-DIAG trigger window={} Service={} Coin1={} Start={} Button1={} h8pc={:06X}",
-          s_cyberlead_shared_diag_window,
-          cyberlead_shared_diag_service,
-          cyberlead_shared_diag_coin,
-          cyberlead_shared_diag_start,
-          cyberlead_shared_diag_button1,
-          runtime->h8_cpu ? static_cast<u32>(runtime->h8_cpu->cpu.pc) : 0u);
-
-        s_cyberlead_shared_diag_service_previous = cyberlead_shared_diag_service;
-        s_cyberlead_shared_diag_coin_previous = cyberlead_shared_diag_coin;
-        s_cyberlead_shared_diag_start_previous = cyberlead_shared_diag_start;
-        s_cyberlead_shared_diag_button1_previous = cyberlead_shared_diag_button1;
-      }
-    }
-
     const u32 shared_storage_index = offset ^ UINT32_C(1);
-    const u8 shared_previous = runtime->shared_ram[shared_storage_index];
-    runtime->shared_ram[shared_storage_index] = value.u;
 
-    if (cyberlead_shared_diag_active &&
-        s_cyberlead_shared_diag_changes_remaining > 0 &&
-        offset < PSX_SHARED_WINDOW_SIZE &&
-        shared_previous != value.u)
-    {
-      WARNING_LOG(
-        "System12 CyberLead SHARED-DIAG window={} h8pc={:06X} h8off={:04X} psxindex={:04X} {:02X}->{:02X}",
-        s_cyberlead_shared_diag_window,
-        runtime->h8_cpu ? static_cast<u32>(runtime->h8_cpu->cpu.pc) : 0u,
-        offset, shared_storage_index, shared_previous, value.u);
-      s_cyberlead_shared_diag_changes_remaining--;
-    }
+
+    runtime->shared_ram[shared_storage_index] = value.u;
 
     return TRUE;
   }
@@ -2003,6 +1970,9 @@ h8_bool H8BusWrite(void* opaque, unsigned address, h8_byte_t value)
       runtime->h8_internal[UINT16_C(0xFFF9)] = static_cast<u8>(runtime->h8_intc.GetICR() >> 8);
       return TRUE;
     }
+    if (reg == UINT16_C(0xFFE8))
+      UpdateTruckADCInputs(*runtime);
+
     if (runtime->h8_peripherals.Write(reg, value.u))
     {
       // Mirror SYSCR/ICR into the legacy internal byte array because exception-entry
@@ -2192,64 +2162,9 @@ u32 H8ServiceInterrupts(RuntimeState& runtime)
     return 0;
 
 
-  const u32 interrupted_pc = static_cast<u32>(h8.cpu.pc);
-
   h8.cycles = 0;
   if (!h8_interrupt(&h8, *vector))
     return 0;
-
-  if (runtime.content.set_name == "aplarail")
-  {
-    runtime.h8_aplarail_last_irq_vector = *vector;
-    runtime.h8_aplarail_last_irq_from_pc = interrupted_pc;
-    runtime.h8_aplarail_last_irq_to_pc = static_cast<u32>(h8.cpu.pc);
-    runtime.h8_aplarail_last_irq_scheduler = runtime.h8_scheduler_count;
-
-    if (*vector == UINT32_C(13))
-      runtime.h8_aplarail_irq13_count++;
-    else if (*vector == UINT32_C(26))
-      runtime.h8_aplarail_irq26_count++;
-    else if (*vector == UINT32_C(30))
-      runtime.h8_aplarail_irq30_count++;
-
-    const u16 mailbox =
-      static_cast<u16>(ReadBytes(std::span<const u8>(runtime.shared_ram), 2, UINT32_C(0x3300)));
-
-    if (mailbox != 0 &&
-        (*vector == UINT32_C(13) || *vector == UINT32_C(26) || *vector == UINT32_C(30)) &&
-        runtime.h8_aplarail_irq_trace_count < UINT32_C(1024))
-    {
-      runtime.h8_aplarail_irq_trace_count++;
-
-      const auto timer_word = [&runtime](u16 reg) -> u16 {
-        return static_cast<u16>(
-          (static_cast<u16>(runtime.h8_timer16.Read(reg)) << 8) |
-          static_cast<u16>(runtime.h8_timer16.Read(static_cast<u16>(reg + 1))));
-      };
-
-      WARNING_LOG(
-        "System12 AplaRail TASK-IRQ #{} scheduler={} vector={} from={:06X} to={:06X} "
-        "mailbox={:04X} irq13={} irq26={} irq30={} vblank={} "
-        "TSTR={:02X} T0={:02X}/{:02X}/{:02X}/{:04X} T1={:02X}/{:02X}/{:02X}/{:04X}",
-        runtime.h8_aplarail_irq_trace_count,
-        runtime.h8_scheduler_count, *vector,
-        interrupted_pc, static_cast<u32>(h8.cpu.pc),
-        mailbox,
-        runtime.h8_aplarail_irq13_count,
-        runtime.h8_aplarail_irq26_count,
-        runtime.h8_aplarail_irq30_count,
-        runtime.h8_vblank,
-        runtime.h8_timer16.Read(UINT16_C(0xFF60)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF64)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF65)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF66)),
-        timer_word(UINT16_C(0xFF68)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF6E)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF6F)),
-        runtime.h8_timer16.Read(UINT16_C(0xFF70)),
-        timer_word(UINT16_C(0xFF72)));
-    }
-  }
 
   // H83002 irq_setup(): SYSCR bit3=0 sets I+UI; bit3=1 sets I only.
   if ((runtime.h8_peripherals.SYSCR() & UINT8_C(0x08)) == 0)
@@ -2259,6 +2174,28 @@ u32 H8ServiceInterrupts(RuntimeState& runtime)
   runtime.h8_internal[UINT16_C(0xFFF6)] = runtime.h8_intc.GetISR();
 
   return (h8.cycles > 0) ? static_cast<u32>(h8.cycles) : 0;
+}
+
+void CDXASH2SchedulerCallback(void*, TickCount ticks, TickCount /*ticks_late*/)
+{
+  if (!s_runtime || !s_runtime->cdxa || !s_runtime->cdxa->IsSH2Running())
+    return;
+
+  RuntimeState& runtime = *s_runtime;
+  runtime.cdxa_scheduler_count++;
+
+  const u32 elapsed_events = std::max<u32>(1, static_cast<u32>(
+    (static_cast<u64>(ticks) + static_cast<u64>(runtime.cdxa_scheduler_interval_ticks) - 1) /
+    static_cast<u64>(runtime.cdxa_scheduler_interval_ticks)));
+  const u32 bounded_events = std::min<u32>(elapsed_events, 8);
+
+  const u64 cycle_numerator =
+    (static_cast<u64>(CDXA_SH2_CLOCK_HZ) * bounded_events) + runtime.cdxa_cycle_fraction;
+  const u64 cycles = cycle_numerator / CDXA_SH2_SCHEDULER_HZ;
+  runtime.cdxa_cycle_fraction = static_cast<u32>(cycle_numerator % CDXA_SH2_SCHEDULER_HZ);
+
+  if (cycles != 0)
+    runtime.cdxa->Run(cycles);
 }
 
 void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
@@ -2276,19 +2213,9 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
 
   runtime.h8_scheduler_count++;
 
-
-  const u64 scheduler_ticks =
-    static_cast<u64>(ticks) + runtime.h8_scheduler_tick_fraction;
-  const u32 elapsed_events =
-    static_cast<u32>(scheduler_ticks / static_cast<u64>(runtime.h8_scheduler_interval_ticks));
-  runtime.h8_scheduler_tick_fraction =
-    static_cast<u32>(scheduler_ticks % static_cast<u64>(runtime.h8_scheduler_interval_ticks));
-
   const u32 max_catchup_events =
     (runtime.h8_scheduler_rate_hz == 1000) ?
       8 : std::max<u32>(1, (runtime.h8_scheduler_rate_hz * 8) / 1000);
-  const u32 bounded_events = std::min<u32>(elapsed_events, max_catchup_events);
-
   const u64 ticks_per_second =
     static_cast<u64>(std::max<TickCount>(System::GetTicksPerSecond(), 1));
 
@@ -2320,102 +2247,6 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
     h8_last_step_pc = static_cast<u32>(h8.cpu.pc);
 
 
-    if (runtime.content.set_name == "aplarail")
-    {
-      const u32 step_pc = h8_last_step_pc;
-      const u32 prev_pc = runtime.h8_aplarail_prev_step_pc;
-      const bool in_task =
-        step_pc >= UINT32_C(0x001540) && step_pc < UINT32_C(0x001680);
-      const bool prev_in_task =
-        prev_pc >= UINT32_C(0x001540) && prev_pc < UINT32_C(0x001680);
-      const bool task_entry = in_task && !prev_in_task;
-      const bool key_pc =
-        step_pc == UINT32_C(0x00157C) ||
-        step_pc == UINT32_C(0x0015A0) ||
-        step_pc == UINT32_C(0x001630) ||
-        step_pc == UINT32_C(0x001644);
-
-      const u16 mailbox =
-        static_cast<u16>(ReadBytes(std::span<const u8>(runtime.shared_ram), 2, UINT32_C(0x3300)));
-
-      if (mailbox != 0 &&
-          (task_entry || key_pc) &&
-          runtime.h8_aplarail_task_trace_count < UINT32_C(1024))
-      {
-        runtime.h8_aplarail_task_trace_count++;
-
-        const char* marker =
-          (step_pc == UINT32_C(0x00157C)) ? "POLL3300" :
-          (step_pc == UINT32_C(0x0015A0)) ? "ACK3300" :
-          (step_pc == UINT32_C(0x001630)) ? "READ32C0" :
-          (step_pc == UINT32_C(0x001644)) ? "CLEAR3300" :
-          "ENTRY";
-
-        const auto timer_word = [&runtime](u16 reg) -> u16 {
-          return static_cast<u16>(
-            (static_cast<u16>(runtime.h8_timer16.Read(reg)) << 8) |
-            static_cast<u16>(runtime.h8_timer16.Read(static_cast<u16>(reg + 1))));
-        };
-
-        const u64 irq_age =
-          (runtime.h8_aplarail_last_irq_vector != UINT32_C(0xFFFFFFFF) &&
-           runtime.h8_scheduler_count >= runtime.h8_aplarail_last_irq_scheduler) ?
-            (runtime.h8_scheduler_count - runtime.h8_aplarail_last_irq_scheduler) :
-            UINT64_C(0xFFFFFFFFFFFFFFFF);
-
-        WARNING_LOG(
-          "System12 AplaRail TASK-PC #{} mark={} scheduler={} pc={:06X} prev={:06X} "
-          "mailbox={:04X} coin={:04X} last_irq={} irq_age={} irq_from={:06X} irq_to={:06X} "
-          "irq13={} irq26={} irq30={} vblank={} CCR={:02X} SYSCR={:02X} IER={:02X} ISR={:02X} "
-          "TSTR={:02X} "
-          "T0[tcr={:02X} tier={:02X} tsr={:02X} tcnt={:04X} a={:04X} b={:04X}] "
-          "T1[tcr={:02X} tier={:02X} tsr={:02X} tcnt={:04X} a={:04X} b={:04X}] "
-          "ER0={:08X} ER1={:08X} ER2={:08X} ER3={:08X} "
-          "ER4={:08X} ER5={:08X} ER6={:08X} ER7={:08X}",
-          runtime.h8_aplarail_task_trace_count,
-          marker,
-          runtime.h8_scheduler_count,
-          step_pc, prev_pc,
-          mailbox,
-          static_cast<u16>(ReadBytes(std::span<const u8>(runtime.shared_ram), 2, UINT32_C(0x32C0))),
-          runtime.h8_aplarail_last_irq_vector,
-          irq_age,
-          runtime.h8_aplarail_last_irq_from_pc,
-          runtime.h8_aplarail_last_irq_to_pc,
-          runtime.h8_aplarail_irq13_count,
-          runtime.h8_aplarail_irq26_count,
-          runtime.h8_aplarail_irq30_count,
-          runtime.h8_vblank,
-          h8.cpu.ccr.raw.u,
-          runtime.h8_peripherals.SYSCR(),
-          runtime.h8_intc.GetIER(),
-          runtime.h8_intc.GetISR(),
-          runtime.h8_timer16.Read(UINT16_C(0xFF60)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF64)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF65)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF66)),
-          timer_word(UINT16_C(0xFF68)),
-          timer_word(UINT16_C(0xFF6A)),
-          timer_word(UINT16_C(0xFF6C)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF6E)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF6F)),
-          runtime.h8_timer16.Read(UINT16_C(0xFF70)),
-          timer_word(UINT16_C(0xFF72)),
-          timer_word(UINT16_C(0xFF74)),
-          timer_word(UINT16_C(0xFF76)),
-          h8.cpu.regs[0].er.u,
-          h8.cpu.regs[1].er.u,
-          h8.cpu.regs[2].er.u,
-          h8.cpu.regs[3].er.u,
-          h8.cpu.regs[4].er.u,
-          h8.cpu.regs[5].er.u,
-          h8.cpu.regs[6].er.u,
-          h8.cpu.regs[7].er.u);
-      }
-
-      runtime.h8_aplarail_prev_step_pc = step_pc;
-    }
-
     runtime.h8_c352_instruction_clocks = 0;
     h8_step(&h8);
 
@@ -2434,11 +2265,7 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
     // points; only the remaining instruction clocks are advanced here.
     H8AdvanceClockedDevices(runtime, instruction_clocks, false);
     if (instruction_clocks > c352_instruction_clocks)
-    {
-      runtime.c352.AdvanceH8Clocks(
-        instruction_clocks - c352_instruction_clocks,
-        std::span<const u8>(runtime.content.c352_samples));
-    }
+      runtime.h8_c352_deferred_clocks += instruction_clocks - c352_instruction_clocks;
     runtime.h8_c352_instruction_clocks = 0;
 
     runtime.h8_cycle_balance -= static_cast<s64>(instruction_clocks);
@@ -2447,10 +2274,19 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
     const u32 interrupt_clocks = H8ServiceInterrupts(runtime);
     if (interrupt_clocks != 0)
     {
-      H8AdvanceClockedDevices(runtime, interrupt_clocks, true);
+      H8AdvanceClockedDevices(runtime, interrupt_clocks, false);
+      runtime.h8_c352_deferred_clocks += interrupt_clocks;
       runtime.h8_cycle_balance -= static_cast<s64>(interrupt_clocks);
       H8CollectInterruptSources(runtime);
     }
+  }
+
+  if (runtime.h8_c352_deferred_clocks != 0)
+  {
+    runtime.c352.AdvanceH8Clocks(
+      runtime.h8_c352_deferred_clocks,
+      std::span<const u8>(runtime.content.c352_samples));
+    runtime.h8_c352_deferred_clocks = 0;
   }
 
   if (h8.error_code != H8_DEBUG_NO_ERROR && !runtime.h8_fault_logged)
@@ -2466,6 +2302,7 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
       runtime.h8_scheduler_count, static_cast<s64>(ticks_late));
 
   }
+
 }
 
 void ResetH8(RuntimeState& runtime)
@@ -2501,7 +2338,7 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_intc.Reset();
   runtime.c352.Reset();
   runtime.h8_c352_instruction_clocks = 0;
-
+  runtime.h8_c352_deferred_clocks = 0;
   runtime.h8_peripherals.Reset();
 
 
@@ -2509,13 +2346,7 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_cycle_balance = 0;
   runtime.h8_cycle_fraction = 0;
   runtime.h8_rtc_scheduler_fraction = 0;
-  runtime.h8_irq_input = 0;
   runtime.h8_jvs_chain.Clear();
-
-  runtime.h8_cyberlead.SetInputProfile(
-    runtime.content.machine_config == "aplarail" ?
-      Arcade::JVS::NamcoCyberLead::InputProfile::AplaRail :
-      Arcade::JVS::NamcoCyberLead::InputProfile::Standard);
 
   // Standard Cyber Lead JVS for the conventional digital-input titles that
   // are ready for cabinet validation. Aqua Rush is intentionally held back
@@ -2532,6 +2363,11 @@ void ResetH8(RuntimeState& runtime)
       runtime.content.set_name.rfind("tektagt", 0) == 0)
   {
     runtime.h8_jvs.profile = JVSProfile::CyberLead;
+  }
+  else if (runtime.content.set_name == "questff")
+  {
+    runtime.h8_jvs.profile = JVSProfile::NamcoFCA10;
+    runtime.h8_fca10.SetMaintainedTestSwitch(true);
   }
   else if (runtime.content.machine_config == "technodr")
   {
@@ -2596,10 +2432,13 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_cpu->bus_write = H8BusWrite;
   h8_init(runtime.h8_cpu.get());
 
+  runtime.h8_cpu->instruction_fetch_data = runtime.content.sub_program.data();
+  runtime.h8_cpu->instruction_fetch_base = H8_ROM_BASE;
+  runtime.h8_cpu->instruction_fetch_size = static_cast<unsigned>(runtime.content.sub_program.size());
+
   runtime.h8_scheduler_rate_hz =
     (runtime.h8_jvs.profile == JVSProfile::CyberLead) ?
       CYBERLEAD_SCHEDULER_HZ : 1000;
-  runtime.h8_scheduler_tick_fraction = 0;
   runtime.h8_rtc_scheduler_fraction = 0;
 
   runtime.h8_scheduler_interval_ticks =
@@ -2676,7 +2515,6 @@ void SetBank(RuntimeState& runtime, u16 data)
   {
     runtime.bank = data;
   }
-
 }
 
 } // namespace
@@ -2732,7 +2570,9 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
     content.rom_board_profile = ROMBoardProfile::Ordinary;
 
   content.alternate_bank = (content.rom_board_profile == ROMBoardProfile::AlternateBank);
-  content.requires_ram_preserving_boot_reset = RequiresRamPreservingBootReset(content.machine_config);
+  content.requires_ram_preserving_boot_reset =
+    RequiresRamPreservingBootReset(content.machine_config) ||
+    RequiresRamPreservingBootReset(game.hardware_profile);
 
   size_t banked_size = 0;
   for (const Arcade::Database::ROMDefinition& rom : game.roms)
@@ -2801,6 +2641,39 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
     return std::nullopt;
   }
 
+  if (UsesCDXA(content))
+  {
+    const Arcade::Database::MediaDefinition* const cdrom =
+      Arcade::Database::GetMediaByRole(game, "cdxa_pcb:ata:0:cdrom_001");
+    if (!cdrom || cdrom->type != Arcade::Database::MediaType::CHDCDROM)
+    {
+      Error::SetStringView(error, "Namco System 12 CDXA definition is missing its CD-ROM CHD media.");
+      return std::nullopt;
+    }
+
+    content.cdxa_cdrom_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *cdrom);
+    if (!FileSystem::FileExists(content.cdxa_cdrom_path.c_str()))
+    {
+      Error::SetStringFmt(error, "Namco System 12 CDXA CHD for '{}' was not found:\n{}", game.id,
+                          content.cdxa_cdrom_path);
+      return std::nullopt;
+    }
+
+    std::array<u8, SHA1Digest::DIGEST_SIZE> chd_sha1;
+    if (!CDImage::GetCHDImageSHA1(content.cdxa_cdrom_path.c_str(), &chd_sha1, error))
+      return std::nullopt;
+
+    const std::string chd_sha1_string = SHA1Digest::DigestToString(chd_sha1);
+    if (!StringUtil::EqualNoCase(chd_sha1_string, cdrom->sha1))
+    {
+      Error::SetStringFmt(error, "Namco System 12 CDXA CHD '{}' SHA-1 mismatch.", content.cdxa_cdrom_path);
+      return std::nullopt;
+    }
+
+    INFO_LOG("System12 CDXA media validated set='{}' path='{}' sha1={}", game.id, content.cdxa_cdrom_path,
+             chd_sha1_string);
+  }
+
   if (content.machine_config == "aplarail" ||
       content.set_name.rfind("soulclbr", 0) == 0)
   {
@@ -2854,7 +2727,18 @@ void GenerateAudioFrame(s32* left, s32* right)
   if (!s_runtime)
     return;
 
-  s_runtime->c352.PopHostFrame(left, right);
+  RuntimeState& runtime = *s_runtime;
+  runtime.c352.PopHostFrame(left, right);
+
+  if (runtime.cdxa)
+  {
+    s32 cdxa_left = 0;
+    s32 cdxa_right = 0;
+    runtime.cdxa->PopAudioFrame(&cdxa_left, &cdxa_right);
+
+    *left = std::clamp<s32>(*left + cdxa_left, -32768, 32767);
+    *right = std::clamp<s32>(*right + cdxa_right, -32768, 32767);
+  }
 }
 bool Initialize(LoadedContent content, Error* error)
 {
@@ -2906,10 +2790,61 @@ bool Initialize(LoadedContent content, Error* error)
     INFO_LOG("Applied Point Blank 2/Gunbarl DMA completion-wait compatibility patch set='{}' offset={:08X}",
              content.set_name, static_cast<u32>(PB2_DMA_WAIT_BRANCH_OFFSET));
   }
+  // Truck Kyosokyoku has a startup race between status initialization and
+  // DMA5. Match MAME's truckk_state::machine_start() workaround exactly:
+  // move the five status-initialization instructions ahead of the two
+  // instructions which start DMA5.
+  if (content.set_name == "truckk")
+  {
+    static constexpr size_t TRUCK_DMA_START_OFFSET = 0x376E4;
+    static constexpr size_t TRUCK_STATUS_INIT_OFFSET = 0x376EC;
+    static constexpr size_t TRUCK_STATUS_INIT_SIZE = 5 * sizeof(u32);
+    static constexpr size_t TRUCK_DMA_START_SIZE = 2 * sizeof(u32);
+    static constexpr size_t TRUCK_PATCH_END =
+      TRUCK_DMA_START_OFFSET + TRUCK_STATUS_INIT_SIZE + TRUCK_DMA_START_SIZE;
+
+    if (content.program_rom.size() < TRUCK_PATCH_END)
+    {
+      Error::SetStringView(error, "Truck Kyosokyoku DMA5 startup-order workaround is outside the loaded program ROM.");
+      return false;
+    }
+
+    std::array<u8, TRUCK_STATUS_INIT_SIZE> status_init{};
+    std::memcpy(status_init.data(),
+                content.program_rom.data() + TRUCK_STATUS_INIT_OFFSET,
+                status_init.size());
+    std::memcpy(content.program_rom.data() + TRUCK_DMA_START_OFFSET + status_init.size(),
+                content.program_rom.data() + TRUCK_DMA_START_OFFSET,
+                TRUCK_DMA_START_SIZE);
+    std::memcpy(content.program_rom.data() + TRUCK_DMA_START_OFFSET,
+                status_init.data(),
+                status_init.size());
+
+    INFO_LOG("Applied Truck Kyosokyoku DMA5 startup-order compatibility workaround.");
+  }
+
   std::memcpy(Bus::g_bios, content.program_rom.data(), Bus::BIOS_SIZE);
 
   RuntimeState runtime;
   runtime.content = std::move(content);
+  runtime.test_switch_maintained = HasMaintainedTestSwitch(runtime.content);
+
+  if (UsesCDXA(runtime))
+  {
+    runtime.cdxa = std::make_unique<Arcade::Namco::System12CDXA>();
+    if (!runtime.content.cdxa_cdrom_path.empty() &&
+        !runtime.cdxa->SetMedia(runtime.content.cdxa_cdrom_path.c_str(), error))
+    {
+      return false;
+    }
+
+    runtime.cdxa_scheduler_interval_ticks =
+      std::max<TickCount>(1, System::GetTicksPerSecond() / CDXA_SH2_SCHEDULER_HZ);
+    runtime.cdxa_timing_event =
+      std::make_unique<TimingEvent>("Namco System 12 CDXA SH7014", runtime.cdxa_scheduler_interval_ticks,
+                                    runtime.cdxa_scheduler_interval_ticks, CDXASH2SchedulerCallback, nullptr);
+    runtime.cdxa_timing_event->SetPeriodAndSchedule(runtime.cdxa_scheduler_interval_ticks);
+  }
 
   if (!LoadEEPROM(runtime, error))
     return false;
@@ -2965,6 +2900,13 @@ void Reset()
   s_runtime->m8f4_transaction_count = 0;
   s_runtime->m8f4_dma_count = 0;
 
+  if (s_runtime->cdxa)
+  {
+    s_runtime->cdxa->Reset();
+    s_runtime->cdxa_cycle_fraction = 0;
+    s_runtime->cdxa_scheduler_count = 0;
+  }
+
   // System 12 board reset leaves the PIO/DMA5 source idle.
   DMA::SetRequest(DMA::Channel::PIO, false);
 
@@ -2975,6 +2917,9 @@ void Shutdown()
 {
   if (s_runtime && s_runtime->h8_timing_event && s_runtime->h8_timing_event->IsActive())
     s_runtime->h8_timing_event->Deactivate();
+
+  if (s_runtime && s_runtime->cdxa_timing_event && s_runtime->cdxa_timing_event->IsActive())
+    s_runtime->cdxa_timing_event->Deactivate();
 
   // Clear the shared DMA5 request before removing the System 12 provider.
   DMA::SetRequest(DMA::Channel::PIO, false);
@@ -3006,6 +2951,7 @@ void SetVBlank(bool state)
                     (state ? UINT8_C(0x80) : UINT8_C(0x00)));
 
   H8SetExternalIRQLine(runtime, 1, state);
+  UpdateTruckADCInputs(runtime);
   runtime.h8_peripherals.SetADCTrigger(state);
   H8CollectInterruptSources(runtime);
 
@@ -3066,208 +3012,22 @@ u32 ReadEXP1(u32 width, u32 offset)
   if (!s_runtime)
     return UINT32_C(0xFFFFFFFF);
 
+  if (s_runtime->cdxa)
+  {
+    u32 value = UINT32_C(0xFFFFFFFF);
+    if (s_runtime->cdxa->ReadPSX(width, offset, value))
+    {
+      return value;
+    }
+  }
+
   if (offset >= SHARED_RAM_BASE && offset <= SHARED_RAM_END)
   {
     const u32 shared_offset = offset - SHARED_RAM_BASE;
     const u32 value =
       ReadBytes(std::span<const u8>(s_runtime->shared_ram), width, shared_offset);
 
-    // Diagnostic only: identify the exact PSX-side reads which consume the
-    // Cyber Lead input/coin state decoded by the original H8 firmware.
-    const bool trace_aplarail_input_shared =
-      s_runtime->content.set_name == "aplarail" &&
-      ((shared_offset >= UINT32_C(0x313C) && shared_offset <= UINT32_C(0x3187)) ||
-       (shared_offset >= UINT32_C(0x32BC) && shared_offset <= UINT32_C(0x3307)));
 
-    if (trace_aplarail_input_shared)
-    {
-      static std::array<u32, PSX_SHARED_WINDOW_SIZE> s_last_values{};
-      static std::array<u8, PSX_SHARED_WINDOW_SIZE> s_last_widths{};
-      static bool s_initialized = false;
-      static u32 s_log_count = 0;
-
-      if (!s_initialized)
-      {
-        s_last_values.fill(UINT32_C(0xFFFFFFFF));
-        s_last_widths.fill(UINT8_C(0));
-        s_initialized = true;
-      }
-
-      if (shared_offset < PSX_SHARED_WINDOW_SIZE &&
-          s_log_count < UINT32_C(4096) &&
-          (s_last_widths[shared_offset] != width ||
-           s_last_values[shared_offset] != value))
-      {
-        s_last_widths[shared_offset] = static_cast<u8>(width);
-        s_last_values[shared_offset] = value;
-        s_log_count++;
-
-        WARNING_LOG(
-          "System12 AplaRail PSX-SHARED read #{} offset={:04X} width={} value={:08X} "
-          "pc={:08X} current_pc={:08X} ra={:08X} gp={:08X}",
-          s_log_count, shared_offset, width, value,
-          CPU::g_state.pc, CPU::g_state.current_instruction_pc,
-          CPU::g_state.regs.ra, CPU::g_state.regs.gp);
-      }
-    }
-
-    // AplaRail diagnostic: trace PSX cached inputs and consumer sites.
-    //
-    // This is diagnostic-only. It does not alter shared RAM, cached input
-    // values, JVS state, H8 timing, or PSX execution.
-    if (s_runtime->content.set_name == "aplarail")
-    {
-      const bool service_pressed = ArcadeInput::IsOperatorPressed("Service");
-      const bool coin_pressed = ArcadeInput::IsDigitalPressed(0, "Coin");
-
-      // Scan the loaded PSX executable once, on the first operator input, for
-      // MIPS memory operations which can touch the cached input words. The
-      // GP-relative ranges cover the input cache around gp+0474..0486 and the
-      // baseline/reference words around gp+05F0..0608. Absolute-address
-      // candidates cover the same RAM using a 0x8007xxxx base register.
-      static bool s_aplarail_consumer_scan_done = false;
-      if (!s_aplarail_consumer_scan_done && (service_pressed || coin_pressed))
-      {
-        s_aplarail_consumer_scan_done = true;
-        u32 match_count = 0;
-
-        WARNING_LOG(
-          "System12 AplaRail PSX-CONSUMER-SCAN BEGIN start=80010000 end=80080000 gp={:08X}",
-          CPU::g_state.regs.gp);
-
-        for (u32 address = UINT32_C(0x80010000);
-             address < UINT32_C(0x80080000); address += 4)
-        {
-          u32 instruction = 0;
-          if (!CPU::SafeReadMemoryWord(address, &instruction))
-            continue;
-
-          const u32 opcode = (instruction >> 26) & UINT32_C(0x3F);
-          const u32 rs = (instruction >> 21) & UINT32_C(0x1F);
-          const u32 rt = (instruction >> 16) & UINT32_C(0x1F);
-          const u16 imm = static_cast<u16>(instruction);
-
-          const char* op_name = nullptr;
-          bool is_load = false;
-          switch (opcode)
-          {
-            case 0x20: op_name = "LB";  is_load = true; break;
-            case 0x21: op_name = "LH";  is_load = true; break;
-            case 0x22: op_name = "LWL"; is_load = true; break;
-            case 0x23: op_name = "LW";  is_load = true; break;
-            case 0x24: op_name = "LBU"; is_load = true; break;
-            case 0x25: op_name = "LHU"; is_load = true; break;
-            case 0x26: op_name = "LWR"; is_load = true; break;
-            case 0x28: op_name = "SB"; break;
-            case 0x29: op_name = "SH"; break;
-            case 0x2A: op_name = "SWL"; break;
-            case 0x2B: op_name = "SW"; break;
-            case 0x2E: op_name = "SWR"; break;
-            default: break;
-          }
-
-          if (!op_name)
-            continue;
-
-          const bool gp_cache_candidate =
-            rs == UINT32_C(28) &&
-            ((imm >= UINT16_C(0x0470) && imm <= UINT16_C(0x0490)) ||
-             (imm >= UINT16_C(0x05F0) && imm <= UINT16_C(0x0608)));
-
-          const bool absolute_cache_candidate =
-            (imm >= UINT16_C(0x1BD0) && imm <= UINT16_C(0x1BDC)) ||
-            (imm >= UINT16_C(0x1D50) && imm <= UINT16_C(0x1D64));
-
-          if (!gp_cache_candidate && !absolute_cache_candidate)
-            continue;
-
-          match_count++;
-          WARNING_LOG(
-            "System12 AplaRail PSX-CONSUMER-SCAN match={} addr={:08X} word={:08X} "
-            "op={} rs={} rt={} imm={:04X} mode={}",
-            match_count, address, instruction, op_name, rs, rt, imm,
-            gp_cache_candidate ? "gp-relative" : "absolute-candidate");
-
-          // Context around load sites should expose the subsequent mask/test/
-          // branch without requiring another full-memory dump.
-          if (is_load)
-          {
-            const u32 context_start = address - UINT32_C(0x18);
-            const u32 context_end = address + UINT32_C(0x30);
-            for (u32 context = context_start; context <= context_end; context += 4)
-            {
-              u32 context_word = 0;
-              const bool valid = CPU::SafeReadMemoryWord(context, &context_word);
-              WARNING_LOG(
-                "System12 AplaRail PSX-CONSUMER-CONTEXT match={} addr={:08X} "
-                "focus={} valid={} word={:08X}",
-                match_count, context, context == address, valid, context_word);
-            }
-          }
-        }
-
-        WARNING_LOG(
-          "System12 AplaRail PSX-CONSUMER-SCAN END matches={}", match_count);
-      }
-
-      // Sample the PSX-side cache while the firmware/shared-RAM refresh path
-      // is executing. Reading 3142/32C2/3302 is especially useful because it
-      // occurs after the preceding cached halfword has had a chance to store.
-      const bool cache_trace_point =
-        shared_offset == UINT32_C(0x3140) || shared_offset == UINT32_C(0x3142) ||
-        shared_offset == UINT32_C(0x32C0) || shared_offset == UINT32_C(0x32C2) ||
-        shared_offset == UINT32_C(0x3300) || shared_offset == UINT32_C(0x3302);
-
-      if (cache_trace_point)
-      {
-        u16 cached_service = 0;
-        u16 cached_coin = 0;
-        u16 baseline_coin = 0;
-        const bool cached_service_valid =
-          CPU::SafeReadMemoryHalfWord(CPU::g_state.regs.gp + UINT32_C(0x476),
-                                      &cached_service);
-        const bool cached_coin_valid =
-          CPU::SafeReadMemoryHalfWord(CPU::g_state.regs.gp + UINT32_C(0x47A),
-                                      &cached_coin);
-        const bool baseline_coin_valid =
-          CPU::SafeReadMemoryHalfWord(UINT32_C(0x80071D5C), &baseline_coin);
-
-        static bool s_cache_initialized = false;
-        static u16 s_last_cached_service = UINT16_C(0xFFFF);
-        static u16 s_last_cached_coin = UINT16_C(0xFFFF);
-        static u16 s_last_baseline_coin = UINT16_C(0xFFFF);
-        static u32 s_cache_log_count = 0;
-
-        const bool cache_changed =
-          !s_cache_initialized || cached_service != s_last_cached_service ||
-          cached_coin != s_last_cached_coin || baseline_coin != s_last_baseline_coin;
-        const bool shared_nonzero = value != 0;
-        const bool input_active = service_pressed || coin_pressed;
-        const bool coin_latched =
-          cached_coin_valid && baseline_coin_valid && cached_coin != baseline_coin;
-
-        if (s_cache_log_count < UINT32_C(512) &&
-            (cache_changed || shared_nonzero || input_active || coin_latched))
-        {
-          s_cache_initialized = true;
-          s_last_cached_service = cached_service;
-          s_last_cached_coin = cached_coin;
-          s_last_baseline_coin = baseline_coin;
-          s_cache_log_count++;
-
-          WARNING_LOG(
-            "System12 AplaRail PSX-CACHE #{} shared={:04X} width={} value={:08X} "
-            "service_raw={} coin_raw={} service_valid={} service={:04X} "
-            "coin_valid={} coin={:04X} baseline_valid={} baseline={:04X} "
-            "pc={:08X} current_pc={:08X} ra={:08X} gp={:08X}",
-            s_cache_log_count, shared_offset, width, value,
-            service_pressed, coin_pressed, cached_service_valid, cached_service,
-            cached_coin_valid, cached_coin, baseline_coin_valid, baseline_coin,
-            CPU::g_state.pc, CPU::g_state.current_instruction_pc,
-            CPU::g_state.regs.ra, CPU::g_state.regs.gp);
-        }
-      }
-    }
     return value;
   }
 
@@ -3303,6 +3063,11 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return false;
 
   RuntimeState& runtime = *s_runtime;
+  if (runtime.cdxa && runtime.cdxa->WritePSX(width, offset, value))
+  {
+    return true;
+  }
+
   if (offset >= BANK_REGISTER_BASE && offset <= BANK_REGISTER_END)
   {
     SetBank(runtime, static_cast<u16>(value));
@@ -3341,135 +3106,8 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   {
     const u32 shared_offset = offset - SHARED_RAM_BASE;
 
-    // Diagnostic only: log PSX writes into the two narrow mailbox regions
-    // implicated by the Cyber Lead H8 trace. This does not alter the write.
-    const bool trace_aplarail_input_shared =
-      runtime.content.set_name == "aplarail" &&
-      ((shared_offset >= UINT32_C(0x313C) && shared_offset <= UINT32_C(0x3187)) ||
-       (shared_offset >= UINT32_C(0x32BC) && shared_offset <= UINT32_C(0x3307)));
-
-    u32 before = 0;
-    if (trace_aplarail_input_shared)
-      before = ReadBytes(std::span<const u8>(runtime.shared_ram), width, shared_offset);
 
     WriteBytes(std::span<u8>(runtime.shared_ram), width, shared_offset, value);
-
-    if (trace_aplarail_input_shared)
-    {
-      static u32 s_log_count = 0;
-      if (s_log_count < UINT32_C(24))
-      {
-        const u32 after =
-          ReadBytes(std::span<const u8>(runtime.shared_ram), width, shared_offset);
-        s_log_count++;
-
-        u16 cached_coin = 0;
-        u16 baseline_coin = 0;
-        const bool cached_coin_valid =
-          CPU::SafeReadMemoryHalfWord(CPU::g_state.regs.gp + UINT32_C(0x47A), &cached_coin);
-        const bool baseline_coin_valid =
-          CPU::SafeReadMemoryHalfWord(UINT32_C(0x80071D5C), &baseline_coin);
-
-        WARNING_LOG(
-          "System12 AplaRail COIN-MAILBOX PSX write #{} offset={:04X} width={} "
-          "value={:08X} before={:08X} after={:08X} "
-          "pc={:08X} current_pc={:08X} instr={:08X} ra={:08X} gp={:08X} "
-          "cached_valid={} cached={:04X} baseline_valid={} baseline={:04X} "
-          "v0={:08X} v1={:08X} a0={:08X} a1={:08X} a2={:08X} a3={:08X} "
-          "t0={:08X} t1={:08X} t2={:08X} t3={:08X} s0={:08X} s1={:08X} sp={:08X}",
-          s_log_count, shared_offset, width, value, before, after,
-          CPU::g_state.pc, CPU::g_state.current_instruction_pc,
-          CPU::g_state.current_instruction.bits, CPU::g_state.regs.ra,
-          CPU::g_state.regs.gp,
-          cached_coin_valid, cached_coin, baseline_coin_valid, baseline_coin,
-          CPU::g_state.regs.v0, CPU::g_state.regs.v1,
-          CPU::g_state.regs.a0, CPU::g_state.regs.a1,
-          CPU::g_state.regs.a2, CPU::g_state.regs.a3,
-          CPU::g_state.regs.t0, CPU::g_state.regs.t1,
-          CPU::g_state.regs.t2, CPU::g_state.regs.t3,
-          CPU::g_state.regs.s0, CPU::g_state.regs.s1,
-          CPU::g_state.regs.sp);
-        static bool s_coin_flow_dumped = false;
-        if (!s_coin_flow_dumped)
-        {
-          s_coin_flow_dumped = true;
-
-          struct CoinFlowRegion
-          {
-            u32 start;
-            u32 end;
-            const char* label;
-          };
-
-          static constexpr CoinFlowRegion regions[] = {
-            {UINT32_C(0x80026A40), UINT32_C(0x80026B20), "COIN_HANDLER"},
-            {UINT32_C(0x80026E40), UINT32_C(0x80026FC0), "INPUT_REFRESH"},
-            {UINT32_C(0x800504D0), UINT32_C(0x80050680), "CALLER"},
-            {UINT32_C(0x8004FA80), UINT32_C(0x8004FBC0), "BASELINE"},
-          };
-
-          for (const CoinFlowRegion& region : regions)
-          {
-            WARNING_LOG(
-              "System12 AplaRail COIN-FLOW-DUMP BEGIN label={} start={:08X} end={:08X}",
-              region.label, region.start, region.end);
-
-            for (u32 address = region.start; address <= region.end; address += 4)
-            {
-              u32 instruction = 0;
-              const bool valid = CPU::SafeReadMemoryWord(address, &instruction);
-              WARNING_LOG(
-                "System12 AplaRail COIN-FLOW-DUMP label={} addr={:08X} valid={} word={:08X}",
-                region.label, address, valid, instruction);
-            }
-
-            WARNING_LOG(
-              "System12 AplaRail COIN-FLOW-DUMP END label={}",
-              region.label);
-          }
-        }
-
-        static bool s_coin_code_dumped = false;
-        if (!s_coin_code_dumped)
-        {
-          s_coin_code_dumped = true;
-
-          const u32 centers[2] = {
-            CPU::g_state.pc,
-            CPU::g_state.regs.ra,
-          };
-          static constexpr const char* labels[2] = {
-            "PC",
-            "RA",
-          };
-
-          for (u32 region = 0; region < 2; region++)
-          {
-            const u32 center = centers[region];
-            const u32 start = (center - UINT32_C(0x60)) & ~UINT32_C(3);
-            const u32 end = (center + UINT32_C(0x60)) & ~UINT32_C(3);
-
-            WARNING_LOG(
-              "System12 AplaRail COIN-CODE-DUMP BEGIN label={} center={:08X} start={:08X} end={:08X}",
-              labels[region], center, start, end);
-
-            for (u32 address = start; address <= end; address += 4)
-            {
-              u32 instruction = 0;
-              const bool valid = CPU::SafeReadMemoryWord(address, &instruction);
-
-              WARNING_LOG(
-                "System12 AplaRail COIN-CODE-DUMP label={} addr={:08X} valid={} word={:08X}",
-                labels[region], address, valid, instruction);
-            }
-
-            WARNING_LOG(
-              "System12 AplaRail COIN-CODE-DUMP END label={} center={:08X}",
-              labels[region], center);
-          }
-        }
-      }
-    }
 
     return true;
   }
@@ -3564,7 +3202,6 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   {
     const u32 low_source = offset - DMA_SOURCE_BASE;
     runtime.dma_source = low_source | ((value & UINT32_C(0xFFFF)) << 16);
-
     // Arm the PSX DMA5/PIO request line for this ROM transfer.
     DMA::SetRequest(DMA::Channel::PIO, true);
     return true;
@@ -3785,7 +3422,6 @@ void DMARead(u32* destination, u32 word_count)
                   static_cast<size_t>(copied_words) * sizeof(u32));
     }
   }
-
 
   runtime.dma_transfer_count++;
   if (copied_words < word_count && runtime.dma_transfer_count <= 64)

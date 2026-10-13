@@ -180,8 +180,23 @@ public:
 
   void Advance(u64 clocks)
   {
-    AdvanceADC(clocks);
-    AdvanceWatchdog(clocks);
+    if (clocks == 0)
+      return;
+
+    if (m_adc_active)
+      AdvanceADC(clocks);
+
+    if ((m_watchdog_tcsr & UINT8_C(0x20)) != 0)
+    {
+      AdvanceWatchdog(clocks);
+    }
+    else if (m_watchdog_tcnt != 0 || m_watchdog_cycles != 0)
+    {
+      // Preserve the existing disabled-watchdog behavior without paying the
+      // call/branch cost after every H8 instruction once it is already idle.
+      m_watchdog_tcnt = 0;
+      m_watchdog_cycles = 0;
+    }
   }
 
   std::optional<u32> TakePendingInterrupt()

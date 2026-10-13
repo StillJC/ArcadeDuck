@@ -44,7 +44,6 @@ void NamcoCyberLead::Reset()
   m_coin_previous.fill(false);
   m_led_transport = {};
   m_led_link.Reset();
-  m_led_link_diag_count = 0;
 }
 
 bool NamcoCyberLead::SetLEDFirmware(std::span<const u8> firmware)
@@ -88,23 +87,6 @@ bool NamcoCyberLead::CopyLEDFrame(std::span<u8> pixels, std::array<u32, 4>* inte
 
 u32 NamcoCyberLead::ReadPlayerInputs(u32 player) const
 {
-  if (m_input_profile == InputProfile::AplaRail)
-  {
-    if (player != 0)
-      return 0;
-
-    u32 value = 0;
-    if (ArcadeInput::IsDigitalPressed(0, "Start"))
-      value |= UINT32_C(0x00000001); // OK/Horn: JVS Button 2
-    if (ArcadeInput::IsDigitalPressed(0, "Button1"))
-      value |= UINT32_C(0x00000002); // Left: JVS Button 1
-    if (ArcadeInput::IsOperatorPressed("Service"))
-      value |= UINT32_C(0x00000040);
-    if (ArcadeInput::IsDigitalPressed(0, "Button2"))
-      value |= UINT32_C(0x00008000); // Right: JVS Button 3
-    return value;
-  }
-
   if (player >= 2)
     return 0;
 
@@ -156,16 +138,6 @@ void NamcoCyberLead::QueueLEDCommand(std::span<const u8> command)
                 frame.generation, frame.wire_size);
   }
 
-  if (m_led_link_diag_count < 32)
-  {
-    INFO_LOG(
-      "CyberLead LED link TX #{} address={} command={:02X}/{:02X} command_bytes={} logical_bytes={} "
-      "wire_bytes={} checksum={:02X}",
-      frame.generation, m_led_link.GetAddress(), command[0],
-      (command.size() > 1) ? command[1] : UINT8_C(0x00), command.size(),
-      frame.logical_size, frame.wire_size, frame.checksum);
-    m_led_link_diag_count++;
-  }
 }
 
 void NamcoCyberLead::QueueLEDControlCommand()
@@ -194,32 +166,6 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 {
   PacketResult result;
 
-  static bool s_diag_initialized = false;
-  static bool s_diag_service_previous = false;
-  static std::array<bool, 2> s_diag_coin_previous{false, false};
-
-  const bool diag_service = ArcadeInput::IsOperatorPressed("Service");
-  const std::array<bool, 2> diag_coin = {
-    ArcadeInput::IsDigitalPressed(0, "Coin"),
-    ArcadeInput::IsDigitalPressed(1, "Coin")
-  };
-
-  const bool diag_service_changed =
-    !s_diag_initialized || diag_service != s_diag_service_previous;
-  const bool diag_coin0_changed =
-    !s_diag_initialized || diag_coin[0] != s_diag_coin_previous[0];
-  const bool diag_coin1_changed =
-    !s_diag_initialized || diag_coin[1] != s_diag_coin_previous[1];
-
-  if (diag_service_changed || diag_coin0_changed || diag_coin1_changed)
-  {
-    WARNING_LOG("CyberLead DIAG host inputs: Service={} Coin1={} Coin2={}",
-                diag_service, diag_coin[0], diag_coin[1]);
-  }
-
-  s_diag_initialized = true;
-  s_diag_service_previous = diag_service;
-  s_diag_coin_previous = diag_coin;
 
   if (packet.size() < 4)
     return result;
@@ -331,20 +277,16 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
         if (players > 2 || bytes > 2)
           return result;
 
-        AppendResponseByte(response, response_length, UINT8_C(0x01));
-        AppendResponseByte(response, response_length,
-                           ArcadeInput::IsOperatorPressed("Test") ? UINT8_C(0x80) : UINT8_C(0x00));
+        const bool test = ArcadeInput::IsOperatorPressed("Test");
+        const std::array<u32, 2> player_inputs = {ReadPlayerInputs(0), ReadPlayerInputs(1)};
 
-        if (diag_service_changed)
-        {
-          WARNING_LOG("CyberLead DIAG 0x20: players={} bytes={} Test={} P1={:08X} P2={:08X}",
-                      players, bytes, ArcadeInput::IsOperatorPressed("Test"),
-                      ReadPlayerInputs(0), ReadPlayerInputs(1));
-        }
+        AppendResponseByte(response, response_length, UINT8_C(0x01));
+        AppendResponseByte(response, response_length, test ? UINT8_C(0x80) : UINT8_C(0x00));
+
 
         for (u32 player = 0; player < players; player++)
         {
-          const u32 value = ReadPlayerInputs(player);
+          const u32 value = player_inputs[player];
           for (u32 byte = 0; byte < bytes; byte++)
             AppendResponseByte(response, response_length, static_cast<u8>(value >> (byte * 8U)));
         }
@@ -364,12 +306,6 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 
         UpdateCoinCounters();
 
-        if (diag_coin0_changed || diag_coin1_changed)
-        {
-          WARNING_LOG("CyberLead DIAG 0x21: count={} Coin1Raw={} Coin2Raw={} Counter1={} Counter2={}",
-                      count, diag_coin[0], diag_coin[1],
-                      m_coin_counter[0], m_coin_counter[1]);
-        }
 
         AppendResponseByte(response, response_length, UINT8_C(0x01));
         for (u32 slot = 0; slot < count; slot++)
@@ -395,8 +331,6 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
           static_cast<u16>(packet[index + 1]));
         index += 2;
 
-        WARNING_LOG("CyberLead DIAG 0x{:02X}: slot={} amount={} before1={} before2={}",
-                    command, slot, amount, m_coin_counter[0], m_coin_counter[1]);
 
         AppendResponseByte(response, response_length, UINT8_C(0x01));
 

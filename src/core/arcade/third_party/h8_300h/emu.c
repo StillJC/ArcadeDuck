@@ -1588,7 +1588,23 @@ void bsr(h8_system_t *system, signed offset)
  */
 void h8_fetch(h8_system_t *system)
 {
-  system->dbus.bits = h8_read_w(system, system->cpu.pc);
+  const unsigned pc = system->cpu.pc;
+
+  if (system->instruction_fetch_data &&
+      pc >= system->instruction_fetch_base &&
+      (pc - system->instruction_fetch_base) + 1 < system->instruction_fetch_size)
+  {
+    const unsigned offset = pc - system->instruction_fetch_base;
+
+    h8_add_cycles(system, 2);
+    system->dbus.a.u = system->instruction_fetch_data[offset];
+    system->dbus.b.u = system->instruction_fetch_data[offset + 1];
+  }
+  else
+  {
+    system->dbus.bits = h8_read_w(system, pc);
+  }
+
   system->cpu.pc += 2;
 #if H8_DEBUG_PRINT_FETCH
   printf("%02X %02X ", system->dbus.a.u, system->dbus.b.u);
@@ -2718,10 +2734,13 @@ H8_OP(op66)
 
 H8_OP(op67)
 {
-  if (system->dbus.b.u & 0x80)
-    rs_rd_b(system, *rd_b(system, system->dbus.bh), rd_b(system, system->dbus.bl), bist);
+  h8_byte_t immediate;
+
+  immediate.u = system->dbus.bh & B0111;
+  if (system->dbus.bh & B1000)
+    rs_rd_b(system, immediate, rd_b(system, system->dbus.bl), bist);
   else
-    rs_rd_b(system, *rd_b(system, system->dbus.bh), rd_b(system, system->dbus.bl), bst);
+    rs_rd_b(system, immediate, rd_b(system, system->dbus.bl), bst);
 }
 
 H8_OP(op68)

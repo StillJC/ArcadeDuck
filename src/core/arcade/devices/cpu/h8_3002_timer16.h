@@ -227,8 +227,19 @@ public:
       return;
 
     const u64 new_time = m_total_clocks + clocks;
-    for (size_t i = 0; i < m_channels.size(); i++)
-      UpdateChannel(i, new_time);
+
+    // Disabled channels do not accumulate timer state. Write(TSTR) first
+    // synchronizes every channel to m_total_clocks before changing enable
+    // state, so they do not need per-instruction UpdateChannel() calls here.
+    const u8 enabled_mask = static_cast<u8>(m_tstr & UINT8_C(0x1F));
+    if (enabled_mask != 0)
+    {
+      for (size_t i = 0; i < m_channels.size(); i++)
+      {
+        if ((enabled_mask & static_cast<u8>(UINT8_C(1) << i)) != 0)
+          UpdateChannel(i, new_time);
+      }
+    }
 
     m_total_clocks = new_time;
   }

@@ -1687,14 +1687,14 @@ controlLayouts:
         displayName: "Button 1 — Left"
         kind: "button"
       - key: "Button2"
-        displayName: "Button 2 — Right"
+        displayName: "Button 2 — OK / Horn"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 — Right"
         kind: "button"
       - key: "Accelerator"
         displayName: "Speed Lever — Control train speed"
         kind: "axis"
-      - key: "Start"
-        displayName: "Start / OK / Horn — Confirm / sound horn"
-        kind: "button"
 
   aquarush:
     displayName: "Aqua Rush"
@@ -1984,6 +1984,78 @@ controlLayouts:
         displayName: "Button 6 — Wrestling action not yet assigned"
         kind: "button"
 
+  questff:
+    displayName: "Quest for Fame"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "SelectUp"
+        displayName: "Up Select / 1P Left Choose"
+        kind: "button"
+      - key: "SelectDown"
+        displayName: "Down Select / 1P Right Choose"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / 1P Determine"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Drum"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Guitar"
+        kind: "button"
+      - key: "Button3"
+        displayName: "2P Right Choose"
+        kind: "button"
+      - key: "Button4"
+        displayName: "2P Left Choose"
+        kind: "button"
+      - key: "Button5"
+        displayName: "2P Determine"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
+  ujlnow:
+    displayName: "Um Jammer Lammy NOW!"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Up"
+        displayName: "Up Select"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down Select"
+        kind: "button"
+      - key: "Left"
+        displayName: "Joe Switch (J)"
+        kind: "button"
+      - key: "Right"
+        displayName: "Chin Switch (C)"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Circle / Enter"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Cross"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Triangle"
+        kind: "button"
+      - key: "Button7"
+        displayName: "Square"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
   truckk:
     displayName: "Truck Kyosokyoku"
     controllerType: "driving"
@@ -2002,7 +2074,7 @@ controlLayouts:
         displayName: "Horn — Sound horn"
         kind: "button"
       - key: "MusicPrevious"
-        displayName: "Previous Music — Previous music track"
+        displayName: "Music Back — Previous music track"
         kind: "button"
       - key: "MusicNext"
         displayName: "Next Music — Next music track"
@@ -2018,6 +2090,9 @@ controlLayouts:
         kind: "axis"
       - key: "View"
         displayName: "View Change — Change camera view"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
         kind: "button"
 
   ftimpact:
@@ -7030,6 +7105,9 @@ games:
     minPlayers: 1
     maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "ujlnow" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x2000000, width: 32, endianness: "little" }
@@ -7054,6 +7132,45 @@ games:
       machineConfig: "cdxa_pcb"
       inputProfile: "ujlnow"
       stateClass: "namcos12_cdxa_state"
+
+  questff:
+    archive: "questff.zip"
+    title: "Quest for Fame"
+    system: "namco_system12"
+    manufacturer: "Virtual Music / Namco"
+    year: 1999
+    region: "Japan"
+    revision: "QF2/VER.A"
+    boardCode: "QF2"
+    hardwareProfile: "cdxa_pcb"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "questff" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x1000000, width: 32, endianness: "little" }
+      - { id: "sub", size: 0x80000, width: 8, endianness: "native" }
+      - { id: "c352", size: 0x1000000, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "qf2vera.2l", size: 0x200000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x936778e1", sha1: "2afe556ef4888bbe422c2f92d7b6bd85beffc229", groupSize: 1, skip: 1 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "qf2vera.2p", size: 0x200000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0x429ff82e", sha1: "958e4d61bd9bd0515f837e9c2b910f1581426214", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "qf1rom0l.ic12", size: 0x800000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x3319164f", sha1: "3d673af952203b362f52f83f805f8a24e4864489", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "qf1rom0u.ic11", size: 0x800000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xd892c93e", sha1: "0d7dbf4ff45f823bbc0b4fdbfb2693e18beced45", groupSize: 1, skip: 1 }
+      - { role: "sub_001", region: "sub", name: "qf2vera.11s", size: 0x80000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x843f6ed9", sha1: "fdbd352e6fdbf48112ef67dcc7f34e41e00f017a", groupSize: 2, skip: 0 }
+      - { role: "c352_001", region: "c352", name: "qf1wave0.ic2", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x3f7b9afa", sha1: "b7ecef7447476937c99591b495f859ac6abf3e30", groupSize: 1, skip: 0 }
+    media:
+      - { role: "cdxa_pcb:ata:0:cdrom_001", type: "chd_cdrom", name: "qf1-a", sha1: "c65ac9bb0571e463a2f6a23cff396ca19430ca15", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "namcos12.cpp"
+      machineConfig: "questff"
+      inputProfile: "questff"
+      stateClass: "namcos12_cdxa_state"
+      emulationFlags: "MACHINE_IMPERFECT_CONTROLS"
 
   kaiunqz:
     archive: "kaiunqz.zip"

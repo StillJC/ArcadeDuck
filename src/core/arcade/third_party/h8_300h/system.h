@@ -294,6 +294,14 @@ typedef struct h8_system_t
   H8_BUS_READ_T bus_read;
   H8_BUS_WRITE_T bus_write;
 
+  /*
+   * ArcadeDuck extension: optional direct instruction-fetch mapping.
+   * This is fetch-only; ordinary data accesses continue through bus_read.
+   */
+  const h8_u8 *instruction_fetch_data;
+  unsigned instruction_fetch_base;
+  unsigned instruction_fetch_size;
+
   /* ArcadeDuck extension: original H8/300 normal-mode selector. */
   h8_bool normal_mode;
 

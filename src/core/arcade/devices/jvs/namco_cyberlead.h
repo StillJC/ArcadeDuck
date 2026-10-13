@@ -14,12 +14,6 @@ namespace Arcade::JVS {
 class NamcoCyberLead
 {
 public:
-  enum class InputProfile : u8
-  {
-    Standard,
-    AplaRail
-  };
-
   struct PacketResult
   {
     std::array<u8, 256> response{};
@@ -52,7 +46,6 @@ public:
   };
 
   void Reset();
-  void SetInputProfile(InputProfile profile) { m_input_profile = profile; }
   PacketResult ProcessPacket(std::span<const u8> packet);
 
   bool SetLEDFirmware(std::span<const u8> firmware);
@@ -72,7 +65,6 @@ private:
   void QueueLEDCommand(std::span<const u8> command);
   void QueueLEDControlCommand();
 
-  InputProfile m_input_profile = InputProfile::Standard;
   u8 m_address = UINT8_C(0xFF);
   std::array<u16, 2> m_coin_counter{};
   std::array<bool, 2> m_coin_previous{};

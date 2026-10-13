@@ -93,10 +93,16 @@ add_library(core
   arcade/devices/jvs/namco_cyberlead.h
   arcade/devices/jvs/namco_cyberlead_led.cpp
   arcade/devices/jvs/namco_cyberlead_led.h
+  arcade/devices/jvs/namco_fca10.cpp
+  arcade/devices/jvs/namco_fca10.h
   arcade/devices/jvs/namco_emio102.cpp
   arcade/devices/jvs/namco_emio102.h
   arcade/devices/jvs/namco_empri101.cpp
   arcade/devices/jvs/namco_empri101.h
+  arcade/devices/cpu/sh7014.cpp
+  arcade/devices/cpu/sh7014.h
+  arcade/devices/namco/namco_system12_cdxa.cpp
+  arcade/devices/namco/namco_system12_cdxa.h
   arcade/devices/security/cat702.cpp
   arcade/devices/storage/chd_hard_disk.cpp
   arcade/devices/storage/chd_hard_disk.h
@@ -115,6 +121,9 @@ add_library(core
   arcade/third_party/ymfm/ymfm_ssg.h
   arcade/third_party/z80_superzazu/z80.cpp
   arcade/third_party/z80_superzazu/z80.h
+  arcade/third_party/sh2/sh2.cpp
+  arcade/third_party/sh2/sh2.h
+  arcade/third_party/sh2/LICENSE
   arcade/systems/sony/zn/acclaim_ata.cpp
   arcade/systems/sony/zn/acclaim_ata.h
   arcade/systems/sony/zn/time_warner_ata.cpp
