@@ -26,6 +26,7 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/game_list.h"
 #include "core/fullscreen_ui.h"
 #include "core/host.h"
@@ -1139,9 +1140,11 @@ void MainWindow::populateCheatsMenu(QMenu* menu)
   connect(placeholder_action, &QAction::triggered, this, &MainWindow::onCheatsActionTriggered);
 }
 
-std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file)
+std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file,
+                                                                          std::string arcade_game_id)
 {
   std::shared_ptr<SystemBootParameters> ret = std::make_shared<SystemBootParameters>(std::move(file));
+  ret->arcade_game_id = std::move(arcade_game_id);
   ret->boot_intent = SystemBootIntent::PublicArcade;
   ret->start_media_capture = m_ui.actionMediaCapture->isChecked();
   return ret;
@@ -1435,6 +1438,39 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
 
       connect(menu.addAction(tr("Start")), &QAction::triggered,
               [this, entry]() { g_emu_thread->bootSystem(getSystemBootParameters(entry->path)); });
+
+      const Arcade::Database::GameDefinition* const parent_game = GetArcadeGameForEntry(entry);
+      const Arcade::Database::SystemDefinition* const parent_system =
+        parent_game ? Arcade::Database::GetSystem(parent_game->system_id) : nullptr;
+      if (parent_game && parent_game->parent.empty() && parent_system &&
+          Arcade::MachineHandlerSupportsSplitMergedSets(parent_system->machine_handler))
+      {
+        QMenu* clone_menu = nullptr;
+        for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(parent_game->id))
+        {
+          std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+          if (clone_path.empty())
+            clone_path = entry->path;
+          if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+            continue;
+
+          if (!clone_menu)
+            clone_menu = menu.addMenu(tr("Start Clone"));
+
+          QString label = QString::fromStdString(clone->title);
+          if (!clone->region.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->region));
+          if (!clone->revision.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->revision));
+          label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_action = clone_menu->addAction(label);
+          connect(clone_action, &QAction::triggered,
+                  [this, clone_path = std::move(clone_path), clone_id = clone->id]() mutable {
+                    g_emu_thread->bootSystem(getSystemBootParameters(std::move(clone_path), std::move(clone_id)));
+                  });
+        }
+      }
 
       if (m_ui.menuDebug->menuAction()->isVisible() && !Achievements::IsHardcoreModeActive())
       {

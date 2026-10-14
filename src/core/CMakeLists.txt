@@ -13,6 +13,8 @@ add_library(core
   arcade/arcade_input.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
+  arcade/arcade_rom_loader.cpp
+  arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
   arcade/arcade_output.h
   arcade/arcade_output_network.cpp

@@ -7,6 +7,7 @@
 #include "game_list.h"
 #include "host.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_machine_handler.h"
 #include "settings.h"
 
 #include "util/http_downloader.h"
@@ -258,6 +259,35 @@ static bool IsPathExcluded(const std::vector<std::string>& excluded_paths, const
                       [&path](const std::string& entry) { return path.starts_with(entry); }) != excluded_paths.end();
 }
 
+namespace GameList {
+
+static void CollapseArcadeCloneEntries()
+{
+  std::unique_lock lock(s_mutex);
+  std::vector<std::string_view> visible_parent_ids;
+  for (const Entry& entry : s_entries)
+  {
+    const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
+    const Arcade::Database::SystemDefinition* const system =
+      game ? Arcade::Database::GetSystem(game->system_id) : nullptr;
+    if (game && game->parent.empty() && system &&
+        Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
+    {
+      visible_parent_ids.push_back(game->id);
+    }
+  }
+
+  s_entries.erase(std::remove_if(s_entries.begin(), s_entries.end(), [&visible_parent_ids](const Entry& entry) {
+                    const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
+                    return game && !game->parent.empty() &&
+                           std::find(visible_parent_ids.begin(), visible_parent_ids.end(),
+                                     std::string_view(game->parent)) != visible_parent_ids.end();
+                  }),
+                  s_entries.end());
+}
+
+} // namespace GameList
+
 void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
                              const std::vector<std::string>& excluded_paths, const PlayedTimeMap& played_time_map,
                              const INISettingsInterface& custom_attributes_ini, BinaryFileWriter& cache_writer,
@@ -298,6 +328,8 @@ void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
       INFO_LOG("ArcadeDatabase.GameList ignored_unknown_archive archive='{}'", Path::GetFileName(ffd.FileName));
       continue;
     }
+
+    Arcade::Database::IndexArchivePath(ffd.FileName);
 
     std::unique_lock lock(s_mutex);
     if (GetEntryForPath(ffd.FileName) ||
@@ -520,6 +552,7 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   INISettingsInterface custom_attributes_ini(GetCustomPropertiesFile());
   custom_attributes_ini.Load();
 
+  Arcade::Database::ClearArchivePathIndex();
   Arcade::Database::ClearCompanionMediaIndex();
 
   if (!dirs.empty() || !recursive_dirs.empty())
@@ -548,6 +581,8 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
       progress->SetProgressValue(++directory_counter);
     }
   }
+
+  CollapseArcadeCloneEntries();
 
   // don't need unused cache entries
   s_cache_map.clear();

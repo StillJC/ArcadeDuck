@@ -1053,4 +1053,11 @@ bool MachineHandlerSupportsSaveStates(std::string_view id)
   return handler && handler->SupportsSaveStates();
 }
 
+bool MachineHandlerSupportsSplitMergedSets(std::string_view id)
+{
+  return id == "namco_system11" || id == "capcom_zn1" || id == "capcom_zn2" ||
+         id == "video_system_zn1" || id == "atlus_zn1" || id == "eighting_raizing_zn1" ||
+         id == "acclaim_zn1" || id == "time_warner_zn1" || id == "tecmo_tps" || id == "taito_fx1";
+}
+
 } // namespace Arcade

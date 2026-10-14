@@ -59,6 +59,7 @@ struct SystemBootParameters
   ~SystemBootParameters();
 
   std::string filename;
+  std::string arcade_game_id;
   std::string save_state;
   std::optional<bool> override_fullscreen;
   std::optional<bool> override_start_paused;

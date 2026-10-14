@@ -7,6 +7,7 @@
     <ClCompile Include="arcade\arcade_database.cpp" />
     <ClCompile Include="arcade\arcade_input.cpp" />
     <ClCompile Include="arcade\arcade_machine_handler.cpp" />
+    <ClCompile Include="arcade\arcade_rom_loader.cpp" />
     <ClCompile Include="arcade\arcade_output.cpp" />
     <ClCompile Include="arcade\arcade_output_network.cpp" />
     <ClCompile Include="arcade\arcade_output_win32.cpp" />
@@ -202,6 +203,7 @@
     <ClInclude Include="arcade\arcade_database.h" />
     <ClInclude Include="arcade\arcade_input.h" />
     <ClInclude Include="arcade\arcade_machine_handler.h" />
+    <ClInclude Include="arcade\arcade_rom_loader.h" />
     <ClInclude Include="arcade\arcade_output.h" />
     <ClInclude Include="arcade\arcade_output_network.h" />
     <ClInclude Include="arcade\arcade_output_win32.h" />

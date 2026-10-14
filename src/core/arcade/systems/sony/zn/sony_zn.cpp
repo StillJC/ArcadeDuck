@@ -5,6 +5,7 @@
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/devices/security/cat702.h"
 #include "core/arcade/devices/storage/chd_hard_disk.h"
@@ -32,9 +33,6 @@
 #include "common/log.h"
 #include "common/path.h"
 #include "common/md5_digest.h"
-#include "common/minizip_helpers.h"
-#include "common/sha1_digest.h"
-#include "common/string_util.h"
 
 #include "libchdr/chd.h"
 
@@ -931,108 +929,10 @@ const Arcade::Database::ROMDefinition* FindFirmwareROM(const Arcade::Database::F
 bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
                    Error* error)
 {
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Sony ZN archive '{}'.", archive_path);
-    return false;
-  }
+  if (const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path))
+    return Arcade::LoadGameROM(archive_path, *game, rom, data, error);
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Sony ZN archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Sony ZN archive '{}'.", archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Sony ZN ROM '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Sony ZN ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Sony ZN ROM '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      data->resize(rom.size);
-      size_t read_offset = 0;
-      while (read_offset < data->size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, data->data() + read_offset,
-                                                  static_cast<unsigned>(data->size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading Sony ZN ROM '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for Sony ZN ROM '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "Sony ZN ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Sony ZN archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Sony ZN archive '{}' does not contain required ROM '{}'.", archive_path, rom.name);
-  return false;
+  return Arcade::LoadROMFromArchive(archive_path, rom, data, error);
 }
 
 bool PlaceSimpleROM(const Arcade::Database::ROMDefinition& rom, std::span<const u8> source,

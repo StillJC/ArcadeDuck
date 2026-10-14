@@ -34,6 +34,8 @@ bool s_loaded = false;
 std::vector<SystemDefinition> s_systems;
 std::vector<GameDefinition> s_games;
 std::vector<ControlLayoutDefinition> s_control_layouts;
+std::unordered_map<std::string, std::string> s_archive_path_index;
+std::mutex s_archive_path_index_mutex;
 std::unordered_map<std::string, std::string> s_companion_media_index;
 std::mutex s_companion_media_index_mutex;
 std::unordered_map<std::string, u32> s_system_lookup;
@@ -57,6 +59,21 @@ std::string NormalizeKey(std::string_view value)
   std::transform(result.begin(), result.end(), result.begin(),
                  [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return result;
+}
+
+std::string FindIndexedArchivePath(std::string_view archive_name)
+{
+  const std::string key = NormalizeKey(archive_name);
+  std::string path;
+  {
+    std::lock_guard lock(s_archive_path_index_mutex);
+    const auto iter = s_archive_path_index.find(key);
+    if (iter == s_archive_path_index.end())
+      return {};
+    path = iter->second;
+  }
+
+  return FileSystem::FileExists(path.c_str()) ? path : std::string();
 }
 
 std::string MakeCompanionMediaIndexKey(std::string_view set_name, std::string_view filename)
@@ -1262,6 +1279,7 @@ void Unload()
   s_systems.clear();
   s_games.clear();
   s_control_layouts.clear();
+  ClearArchivePathIndex();
   ClearCompanionMediaIndex();
   s_system_lookup.clear();
   s_game_lookup.clear();
@@ -1306,6 +1324,20 @@ const GameDefinition* GetGame(std::string_view id)
   EnsureLoaded();
   const auto iterator = s_game_lookup.find(NormalizeKey(id));
   return (iterator != s_game_lookup.end()) ? &s_games[iterator->second] : nullptr;
+}
+
+std::vector<const GameDefinition*> GetClones(std::string_view parent_id)
+{
+  EnsureLoaded();
+
+  std::vector<const GameDefinition*> clones;
+  for (const GameDefinition& game : s_games)
+  {
+    if (StringUtil::EqualNoCase(game.parent, parent_id))
+      clones.push_back(&game);
+  }
+
+  return clones;
 }
 
 const ControlLayoutDefinition* GetControlLayout(std::string_view id)
@@ -1368,6 +1400,59 @@ const MediaDefinition* GetMediaByRole(const GameDefinition& game, std::string_vi
       return &media;
   }
   return nullptr;
+}
+
+void ClearArchivePathIndex()
+{
+  std::lock_guard lock(s_archive_path_index_mutex);
+  s_archive_path_index.clear();
+}
+
+void IndexArchivePath(std::string_view path)
+{
+  const GameDefinition* const game = IdentifyArchive(path);
+  if (!game)
+    return;
+
+  const std::string key = NormalizeKey(game->archive_name);
+  std::lock_guard lock(s_archive_path_index_mutex);
+  s_archive_path_index.try_emplace(key, path);
+}
+
+std::string GetIndexedArchivePath(std::string_view archive_name)
+{
+  return FindIndexedArchivePath(archive_name);
+}
+
+std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game)
+{
+  std::vector<std::string> paths;
+  const auto add_path = [&paths](std::string path) {
+    if (path.empty() || !FileSystem::FileExists(path.c_str()))
+      return;
+
+    const bool duplicate = std::any_of(paths.begin(), paths.end(), [&path](const std::string& existing) {
+      return StringUtil::EqualNoCase(existing, path);
+    });
+    if (!duplicate)
+      paths.push_back(std::move(path));
+  };
+
+  add_path(std::string(archive_path));
+  const std::string archive_directory(Path::GetDirectory(archive_path));
+  const GameDefinition* current = &game;
+  std::unordered_set<std::string> visited;
+  while (current && visited.emplace(NormalizeKey(current->id)).second)
+  {
+    add_path(Path::Combine(archive_directory, current->archive_name));
+    add_path(FindIndexedArchivePath(current->archive_name));
+
+    if (current->parent.empty())
+      break;
+    current = GetGame(current->parent);
+  }
+
+  return paths;
 }
 
 std::string GetMediaFilename(const MediaDefinition& media)

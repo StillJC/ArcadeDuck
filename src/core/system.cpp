@@ -177,7 +177,8 @@ static void UpdateDisplayVSync();
 static void ResetPerformanceCounters();
 
 static bool UpdateGameSettingsLayer();
-static void UpdateRunningGame(const std::string_view path, CDImage* image, bool booting);
+static void UpdateRunningGame(const std::string_view path, CDImage* image, bool booting,
+                              const Arcade::Database::GameDefinition* arcade_game_override = nullptr);
 static bool CheckForSBIFile(CDImage* image, Error* error);
 
 /// Returns the maximum size of a save state, considering the current configuration.
@@ -1611,12 +1612,38 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     if (!real_path.empty())
       parameters.filename = real_path;
 
-    arcade_game = Arcade::Database::IdentifyArchive(parameters.filename);
-    if (!arcade_game)
+    const Arcade::Database::GameDefinition* const archive_game =
+      Arcade::Database::IdentifyArchive(parameters.filename);
+    if (!archive_game)
     {
       Error::SetStringFmt(error, "Archive '{}' is not a recognized ArcadeDuck set.",
                           Path::GetFileName(parameters.filename));
       return false;
+    }
+
+    arcade_game = archive_game;
+    if (!parameters.arcade_game_id.empty())
+    {
+      arcade_game = Arcade::Database::GetGame(parameters.arcade_game_id);
+      if (!arcade_game)
+      {
+        Error::SetStringFmt(error, "Arcade game '{}' is not present in arcadedb.yaml.", parameters.arcade_game_id);
+        return false;
+      }
+
+      const Arcade::Database::GameDefinition* current = arcade_game;
+      for (size_t depth = 0; current && current->id != archive_game->id && depth < Arcade::Database::GetGames().size();
+           depth++)
+      {
+        current = current->parent.empty() ? nullptr : Arcade::Database::GetGame(current->parent);
+      }
+
+      if (!current || current->id != archive_game->id)
+      {
+        Error::SetStringFmt(error, "Arcade game '{}' cannot be launched from archive '{}'.", arcade_game->id,
+                            Path::GetFileName(parameters.filename));
+        return false;
+      }
     }
   }
   else if (Arcade::Database::IsArchivePath(parameters.filename))
@@ -1737,7 +1764,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     INFO_LOG("Compatibility Region: {}", Settings::GetConsoleRegionName(s_region));
 
   // Update running game, this will apply settings as well.
-  UpdateRunningGame(disc ? disc->GetFileName().c_str() : parameters.filename.c_str(), disc.get(), true);
+  UpdateRunningGame(disc ? disc->GetFileName().c_str() : parameters.filename.c_str(), disc.get(), true, arcade_game);
 
   // Check for SBI.
   if (!CheckForSBIFile(disc.get(), error))
@@ -3744,7 +3771,8 @@ bool System::DumpSPURAM(const char* filename)
   return FileSystem::WriteBinaryFile(filename, SPU::GetRAM().data(), SPU::RAM_SIZE);
 }
 
-void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool booting)
+void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool booting,
+                               const Arcade::Database::GameDefinition* arcade_game_override)
 {
   if (!booting && s_running_game_path == path)
     return;
@@ -3769,8 +3797,9 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
       (!image || image->GetTrack(1).mode != CDImage::TrackMode::Audio);
     if (should_resolve_game_identity)
     {
-      if (const Arcade::Database::GameDefinition* const arcade_game =
-            Arcade::Database::IdentifyArchive(s_running_game_path))
+      const Arcade::Database::GameDefinition* const arcade_game =
+        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyArchive(s_running_game_path);
+      if (arcade_game)
       {
         s_running_game_serial = arcade_game->id;
         if (s_running_game_title.empty())

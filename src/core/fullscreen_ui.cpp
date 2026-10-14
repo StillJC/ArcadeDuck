@@ -9,6 +9,7 @@
 #include "arcade/arcade_control_registry.h"
 #include "arcade/arcade_database.h"
 #include "arcade/arcade_machine_handler.h"
+#include "arcade/arcade_rom_loader.h"
 #include "cheats.h"
 #include "game_list.h"
 #include "gpu.h"
@@ -260,7 +261,8 @@ static std::shared_ptr<GPUTexture> s_fallback_arcade_texture;
 // Landing
 //////////////////////////////////////////////////////////////////////////
 static void SwitchToLanding();
-static void DoStartPath(std::string path, std::string state = std::string());
+static void DoStartPath(std::string path, std::string state = std::string(),
+                        std::string arcade_game_id = std::string());
 static void DoResume();
 static void DoToggleFastForward();
 static void RequestShutdown(bool save_state);
@@ -909,7 +911,7 @@ void FullscreenUI::DestroyResources()
 // Utility
 //////////////////////////////////////////////////////////////////////////
 
-void FullscreenUI::DoStartPath(std::string path, std::string state)
+void FullscreenUI::DoStartPath(std::string path, std::string state, std::string arcade_game_id)
 {
   if (System::IsValid())
     return;
@@ -922,6 +924,7 @@ void FullscreenUI::DoStartPath(std::string path, std::string state)
 
   SystemBootParameters params;
   params.filename = std::move(path);
+  params.arcade_game_id = std::move(arcade_game_id);
   params.save_state = std::move(state);
   params.boot_intent = SystemBootIntent::PublicArcade;
   Host::RunOnCPUThread([params = std::move(params)]() {
@@ -6239,7 +6242,7 @@ void FullscreenUI::HandleGameListActivate(const GameList::Entry* entry)
   }
 
   if (!OpenLoadStateSelectorForGameResume(entry))
-    DoStartPath(entry->path);
+    DoStartPath(entry->path, {}, entry->serial);
 }
 
 void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
@@ -6249,19 +6252,53 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
     return;
   const bool supports_save_states = ArcadeGameSupportsSaveStates(game);
 
+  struct CloneLaunchOption
+  {
+    std::string path;
+    std::string game_id;
+  };
+
+  std::vector<CloneLaunchOption> clone_launch_options;
   ImGuiFullscreen::ChoiceDialogOptions options = {
     {FSUI_ICONSTR(ICON_FA_WRENCH, "Set Properties"), false},
     {FSUI_ICONSTR(ICON_FA_FOLDER_OPEN, "Open Containing Directory"), false},
     {FSUI_ICONSTR(ICON_FA_PLAY, "Resume Arcade Set"), false},
     {FSUI_ICONSTR(ICON_FA_UNDO, "Load State"), false},
     {FSUI_ICONSTR(ICON_FA_PLAY_CIRCLE, "Start Arcade Set"), false},
-    {FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Play Time"), false},
-    {FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close Menu"), false},
   };
+
+  const Arcade::Database::SystemDefinition* const system = Arcade::Database::GetSystem(game->system_id);
+  if (game->parent.empty() && system && Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
+  {
+    for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(game->id))
+    {
+      std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+      if (clone_path.empty())
+        clone_path = entry->path;
+      if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+        continue;
+
+      std::string label = fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, clone->title);
+      if (!clone->region.empty())
+        label.append(fmt::format(" - {}", clone->region));
+      if (!clone->revision.empty())
+        label.append(fmt::format(" - {}", clone->revision));
+      label.append(fmt::format(" [{}]", clone->id));
+      options.emplace_back(std::move(label), false);
+      clone_launch_options.push_back({std::move(clone_path), clone->id});
+    }
+  }
+
+  const s32 reset_play_time_index = static_cast<s32>(options.size());
+  options.emplace_back(FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Play Time"), false);
+  const s32 close_menu_index = static_cast<s32>(options.size());
+  options.emplace_back(FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close Menu"), false);
 
   OpenChoiceDialog(
     game->title.c_str(), false, std::move(options),
-    [entry_path = entry->path, set_name = game->id, supports_save_states](s32 index, const std::string&, bool) {
+    [entry_path = entry->path, set_name = game->id, supports_save_states,
+     clone_launch_options = std::move(clone_launch_options), reset_play_time_index,
+     close_menu_index](s32 index, const std::string&, bool) mutable {
       switch (index)
       {
         case 0:
@@ -6272,7 +6309,7 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
           break;
         case 2:
           if (supports_save_states)
-            DoStartPath(entry_path, System::GetGameSaveStateFileName(set_name, -1));
+            DoStartPath(entry_path, System::GetGameSaveStateFileName(set_name, -1), set_name);
           else
             ShowToast({}, System::GetSaveStateUnsupportedMessage());
           break;
@@ -6280,12 +6317,22 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
           OpenLoadStateSelectorForGame(entry_path);
           break;
         case 4:
-          DoStartPath(entry_path);
-          break;
-        case 5:
-          GameList::ClearPlayedTimeForSerial(set_name);
+          DoStartPath(entry_path, {}, set_name);
           break;
         default:
+          if (index >= 5 && index < reset_play_time_index)
+          {
+            CloneLaunchOption& clone = clone_launch_options[static_cast<size_t>(index - 5)];
+            DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+          }
+          else if (index == reset_play_time_index)
+          {
+            GameList::ClearPlayedTimeForSerial(set_name);
+          }
+          else if (index != close_menu_index)
+          {
+            return;
+          }
           break;
       }
 
