@@ -84,6 +84,8 @@ static constexpr u32 DMA_SOURCE_END = 0x70ffff;
 static constexpr u32 EEPROM_BASE = 0x140000;
 static constexpr u32 EEPROM_END = 0x140fff;
 static constexpr size_t EEPROM_SIZE = 0x800;
+static constexpr size_t EEPROM_ID_SIZE = 0x20;
+static constexpr size_t EEPROM_PERSIST_SIZE = EEPROM_SIZE + EEPROM_ID_SIZE;
 
 // M8F4 ROM-board protection complex. These are EXP3-relative offsets for
 // physical 0x1FB00000 and 0x1FB80000.
@@ -369,7 +371,7 @@ u32 DecodeM8F4Response(RuntimeState& runtime)
   return 0;
 }
 
-static std::array<u8, EEPROM_SIZE> s_eeprom{};
+static std::array<u8, EEPROM_PERSIST_SIZE> s_eeprom{};
 
 bool LoadEEPROM(RuntimeState& runtime, Error* error)
 {
@@ -385,18 +387,20 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
     std::optional<DynamicHeapArray<u8>> data =
       FileSystem::ReadBinaryFile(runtime.eeprom_path.c_str(), error);
 
-    if (!data || data->size() != EEPROM_SIZE)
+    if (!data || (data->size() != EEPROM_SIZE && data->size() != EEPROM_PERSIST_SIZE))
     {
       const size_t actual_size = data ? data->size() : 0;
       Error::SetStringFmt(error,
-                          "Namco System 12 AT28C16 '{}' has invalid size {}; expected {} bytes.",
-                          runtime.eeprom_path, actual_size, EEPROM_SIZE);
-      ERROR_LOG("System12 AT28C16 malformed persistence path='{}' actual_size={} expected_size={}",
-                runtime.eeprom_path, actual_size, EEPROM_SIZE);
+                          "Namco System 12 AT28C16 '{}' has invalid size {}; expected {} or {} bytes.",
+                          runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
+      ERROR_LOG("System12 AT28C16 malformed persistence path='{}' actual_size={} expected_size={} or {}",
+                runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
       return false;
     }
 
-    std::memcpy(s_eeprom.data(), data->data(), s_eeprom.size());
+    std::memcpy(s_eeprom.data(), data->data(), data->size());
+    if (data->size() == EEPROM_SIZE)
+      runtime.eeprom_dirty = true;
   }
   else
   {
@@ -414,7 +418,7 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
 
   INFO_LOG("System12 AT28C16 {} set='{}' size={} path='{}'",
            persistence_exists ? "loaded" : "initialized",
-           runtime.content.set_name, EEPROM_SIZE, runtime.eeprom_path);
+           runtime.content.set_name, EEPROM_PERSIST_SIZE, runtime.eeprom_path);
   return true;
 }
 
@@ -456,7 +460,7 @@ u32 ReadEEPROM(RuntimeState& runtime, u32 width, u32 offset)
     if ((bus_offset & 1u) == 0)
     {
       const size_t eeprom_offset = static_cast<size_t>(bus_offset >> 1);
-      if (eeprom_offset < s_eeprom.size())
+      if (eeprom_offset < EEPROM_SIZE)
       {
         value = (value & ~(UINT32_C(0xff) << (i * 8))) |
                 (static_cast<u32>(s_eeprom[eeprom_offset]) << (i * 8));
@@ -485,7 +489,7 @@ void WriteEEPROM(RuntimeState& runtime, u32 width, u32 offset, u32 value)
       continue;
 
     const size_t eeprom_offset = static_cast<size_t>(bus_offset >> 1);
-    if (eeprom_offset >= s_eeprom.size())
+    if (eeprom_offset >= EEPROM_SIZE)
       continue;
 
     const u8 new_value = static_cast<u8>(value >> (i * 8));
