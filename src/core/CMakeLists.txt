@@ -137,6 +137,8 @@ add_library(core
   arcade/devices/storage/ncr53cf96.h
   arcade/systems/konami/konami.cpp
   arcade/systems/konami/konami.h
+  arcade/systems/konami/gq/konami_gq.cpp
+  arcade/systems/konami/gq/konami_gq.h
   arcade/systems/konami/gq/konami_gq_eeprom.cpp
   arcade/systems/konami/gq/konami_gq_eeprom.h
   arcade/systems/konami/gq/konami_gq_hdd.cpp
