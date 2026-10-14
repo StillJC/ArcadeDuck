@@ -236,6 +236,10 @@ const GameDefinition* IdentifyArchive(std::string_view path);
 const ROMDefinition* GetROMByRole(const GameDefinition& game, std::string_view role);
 const MediaDefinition* GetMediaByRole(const GameDefinition& game, std::string_view role);
 std::string GetMediaFilename(const MediaDefinition& media);
+void ClearCompanionMediaIndex();
+void IndexCompanionMediaPath(std::string_view path);
+std::string GetCompanionMediaPath(std::string_view archive_path, std::string_view set_name,
+                                  std::string_view parent_set_name, std::string_view filename);
 std::string GetCompanionMediaPath(std::string_view archive_path, const GameDefinition& game,
                                   const MediaDefinition& media);
 

@@ -298,8 +298,9 @@ std::string GetGQCHDFilename(const GQGameDefinition& definition)
 
 std::string GetGQCompanionCHDPath(std::string_view zip_path, const GQGameDefinition& definition)
 {
-  const std::string zip_directory(Path::GetDirectory(zip_path));
-  return Path::Combine(Path::Combine(zip_directory, definition.set_name), GetGQCHDFilename(definition));
+  const std::string filename = GetGQCHDFilename(definition);
+  return Arcade::Database::GetCompanionMediaPath(zip_path, definition.set_name, std::string_view{},
+                                                  filename);
 }
 
 bool InitializeGQ(const BIOS::Image& bios, GQLoadedContent content, std::string_view persistence_directory,

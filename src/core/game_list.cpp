@@ -284,11 +284,14 @@ void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
   {
     files_scanned++;
 
-    if (progress->IsCancelled() || !GameList::IsScannableFilename(ffd.FileName) ||
-        IsPathExcluded(excluded_paths, ffd.FileName))
-    {
+    if (progress->IsCancelled())
       continue;
-    }
+
+    if (recursive)
+      Arcade::Database::IndexCompanionMediaPath(ffd.FileName);
+
+    if (!GameList::IsScannableFilename(ffd.FileName) || IsPathExcluded(excluded_paths, ffd.FileName))
+      continue;
 
     if (!Arcade::Database::IdentifyArchive(ffd.FileName))
     {
@@ -516,6 +519,8 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   const PlayedTimeMap played_time(LoadPlayedTimeMap(GetPlayedTimeFile()));
   INISettingsInterface custom_attributes_ini(GetCustomPropertiesFile());
   custom_attributes_ini.Load();
+
+  Arcade::Database::ClearCompanionMediaIndex();
 
   if (!dirs.empty() || !recursive_dirs.empty())
   {

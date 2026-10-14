@@ -17,6 +17,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -33,6 +34,8 @@ bool s_loaded = false;
 std::vector<SystemDefinition> s_systems;
 std::vector<GameDefinition> s_games;
 std::vector<ControlLayoutDefinition> s_control_layouts;
+std::unordered_map<std::string, std::string> s_companion_media_index;
+std::mutex s_companion_media_index_mutex;
 std::unordered_map<std::string, u32> s_system_lookup;
 std::unordered_map<std::string, u32> s_game_lookup;
 std::unordered_map<std::string, u32> s_archive_lookup;
@@ -54,6 +57,26 @@ std::string NormalizeKey(std::string_view value)
   std::transform(result.begin(), result.end(), result.begin(),
                  [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return result;
+}
+
+std::string MakeCompanionMediaIndexKey(std::string_view set_name, std::string_view filename)
+{
+  return NormalizeKey(Path::Combine(set_name, filename));
+}
+
+std::string FindIndexedCompanionMediaPath(std::string_view set_name, std::string_view filename)
+{
+  const std::string key = MakeCompanionMediaIndexKey(set_name, filename);
+  std::string path;
+  {
+    std::lock_guard lock(s_companion_media_index_mutex);
+    const auto iter = s_companion_media_index.find(key);
+    if (iter == s_companion_media_index.end())
+      return {};
+    path = iter->second;
+  }
+
+  return FileSystem::FileExists(path.c_str()) ? path : std::string();
 }
 
 bool IsValidSHA1(std::string_view value)
@@ -1239,6 +1262,7 @@ void Unload()
   s_systems.clear();
   s_games.clear();
   s_control_layouts.clear();
+  ClearCompanionMediaIndex();
   s_system_lookup.clear();
   s_game_lookup.clear();
   s_archive_lookup.clear();
@@ -1357,20 +1381,100 @@ std::string GetMediaFilename(const MediaDefinition& media)
   return media.name;
 }
 
+void ClearCompanionMediaIndex()
+{
+  std::lock_guard lock(s_companion_media_index_mutex);
+  s_companion_media_index.clear();
+}
+
+void IndexCompanionMediaPath(std::string_view path)
+{
+  const std::string_view filename = Path::GetFileName(path);
+  const std::string directory(Path::GetDirectory(path));
+  const std::string_view set_name = Path::GetFileName(directory);
+  if (filename.empty() || set_name.empty())
+    return;
+
+  const std::string key = MakeCompanionMediaIndexKey(set_name, filename);
+  std::lock_guard lock(s_companion_media_index_mutex);
+  s_companion_media_index.try_emplace(key, path);
+}
+
+std::string GetCompanionMediaPath(std::string_view archive_path, std::string_view set_name,
+                                  std::string_view parent_set_name, std::string_view filename)
+{
+  const std::string archive_directory(Path::GetDirectory(archive_path));
+  const std::string local_path = Path::Combine(Path::Combine(archive_directory, set_name), filename);
+  if (FileSystem::FileExists(local_path.c_str()))
+    return local_path;
+
+  std::vector<std::string> content_paths = Host::GetBaseStringListSetting("GameList", "Paths");
+  const std::vector<std::string> recursive_paths =
+    Host::GetBaseStringListSetting("GameList", "RecursivePaths");
+  content_paths.insert(content_paths.end(), recursive_paths.begin(), recursive_paths.end());
+
+  for (const std::string& content_path : content_paths)
+  {
+    const std::string path = Path::Combine(Path::Combine(content_path, set_name), filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  for (const std::string& content_path : content_paths)
+  {
+    if (!StringUtil::EqualNoCase(Path::GetFileName(content_path), set_name))
+      continue;
+
+    const std::string path = Path::Combine(content_path, filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  if (std::string indexed_path = FindIndexedCompanionMediaPath(set_name, filename); !indexed_path.empty())
+    return indexed_path;
+
+  for (const std::string& content_path : content_paths)
+  {
+    const std::string path = Path::Combine(content_path, filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  if (!parent_set_name.empty())
+  {
+    const std::string parent_path =
+      Path::Combine(Path::Combine(archive_directory, parent_set_name), filename);
+    if (FileSystem::FileExists(parent_path.c_str()))
+      return parent_path;
+
+    for (const std::string& content_path : content_paths)
+    {
+      const std::string path = Path::Combine(Path::Combine(content_path, parent_set_name), filename);
+      if (FileSystem::FileExists(path.c_str()))
+        return path;
+    }
+
+    for (const std::string& content_path : content_paths)
+    {
+      if (!StringUtil::EqualNoCase(Path::GetFileName(content_path), parent_set_name))
+        continue;
+
+      const std::string path = Path::Combine(content_path, filename);
+      if (FileSystem::FileExists(path.c_str()))
+        return path;
+    }
+
+    if (std::string indexed_path = FindIndexedCompanionMediaPath(parent_set_name, filename); !indexed_path.empty())
+      return indexed_path;
+  }
+
+  return local_path;
+}
+
 std::string GetCompanionMediaPath(std::string_view archive_path, const GameDefinition& game,
                                   const MediaDefinition& media)
 {
-  const std::string filename = GetMediaFilename(media);
-  std::string path = Path::Combine(Path::Combine(Path::GetDirectory(archive_path), game.id), filename);
-  if (game.parent.empty() || FileSystem::FileExists(path.c_str()))
-    return path;
-
-  // Clone sets commonly share companion media with their parent archive. Prefer
-  // a clone-local copy when present, otherwise inherit the parent's companion
-  // directory without adding per-game path exceptions in machine handlers.
-  const std::string parent_path =
-    Path::Combine(Path::Combine(Path::GetDirectory(archive_path), game.parent), filename);
-  return FileSystem::FileExists(parent_path.c_str()) ? parent_path : path;
+  return GetCompanionMediaPath(archive_path, game.id, game.parent, GetMediaFilename(media));
 }
 
 const char* GetWorkingStatusName(WorkingStatus status)

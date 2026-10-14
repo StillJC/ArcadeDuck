@@ -1459,7 +1459,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
 
   menu.addSeparator();
 
-  connect(menu.addAction(tr("Add Search Directory...")), &QAction::triggered,
+  connect(menu.addAction(tr("Add Content Directory...")), &QAction::triggered,
           [this]() { getSettingsWindow()->getGameListSettingsWidget()->addSearchDirectory(this); });
 
   menu.exec(point);

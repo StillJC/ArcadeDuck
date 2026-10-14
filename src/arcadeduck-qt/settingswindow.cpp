@@ -133,9 +133,9 @@ void SettingsWindow::addPages()
     addWidget(
       m_game_list_settings = new GameListSettingsWidget(this, m_ui.settingsContainer), tr("Game List"),
       QStringLiteral("folder-open-line"),
-      tr("<strong>Game List Settings</strong><hr>The list above shows the directories which will be searched by "
-         "ArcadeDuck to populate the game list. Search directories can be added, removed, and switched to "
-         "recursive/non-recursive."));
+      tr("<strong>Game List Settings</strong><hr>The list above shows ArcadeDuck content directories. Recognized "
+         "game archives populate the game list, and the same directories are searched for supporting media. "
+         "Directories can be added, removed, and switched to recursive/non-recursive game scanning."));
     addWidget(
       m_folder_settings = new FolderSettingsWidget(this, m_ui.settingsContainer), tr("Folders"),
       QStringLiteral("folder-settings-line"),

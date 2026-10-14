@@ -6299,11 +6299,11 @@ void FullscreenUI::DrawGameListSettingsPage()
 
   BeginMenuButtons();
 
-  MenuHeading(FSUI_CSTR("Search Directories"));
-  if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Search Directory"),
-                 FSUI_CSTR("Adds a new directory to the game search list.")))
+  MenuHeading(FSUI_CSTR("Content Directories"));
+  if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Content Directory"),
+                 FSUI_CSTR("Adds a directory containing arcade games or supporting media.")))
   {
-    OpenFileSelector(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Search Directory"), true, [](const std::string& dir) {
+    OpenFileSelector(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Content Directory"), true, [](const std::string& dir) {
       if (!dir.empty())
       {
         auto lock = Host::GetSettingsLock();
@@ -6685,9 +6685,9 @@ TRANSLATE_NOOP("FullscreenUI", "Achievement Notifications");
 TRANSLATE_NOOP("FullscreenUI", "Achievements");
 TRANSLATE_NOOP("FullscreenUI", "Achievements are not enabled.");
 TRANSLATE_NOOP("FullscreenUI", "Active Profile: {}");
-TRANSLATE_NOOP("FullscreenUI", "Add Search Directory");
+TRANSLATE_NOOP("FullscreenUI", "Add Content Directory");
 TRANSLATE_NOOP("FullscreenUI", "Add Shader");
-TRANSLATE_NOOP("FullscreenUI", "Adds a new directory to the game search list.");
+TRANSLATE_NOOP("FullscreenUI", "Adds a directory containing arcade games or supporting media.");
 TRANSLATE_NOOP("FullscreenUI", "Adds a new shader to the chain.");
 TRANSLATE_NOOP("FullscreenUI", "Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the normal level; use negative or positive trim for quieter or louder playback.");
 TRANSLATE_NOOP("FullscreenUI", "Adjusts emulation speed so the arcade display refresh rate matches the host when VSync is enabled.");
@@ -7113,7 +7113,7 @@ TRANSLATE_NOOP("FullscreenUI", "Screenshot Size");
 TRANSLATE_NOOP("FullscreenUI", "Screenshots Directory");
 TRANSLATE_NOOP("FullscreenUI", "Search");
 TRANSLATE_NOOP("FullscreenUI", "Search Arcade Sets");
-TRANSLATE_NOOP("FullscreenUI", "Search Directories");
+TRANSLATE_NOOP("FullscreenUI", "Content Directories");
 TRANSLATE_NOOP("FullscreenUI", "Search by title, set name, system, manufacturer, year, genre, region, or controls.");
 TRANSLATE_NOOP("FullscreenUI", "Select");
 TRANSLATE_NOOP("FullscreenUI", "Select Game");
