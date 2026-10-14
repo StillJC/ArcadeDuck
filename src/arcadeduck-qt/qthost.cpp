@@ -2277,6 +2277,8 @@ void QtHost::PrintCommandLineVersion()
                        "    a global state will be loaded.\n");
   std::fprintf(stderr, "  -statefile <filename>: Loads state from the specified filename.\n"
                        "    No boot filename is required with this option.\n");
+  std::fprintf(stderr, "  -arcadegame <id>: Selects the logical arcade game to launch from the\n"
+                       "    supplied archive. Used to launch clones from split or merged ROM sets.\n");
   std::fprintf(stderr, "  -fullscreen: Enters fullscreen mode immediately after starting.\n");
   std::fprintf(stderr, "  -nofullscreen: Prevents fullscreen mode from triggering if enabled.\n");
   std::fprintf(stderr, "  -nogui: Disables main window from being shown, exits on shutdown.\n");
@@ -2353,6 +2355,12 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       {
         AutoBoot(autoboot)->save_state = args[++i].toStdString();
         INFO_LOG("Command Line: Loading state file: '{}'", autoboot->save_state);
+        continue;
+      }
+      else if (CHECK_ARG_PARAM("-arcadegame"))
+      {
+        AutoBoot(autoboot)->arcade_game_id = args[++i].toStdString();
+        INFO_LOG("Command Line: Selecting arcade game: '{}'", autoboot->arcade_game_id);
         continue;
       }
       else if (CHECK_ARG("-fullscreen"))
@@ -2438,6 +2446,12 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       QMessageBox::critical(nullptr, qApp->translate("QtHost", "Error"), message);
   };
 
+  if (autoboot && !autoboot->arcade_game_id.empty() && autoboot->filename.empty())
+  {
+    report_command_line_error(qApp->translate("QtHost", "-arcadegame requires a boot filename."));
+    return false;
+  }
+
   const Arcade::Database::GameDefinition* command_line_game = nullptr;
   if (autoboot && !autoboot->filename.empty())
   {
@@ -2466,6 +2480,20 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       report_command_line_error(qApp->translate("QtHost", "Archive '%1' is not a recognized ArcadeDuck set.")
                                   .arg(QtUtils::StringViewToQString(Path::GetFileName(autoboot->filename))));
       return false;
+    }
+
+    if (!autoboot->arcade_game_id.empty())
+    {
+      const Arcade::Database::GameDefinition* const requested_game =
+        Arcade::Database::GetGame(autoboot->arcade_game_id);
+      if (!requested_game)
+      {
+        report_command_line_error(qApp->translate("QtHost", "Arcade game '%1' is not present in arcadedb.yaml.")
+                                    .arg(QString::fromStdString(autoboot->arcade_game_id)));
+        return false;
+      }
+
+      command_line_game = requested_game;
     }
 
     autoboot->boot_intent = SystemBootIntent::PublicArcade;
