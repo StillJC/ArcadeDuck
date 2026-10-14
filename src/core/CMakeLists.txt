@@ -170,6 +170,8 @@ add_library(core
   arcade/third_party/musashi/m68kcpu.h
   arcade/third_party/musashi/m68kops.c
   arcade/third_party/musashi/m68kops.h
+  arcade/systems/konami/gv/konami_gv.cpp
+  arcade/systems/konami/gv/konami_gv.h
   arcade/systems/konami/gv/konami_gv_cdrom.cpp
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp

@@ -5,7 +5,7 @@
 
 #include "core/arcade/devices/storage/ncr53cf96.h"
 
-#include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/konami/gv/konami_gv.h"
 #include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 #include "core/dma.h"
 #include "core/interrupt_controller.h"
