@@ -139,6 +139,8 @@ static constexpr u32 COMMON_NOP_R = 0x040000;
 static constexpr u32 AT28_BASE = 0x0f0000;
 static constexpr u32 AT28_END = 0x0f07ff;
 static constexpr size_t AT28_SIZE = 0x800;
+static constexpr size_t AT28_ID_SIZE = 0x20;
+static constexpr size_t AT28_PERSIST_SIZE = AT28_SIZE + AT28_ID_SIZE;
 static constexpr u32 ZN2_UNKNOWN_1FA51C00_BASE = 0x051c00;
 static constexpr u32 ZN2_UNKNOWN_1FA51C00_END = 0x051dff;
 static constexpr u32 ZN2_UNKNOWN_1FA60000_BASE = 0x060000;
@@ -466,7 +468,7 @@ std::unique_ptr<TimingEvent> s_sio0_transfer_event;
 std::unique_ptr<TimingEvent> s_taito_watchdog_event;
 std::unique_ptr<TimingEvent> s_time_warner_watchdog_event;
 
-static std::array<u8, AT28_SIZE> s_at28{};
+static std::array<u8, AT28_PERSIST_SIZE> s_at28{};
 
 static u64 GetAT28Now()
 {
@@ -656,15 +658,17 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
   if (persistence_exists)
   {
     std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.at28_path.c_str(), error);
-    if (!data || data->size() != AT28_SIZE)
+    if (!data || (data->size() != AT28_SIZE && data->size() != AT28_PERSIST_SIZE))
     {
       const size_t actual_size = data ? data->size() : 0;
-      Error::SetStringFmt(error, "Sony ZN AT28C16 '{}' has size {}; expected {} bytes.", runtime.at28_path,
-                          actual_size, AT28_SIZE);
+      Error::SetStringFmt(error, "Sony ZN AT28C16 '{}' has size {}; expected {} or {} bytes.", runtime.at28_path,
+                          actual_size, AT28_SIZE, AT28_PERSIST_SIZE);
       return false;
     }
 
-    std::memcpy(s_at28.data(), data->data(), s_at28.size());
+    std::memcpy(s_at28.data(), data->data(), data->size());
+    if (data->size() == AT28_SIZE)
+      runtime.at28_dirty = true;
   }
   else
   {
@@ -677,7 +681,7 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
         return false;
       }
 
-      std::memcpy(s_at28.data(), initial_contents.data(), s_at28.size());
+      std::memcpy(s_at28.data(), initial_contents.data(), initial_contents.size());
     }
 
     if (!EnsurePersistenceDirectories(runtime))

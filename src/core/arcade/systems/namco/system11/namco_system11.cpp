@@ -1707,7 +1707,9 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
 static constexpr u32 EEPROM_BASE = 0x30000;
 static constexpr u32 EEPROM_END = 0x30fff;
 static constexpr size_t EEPROM_SIZE = 0x800;
-static std::array<u8, EEPROM_SIZE> s_eeprom{};
+static constexpr size_t EEPROM_ID_SIZE = 0x20;
+static constexpr size_t EEPROM_PERSIST_SIZE = EEPROM_SIZE + EEPROM_ID_SIZE;
+static std::array<u8, EEPROM_PERSIST_SIZE> s_eeprom{};
 
 static u64 GetEEPROMNow()
 {
@@ -1772,17 +1774,19 @@ static bool LoadEEPROM(RuntimeState& runtime, Error* error)
   if (persistence_exists)
   {
     std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.eeprom_path.c_str(), error);
-    if (!data || data->size() != EEPROM_SIZE)
+    if (!data || (data->size() != EEPROM_SIZE && data->size() != EEPROM_PERSIST_SIZE))
     {
       const size_t actual_size = data ? data->size() : 0;
-      Error::SetStringFmt(error, "Namco System 11 AT28C16 '{}' has invalid size {}; expected {} bytes.",
-                          runtime.eeprom_path, actual_size, EEPROM_SIZE);
-      ERROR_LOG("System 11 AT28C16 malformed persistence path='{}' actual_size={} expected_size={}.",
-                runtime.eeprom_path, actual_size, EEPROM_SIZE);
+      Error::SetStringFmt(error, "Namco System 11 AT28C16 '{}' has invalid size {}; expected {} or {} bytes.",
+                          runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
+      ERROR_LOG("System 11 AT28C16 malformed persistence path='{}' actual_size={} expected_size={} or {}.",
+                runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
       return false;
     }
 
-    std::memcpy(s_eeprom.data(), data->data(), s_eeprom.size());
+    std::memcpy(s_eeprom.data(), data->data(), data->size());
+    if (data->size() == EEPROM_SIZE)
+      runtime.eeprom_dirty = true;
   }
   else
   {
