@@ -16,7 +16,6 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
-#include "core/cheats.h"
 #include "core/fullscreen_ui.h"
 #include "core/game_database.h"
 #include "core/game_list.h"
@@ -1278,30 +1277,6 @@ void EmuThread::setSystemPaused(bool paused, bool wait_until_paused /* = false *
   }
 
   System::PauseSystem(paused);
-}
-
-void EmuThread::setCheatEnabled(quint32 index, bool enabled)
-{
-  if (!isOnThread())
-  {
-    QMetaObject::invokeMethod(this, "setCheatEnabled", Qt::QueuedConnection, Q_ARG(quint32, index),
-                              Q_ARG(bool, enabled));
-    return;
-  }
-
-  System::SetCheatCodeState(index, enabled);
-  emit cheatEnabled(index, false);
-}
-
-void EmuThread::applyCheat(quint32 index)
-{
-  if (!isOnThread())
-  {
-    QMetaObject::invokeMethod(this, "applyCheat", Qt::QueuedConnection, Q_ARG(quint32, index));
-    return;
-  }
-
-  System::ApplyCheatCode(index);
 }
 
 void EmuThread::reloadPostProcessingShaders()

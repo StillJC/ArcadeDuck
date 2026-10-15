@@ -82,7 +82,11 @@
     <ClCompile Include="cdrom_async_reader.cpp" />
     <ClCompile Include="host_interface_progress_callback.cpp" />
     <ClCompile Include="cpu_pgxp.cpp" />
-    <ClCompile Include="cheats.cpp" />
+    <ClCompile Include="memory_scanner.cpp" />
+    <ClCompile Include="mame_cheats.cpp" />
+    <ClCompile Include="mame_cheat_expression.cpp" />
+    <ClCompile Include="mame_cheat_package.cpp" />
+    <ClCompile Include="mame_cheat_runtime.cpp" />
     <ClCompile Include="cpu_recompiler_code_generator_aarch32.cpp" />
     <ClCompile Include="gpu_backend.cpp" />
     <ClCompile Include="gpu_sw_backend.cpp" />
@@ -193,7 +197,11 @@
     <ClInclude Include="gte_types.h" />
     <ClInclude Include="cpu_pgxp.h" />
     <ClInclude Include="cpu_core_private.h" />
-    <ClInclude Include="cheats.h" />
+    <ClInclude Include="memory_scanner.h" />
+    <ClInclude Include="mame_cheats.h" />
+    <ClInclude Include="mame_cheat_expression.h" />
+    <ClInclude Include="mame_cheat_package.h" />
+    <ClInclude Include="mame_cheat_runtime.h" />
     <ClInclude Include="pad.h" />
     <ClInclude Include="gpu_types.h" />
     <ClInclude Include="gpu_backend.h" />

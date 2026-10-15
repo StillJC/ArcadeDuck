@@ -1112,17 +1112,26 @@ void MainWindow::populateSaveStateMenu(const char* game_serial, QMenu* menu)
 
 void MainWindow::updateCheatActionsVisibility()
 {
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
   m_ui.actionCheats->setVisible(true);
   m_ui.actionCheatsToolbar->setVisible(true);
-  m_ui.menuCheats->menuAction()->setVisible(false);
+  m_ui.menuCheats->menuAction()->setVisible(true);
 }
+
 void MainWindow::onCheatsActionTriggered()
 {
-  QMessageBox::information(
-    this, tr("Cheats Under Investigation"),
-    tr("ArcadeDuck cheat support is still under investigation and is not implemented yet.\n\n"
-       "MAME cheat package compatibility is planned for a future update."));
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  if (!m_cheat_manager_window)
+  {
+    m_cheat_manager_window = new CheatManagerWindow();
+    connect(m_cheat_manager_window, &CheatManagerWindow::closed, this, [this]() {
+      m_cheat_manager_window->deleteLater();
+      m_cheat_manager_window = nullptr;
+    });
+  }
+
+  QtUtils::ShowOrRaiseWindow(m_cheat_manager_window);
 }
 
 void MainWindow::onCheatsMenuAboutToShow()
@@ -1130,14 +1139,11 @@ void MainWindow::onCheatsMenuAboutToShow()
   m_ui.menuCheats->clear();
   connect(m_ui.menuCheats->addAction(tr("Cheat Manager")), &QAction::triggered, this,
           &MainWindow::onCheatsActionTriggered);
-  m_ui.menuCheats->addSeparator();
-  populateCheatsMenu(m_ui.menuCheats);
 }
 
 void MainWindow::populateCheatsMenu(QMenu* menu)
 {
-  QAction* placeholder_action = menu->addAction(tr("Cheats Under Investigation"));
-  connect(placeholder_action, &QAction::triggered, this, &MainWindow::onCheatsActionTriggered);
+  Q_UNUSED(menu);
 }
 
 std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file,
@@ -1849,10 +1855,10 @@ void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevo
   m_ui.actionPowerOffWithoutSaving->setDisabled(starting || !running);
   m_ui.actionReset->setDisabled(starting || !running);
   m_ui.actionPause->setDisabled(starting || !running);
-  m_ui.actionCheats->setDisabled(cheevos_challenge_mode);
-  m_ui.actionCheatsToolbar->setDisabled(cheevos_challenge_mode);
+  m_ui.actionCheats->setDisabled(starting || !running || cheevos_challenge_mode);
+  m_ui.actionCheatsToolbar->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionScreenshot->setDisabled(starting || !running);
-  m_ui.menuCheats->setDisabled(cheevos_challenge_mode);
+  m_ui.menuCheats->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionCPUDebugger->setDisabled(cheevos_challenge_mode);
   m_ui.actionMemoryScanner->setDisabled(cheevos_challenge_mode);
   m_ui.actionDumpRAM->setDisabled(starting || !running || cheevos_challenge_mode);

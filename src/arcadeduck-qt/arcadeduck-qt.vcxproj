@@ -11,7 +11,6 @@
     <ClCompile Include="autoupdaterdialog.cpp" />
     <ClCompile Include="operatorsettingswidget.cpp" />
     <ClCompile Include="cheatmanagerwindow.cpp" />
-    <ClCompile Include="cheatcodeeditordialog.cpp" />
     <ClCompile Include="colorpickerbutton.cpp" />
     <ClCompile Include="consolesettingswidget.cpp" />
     <ClCompile Include="controllerglobalsettingswidget.cpp" />
@@ -58,7 +57,6 @@
     <QtMoc Include="audiosettingswidget.h" />
     <QtMoc Include="operatorsettingswidget.h" />
     <QtMoc Include="cheatmanagerwindow.h" />
-    <QtMoc Include="cheatcodeeditordialog.h" />
     <QtMoc Include="coverdownloaddialog.h" />
     <QtMoc Include="displaywidget.h" />
     <QtMoc Include="interfacesettingswidget.h" />
@@ -137,9 +135,6 @@
     <QtUi Include="cheatmanagerwindow.ui">
       <FileType>Document</FileType>
     </QtUi>
-    <QtUi Include="cheatcodeeditordialog.ui">
-      <FileType>Document</FileType>
-    </QtUi>
     <QtUi Include="inputbindingdialog.ui">
       <FileType>Document</FileType>
     </QtUi>
@@ -211,9 +206,6 @@
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <ClCompile Include="$(IntDir)moc_cheatmanagerwindow.cpp">
-      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
-    </ClCompile>
-    <ClCompile Include="$(IntDir)moc_cheatcodeeditordialog.cpp">
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <ClCompile Include="$(IntDir)moc_colorpickerbutton.cpp">

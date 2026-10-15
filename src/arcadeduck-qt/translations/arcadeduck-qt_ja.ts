@@ -2004,75 +2004,11 @@ QFile::exists: %2</translation>
     </message>
 </context>
 <context>
-    <name>CheatCodeEditorDialog</name>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="14"/>
-        <source>Cheat Code Editor</source>
-        <translation>チートコードエディタ</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="23"/>
-        <source>Description:</source>
-        <translation>説明:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="33"/>
-        <source>Group:</source>
-        <translation>グループ:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="43"/>
-        <source>Type:</source>
-        <translation>チート種類:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="53"/>
-        <source>Activation:</source>
-        <translation>適用方法:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Error</source>
-        <translation>エラー</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <source>Description cannot be empty.</source>
-        <translation>説明を空にすることはできません。</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Instructions are invalid.</source>
-        <translation>指示が無効です。</translation>
-    </message>
-</context>
-<context>
     <name>CheatManagerWindow</name>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="14"/>
         <source>Cheat Manager</source>
         <translation>チートマネージャ</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="26"/>
-        <source>&amp;Add Group...</source>
-        <translation>グループを追加(&amp;A)...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="33"/>
-        <source>&amp;Add Code...</source>
-        <translation>コードを追加(&amp;A)...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="40"/>
-        <source>&amp;Edit Code...</source>
-        <translation>コードを編集(&amp;E)...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="50"/>
-        <source>&amp;Delete Code</source>
-        <translation>コードを削除(&amp;D)</translation>
     </message>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="60"/>
@@ -2083,26 +2019,6 @@ QFile::exists: %2</translation>
         <translation>有効化</translation>
     </message>
     <message>
-        <location filename="../cheatmanagerwindow.ui" line="67"/>
-        <source>Import...</source>
-        <translation>インポート...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="77"/>
-        <source>Export...</source>
-        <translation>エクスポート...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="84"/>
-        <source>Clear</source>
-        <translation>クリア</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="91"/>
-        <source>Reset</source>
-        <translation>リセット</translation>
-    </message>
-    <message>
         <location filename="../cheatmanagerwindow.ui" line="120"/>
         <source>Name</source>
         <translation>名前</translation>
@@ -2111,139 +2027,6 @@ QFile::exists: %2</translation>
         <location filename="../cheatmanagerwindow.ui" line="125"/>
         <source>Type</source>
         <translation>種類</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="130"/>
-        <source>Activation</source>
-        <translation>有効化方式</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="135"/>
-        <source>Instructions</source>
-        <translation>命令</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="281"/>
-        <source>Toggle</source>
-        <translation>切り替え</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Add Group</source>
-        <translation>グループに追加</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Group Name:</source>
-        <translation>グループ名:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Error</source>
-        <translation>エラー</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <source>This group name already exists.</source>
-        <translation>このグループ名は既に存在します。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="462"/>
-        <source>Delete Code</source>
-        <translation>コードを削除</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="463"/>
-        <source>Are you sure you wish to delete the selected code? This action is not reversible.</source>
-        <translation>選択したコードを削除してもよろしいですか？この操作は元に戻せません。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="490"/>
-        <source>From File...</source>
-        <translation>ファイルから...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="491"/>
-        <source>From Text...</source>
-        <translation>テキストから...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="497"/>
-        <source>PCSXR/Libretro Cheat Files (*.cht *.txt);;All Files (*.*)</source>
-        <translation>PCSXR/Libretro チートファイル (*.cht *.txt);;すべてのファイル (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="499"/>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Import Cheats</source>
-        <translation>チートをインポート</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <source>Failed to parse cheat file. The log may contain more information.</source>
-        <translation>チートファイルを解析できませんでした。詳細はログに記録されている場合があります。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Cheat File Text:</source>
-        <translation>チートを入力:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="545"/>
-        <source>PCSXR Cheat Files (*.cht);;All Files (*.*)</source>
-        <translation>PCSXR チートファイル (*.cht);;すべてのファイル (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="547"/>
-        <source>Export Cheats</source>
-        <translation>チートをエクスポート</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Failed to save cheat file. The log may contain more information.</source>
-        <translation>チートファイルを保存できませんでした。詳細はログに記録されている場合があります。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="557"/>
-        <source>Confirm Clear</source>
-        <translation>全消去の確認</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="558"/>
-        <source>Are you sure you want to remove all cheats? This is not reversible.</source>
-        <translation>すべてのチートを削除してもよろしいですか？この操作は元に戻せません。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="571"/>
-        <source>Confirm Reset</source>
-        <translation>リセットの確認</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="572"/>
-        <source>Are you sure you want to reset the cheat list? Any cheats not in the built-in cheat database WILL BE LOST.</source>
-        <translation>チート一覧をリセットしますか？内蔵チートデータベースに含まれていないチートはすべて失われます。</translation>
-    </message>
-</context>
-<context>
-    <name>Cheats</name>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2589"/>
-        <source>Gameshark</source>
-        <translation>Gameshark</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Manual</source>
-        <translation>手動</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Automatic (Frame End)</source>
-        <translation>自動 (Frame End)</translation>
     </message>
 </context>
 <context>

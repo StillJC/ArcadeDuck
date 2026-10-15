@@ -15,7 +15,11 @@
     <ClCompile Include="bus.cpp" />
     <ClCompile Include="cdrom.cpp" />
     <ClCompile Include="cdrom_async_reader.cpp" />
-    <ClCompile Include="cheats.cpp" />
+    <ClCompile Include="memory_scanner.cpp" />
+    <ClCompile Include="mame_cheats.cpp" />
+    <ClCompile Include="mame_cheat_expression.cpp" />
+    <ClCompile Include="mame_cheat_package.cpp" />
+    <ClCompile Include="mame_cheat_runtime.cpp" />
     <ClCompile Include="cpu_core.cpp" />
     <ClCompile Include="cpu_disasm.cpp" />
     <ClCompile Include="cpu_code_cache.cpp" />
@@ -211,7 +215,11 @@
     <ClInclude Include="bus.h" />
     <ClInclude Include="cdrom.h" />
     <ClInclude Include="cdrom_async_reader.h" />
-    <ClInclude Include="cheats.h" />
+    <ClInclude Include="memory_scanner.h" />
+    <ClInclude Include="mame_cheats.h" />
+    <ClInclude Include="mame_cheat_expression.h" />
+    <ClInclude Include="mame_cheat_package.h" />
+    <ClInclude Include="mame_cheat_runtime.h" />
     <ClInclude Include="achievements.h" />
     <ClInclude Include="cpu_code_cache_private.h" />
     <ClInclude Include="cpu_core.h" />
@@ -331,6 +339,9 @@
     <ProjectReference Include="..\..\dep\libchdr\libchdr.vcxproj">
       <Project>{425d6c99-d1c8-43c2-b8ac-4d7b1d941017}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\..\dep\lzma\lzma.vcxproj">
+      <Project>{dd944834-7899-4c1c-a4c1-064b5009d239}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\..\dep\minizip\minizip.vcxproj">
       <Project>{8bda439c-6358-45fb-9994-2ff083babe06}</Project>
     </ProjectReference>
@@ -367,7 +378,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <PreprocessorDefinitions Condition="'$(Platform)'=='x64' And $(Configuration.Contains('Debug'))">ZYDIS_DISABLE_ENCODER;ZYDIS_DISABLE_AVX512;ZYDIS_DISABLE_KNC;ZYDIS_STATIC_BUILD;ZYCORE_STATIC_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(SolutionDir)dep\libchdr\include;$(SolutionDir)dep\minizip\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)dep\libchdr\include;$(SolutionDir)dep\lzma\include;$(SolutionDir)dep\minizip\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Platform)'=='x64' And $(Configuration.Contains('Debug'))">$(SolutionDir)dep\zydis\include;$(SolutionDir)dep\zydis\dependencies\zycore\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ObjectFileName>$(IntDir)/%(RelativeDir)/</ObjectFileName>
       <PrecompiledHeader>Use</PrecompiledHeader>

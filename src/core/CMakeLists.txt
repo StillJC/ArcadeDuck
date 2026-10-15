@@ -30,8 +30,16 @@ add_library(core
   cdrom.h
   cdrom_async_reader.cpp
   cdrom_async_reader.h
-  cheats.cpp
-  cheats.h
+  memory_scanner.cpp
+  memory_scanner.h
+  mame_cheats.cpp
+  mame_cheats.h
+  mame_cheat_expression.cpp
+  mame_cheat_expression.h
+  mame_cheat_package.cpp
+  mame_cheat_package.h
+  mame_cheat_runtime.cpp
+  mame_cheat_runtime.h
   cpu_code_cache.cpp
   cpu_code_cache.h
   cpu_code_cache_private.h
@@ -284,7 +292,7 @@ endif()
 target_include_directories(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(core PUBLIC Threads::Threads common util)
-target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr)
+target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr lzma)
 
 if(CPU_ARCH_X64)
   target_compile_definitions(core PUBLIC "ENABLE_RECOMPILER=1" "ENABLE_NEWREC=1" "ENABLE_MMAP_FASTMEM=1")

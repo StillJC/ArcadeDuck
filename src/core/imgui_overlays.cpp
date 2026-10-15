@@ -40,12 +40,14 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
 #include <deque>
 #include <mutex>
 #include <span>
+#include <vector>
 
 Log_SetChannel(ImGuiManager);
 
@@ -65,6 +67,7 @@ static void FormatProcessorStat(SmallStringBase& text, double usage, double time
 static void DrawPerformanceOverlay(float& position_y, float scale, float margin, float spacing);
 static void DrawMediaCaptureOverlay(float& position_y, float scale, float margin, float spacing);
 static void DrawFrameTimeOverlay(float& position_y, float scale, float margin, float spacing);
+static void DrawMAMECheatOutputs();
 static void DrawEnhancementsOverlay();
 static void DrawInputsOverlay();
 } // namespace ImGuiManager
@@ -216,12 +219,79 @@ void ImGuiManager::RenderTextOverlays()
     DrawPerformanceOverlay(position_y, scale, margin, spacing);
     DrawFrameTimeOverlay(position_y, scale, margin, spacing);
     DrawMediaCaptureOverlay(position_y, scale, margin, spacing);
+    DrawMAMECheatOutputs();
 
     if (g_settings.display_show_enhancements && state != System::State::Paused)
       DrawEnhancementsOverlay();
 
     if (g_settings.display_show_inputs && state != System::State::Paused)
       DrawInputsOverlay();
+  }
+}
+
+void ImGuiManager::DrawMAMECheatOutputs()
+{
+  const std::vector<System::MAMECheatOutputInfo> outputs = System::GetMAMECheatOutputs();
+  if (outputs.empty())
+    return;
+
+  ImFont* const font = ImGuiManager::GetFixedFont();
+  const ImGuiIO& io = ImGui::GetIO();
+  const float scale = ImGuiManager::GetGlobalScale();
+  const float line_height = std::ceil(font->FontSize + scale);
+  const s32 line_count = std::max<s32>(static_cast<s32>(std::floor(io.DisplaySize.y / line_height)), 1);
+
+  std::vector<const System::MAMECheatOutputInfo*> lines(static_cast<size_t>(line_count), nullptr);
+  // MAME uses positive lines from the top, negative lines from the bottom, and line 0 as the next line
+  // relative to the previous output request.
+  s32 last_line = 0;
+  for (const System::MAMECheatOutputInfo& output : outputs)
+  {
+    s32 requested_line = output.line;
+    if (requested_line == 0)
+      requested_line = (last_line >= 0) ? (last_line + 1) : (last_line - 1);
+    last_line = requested_line;
+
+    s32 line_index = (requested_line < 0) ? (line_count + requested_line) : (requested_line - 1);
+    line_index = std::clamp(line_index, 0, line_count - 1);
+    lines[static_cast<size_t>(line_index)] = &output;
+  }
+
+  ImDrawList* const dl = ImGui::GetForegroundDrawList();
+  const float horizontal_margin = std::ceil(4.0f * scale);
+  const float shadow_offset = std::max(std::ceil(scale), 1.0f);
+  const ImU32 text_color = IM_COL32(255, 255, 255, 255);
+  const ImU32 shadow_color = IM_COL32(0, 0, 0, 255);
+
+  for (s32 line_index = 0; line_index < line_count; line_index++)
+  {
+    const System::MAMECheatOutputInfo* const output = lines[static_cast<size_t>(line_index)];
+    if (!output || output->text.empty())
+      continue;
+
+    const char* const text_begin = output->text.data();
+    const char* const text_end = text_begin + output->text.size();
+    const ImVec2 text_size =
+      font->CalcTextSizeA(font->FontSize, std::numeric_limits<float>::max(), -1.0f, text_begin, text_end);
+
+    float position_x = horizontal_margin;
+    switch (output->alignment)
+    {
+      case System::MAMECheatOutputAlignment::Center:
+        position_x = (io.DisplaySize.x - text_size.x) * 0.5f;
+        break;
+      case System::MAMECheatOutputAlignment::Right:
+        position_x = io.DisplaySize.x - horizontal_margin - text_size.x;
+        break;
+      default:
+        break;
+    }
+    position_x = std::max(position_x, 0.0f);
+
+    const float position_y = static_cast<float>(line_index) * line_height;
+    dl->AddText(font, font->FontSize, ImVec2(position_x + shadow_offset, position_y + shadow_offset), shadow_color,
+                text_begin, text_end);
+    dl->AddText(font, font->FontSize, ImVec2(position_x, position_y), text_color, text_begin, text_end);
   }
 }
 
