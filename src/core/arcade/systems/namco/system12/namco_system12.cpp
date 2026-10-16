@@ -16,6 +16,7 @@
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_output.h"
 #include "core/bus.h"
 #include "core/cpu_core.h"
 #include "core/dma.h"
@@ -69,6 +70,21 @@ static constexpr u32 SHARED_RAM_BASE = 0x080000;
 static constexpr u32 SHARED_RAM_END = SHARED_RAM_BASE + PSX_SHARED_WINDOW_SIZE - 1;
 static constexpr u32 BOARD_CONTROL_BASE = 0x1bff08;
 static constexpr u32 BOARD_CONTROL_END = 0x1bff0f;
+
+static constexpr u32 LINK_SHARED_RAM_BASE = 0x780000;
+static constexpr u32 LINK_SHARED_RAM_END = 0x78ffff;
+static constexpr u32 LINK_RESET_BASE = 0x796000;
+static constexpr u32 LINK_RESET_END = 0x796003;
+static constexpr u32 LINK_REGISTER_RAM_BASE = 0x796000;
+static constexpr u32 LINK_REGISTER_RAM_END = 0x797003;
+static constexpr size_t LINK_SHARED_RAM_SIZE = 0x10000;
+static constexpr size_t LINK_REGISTER_RAM_SIZE = LINK_REGISTER_RAM_END - LINK_REGISTER_RAM_BASE + 1;
+
+static constexpr u32 GUN_INTERFACE_READ_BASE = 0x780000;
+static constexpr u32 GUN_INTERFACE_READ_END = 0x78000f;
+static constexpr u32 GUN_INTERFACE_WRITE_BASE = 0x788000;
+static constexpr u32 GUN_INTERFACE_WRITE_END = 0x788003;
+static constexpr u32 GUN_INTERFACE_MIRROR = 0x800000;
 
 // Later MOTHER(B)-class boot code serializes program-ROM halfwords to FF0E.
 // The bulk length is derived from the physical 4 MiB program-ROM geometry:
@@ -175,6 +191,13 @@ struct RuntimeState
   LoadedContent content;
   std::array<u8, SHARED_RAM_SIZE> shared_ram{};
   std::array<u8, 8> board_control{};
+  std::array<u8, LINK_SHARED_RAM_SIZE> link_shared_ram{};
+  std::array<u8, LINK_REGISTER_RAM_SIZE> link_register_ram{};
+  bool has_link_board = false;
+  bool link_cpu_reset = true;
+  bool has_gun_interface = false;
+  u8 gun_output_latch = 0;
+  bool gun_output_latch_valid = false;
   u32 bank = 0;
   u32 dma_source = 0;
   u64 dma_transfer_count = 0;
@@ -306,6 +329,16 @@ bool HasMaintainedTestSwitch(const LoadedContent& content)
 {
   return content.machine_config == "truckk" || content.machine_config == "cdxa_pcb" ||
          content.machine_config == "golgo13" || content.machine_config == "kartduel";
+}
+
+bool HasGunInterface(const LoadedContent& content)
+{
+  return content.state_class == "ptblank2_state";
+}
+
+bool HasLinkBoard(const LoadedContent& content)
+{
+  return content.machine_config == "kartduel";
 }
 
 bool ReadH8TestSwitch(RuntimeState& runtime)
@@ -1603,6 +1636,30 @@ u8 ReadH8JAMMAInput(u32 offset)
 
     clear_if_pressed(UINT8_C(0x80), "Start");
 
+    if (s_runtime)
+    {
+      const bool menu_aliases = s_runtime->content.machine_config == "golgo13" ||
+                                s_runtime->content.machine_config == "kartduel";
+      if (menu_aliases && port == 0)
+      {
+        if (ArcadeInput::IsDigitalPressed(port, "SelectUp"))
+          result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x08)));
+        if (ArcadeInput::IsDigitalPressed(port, "SelectDown"))
+          result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x04)));
+        if (ArcadeInput::IsDigitalPressed(port, "Enter"))
+          result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x10)));
+      }
+
+      if (s_runtime->content.machine_config == "golgo13" && port == 0 &&
+          ArcadeInput::IsDigitalPressed(port, "Trigger"))
+      {
+        result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x20)));
+      }
+
+      if (s_runtime->has_gun_interface && ArcadeInput::IsDigitalPressed(port, "Trigger"))
+        result = static_cast<u8>(result & static_cast<u8>(~UINT8_C(0x10)));
+    }
+
     // Quiz and Paca Paca panels wire their four buttons to the direction lines.
     if (s_runtime && s_runtime->buttons_on_direction_lines)
     {
@@ -1645,7 +1702,9 @@ u8 ReadH8JAMMAInput(u32 offset)
       clear_if_pressed(UINT8_C(0x40), s_runtime && ReadH8TestSwitch(*s_runtime));
       clear_if_pressed(UINT8_C(0x20), ArcadeInput::IsDigitalPressed(0, "Coin"));
       clear_if_pressed(UINT8_C(0x10), ArcadeInput::IsDigitalPressed(1, "Coin"));
-      clear_if_pressed(UINT8_C(0x08), ArcadeInput::IsDigitalPressed(0, "Button7"));
+      clear_if_pressed(UINT8_C(0x08), ArcadeInput::IsDigitalPressed(0, "Button7") ||
+                                           (s_runtime && s_runtime->content.machine_config == "golgo13" &&
+                                            ArcadeInput::IsDigitalPressed(0, "Sensor")));
       clear_if_pressed(UINT8_C(0x04), ArcadeInput::IsDigitalPressed(1, "Button7"));
       clear_if_pressed(UINT8_C(0x02), ArcadeInput::IsDigitalPressed(0, "Button8"));
       clear_if_pressed(UINT8_C(0x01), ArcadeInput::IsDigitalPressed(1, "Button8"));
@@ -1731,6 +1790,64 @@ u16 GetAplaRailLeverValue()
   return static_cast<u16>(LEVER_MIN + (position * static_cast<float>(LEVER_MAX - LEVER_MIN)) + 0.5f);
 }
 
+u16 GetKartDuelADCValue(u32 channel)
+{
+  float normalized = 0.0f;
+  u16 minimum = 0;
+  u16 maximum = 0;
+
+  switch (channel)
+  {
+    case 0:
+      normalized = ArcadeInput::GetAnalogValue(0, "Brake");
+      minimum = UINT16_C(0x000);
+      maximum = UINT16_C(0x15A);
+      break;
+
+    case 1:
+      normalized = ArcadeInput::GetAnalogValue(0, "Accelerator");
+      minimum = UINT16_C(0x000);
+      maximum = UINT16_C(0x15A);
+      break;
+
+    case 2:
+      normalized = ArcadeInput::GetAnalogValue(0, "Steering");
+      minimum = UINT16_C(0x0E0);
+      maximum = UINT16_C(0x320);
+      break;
+
+    default:
+      return UINT16_C(0x03FF);
+  }
+
+  normalized = std::clamp(normalized, 0.0f, 1.0f);
+  return static_cast<u16>(minimum +
+                          (normalized * static_cast<float>(maximum - minimum)) + 0.5f);
+}
+
+u16 GetGolgoADCValue(u32 channel)
+{
+  const ArcadeInput::LightgunPresentationState state = ArcadeInput::GetLightgunPresentationState();
+
+  switch (channel)
+  {
+    case 1:
+    {
+      const float x = std::clamp(state.ports[0].x, 0.0f, 1.0f);
+      return static_cast<u16>(UINT16_C(0x07A) + (x * static_cast<float>(UINT16_C(0x240))) + 0.5f);
+    }
+
+    case 2:
+    {
+      const float y = 1.0f - std::clamp(state.ports[0].y, 0.0f, 1.0f);
+      return static_cast<u16>(UINT16_C(0x01F) + (y * static_cast<float>(UINT16_C(0x1BF))) + 0.5f);
+    }
+
+    default:
+      return UINT16_C(0x03FF);
+  }
+}
+
 void UpdateADCInputs(RuntimeState& runtime)
 {
   if (runtime.content.set_name == "truckk")
@@ -1741,6 +1858,16 @@ void UpdateADCInputs(RuntimeState& runtime)
   else if (runtime.content.machine_config == "aplarail")
   {
     runtime.h8_peripherals.SetADCInput(0, GetAplaRailLeverValue());
+  }
+  else if (runtime.content.machine_config == "kartduel")
+  {
+    for (u32 channel = 0; channel < 3; channel++)
+      runtime.h8_peripherals.SetADCInput(channel, GetKartDuelADCValue(channel));
+  }
+  else if (runtime.content.machine_config == "golgo13")
+  {
+    runtime.h8_peripherals.SetADCInput(1, GetGolgoADCValue(1));
+    runtime.h8_peripherals.SetADCInput(2, GetGolgoADCValue(2));
   }
 }
 
@@ -2861,6 +2988,8 @@ bool Initialize(LoadedContent content, Error* error)
 
   RuntimeState runtime;
   runtime.content = std::move(content);
+  runtime.has_link_board = HasLinkBoard(runtime.content);
+  runtime.has_gun_interface = HasGunInterface(runtime.content);
   runtime.test_switch_maintained = HasMaintainedTestSwitch(runtime.content);
   runtime.buttons_on_direction_lines = runtime.content.input_profile == "mdhorse" ||
                                        runtime.content.input_profile == "pacapp" ||
@@ -3038,6 +3167,158 @@ void EndMainBoardReset()
            s_runtime->content.machine_config);
 }
 
+bool AccessFitsRange(u32 offset, u32 width, u32 base, u32 end)
+{
+  return (width == 1 || width == 2 || width == 4) && offset >= base && offset <= end &&
+         width <= (end - offset + 1);
+}
+
+bool IsLinkRegisterRAMAccess(u32 offset, u32 width)
+{
+  return AccessFitsRange(offset, width, UINT32_C(0x796004), UINT32_C(0x79600B)) ||
+         AccessFitsRange(offset, width, UINT32_C(0x796014), UINT32_C(0x796017)) ||
+         AccessFitsRange(offset, width, UINT32_C(0x796020), UINT32_C(0x796023)) ||
+         AccessFitsRange(offset, width, UINT32_C(0x797000), UINT32_C(0x797003));
+}
+
+bool ReadLinkBoard(const RuntimeState& runtime, u32 width, u32 offset, u32* value)
+{
+  if (!runtime.has_link_board || !value)
+    return false;
+
+  if (AccessFitsRange(offset, width, LINK_SHARED_RAM_BASE, LINK_SHARED_RAM_END))
+  {
+    *value = ReadBytes(std::span<const u8>(runtime.link_shared_ram), width, offset - LINK_SHARED_RAM_BASE);
+    return true;
+  }
+
+  if (IsLinkRegisterRAMAccess(offset, width))
+  {
+    *value = ReadBytes(std::span<const u8>(runtime.link_register_ram), width, offset - LINK_REGISTER_RAM_BASE);
+    return true;
+  }
+
+  return false;
+}
+
+bool WriteLinkBoard(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (!runtime.has_link_board)
+    return false;
+
+  if (AccessFitsRange(offset, width, LINK_SHARED_RAM_BASE, LINK_SHARED_RAM_END))
+  {
+    WriteBytes(std::span<u8>(runtime.link_shared_ram), width, offset - LINK_SHARED_RAM_BASE, value);
+    return true;
+  }
+
+  if (AccessFitsRange(offset, width, LINK_RESET_BASE, LINK_RESET_END))
+  {
+    const u32 access_end = offset + width - 1;
+    if (offset <= LINK_RESET_BASE + 1 && access_end >= LINK_RESET_BASE)
+      runtime.link_cpu_reset = true;
+    if (offset <= LINK_RESET_BASE + 3 && access_end >= LINK_RESET_BASE + 2)
+      runtime.link_cpu_reset = false;
+    return true;
+  }
+
+  if (IsLinkRegisterRAMAccess(offset, width))
+  {
+    WriteBytes(std::span<u8>(runtime.link_register_ram), width, offset - LINK_REGISTER_RAM_BASE, value);
+    return true;
+  }
+
+  return false;
+}
+
+u16 ScaleGunAxis(float normalized, u16 minimum, u16 maximum)
+{
+  normalized = std::clamp(normalized, 0.0f, 1.0f);
+  u16 value = static_cast<u16>(minimum +
+                               (normalized * static_cast<float>(maximum - minimum)) + 0.5f);
+  if ((value & UINT16_C(3)) == UINT16_C(3))
+    value++;
+  return value;
+}
+
+bool ReadGunInterface(const RuntimeState& runtime, u32 width, u32 offset, u32* value)
+{
+  if (!runtime.has_gun_interface || !value)
+    return false;
+
+  u32 canonical_offset = offset;
+  if (canonical_offset >= (GUN_INTERFACE_READ_BASE + GUN_INTERFACE_MIRROR) &&
+      canonical_offset <= (GUN_INTERFACE_READ_END + GUN_INTERFACE_MIRROR))
+  {
+    canonical_offset -= GUN_INTERFACE_MIRROR;
+  }
+
+  if (!AccessFitsRange(canonical_offset, width, GUN_INTERFACE_READ_BASE, GUN_INTERFACE_READ_END))
+    return false;
+
+  const bool ghoul_panic = runtime.content.input_profile == "ghlpanic";
+  const u16 x_min = ghoul_panic ? UINT16_C(0x0BE) : UINT16_C(0x0DC);
+  const u16 x_max = ghoul_panic ? UINT16_C(0x35F) : UINT16_C(0x387);
+  const u16 y_min = ghoul_panic ? UINT16_C(0x01A) : UINT16_C(0x028);
+  const u16 y_max = ghoul_panic ? UINT16_C(0x109) : UINT16_C(0x11B);
+
+  const ArcadeInput::LightgunPresentationState state = ArcadeInput::GetLightgunPresentationState();
+  const std::array<u16, 4> axes = {
+    ScaleGunAxis(state.ports[0].x, x_min, x_max),
+    ScaleGunAxis(state.ports[0].y, y_min, y_max),
+    ScaleGunAxis(state.ports[1].x, x_min, x_max),
+    ScaleGunAxis(state.ports[1].y, y_min, y_max),
+  };
+
+  std::array<u8, 16> registers{};
+  for (u32 axis = 0; axis < axes.size(); axis++)
+  {
+    std::memcpy(registers.data() + axis * 4, &axes[axis], sizeof(u16));
+    std::memcpy(registers.data() + axis * 4 + 2, &axes[axis], sizeof(u16));
+  }
+
+  *value = ReadBytes(std::span<const u8>(registers), width, canonical_offset - GUN_INTERFACE_READ_BASE);
+  return true;
+}
+
+bool WriteGunInterface(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (!runtime.has_gun_interface)
+    return false;
+
+  u32 canonical_offset = offset;
+  if (canonical_offset >= (GUN_INTERFACE_WRITE_BASE + GUN_INTERFACE_MIRROR) &&
+      canonical_offset <= (GUN_INTERFACE_WRITE_END + GUN_INTERFACE_MIRROR))
+  {
+    canonical_offset -= GUN_INTERFACE_MIRROR;
+  }
+
+  if (!AccessFitsRange(canonical_offset, width, GUN_INTERFACE_WRITE_BASE, GUN_INTERFACE_WRITE_END))
+    return false;
+
+  // The second halfword is the gun read strobe. Only the low halfword drives cabinet outputs.
+  if (canonical_offset == GUN_INTERFACE_WRITE_BASE)
+  {
+    const u8 data = static_cast<u8>(value);
+    const u8 changed = runtime.gun_output_latch_valid ?
+      static_cast<u8>((runtime.gun_output_latch ^ data) & UINT8_C(0x0F)) : UINT8_C(0x0F);
+
+    if (changed & UINT8_C(0x01))
+      Arcade::Output::SetValue("Player2_Gun_Recoil", (data & UINT8_C(0x01)) ? 0 : 1, "Namco System 12 GUN I/F");
+    if (changed & UINT8_C(0x02))
+      Arcade::Output::SetValue("Player1_Gun_Recoil", (data & UINT8_C(0x02)) ? 0 : 1, "Namco System 12 GUN I/F");
+    if (changed & UINT8_C(0x04))
+      Arcade::Output::SetValue("P2_Start_lamp", (data & UINT8_C(0x04)) ? 0 : 1, "Namco System 12 GUN I/F");
+    if (changed & UINT8_C(0x08))
+      Arcade::Output::SetValue("P1_Start_lamp", (data & UINT8_C(0x08)) ? 0 : 1, "Namco System 12 GUN I/F");
+
+    runtime.gun_output_latch = data;
+    runtime.gun_output_latch_valid = true;
+  }
+
+  return true;
+}
+
 u32 ReadProgramROM(u32 width, u32 offset)
 {
   if (!s_runtime)
@@ -3058,6 +3339,13 @@ u32 ReadEXP1(u32 width, u32 offset)
     {
       return value;
     }
+  }
+
+  u32 device_value = UINT32_C(0xFFFFFFFF);
+  if (ReadLinkBoard(*s_runtime, width, offset, &device_value) ||
+      ReadGunInterface(*s_runtime, width, offset, &device_value))
+  {
+    return device_value;
   }
 
   if (offset >= SHARED_RAM_BASE && offset <= SHARED_RAM_END)
@@ -3103,6 +3391,12 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
 
   RuntimeState& runtime = *s_runtime;
   if (runtime.cdxa && runtime.cdxa->WritePSX(width, offset, value))
+  {
+    return true;
+  }
+
+  if (WriteLinkBoard(runtime, width, offset, value) ||
+      WriteGunInterface(runtime, width, offset, value))
   {
     return true;
   }
