@@ -230,6 +230,22 @@ struct Settings
   bool arcade_namco_system11_dip_test : 1 = false;
   bool arcade_namco_system11_dip_freeze : 1 = false;
 
+  // Namco System 12 Cyber Lead LED panel: mode 0 off, 1 above game, 2 below game,
+  // 3 separate window; size 1 small, 2 medium, 3 large.
+  u8 arcade_namco_system12_cyber_lead_led_mode = 1;
+  u8 arcade_namco_system12_cyber_lead_led_size = 2;
+  std::string arcade_namco_system12_cyber_lead_led_monitor;
+  bool arcade_namco_system12_cyber_lead_led_borderless_fullscreen : 1 = false;
+
+  u32 GetNamcoSystem12CyberLeadLEDStripHeight(u32 window_height) const
+  {
+    const u32 percentage =
+      (arcade_namco_system12_cyber_lead_led_size <= 1) ? 6 :
+      ((arcade_namco_system12_cyber_lead_led_size >= 3) ? 10 : 8);
+    const u32 height = ((window_height * percentage) + 99u) / 100u;
+    return (height < 24u) ? 24u : height;
+  }
+
   // Common Sony ZN motherboard S551 settings used outside the Video System profile.
   bool arcade_sony_zn_bios_service_mode : 1 = false;
   bool arcade_sony_zn_game_test_mode : 1 = false;

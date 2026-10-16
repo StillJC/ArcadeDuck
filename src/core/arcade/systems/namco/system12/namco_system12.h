@@ -29,6 +29,7 @@ struct LoadedContent
   std::string machine_config;
   std::string state_class;
   std::string input_profile;
+  std::string io_board;
   ROMBoardProfile rom_board_profile = ROMBoardProfile::Ordinary;
   std::vector<u8> program_rom;
   std::vector<u8> banked_rom;

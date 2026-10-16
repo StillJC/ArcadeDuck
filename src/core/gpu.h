@@ -229,6 +229,11 @@ public:
   void CalculateDrawRect(s32 window_width, s32 window_height, bool apply_rotation, bool apply_aspect_ratio,
                          GSVector4i* display_rect, GSVector4i* draw_rect) const;
 
+  /// Computes the host presentation rectangle, reserving space for attached cabinet displays.
+  void CalculatePresentationDrawRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                     bool apply_aspect_ratio, GSVector4i* display_rect,
+                                     GSVector4i* draw_rect) const;
+
   /// Helper function for computing screenshot bounds.
   void CalculateScreenshotSize(DisplayScreenshotMode mode, u32* width, u32* height, GSVector4i* display_rect,
                                GSVector4i* draw_rect) const;

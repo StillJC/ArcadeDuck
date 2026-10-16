@@ -34,6 +34,7 @@ class AutoUpdaterDialog;
 class CheatManagerWindow;
 class DebuggerWindow;
 class MemoryScannerWindow;
+class CyberLeadLEDWindow;
 
 struct SystemBootParameters;
 
@@ -238,6 +239,8 @@ private:
   void setBezelAspectRatioLockEnabled(bool enabled);
   void applyBezelAspectRatioToCurrentWindow();
   bool isBezelAspectRatioLockActive() const;
+  void updateCyberLeadLEDWindow();
+  void destroyCyberLeadLEDWindow();
 
   SettingsWindow* getSettingsWindow();
   void doSettings(const char* category = nullptr);
@@ -280,6 +283,7 @@ private:
 
   DisplayWidget* m_display_widget = nullptr;
   DisplayContainer* m_display_container = nullptr;
+  CyberLeadLEDWindow* m_cyber_lead_led_window = nullptr;
 
   QProgressBar* m_status_progress_widget = nullptr;
   QLabel* m_status_renderer_widget = nullptr;

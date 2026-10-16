@@ -5,6 +5,7 @@
 // Modified for ArcadeDuck by StillJC, 2026.
 
 #include "imgui_overlays.h"
+#include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_output.h"
 #include "cdrom.h"
 #include "cpu_core_private.h"
@@ -40,6 +41,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -211,60 +213,116 @@ bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intens
                                 u32* scroll_y, u64* generation);
 }
 
-static void DrawCyberLeadLEDOverlay(float& position_y, float scale, float margin, float spacing)
+static bool IsCyberLeadLEDGame()
 {
-  static constexpr u32 WIDTH = 96;
-  static constexpr u32 HEIGHT = 16;
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(System::GetGameSerial());
+  if (!game || game->system_id != "namco_system12")
+    return false;
 
-  std::array<u8, WIDTH * HEIGHT> pixels{};
+  for (const Arcade::Database::Property& property : game->properties)
+  {
+    if (property.name == "ioBoard" && property.value == "cyberlead")
+      return true;
+  }
+
+  return false;
+}
+
+struct CyberLeadLEDSnapshot
+{
+  std::array<u8, 96 * 16> pixels{};
   std::array<u32, 4> levels{};
   u16 start_address = 0;
   u32 scroll_x = 0;
   u32 scroll_y = 0;
   u64 generation = 0;
+  bool valid = false;
+};
 
-  if (!NamcoSystem12::DebugCopyCyberLeadLEDFrame(
-        std::span<u8>(pixels.data(), pixels.size()), &levels, &start_address,
-        &scroll_x, &scroll_y, &generation))
+static std::mutex s_cyber_lead_led_snapshot_mutex;
+static CyberLeadLEDSnapshot s_cyber_lead_led_snapshot;
+
+static void UpdateCyberLeadLEDSnapshot()
+{
+  if (!IsCyberLeadLEDGame())
   {
+    const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+    s_cyber_lead_led_snapshot = {};
     return;
   }
 
+  CyberLeadLEDSnapshot snapshot;
+  snapshot.valid = NamcoSystem12::DebugCopyCyberLeadLEDFrame(
+    std::span<u8>(snapshot.pixels.data(), snapshot.pixels.size()), &snapshot.levels,
+    &snapshot.start_address, &snapshot.scroll_x, &snapshot.scroll_y, &snapshot.generation);
+
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  s_cyber_lead_led_snapshot = snapshot;
+}
+
+static bool CopyCyberLeadLEDSnapshot(CyberLeadLEDSnapshot* snapshot)
+{
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  if (!s_cyber_lead_led_snapshot.valid)
+    return false;
+
+  *snapshot = s_cyber_lead_led_snapshot;
+  return true;
+}
+
+namespace ImGuiManager {
+bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+}
+
+bool ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels)
+{
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  if (!s_cyber_lead_led_snapshot.valid || pixels.size() < s_cyber_lead_led_snapshot.pixels.size())
+    return false;
+
+  std::copy(s_cyber_lead_led_snapshot.pixels.begin(), s_cyber_lead_led_snapshot.pixels.end(), pixels.begin());
+  return true;
+}
+
+static void DrawCyberLeadLEDAttached(float scale)
+{
+  static constexpr u32 WIDTH = 96;
+  static constexpr u32 HEIGHT = 16;
+
+  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
+  if (mode != 1 && mode != 2)
+    return;
+
+  CyberLeadLEDSnapshot snapshot;
+  if (!CopyCyberLeadLEDSnapshot(&snapshot))
+    return;
+
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  if (display.x <= 0.0f || display.y <= 0.0f)
+    return;
+
+  const float strip_height = std::min(
+    static_cast<float>(g_settings.GetNamcoSystem12CyberLeadLEDStripHeight(
+      static_cast<u32>(std::max(display.y, 1.0f)))),
+    display.y);
+  const float strip_y = (mode == 1) ? 0.0f : (display.y - strip_height);
+  const float pad = std::max(2.0f, std::ceil(scale * 4.0f));
+  const float available_width = std::max(display.x - (pad * 2.0f), 1.0f);
+  const float available_height = std::max(strip_height - (pad * 2.0f), 1.0f);
+  const float cell = std::max(1.0f, std::min(available_width / static_cast<float>(WIDTH),
+                                            available_height / static_cast<float>(HEIGHT)));
+  const float gap = std::min(std::max(cell * 0.12f, 0.5f), cell * 0.35f);
+  const float dot = std::max(cell - gap, 1.0f);
+  const float grid_width = cell * static_cast<float>(WIDTH);
+  const float grid_height = cell * static_cast<float>(HEIGHT);
+  const float grid_x = (display.x - grid_width) * 0.5f;
+  const float grid_y = strip_y + ((strip_height - grid_height) * 0.5f);
+
   ImDrawList* const dl = ImGui::GetBackgroundDrawList();
-  ImFont* const font = ImGuiManager::GetStandardFont();
-  const float font_size = font->FontSize;
-  const float shadow_offset = std::ceil(scale);
-
-  const float pad = std::ceil(scale * 6.0f);
-  const float led_size = std::max(2.0f, std::floor(scale * 3.0f));
-  const float gap = std::max(1.0f, std::floor(scale * 0.5f));
-  const float title_height = font_size;
-  const float meta_height = font_size;
-  const float grid_width = (static_cast<float>(WIDTH) * led_size) +
-                           (static_cast<float>(WIDTH - 1) * gap);
-  const float grid_height = (static_cast<float>(HEIGHT) * led_size) +
-                            (static_cast<float>(HEIGHT - 1) * gap);
-  const float panel_width = (pad * 2.0f) + grid_width;
-  const float panel_height = (pad * 2.0f) + title_height + spacing + grid_height + spacing + meta_height;
-  const float panel_x = ImGui::GetIO().DisplaySize.x - margin - panel_width;
-  const float panel_y = position_y;
-  const float grid_x = panel_x + pad;
-  const float grid_y = panel_y + pad + title_height + spacing;
-  const float meta_y = grid_y + grid_height + spacing;
-
-  dl->AddRectFilled(ImVec2(panel_x, panel_y), ImVec2(panel_x + panel_width, panel_y + panel_height),
-                    IM_COL32(0, 0, 0, 180), scale * 4.0f);
-  dl->AddRect(ImVec2(panel_x, panel_y), ImVec2(panel_x + panel_width, panel_y + panel_height),
-              IM_COL32(255, 170, 0, 96), scale * 4.0f, 0, 1.0f);
-
-  const ImVec2 title_pos(grid_x, panel_y + pad);
-  dl->AddText(font, font_size,
-              ImVec2(title_pos.x + shadow_offset, title_pos.y + shadow_offset),
-              IM_COL32(0, 0, 0, 180), "CYBER LEAD LED");
-  dl->AddText(font, font_size, title_pos, IM_COL32(255, 208, 96, 255), "CYBER LEAD LED");
+  dl->AddRectFilled(ImVec2(0.0f, strip_y), ImVec2(display.x, strip_y + strip_height), IM_COL32(0, 0, 0, 255));
 
   static constexpr std::array<ImU32, 4> COLORS = {
-    IM_COL32(20, 16, 8, 220),
+    IM_COL32(20, 16, 8, 255),
     IM_COL32(96, 64, 8, 255),
     IM_COL32(208, 128, 8, 255),
     IM_COL32(255, 210, 64, 255)
@@ -272,28 +330,33 @@ static void DrawCyberLeadLEDOverlay(float& position_y, float scale, float margin
 
   for (u32 y = 0; y < HEIGHT; y++)
   {
-    const float py = grid_y + (static_cast<float>(y) * (led_size + gap));
+    const float py = grid_y + (static_cast<float>(y) * cell);
     for (u32 x = 0; x < WIDTH; x++)
     {
-      const float px = grid_x + (static_cast<float>(x) * (led_size + gap));
-      const u8 level = pixels[(y * WIDTH) + x] & 3;
-      dl->AddRectFilled(ImVec2(px, py), ImVec2(px + led_size, py + led_size), COLORS[level], 1.0f);
+      const float px = grid_x + (static_cast<float>(x) * cell);
+      const u8 level = snapshot.pixels[(y * WIDTH) + x] & 3;
+      dl->AddRectFilled(ImVec2(px, py), ImVec2(px + dot, py + dot), COLORS[level], std::min(1.0f, dot * 0.2f));
     }
   }
 
-  LargeString meta;
-  meta.append_format("gen={} start={:04X} scroll={},{} lit={} levels=[{},{},{}]",
-                     generation, start_address, scroll_x, scroll_y,
-                     (levels[1] + levels[2] + levels[3]),
-                     levels[1], levels[2], levels[3]);
-
-  const ImVec2 meta_pos(grid_x, meta_y);
-  dl->AddText(font, font_size,
-              ImVec2(meta_pos.x + shadow_offset, meta_pos.y + shadow_offset),
-              IM_COL32(0, 0, 0, 180), meta.c_str(), meta.end_ptr());
-  dl->AddText(font, font_size, meta_pos, IM_COL32(255, 255, 255, 255), meta.c_str(), meta.end_ptr());
-
-  position_y += panel_height + spacing;
+  if (g_settings.debugging.show_arcade_outputs)
+  {
+    ImFont* const font = ImGuiManager::GetStandardFont();
+    const float font_size = font->FontSize;
+    const float side_space = grid_x;
+    if (side_space > (font_size * 10.0f))
+    {
+      const float text_x = pad;
+      const float text_y = strip_y + pad;
+      LargeString meta;
+      meta.append_format("gen={} start={:04X}\nscroll={},{} lit={}",
+                         snapshot.generation, snapshot.start_address, snapshot.scroll_x, snapshot.scroll_y,
+                         snapshot.levels[1] + snapshot.levels[2] + snapshot.levels[3]);
+      dl->AddText(font, font_size, ImVec2(text_x, text_y), IM_COL32(255, 208, 96, 255), "CYBER LEAD LED");
+      dl->AddText(font, font_size, ImVec2(text_x, text_y + font_size + 2.0f),
+                  IM_COL32(255, 255, 255, 255), meta.c_str(), meta.end_ptr());
+    }
+  }
 }
 
 void ImGuiManager::RenderTextOverlays()
@@ -308,7 +371,8 @@ void ImGuiManager::RenderTextOverlays()
     DrawPerformanceOverlay(position_y, scale, margin, spacing);
     DrawFrameTimeOverlay(position_y, scale, margin, spacing);
     DrawMediaCaptureOverlay(position_y, scale, margin, spacing);
-    DrawCyberLeadLEDOverlay(position_y, scale, margin, spacing);
+    UpdateCyberLeadLEDSnapshot();
+    DrawCyberLeadLEDAttached(scale);
 
     if (g_settings.display_show_enhancements && state != System::State::Paused)
       DrawEnhancementsOverlay();

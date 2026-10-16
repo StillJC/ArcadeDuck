@@ -2737,19 +2737,8 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_rtc_scheduler_fraction = 0;
   runtime.h8_jvs_chain.Clear();
 
-  // Standard Cyber Lead JVS for the conventional digital-input titles currently
-  // validated with the cabinet I/O path.
-  if (runtime.content.machine_config == "aplarail" ||
-      runtime.content.set_name == "aquarush" ||
-      runtime.content.set_name.rfind("ehrgeiz", 0) == 0 ||
-      runtime.content.set_name.rfind("fgtlayer", 0) == 0 ||
-      runtime.content.set_name.rfind("lbgrande", 0) == 0 ||
-      runtime.content.set_name.rfind("mrdrillr", 0) == 0 ||
-      runtime.content.set_name.rfind("soulclbr", 0) == 0 ||
-      runtime.content.set_name.rfind("sws98", 0) == 0 ||
-      runtime.content.set_name.rfind("sws99", 0) == 0 ||
-      runtime.content.set_name.rfind("tekken3", 0) == 0 ||
-      runtime.content.set_name.rfind("tektagt", 0) == 0)
+  // Cyber Lead cabinets: the titles that send LED data to the panel (MAME cyberlead.cpp).
+  if (runtime.content.io_board == "cyberlead")
   {
     runtime.h8_jvs.profile = JVSProfile::CyberLead;
   }
@@ -2947,10 +2936,12 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
   const std::string* machine_config = FindGameProperty(game, "machineConfig");
   const std::string* state_class = FindGameProperty(game, "stateClass");
   const std::string* input_profile = FindGameProperty(game, "inputProfile");
+  const std::string* io_board = FindGameProperty(game, "ioBoard");
 
   content.machine_config = machine_config ? *machine_config : game.hardware_profile;
   content.state_class = state_class ? *state_class : std::string();
   content.input_profile = input_profile ? *input_profile : std::string();
+  content.io_board = io_board ? *io_board : std::string();
 
   if (content.state_class == "tektagt_state")
     content.rom_board_profile = ROMBoardProfile::M8F4Protected;
@@ -3064,27 +3055,85 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
              chd_sha1_string);
   }
 
-  if (content.machine_config == "aplarail" ||
-      content.set_name.rfind("soulclbr", 0) == 0)
+  if (content.io_board == "cyberlead")
   {
-    const std::string led_firmware_path(Path::Combine(EmuFolders::Bios, "cl1-leda.ic5"));
-    const std::optional<DynamicHeapArray<u8>> led_firmware =
-      FileSystem::ReadBinaryFile(led_firmware_path.c_str());
-    if (!led_firmware)
+    std::vector<u8> led_firmware;
+    std::string led_firmware_path(Path::Combine(EmuFolders::Bios, "namco_cyberlead_led.zip"));
+
+    if (unzFile zf = MinizipHelpers::OpenUnzFile(led_firmware_path.c_str()))
+    {
+      if (unzGoToFirstFile(zf) == UNZ_OK)
+      {
+        for (;;)
+        {
+          unz_file_info64 file_info = {};
+          char member_name[512] = {};
+          if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
+            break;
+
+          member_name[sizeof(member_name) - 1] = '\0';
+          if (StringUtil::EqualNoCase(member_name, "cl1-leda.ic5"))
+          {
+            if (unzOpenCurrentFile(zf) == UNZ_OK)
+            {
+              led_firmware.resize(static_cast<size_t>(file_info.uncompressed_size));
+              size_t read_offset = 0;
+              bool read_ok = true;
+              while (read_offset < led_firmware.size())
+              {
+                const int bytes_read =
+                  unzReadCurrentFile(zf, led_firmware.data() + read_offset,
+                                     static_cast<unsigned>(led_firmware.size() - read_offset));
+                if (bytes_read <= 0)
+                {
+                  read_ok = false;
+                  break;
+                }
+                read_offset += static_cast<size_t>(bytes_read);
+              }
+
+              if (unzCloseCurrentFile(zf) != UNZ_OK)
+                read_ok = false;
+              if (!read_ok)
+                led_firmware.clear();
+            }
+            break;
+          }
+
+          const int next_result = unzGoToNextFile(zf);
+          if (next_result != UNZ_OK)
+            break;
+        }
+      }
+      unzClose(zf);
+    }
+
+    if (led_firmware.empty())
+    {
+      led_firmware_path = Path::Combine(EmuFolders::Bios, "cl1-leda.ic5");
+      const std::optional<DynamicHeapArray<u8>> loose_firmware =
+        FileSystem::ReadBinaryFile(led_firmware_path.c_str());
+      if (loose_firmware)
+      {
+        const std::span<const u8> loose_span = loose_firmware->cspan();
+        led_firmware.assign(loose_span.begin(), loose_span.end());
+      }
+    }
+
+    if (led_firmware.empty())
     {
       INFO_LOG(
-        "CyberLead LED firmware not found path='{}'. Cabinet LED emulation will remain disabled; "
-        "The game itself will continue normally.",
-        led_firmware_path);
+        "CyberLead LED firmware not found. Cabinet LED emulation will remain disabled; "
+        "The game itself will continue normally.");
     }
-    else if (led_firmware->size() != CYBERLEAD_LED_FIRMWARE_SIZE)
+    else if (led_firmware.size() != CYBERLEAD_LED_FIRMWARE_SIZE)
     {
       WARNING_LOG("CyberLead LED firmware wrong size path='{}' expected={} actual={}; LED disabled",
-                  led_firmware_path, CYBERLEAD_LED_FIRMWARE_SIZE, led_firmware->size());
+                  led_firmware_path, CYBERLEAD_LED_FIRMWARE_SIZE, led_firmware.size());
     }
     else
     {
-      const std::span<const u8> firmware_span = led_firmware->cspan();
+      const std::span<const u8> firmware_span(led_firmware.data(), led_firmware.size());
       auto sha1 = SHA1Digest::GetDigest(firmware_span);
       const std::string sha1_string = SHA1Digest::DigestToString(sha1);
       if (sha1 != CYBERLEAD_LED_FIRMWARE_SHA1)

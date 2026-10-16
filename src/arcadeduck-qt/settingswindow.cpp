@@ -33,8 +33,11 @@
 #include "common/file_system.h"
 #include "common/log.h"
 
+#include <QtGui/QGuiApplication>
+#include <QtGui/QScreen>
 #include <QtGui/QWheelEvent>
 #include <QtWidgets/QMessageBox>
+#include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QGroupBox>
@@ -250,6 +253,12 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
 
   const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::GetGame(m_game_serial);
   const bool is_namco_system11 = arcade_game && arcade_game->system_id == "namco_system11";
+  const bool has_cyber_lead_led =
+    arcade_game && arcade_game->system_id == "namco_system12" &&
+    std::any_of(arcade_game->properties.begin(), arcade_game->properties.end(),
+                [](const Arcade::Database::Property& property) {
+                  return property.name == "ioBoard" && property.value == "cyberlead";
+                });
   const bool is_bust_a_move_2 = m_game_serial == "bam2" || m_game_serial == "bam2a";
   const bool is_video_system_zn1 =
     arcade_game && arcade_game->system_id == "video_system_zn1";
@@ -370,6 +379,97 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
                  tr("Off"), tr("On"), tr("Off"),
                  tr("Physical motherboard DIP S551:4 used by this hardware profile for game test mode."));
     }
+  }
+  else if (has_cyber_lead_led)
+  {
+    description->setText(tr("Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix).\n"
+                            "Attached modes reserve space above or below the game image. Separate Window can be "
+                            "placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip "
+                            "(or loose cl1-leda.ic5) in the BIOS folder."));
+
+    QComboBox* mode_combo = new QComboBox(group);
+    mode_combo->addItem(tr("Off"), 0);
+    mode_combo->addItem(tr("Above Game"), 1);
+    mode_combo->addItem(tr("Below Game"), 2);
+    mode_combo->addItem(tr("Separate Window"), 3);
+
+    int mode_value = getIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode", -1).value_or(-1);
+    if (mode_value < 0)
+    {
+      const int legacy_position =
+        getIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition", 1).value_or(1);
+      mode_value = (legacy_position == 0) ? 0 : 1;
+    }
+    mode_combo->setCurrentIndex(std::clamp(mode_value, 0, 3));
+
+    const QString mode_label = tr("LED Display Mode:");
+    form->addRow(mode_label, mode_combo);
+    registerWidgetHelp(mode_combo, mode_label, tr("Above Game"),
+                       tr("Places the Cyber Lead LED panel above or below the game without covering it, or renders "
+                          "the panel in a separate window."));
+
+    QComboBox* size_combo = new QComboBox(group);
+    size_combo->addItem(tr("Small"), 1);
+    size_combo->addItem(tr("Medium"), 2);
+    size_combo->addItem(tr("Large"), 3);
+    size_combo->setCurrentIndex(
+      std::clamp(getIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", 2).value_or(2), 1, 3) - 1);
+    connect(size_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, size_combo](int index) {
+      setIntSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", size_combo->itemData(index).toInt());
+    });
+    const QString size_label = tr("LED Display Size:");
+    form->addRow(size_label, size_combo);
+    registerWidgetHelp(size_combo, size_label, tr("Medium"),
+                       tr("Controls the attached panel height and the initial size of the separate LED window."));
+
+    QComboBox* monitor_combo = new QComboBox(group);
+    monitor_combo->addItem(tr("Default / Current Monitor"), QString());
+    const QList<QScreen*> screens = QGuiApplication::screens();
+    for (qsizetype i = 0; i < screens.size(); i++)
+    {
+      const QScreen* const screen = screens.at(i);
+      monitor_combo->addItem(tr("Monitor %1 - %2").arg(static_cast<int>(i + 1)).arg(screen->name()), screen->name());
+    }
+
+    const QString monitor_name = QString::fromStdString(
+      getStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor", "").value_or(""));
+    const int monitor_index = monitor_combo->findData(monitor_name);
+    monitor_combo->setCurrentIndex((monitor_index >= 0) ? monitor_index : 0);
+
+    connect(monitor_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, monitor_combo](int index) {
+              const QByteArray value = monitor_combo->itemData(index).toString().toUtf8();
+              setStringSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor", value.constData());
+            });
+    const QString monitor_label = tr("LED Display Monitor:");
+    form->addRow(monitor_label, monitor_combo);
+    registerWidgetHelp(monitor_combo, monitor_label, tr("Default / Current Monitor"),
+                       tr("Selects the monitor used by Separate Window mode. The saved screen name is used instead of "
+                          "a numeric monitor index so display reordering does not change the target."));
+
+    QCheckBox* fullscreen_check = new QCheckBox(tr("Borderless Fullscreen"), group);
+    fullscreen_check->setChecked(
+      getBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen", false).value_or(false));
+    connect(fullscreen_check, &QCheckBox::toggled, this, [this](bool checked) {
+      setBoolSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen", checked);
+    });
+    const QString fullscreen_label = tr("Separate Window:");
+    form->addRow(fullscreen_label, fullscreen_check);
+    registerWidgetHelp(fullscreen_check, fullscreen_label, tr("Unchecked"),
+                       tr("Makes the separate Cyber Lead LED window frameless and fills the selected monitor."));
+
+    const auto update_separate_window_options = [mode_combo, monitor_combo, fullscreen_check]() {
+      const bool enabled = mode_combo->currentData().toInt() == 3;
+      monitor_combo->setEnabled(enabled);
+      fullscreen_check->setEnabled(enabled);
+    };
+    connect(mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, mode_combo, update_separate_window_options](int index) {
+              setIntSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
+                                 mode_combo->itemData(index).toInt());
+              update_separate_window_options();
+            });
+    update_separate_window_options();
   }
   else
   {

@@ -5170,6 +5170,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3a:
     archive: "tekken3a.zip"
@@ -5215,6 +5216,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3b:
     archive: "tekken3b.zip"
@@ -5260,6 +5262,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3c:
     archive: "tekken3c.zip"
@@ -5305,6 +5308,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3d:
     archive: "tekken3d.zip"
@@ -5350,6 +5354,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ua:
     archive: "tekken3ua.zip"
@@ -5395,6 +5400,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ud:
     archive: "tekken3ud.zip"
@@ -5440,6 +5446,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ja:
     archive: "tekken3ja.zip"
@@ -5485,6 +5492,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3jd:
     archive: "tekken3jd.zip"
@@ -5530,6 +5538,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3je1:
     archive: "tekken3je1.zip"
@@ -5575,6 +5584,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   lbgrande:
     archive: "lbgrande.zip"
@@ -5614,6 +5624,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   toukon3:
     archive: "toukon3.zip"
@@ -5693,6 +5704,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrab:
     archive: "soulclbrab.zip"
@@ -5734,6 +5746,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrac:
     archive: "soulclbrac.zip"
@@ -5775,6 +5788,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrub:
     archive: "soulclbrub.zip"
@@ -5816,6 +5830,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbruc:
     archive: "soulclbruc.zip"
@@ -5857,6 +5872,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrja2:
     archive: "soulclbrja2.zip"
@@ -5898,6 +5914,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjb:
     archive: "soulclbrjb.zip"
@@ -5939,6 +5956,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjc:
     archive: "soulclbrjc.zip"
@@ -5980,6 +5998,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeiz:
     archive: "ehrgeiz.zip"
@@ -6023,6 +6042,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizua:
     archive: "ehrgeizua.zip"
@@ -6067,6 +6087,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizja:
     archive: "ehrgeizja.zip"
@@ -6111,6 +6132,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   sws98:
     archive: "sws98.zip"
@@ -6153,6 +6175,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   aplarail:
     archive: "aplarail.zip"
@@ -6194,6 +6217,7 @@ games:
       machineConfig: "aplarail"
       inputProfile: "aplarail"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mdhorse:
     archive: "mdhorse.zip"
@@ -6408,6 +6432,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   fgtlayerja:
     archive: "fgtlayerja.zip"
@@ -6452,6 +6477,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   pacapp:
     archive: "pacapp.zip"
@@ -6637,6 +6663,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tektagt:
     archive: "tektagt.zip"
@@ -6683,6 +6710,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtc1a:
     archive: "tektagtc1a.zip"
@@ -6736,6 +6764,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtub:
     archive: "tektagtub.zip"
@@ -6783,6 +6812,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtuc1:
     archive: "tektagtuc1.zip"
@@ -6830,6 +6860,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtja3:
     archive: "tektagtja3.zip"
@@ -6878,6 +6909,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjb:
@@ -6926,6 +6958,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjc1:
@@ -6974,6 +7007,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   ghlpanic:
     archive: "ghlpanic.zip"
@@ -7125,6 +7159,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mrdrillrja2:
     archive: "mrdrillrja2.zip"
@@ -7163,6 +7198,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ujlnow:
     archive: "ujlnow.zip"
@@ -7362,6 +7398,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   golgo13:
     archive: "golgo13.zip"

@@ -5,6 +5,7 @@
 // Modified for ArcadeDuck by StillJC, 2026.
 
 #include "gpu.h"
+#include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "dma.h"
@@ -69,6 +70,21 @@ static std::mutex s_screenshot_threads_mutex;
 static constexpr double ARCADE_CROSSHAIR_TIMEOUT_SECONDS = 3.0;
 static constexpr float ARCADE_CROSSHAIR_MOVEMENT_THRESHOLD_PIXELS = 1.0f;
 static constexpr float BUILTIN_ARCADE_CROSSHAIR_SIZE_PIXELS = 32.0f;
+
+static bool IsCyberLeadLEDGame()
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(System::GetGameSerial());
+  if (!game || game->system_id != "namco_system12")
+    return false;
+
+  for (const Arcade::Database::Property& property : game->properties)
+  {
+    if (property.name == "ioBoard" && property.value == "cyberlead")
+      return true;
+  }
+
+  return false;
+}
 
 struct ArcadeCrosshairActivity
 {
@@ -1399,7 +1415,8 @@ void GPU::ConvertScreenCoordinatesToDisplayCoordinates(float window_x, float win
                                                        float* display_y) const
 {
   GSVector4i display_rc, draw_rc;
-  CalculateDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), true, true, &display_rc, &draw_rc);
+  CalculatePresentationDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), true, true,
+                                  &display_rc, &draw_rc);
 
   // convert coordinates to active display region, then to full display region
   const float scaled_display_x =
@@ -2355,8 +2372,8 @@ bool GPU::PresentDisplay()
 
   GSVector4i display_rect;
   GSVector4i draw_rect;
-  CalculateDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), !g_settings.debugging.show_vram,
-                    true, &display_rect, &draw_rect);
+  CalculatePresentationDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(),
+                                  !g_settings.debugging.show_vram, true, &display_rect, &draw_rect);
 
   const float window_width = static_cast<float>(g_gpu_device->GetWindowWidth());
   const float window_height = static_cast<float>(g_gpu_device->GetWindowHeight());
@@ -2991,6 +3008,35 @@ bool GPU::ApplyChromaSmoothing()
   m_chroma_smoothing_texture->MakeReadyForSampling();
   SetDisplayTexture(m_chroma_smoothing_texture.get(), m_display_depth_buffer, 0, 0, width, height);
   return true;
+}
+
+void GPU::CalculatePresentationDrawRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                        bool apply_aspect_ratio, GSVector4i* display_rect,
+                                        GSVector4i* draw_rect) const
+{
+  s32 content_top = 0;
+  s32 content_height = window_height;
+
+  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
+  if (IsCyberLeadLEDGame() && (mode == 1 || mode == 2) && window_height > 1)
+  {
+    const s32 strip_height = std::min<s32>(
+      static_cast<s32>(g_settings.GetNamcoSystem12CyberLeadLEDStripHeight(static_cast<u32>(window_height))),
+      window_height - 1);
+    content_height -= strip_height;
+    if (mode == 1)
+      content_top = strip_height;
+  }
+
+  CalculateDrawRect(window_width, content_height, apply_rotation, apply_aspect_ratio, display_rect, draw_rect);
+
+  if (content_top != 0)
+  {
+    display_rect->y += content_top;
+    display_rect->w += content_top;
+    draw_rect->y += content_top;
+    draw_rect->w += content_top;
+  }
 }
 
 void GPU::CalculateDrawRect(s32 window_width, s32 window_height, bool apply_rotation, bool apply_aspect_ratio,

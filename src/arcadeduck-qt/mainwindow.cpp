@@ -48,13 +48,20 @@
 #include <QtCore/QSaveFile>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtGui/QColor>
 #include <QtGui/QCursor>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QPainter>
+#include <QtGui/QScreen>
 #include <QtGui/QWindowStateChangeEvent>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressBar>
 #include <QtWidgets/QStyleFactory>
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <span>
 
 #ifdef _WIN32
 #include "common/windows_headers.h"
@@ -112,6 +119,156 @@ static void ConstrainWindowSizingRectTo16By9(RECT* rect, WPARAM edge, LONG extra
 
 Log_SetChannel(MainWindow);
 
+namespace ImGuiManager {
+bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+}
+
+class CyberLeadLEDWindow final : public QWidget
+{
+public:
+  CyberLeadLEDWindow()
+  {
+    setWindowTitle(QStringLiteral("Cyber Lead LED"));
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setMinimumSize(288, 48);
+
+    m_refresh_timer.setInterval(16);
+    connect(&m_refresh_timer, &QTimer::timeout, this, [this]() { update(); });
+    m_refresh_timer.start();
+  }
+
+  void setPanelSize(u8 size)
+  {
+    size = std::clamp<u8>(size, 1, 3);
+    if (m_panel_size == size)
+      return;
+
+    m_panel_size = size;
+    if (!m_borderless_fullscreen)
+      resize(getNormalSize());
+  }
+
+  void setTargetScreen(const QString& screen_name, QScreen* fallback_screen)
+  {
+    if (m_screen_initialized && m_target_screen_name == screen_name)
+      return;
+
+    m_screen_initialized = true;
+    m_target_screen_name = screen_name;
+    applyScreenGeometry(resolveTargetScreen(fallback_screen));
+  }
+
+  void setBorderlessFullscreen(bool enabled, QScreen* fallback_screen)
+  {
+    if (m_borderless_fullscreen == enabled)
+      return;
+
+    const bool was_visible = isVisible();
+    m_borderless_fullscreen = enabled;
+    setWindowFlag(Qt::FramelessWindowHint, enabled);
+    applyScreenGeometry(resolveTargetScreen(fallback_screen));
+    if (was_visible)
+      show();
+  }
+
+protected:
+  void paintEvent(QPaintEvent* event) override
+  {
+    Q_UNUSED(event);
+
+    QPainter painter(this);
+    painter.fillRect(rect(), Qt::black);
+
+    static constexpr u32 WIDTH = 96;
+    static constexpr u32 HEIGHT = 16;
+    std::array<u8, WIDTH * HEIGHT> pixels{};
+    if (!ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8>(pixels.data(), pixels.size())))
+      return;
+
+    const qreal pad = 8.0;
+    const qreal available_width = std::max<qreal>(static_cast<qreal>(width()) - (pad * 2.0), 1.0);
+    const qreal available_height = std::max<qreal>(static_cast<qreal>(height()) - (pad * 2.0), 1.0);
+    const qreal cell = std::max<qreal>(
+      1.0, std::min(available_width / static_cast<qreal>(WIDTH),
+                    available_height / static_cast<qreal>(HEIGHT)));
+    const qreal gap = std::min(std::max(cell * 0.12, 0.5), cell * 0.35);
+    const qreal dot = std::max(cell - gap, 1.0);
+    const qreal grid_width = cell * static_cast<qreal>(WIDTH);
+    const qreal grid_height = cell * static_cast<qreal>(HEIGHT);
+    const qreal grid_x = (static_cast<qreal>(width()) - grid_width) * 0.5;
+    const qreal grid_y = (static_cast<qreal>(height()) - grid_height) * 0.5;
+
+    static const std::array<QColor, 4> COLORS = {
+      QColor(20, 16, 8),
+      QColor(96, 64, 8),
+      QColor(208, 128, 8),
+      QColor(255, 210, 64),
+    };
+
+    painter.setPen(Qt::NoPen);
+    for (u32 y = 0; y < HEIGHT; y++)
+    {
+      const qreal py = grid_y + (static_cast<qreal>(y) * cell);
+      for (u32 x = 0; x < WIDTH; x++)
+      {
+        const qreal px = grid_x + (static_cast<qreal>(x) * cell);
+        painter.setBrush(COLORS[pixels[(y * WIDTH) + x] & 3]);
+        painter.drawRect(QRectF(px, py, dot, dot));
+      }
+    }
+  }
+
+private:
+  QSize getNormalSize() const
+  {
+    static const std::array<QSize, 3> WINDOW_SIZES = {
+      QSize(576, 96),
+      QSize(768, 128),
+      QSize(960, 160),
+    };
+    return WINDOW_SIZES[std::clamp<u8>(m_panel_size, 1, 3) - 1];
+  }
+
+  QScreen* resolveTargetScreen(QScreen* fallback_screen) const
+  {
+    if (!m_target_screen_name.isEmpty())
+    {
+      const QList<QScreen*> screens = QGuiApplication::screens();
+      for (QScreen* screen : screens)
+      {
+        if (screen->name() == m_target_screen_name)
+          return screen;
+      }
+    }
+
+    return fallback_screen ? fallback_screen : QGuiApplication::primaryScreen();
+  }
+
+  void applyScreenGeometry(QScreen* target)
+  {
+    if (!target)
+      return;
+
+    if (m_borderless_fullscreen)
+    {
+      setGeometry(target->geometry());
+      return;
+    }
+
+    const QRect available = target->availableGeometry();
+    const QSize normal_size = getNormalSize();
+    resize(std::min(normal_size.width(), std::max(available.width(), 1)),
+           std::min(normal_size.height(), std::max(available.height(), 1)));
+    move(available.center() - QPoint(width() / 2, height() / 2));
+  }
+
+  QTimer m_refresh_timer;
+  QString m_target_screen_name;
+  u8 m_panel_size = 0;
+  bool m_screen_initialized = false;
+  bool m_borderless_fullscreen = false;
+};
+
 static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip)");
 
 MainWindow* g_main_window = nullptr;
@@ -163,6 +320,21 @@ static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameL
   if (const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(entry->serial))
     return game;
   return Arcade::Database::IdentifyArchive(entry->path);
+}
+
+static bool IsCyberLeadGame(std::string_view serial)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
+  if (!game || game->system_id != "namco_system12")
+    return false;
+
+  for (const Arcade::Database::Property& property : game->properties)
+  {
+    if (property.name == "ioBoard" && property.value == "cyberlead")
+      return true;
+  }
+
+  return false;
 }
 
 static QString s_current_game_serial;
@@ -632,6 +804,47 @@ void MainWindow::setBezelAspectRatioLockForGame(std::string_view game_serial, bo
   setBezelAspectRatioLockEnabled(enabled);
 }
 
+void MainWindow::updateCyberLeadLEDWindow()
+{
+  const bool want_window =
+    s_system_valid &&
+    g_settings.arcade_namco_system12_cyber_lead_led_mode == 3 &&
+    IsCyberLeadGame(s_current_game_serial.toStdString());
+
+  if (!want_window)
+  {
+    destroyCyberLeadLEDWindow();
+    return;
+  }
+
+  const bool created = (m_cyber_lead_led_window == nullptr);
+  if (created)
+  {
+    m_cyber_lead_led_window = new CyberLeadLEDWindow();
+    m_cyber_lead_led_window->setWindowIcon(windowIcon());
+  }
+
+  QScreen* const fallback_screen = getDisplayContainer() ? getDisplayContainer()->screen() : screen();
+  m_cyber_lead_led_window->setPanelSize(g_settings.arcade_namco_system12_cyber_lead_led_size);
+  m_cyber_lead_led_window->setTargetScreen(
+    QString::fromStdString(g_settings.arcade_namco_system12_cyber_lead_led_monitor), fallback_screen);
+  m_cyber_lead_led_window->setBorderlessFullscreen(
+    g_settings.arcade_namco_system12_cyber_lead_led_borderless_fullscreen, fallback_screen);
+
+  if (created)
+    m_cyber_lead_led_window->show();
+}
+
+void MainWindow::destroyCyberLeadLEDWindow()
+{
+  if (!m_cyber_lead_led_window)
+    return;
+
+  m_cyber_lead_led_window->close();
+  m_cyber_lead_led_window->deleteLater();
+  m_cyber_lead_led_window = nullptr;
+}
+
 void MainWindow::applyBezelAspectRatioToCurrentWindow()
 {
   if (!isBezelAspectRatioLockActive() || isRenderingFullscreen())
@@ -696,6 +909,7 @@ void MainWindow::onSystemStarted()
   updateStatusBarWidgetVisibility();
   updateDisplayWidgetCursor();
   setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+  updateCyberLeadLEDWindow();
 }
 
 void MainWindow::onSystemPaused()
@@ -742,6 +956,7 @@ void MainWindow::onSystemDestroyed()
   s_system_valid = false;
   s_system_paused = false;
   setBezelAspectRatioLockEnabled(false);
+  destroyCyberLeadLEDWindow();
 
   // If we're closing or in batch mode, quit the whole application now.
   if (m_is_closing || QtHost::InBatchMode())
@@ -771,7 +986,10 @@ void MainWindow::onRunningGameChanged(const QString& filename, const QString& ga
 
   updateWindowTitle();
   if (s_system_valid)
+  {
     setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+    updateCyberLeadLEDWindow();
+  }
 }
 
 void MainWindow::onMediaCaptureStarted()
@@ -926,6 +1144,7 @@ void MainWindow::destroySubWindows()
   QtUtils::CloseAndDeleteWindow(m_cheat_manager_window);
   QtUtils::CloseAndDeleteWindow(m_controller_settings_window);
   QtUtils::CloseAndDeleteWindow(m_settings_window);
+  destroyCyberLeadLEDWindow();
 
   SettingsWindow::closeGamePropertiesDialogs();
 
@@ -2711,7 +2930,14 @@ void MainWindow::checkForSettingChanges()
   updateWindowState();
   updateCheatActionsVisibility();
   if (s_system_valid)
+  {
     setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+    updateCyberLeadLEDWindow();
+  }
+  else
+  {
+    destroyCyberLeadLEDWindow();
+  }
 }
 
 std::optional<WindowInfo> MainWindow::getWindowInfo()

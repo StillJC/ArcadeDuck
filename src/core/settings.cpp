@@ -180,6 +180,26 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   arcade_namco_system11_dip_freeze =
     si.GetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze", false);
 
+  const int cyber_lead_led_mode =
+    si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode", -1);
+  if (cyber_lead_led_mode >= 0)
+  {
+    arcade_namco_system12_cyber_lead_led_mode =
+      static_cast<u8>(std::clamp(cyber_lead_led_mode, 0, 3));
+  }
+  else
+  {
+    const int legacy_position =
+      si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition", 1);
+    arcade_namco_system12_cyber_lead_led_mode = (legacy_position == 0) ? 0 : 1;
+  }
+  arcade_namco_system12_cyber_lead_led_size = static_cast<u8>(
+    std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", 2), 1, 3));
+  arcade_namco_system12_cyber_lead_led_monitor =
+    si.GetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor", "");
+  arcade_namco_system12_cyber_lead_led_borderless_fullscreen =
+    si.GetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen", false);
+
   arcade_sony_zn_bios_service_mode =
     si.GetBoolValue("ArcadeMachine", "SonyZNBIOSServiceMode", false);
   arcade_sony_zn_game_test_mode =
@@ -524,6 +544,14 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
                     arcade_namco_system11_dip_test);
     si.SetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze",
                     arcade_namco_system11_dip_freeze);
+
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
+                   arcade_namco_system12_cyber_lead_led_mode);
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", arcade_namco_system12_cyber_lead_led_size);
+    si.SetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor",
+                      arcade_namco_system12_cyber_lead_led_monitor.c_str());
+    si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen",
+                    arcade_namco_system12_cyber_lead_led_borderless_fullscreen);
 
     si.SetBoolValue("ArcadeMachine", "SonyZNBIOSServiceMode",
                     arcade_sony_zn_bios_service_mode);
