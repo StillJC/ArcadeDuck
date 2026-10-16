@@ -7,6 +7,7 @@
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/settings.h"
+#include "core/system.h"
 
 #include "common/path.h"
 #include "common/settings_interface.h"
@@ -31,7 +32,7 @@ enum class Control : u8
   SelectUp, SelectDown, SelectLeft, SelectRight, Enter, Sensor,
   MahjongA, MahjongB, MahjongC, MahjongD, MahjongE, MahjongF, MahjongG, MahjongH,
   MahjongI, MahjongJ, MahjongK, MahjongL, MahjongM, MahjongN, MahjongKan, MahjongPon,
-  MahjongChi, MahjongReach, MahjongRon, Count
+  MahjongChi, MahjongReach, MahjongRon, Button7, Button8, Count
 };
 
 enum class DrivingAxis : u8
@@ -98,6 +99,8 @@ struct OperatorState
 };
 
 std::mutex s_mutex;
+u32 s_service_min_hold_ms = 0;
+GlobalTicks s_service_hold_until = 0;
 std::array<PortState, Arcade::NUM_ARCADE_CONTROLLER_PORTS> s_ports;
 OperatorState s_operator;
 bool s_sinden_border_enabled = false;
@@ -111,7 +114,7 @@ float s_lightgun_viewport_border_y = 0.0f;
 
 std::optional<Control> GetControl(std::string_view key)
 {
-  static constexpr std::array<std::pair<std::string_view, Control>, 49> controls = {{
+  static constexpr std::array<std::pair<std::string_view, Control>, 51> controls = {{
     {"Left", Control::Left}, {"Right", Control::Right}, {"Up", Control::Up}, {"Down", Control::Down},
     {"Button1", Control::Button1}, {"Button2", Control::Button2}, {"Button3", Control::Button3},
     {"Button4", Control::Button4}, {"Button5", Control::Button5}, {"Button6", Control::Button6},
@@ -129,6 +132,7 @@ std::optional<Control> GetControl(std::string_view key)
     {"MahjongM", Control::MahjongM}, {"MahjongN", Control::MahjongN}, {"MahjongKan", Control::MahjongKan},
     {"MahjongPon", Control::MahjongPon}, {"MahjongChi", Control::MahjongChi},
     {"MahjongReach", Control::MahjongReach}, {"MahjongRon", Control::MahjongRon},
+    {"Button7", Control::Button7}, {"Button8", Control::Button8},
   }};
   for (const auto& [name, control] : controls)
   {
@@ -319,6 +323,11 @@ void OnOperatorDigital(OperatorControl control, s32 value)
     s_operator.pressed_counts[control_index]--;
 
   const bool pressed = s_operator.pressed_counts[control_index] != 0;
+  if (control == OperatorControl::Service && value > 0 && s_service_min_hold_ms != 0)
+  {
+    s_service_hold_until = System::GetGlobalTickCounter() +
+                           (static_cast<GlobalTicks>(s_service_min_hold_ms) * System::GetTicksPerSecond()) / 1000;
+  }
   if (Konami::IsGQActive())
   {
     if (control == OperatorControl::Service)
@@ -638,7 +647,7 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
                             "GSRDecrease", "GearUp", "GearDown", "Handbrake", "View", "Horn", "MusicNext",
                             "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft", "SelectRight",
                             "Enter", "Sensor", "MahjongA", "MahjongB", "MahjongC", "MahjongD",
-                            "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
+                            "Button7", "Button8", "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
                             "MahjongK", "MahjongL", "MahjongM", "MahjongN", "MahjongKan", "MahjongPon",
                             "MahjongChi", "MahjongReach", "MahjongRon"})
     {
@@ -759,12 +768,22 @@ bool HasAnalogControl(u32 port, std::string_view key)
   return false;
 }
 
+void SetOperatorServiceMinimumHold(u32 milliseconds)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  s_service_min_hold_ms = milliseconds;
+  s_service_hold_until = 0;
+}
+
 bool IsOperatorPressed(std::string_view key)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
 
   if (key == "Service")
-    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Service)] != 0;
+  {
+    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Service)] != 0 ||
+           (s_service_min_hold_ms != 0 && System::GetGlobalTickCounter() < s_service_hold_until);
+  }
   if (key == "Test")
     return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Test)] != 0;
 

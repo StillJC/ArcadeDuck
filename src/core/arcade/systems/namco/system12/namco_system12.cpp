@@ -99,6 +99,10 @@ static constexpr u32 M8F4_GAME_ROM_LIMIT = 0x03800000;
 static constexpr u32 M8F4_PROGRAM_ROM_BASE = 0x04000000;
 static constexpr u32 M8F4_PROGRAM_ROM_LIMIT = 0x04400000;
 
+// The H8 I/O firmware debounces Service over about 14 polls, and several titles poll
+// at 30 Hz (about 0.47 s). A brief host press is stretched past that window.
+static constexpr u32 SERVICE_MINIMUM_HOLD_MS = 600;
+
 static constexpr u32 H8_CLOCK_HZ = 16934400;
 static constexpr u32 CDXA_SH2_CLOCK_HZ = 14745600;
 static constexpr u32 CDXA_SH2_SCHEDULER_HZ = 1000;
@@ -250,6 +254,7 @@ struct RuntimeState
 
   bool h8_vblank = false;
 
+  bool buttons_on_direction_lines = false;
   bool test_switch_maintained = false;
   bool test_switch_latched = false;
   bool test_switch_was_pressed = false;
@@ -1597,6 +1602,17 @@ u8 ReadH8JAMMAInput(u32 offset)
     };
 
     clear_if_pressed(UINT8_C(0x80), "Start");
+
+    // Quiz and Paca Paca panels wire their four buttons to the direction lines.
+    if (s_runtime && s_runtime->buttons_on_direction_lines)
+    {
+      clear_if_pressed(UINT8_C(0x08), "Button1");
+      clear_if_pressed(UINT8_C(0x04), "Button2");
+      clear_if_pressed(UINT8_C(0x02), "Button3");
+      clear_if_pressed(UINT8_C(0x01), "Button4");
+      return result;
+    }
+
     clear_if_pressed(UINT8_C(0x40), "Button3");
     clear_if_pressed(UINT8_C(0x20), "Button2");
     clear_if_pressed(UINT8_C(0x10), "Button1");
@@ -1705,13 +1721,27 @@ u16 GetTruckADCValue(u32 channel)
   return static_cast<u16>((normalized * static_cast<float>(UINT16_C(0x03FF))) + 0.5f);
 }
 
-void UpdateTruckADCInputs(RuntimeState& runtime)
+u16 GetAplaRailLeverValue()
 {
-  if (runtime.content.set_name != "truckk")
-    return;
+  // ADC0 lever range from the cabinet input definition, reversed around the centered host axis.
+  constexpr u16 LEVER_MIN = UINT16_C(0x08B);
+  constexpr u16 LEVER_MAX = UINT16_C(0x397);
 
-  for (u32 channel = 0; channel < 3; channel++)
-    runtime.h8_peripherals.SetADCInput(channel, GetTruckADCValue(channel));
+  const float position = 1.0f - std::clamp(ArcadeInput::GetAnalogValue(0, "ThrottleBrake"), 0.0f, 1.0f);
+  return static_cast<u16>(LEVER_MIN + (position * static_cast<float>(LEVER_MAX - LEVER_MIN)) + 0.5f);
+}
+
+void UpdateADCInputs(RuntimeState& runtime)
+{
+  if (runtime.content.set_name == "truckk")
+  {
+    for (u32 channel = 0; channel < 3; channel++)
+      runtime.h8_peripherals.SetADCInput(channel, GetTruckADCValue(channel));
+  }
+  else if (runtime.content.machine_config == "aplarail")
+  {
+    runtime.h8_peripherals.SetADCInput(0, GetAplaRailLeverValue());
+  }
 }
 
 u8 ReadTruckADCRegister(u16 reg)
@@ -1975,7 +2005,7 @@ h8_bool H8BusWrite(void* opaque, unsigned address, h8_byte_t value)
       return TRUE;
     }
     if (reg == UINT16_C(0xFFE8))
-      UpdateTruckADCInputs(*runtime);
+      UpdateADCInputs(*runtime);
 
     if (runtime->h8_peripherals.Write(reg, value.u))
     {
@@ -2352,10 +2382,10 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_rtc_scheduler_fraction = 0;
   runtime.h8_jvs_chain.Clear();
 
-  // Standard Cyber Lead JVS for the conventional digital-input titles that
-  // are ready for cabinet validation. Aqua Rush is intentionally held back
-  // until its independent boot failure is resolved.
+  // Standard Cyber Lead JVS for the conventional digital-input titles currently
+  // validated with the cabinet I/O path.
   if (runtime.content.machine_config == "aplarail" ||
+      runtime.content.set_name == "aquarush" ||
       runtime.content.set_name.rfind("ehrgeiz", 0) == 0 ||
       runtime.content.set_name.rfind("fgtlayer", 0) == 0 ||
       runtime.content.set_name.rfind("lbgrande", 0) == 0 ||
@@ -2832,6 +2862,9 @@ bool Initialize(LoadedContent content, Error* error)
   RuntimeState runtime;
   runtime.content = std::move(content);
   runtime.test_switch_maintained = HasMaintainedTestSwitch(runtime.content);
+  runtime.buttons_on_direction_lines = runtime.content.input_profile == "mdhorse" ||
+                                       runtime.content.input_profile == "pacapp" ||
+                                       runtime.content.input_profile == "pacapp2";
 
   if (UsesCDXA(runtime))
   {
@@ -2862,6 +2895,7 @@ bool Initialize(LoadedContent content, Error* error)
   }
 
   s_runtime = std::move(runtime);
+  ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
 
   INFO_LOG(
@@ -2931,6 +2965,7 @@ void Shutdown()
   if (s_runtime)
     SaveEEPROM(*s_runtime);
 
+  ArcadeInput::SetOperatorServiceMinimumHold(0);
   s_runtime.reset();
 }
 
@@ -2955,7 +2990,7 @@ void SetVBlank(bool state)
                     (state ? UINT8_C(0x80) : UINT8_C(0x00)));
 
   H8SetExternalIRQLine(runtime, 1, state);
-  UpdateTruckADCInputs(runtime);
+  UpdateADCInputs(runtime);
   runtime.h8_peripherals.SetADCTrigger(state);
   H8CollectInterruptSources(runtime);
 

@@ -1692,15 +1692,27 @@ controlLayouts:
       - key: "Button3"
         displayName: "Button 3 — Right"
         kind: "button"
-      - key: "Accelerator"
-        displayName: "Speed Lever — Control train speed"
+      - key: "ThrottleBrake"
+        displayName: "Speed Lever - Power (axis high) / Brake (axis low)"
         kind: "axis"
 
   aquarush:
     displayName: "Aqua Rush"
     controllerType: "arcade"
-    joystickMode: "none"
+    joystickMode: "eight_way"
     bindings:
+      - key: "Up"
+        displayName: "Up - Test menu up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down - Test menu down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left - Test menu left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right - Test menu right"
+        kind: "button"
       - key: "Button1"
         displayName: "Button 1 — Raise/extend the left bubble column"
         kind: "button"
@@ -2630,6 +2642,60 @@ controlLayouts:
         kind: "button"
       - key: "Button3"
         displayName: "Button 3"
+        kind: "button"
+
+  arcade_generic:
+    displayName: "Generic 6-Button Arcade"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 5"
+        kind: "button"
+      - key: "Button6"
+        displayName: "Button 6"
+        kind: "button"
+
+  pacapp:
+    displayName: "Paca Paca Passion / 2 / Special"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Button1"
+        displayName: "Button 1 - Yellow"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 - Red"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 - Blue"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4 - Green"
         kind: "button"
 
 games:
@@ -6402,6 +6468,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -6995,6 +7065,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -7228,6 +7302,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
