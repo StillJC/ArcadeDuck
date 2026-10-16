@@ -20,10 +20,16 @@
 #include "core/bus.h"
 #include "core/cpu_core.h"
 #include "core/dma.h"
+#include "core/host.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "core/settings.h"
 #include "util/cd_image.h"
+#include "util/image.h"
+#include "util/imgui_manager.h"
+
+#include "fmt/format.h"
+#include "imgui.h"
 
 extern "C" {
 #include "core/arcade/third_party/h8_300h/system.h"
@@ -38,13 +44,19 @@ extern "C" {
 #include "common/string_util.h"
 #include "common/timer.h"
 
+#ifdef _WIN32
+#include "common/windows_headers.h"
+#endif
+
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <ctime>
 #include <memory>
 #include <span>
 #include <utility>
+#include <vector>
 
 Log_SetChannel(NamcoSystem12);
 
@@ -845,6 +857,222 @@ void UpdateH8RTCRegisters(RuntimeState& runtime)
   runtime.h8_rtc_regs[4] = ToBCD(static_cast<u32>(local->tm_mday));
   runtime.h8_rtc_regs[5] = ToBCD(static_cast<u32>(local->tm_mon + 1));
   runtime.h8_rtc_regs[6] = ToBCD(static_cast<u32>((local->tm_year + 1900) % 100));
+}
+
+static constexpr u32 TECHNODR_PRINT_WIDTH = 576;
+static constexpr u32 TECHNODR_PRINT_CELL_WIDTH = 12;
+static constexpr u32 TECHNODR_PRINT_LINE_HEIGHT = 24;
+static constexpr u32 TECHNODR_PRINT_MARGIN = 12;
+
+bool DecodeTechnoDrivePrintCharacter(std::span<const u8> data, size_t* offset, ImWchar* codepoint, u32* cells)
+{
+  if (*offset >= data.size())
+    return false;
+
+  const u8 first = data[*offset];
+  size_t length = 1;
+  if ((first >= UINT8_C(0x81) && first <= UINT8_C(0x9F)) ||
+      (first >= UINT8_C(0xE0) && first <= UINT8_C(0xFC)))
+  {
+    if ((*offset + 1) >= data.size())
+      return false;
+    length = 2;
+  }
+
+#ifdef _WIN32
+  wchar_t wide = L'?';
+  const int converted = MultiByteToWideChar(932, MB_ERR_INVALID_CHARS,
+                                             reinterpret_cast<const char*>(data.data() + *offset),
+                                             static_cast<int>(length), &wide, 1);
+  *codepoint = static_cast<ImWchar>(converted == 1 ? wide : L'?');
+#else
+  *codepoint = static_cast<ImWchar>((length == 1 && first < UINT8_C(0x80)) ? first : UINT8_C('?'));
+#endif
+
+  *cells = (length == 2) ? 2 : 1;
+  *offset += length;
+  return true;
+}
+
+void DrawTechnoDrivePrintGlyph(std::vector<u32>& page, u32 page_height, const unsigned char* atlas_pixels,
+                               int atlas_width, int atlas_height, const ImFont* font, ImWchar codepoint,
+                               u32 x, u32 y)
+{
+  const ImFontGlyph* const glyph = font->FindGlyph(codepoint);
+  if (!glyph)
+    return;
+
+  const int source_x0 = static_cast<int>((glyph->U0 * static_cast<float>(atlas_width)) + 0.5f);
+  const int source_y0 = static_cast<int>((glyph->V0 * static_cast<float>(atlas_height)) + 0.5f);
+  const int source_x1 = static_cast<int>((glyph->U1 * static_cast<float>(atlas_width)) + 0.5f);
+  const int source_y1 = static_cast<int>((glyph->V1 * static_cast<float>(atlas_height)) + 0.5f);
+  const int dest_x0 = static_cast<int>(x) + static_cast<int>(glyph->X0);
+  const int dest_y0 = static_cast<int>(y) + static_cast<int>(glyph->Y0);
+
+  for (int source_y = source_y0; source_y < source_y1; source_y++)
+  {
+    const int dest_y = dest_y0 + (source_y - source_y0);
+    if (source_y < 0 || source_y >= atlas_height || dest_y < 0 || dest_y >= static_cast<int>(page_height))
+      continue;
+
+    for (int source_x = source_x0; source_x < source_x1; source_x++)
+    {
+      const int dest_x = dest_x0 + (source_x - source_x0);
+      if (source_x < 0 || source_x >= atlas_width || dest_x < 0 ||
+          dest_x >= static_cast<int>(TECHNODR_PRINT_WIDTH))
+      {
+        continue;
+      }
+
+      const u8 alpha = atlas_pixels[source_y * atlas_width + source_x];
+      if (alpha == 0)
+        continue;
+
+      const u32 shade = UINT32_C(0xFF) - alpha;
+      page[static_cast<size_t>(dest_y) * TECHNODR_PRINT_WIDTH + static_cast<u32>(dest_x)] =
+        UINT32_C(0xFF000000) | shade | (shade << 8) | (shade << 16);
+    }
+  }
+}
+
+void DrawTechnoDrivePrintMarker(std::vector<u32>& page, u32 page_height, u32 column, u32 y)
+{
+  const u32 x0 = TECHNODR_PRINT_MARGIN + (column * TECHNODR_PRINT_CELL_WIDTH);
+  const u32 y0 = y + 4;
+  for (u32 py = y0; py < std::min<u32>(y0 + TECHNODR_PRINT_CELL_WIDTH, page_height); py++)
+  {
+    for (u32 px = x0; px < std::min<u32>(x0 + TECHNODR_PRINT_CELL_WIDTH, TECHNODR_PRINT_WIDTH); px++)
+      page[static_cast<size_t>(py) * TECHNODR_PRINT_WIDTH + px] = UINT32_C(0xFF000000);
+  }
+}
+
+bool RenderTechnoDrivePrintPage(std::span<const u8> job, std::vector<u32>* pixels, u32* page_height)
+{
+  u32 line_count = 1;
+  for (const u8 value : job)
+    line_count += (value == UINT8_C(0x0A)) ? 1 : 0;
+
+  *page_height = std::max<u32>(TECHNODR_PRINT_MARGIN * 2 + line_count * TECHNODR_PRINT_LINE_HEIGHT,
+                               TECHNODR_PRINT_LINE_HEIGHT * 8);
+  pixels->assign(static_cast<size_t>(TECHNODR_PRINT_WIDTH) * *page_height, UINT32_C(0xFFFFFFFF));
+
+  ImFontAtlas atlas;
+  const std::string font_path =
+    EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "NotoSansJP-Regular.ttf");
+  ImFont* font = atlas.AddFontFromFileTTF(font_path.c_str(), 20.0f, nullptr, atlas.GetGlyphRangesJapanese());
+  if (!font)
+    font = atlas.AddFontDefault();
+  if (!font)
+    return false;
+
+  unsigned char* atlas_pixels = nullptr;
+  int atlas_width = 0;
+  int atlas_height = 0;
+  atlas.GetTexDataAsAlpha8(&atlas_pixels, &atlas_width, &atlas_height);
+  if (!atlas_pixels || atlas_width <= 0 || atlas_height <= 0)
+    return false;
+
+  u32 x = TECHNODR_PRINT_MARGIN;
+  u32 y = TECHNODR_PRINT_MARGIN;
+  size_t offset = 0;
+  while (offset < job.size())
+  {
+    const u8 value = job[offset];
+    if (value == UINT8_C(0x0A))
+    {
+      offset++;
+      x = TECHNODR_PRINT_MARGIN;
+      y += TECHNODR_PRINT_LINE_HEIGHT;
+      continue;
+    }
+    if (value == UINT8_C(0x0D))
+    {
+      offset++;
+      continue;
+    }
+
+    if (value == UINT8_C(0x1B) && (offset + 1) < job.size())
+    {
+      const u8 command = job[offset + 1];
+      offset += 2;
+      if (command == UINT8_C(0x10) || command == UINT8_C(0x11) || command == UINT8_C(0x12))
+      {
+        offset = std::min(job.size(), offset + 2);
+      }
+      else if (command == UINT8_C(0x13))
+      {
+        if (offset < job.size())
+          DrawTechnoDrivePrintMarker(*pixels, *page_height, job[offset++], y);
+      }
+      else if (command == UINT8_C(0x15))
+      {
+        if (offset < job.size())
+          offset++;
+      }
+      continue;
+    }
+
+    ImWchar codepoint = static_cast<ImWchar>('?');
+    u32 cells = 1;
+    if (!DecodeTechnoDrivePrintCharacter(job, &offset, &codepoint, &cells))
+      break;
+
+    if ((x + cells * TECHNODR_PRINT_CELL_WIDTH) > (TECHNODR_PRINT_WIDTH - TECHNODR_PRINT_MARGIN))
+    {
+      x = TECHNODR_PRINT_MARGIN;
+      y += TECHNODR_PRINT_LINE_HEIGHT;
+    }
+    if ((y + TECHNODR_PRINT_LINE_HEIGHT) >= *page_height)
+      break;
+
+    DrawTechnoDrivePrintGlyph(*pixels, *page_height, atlas_pixels, atlas_width, atlas_height, font, codepoint, x, y);
+    x += cells * TECHNODR_PRINT_CELL_WIDTH;
+  }
+
+  return true;
+}
+
+void SaveTechnoDrivePrintJob(std::span<const u8> job)
+{
+  std::vector<u32> pixels;
+  u32 page_height = 0;
+  if (!RenderTechnoDrivePrintPage(job, &pixels, &page_height))
+  {
+    WARNING_LOG("System12 Techno Drive printer failed to render {} bytes", job.size());
+    Host::AddOSDMessage("Techno Drive printer failed to render page.", Host::OSD_ERROR_DURATION);
+    return;
+  }
+
+  const std::string prints_root = Path::Combine(EmuFolders::DataRoot, "prints");
+  const std::string prints_directory = Path::Combine(prints_root, "technodr");
+  Error error;
+  if (!FileSystem::CreateDirectory(prints_root.c_str(), false, &error) ||
+      !FileSystem::CreateDirectory(prints_directory.c_str(), false, &error))
+  {
+    WARNING_LOG("System12 Techno Drive printer failed to create '{}' ({})", prints_directory,
+                error.GetDescription());
+    Host::AddOSDMessage("Techno Drive printer failed to create output directory.", Host::OSD_ERROR_DURATION);
+    return;
+  }
+
+  const s64 timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  const std::string filename_base = fmt::format("technodr_{}", timestamp);
+  std::string filename = Path::Combine(prints_directory, fmt::format("{}.png", filename_base));
+  for (u32 suffix = 1; FileSystem::FileExists(filename.c_str()); suffix++)
+    filename = Path::Combine(prints_directory, fmt::format("{}_{}.png", filename_base, suffix));
+
+  RGBA8Image image(TECHNODR_PRINT_WIDTH, page_height, std::move(pixels));
+  if (!image.SaveToFile(filename.c_str()))
+  {
+    WARNING_LOG("System12 Techno Drive printer failed to save '{}'", filename);
+    Host::AddOSDMessage("Techno Drive printer failed to save page.", Host::OSD_ERROR_DURATION);
+    return;
+  }
+
+  INFO_LOG("System12 Techno Drive print saved: {}", filename);
+  Host::AddOSDMessage(fmt::format("Print saved: {}", filename), Host::OSD_INFO_DURATION);
 }
 
 void ResetH8RTC(RuntimeState& runtime)
@@ -2533,6 +2761,7 @@ void ResetH8(RuntimeState& runtime)
   else if (runtime.content.machine_config == "technodr")
   {
     runtime.h8_jvs.profile = JVSProfile::NamcoEMIO102Printer;
+    runtime.h8_empri101.SetJobCallback(SaveTechnoDrivePrintJob);
 
     // Physical topology: host -> EM I/O1-02 -> EM Pri1-01.
     // Generic Chain SET_ADDRESS semantics assign the far end first.

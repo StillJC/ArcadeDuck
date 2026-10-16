@@ -31,6 +31,7 @@ bool AppendData(std::array<u8, 256>& response, u32& length, const char* data)
 void NamcoEMPri101::Reset()
 {
   Node::Reset();
+  m_job_data.clear();
 }
 
 Node::PacketResult NamcoEMPri101::ProcessAddressedPacket(std::span<const u8> packet)
@@ -104,6 +105,11 @@ Node::PacketResult NamcoEMPri101::ProcessAddressedPacket(std::span<const u8> pac
         switch (subcommand)
         {
           case UINT8_C(0x01):
+            m_job_data.clear();
+            AppendByte(response, response_length, UINT8_C(0x01));
+            produce_response = true;
+            break;
+
           case UINT8_C(0x02):
           case UINT8_C(0x04):
             AppendByte(response, response_length, UINT8_C(0x01));
@@ -117,12 +123,25 @@ Node::PacketResult NamcoEMPri101::ProcessAddressedPacket(std::span<const u8> pac
             break;
 
           case UINT8_C(0x05):
+          {
             if (index >= commands_end)
               return result;
-            AppendByte(response, response_length,
-                       packet[index++] == UINT8_C(0x01) ? UINT8_C(0x01) : UINT8_C(0x03));
+
+            const u8 mode = packet[index++];
+            if (mode == UINT8_C(0x01))
+            {
+              if (m_job_callback && !m_job_data.empty())
+                m_job_callback(std::span<const u8>(m_job_data));
+              m_job_data.clear();
+              AppendByte(response, response_length, UINT8_C(0x01));
+            }
+            else
+            {
+              AppendByte(response, response_length, UINT8_C(0x03));
+            }
             produce_response = true;
             break;
+          }
 
           case UINT8_C(0x07):
           {
@@ -133,6 +152,7 @@ Node::PacketResult NamcoEMPri101::ProcessAddressedPacket(std::span<const u8> pac
             if ((index + count) > commands_end)
               return result;
 
+            m_job_data.insert(m_job_data.end(), packet.begin() + index, packet.begin() + index + count);
             index += count;
             AppendByte(response, response_length, UINT8_C(0x01));
             produce_response = true;
