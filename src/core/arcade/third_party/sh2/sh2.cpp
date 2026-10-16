@@ -321,10 +321,23 @@ void CPU::Execute(uint16_t op, uint32_t pc, uint32_t& cycles)
     case 0x84: R[0] = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(ReadByte(R[m] + (op & 0xF))))); return;
     case 0x85: R[0] = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(ReadWord(R[m] + (op & 0xF) * 2u)))); return;
     case 0x88: set_t(R[0] == static_cast<uint32_t>(Sext8(op & 0xFF))); return;
-    case 0x89: if (get_t()) m_state.pc = pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2); return;
-    case 0x8B: if (!get_t()) m_state.pc = pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2); return;
-    case 0x8D: if (get_t()) { ScheduleDelayedBranch(pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2)); cycles = 2; } return;
-    case 0x8F: if (!get_t()) { ScheduleDelayedBranch(pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2)); cycles = 2; } return;
+    // Conditional branches are slot-illegal in a delay slot whether or not they are taken.
+    case 0x89:
+      if (InDelaySlot()) { RaiseException(6, pc); return; }
+      if (get_t()) m_state.pc = pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2);
+      return;
+    case 0x8B:
+      if (InDelaySlot()) { RaiseException(6, pc); return; }
+      if (!get_t()) m_state.pc = pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2);
+      return;
+    case 0x8D:
+      if (InDelaySlot()) { RaiseException(6, pc); return; }
+      if (get_t()) { ScheduleDelayedBranch(pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2)); cycles = 2; }
+      return;
+    case 0x8F:
+      if (InDelaySlot()) { RaiseException(6, pc); return; }
+      if (!get_t()) { ScheduleDelayedBranch(pc + 4u + static_cast<uint32_t>(Sext8(op & 0xFF) * 2)); cycles = 2; }
+      return;
     case 0xC0: WriteByte(m_state.gbr + (op & 0xFF), static_cast<uint8_t>(R[0])); return;
     case 0xC1: WriteWord(m_state.gbr + (op & 0xFF) * 2u, static_cast<uint16_t>(R[0])); return;
     case 0xC2: WriteLong(m_state.gbr + (op & 0xFF) * 4u, R[0]); return;
