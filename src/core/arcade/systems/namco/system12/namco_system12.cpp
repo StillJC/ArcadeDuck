@@ -3258,7 +3258,7 @@ bool Initialize(LoadedContent content, Error* error)
   if (HasLinkBoard(runtime.content))
   {
     runtime.hsc = std::make_unique<Arcade::Namco::System12HSC>();
-    runtime.hsc->Initialize();
+    runtime.hsc->Initialize(fmt::format("namco_system12_hsc/{}", runtime.content.set_name));
   }
   runtime.has_gun_interface = HasGunInterface(runtime.content);
   runtime.test_switch_maintained = HasMaintainedTestSwitch(runtime.content);

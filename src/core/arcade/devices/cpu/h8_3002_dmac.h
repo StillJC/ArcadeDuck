@@ -58,6 +58,20 @@ public:
 
   bool UnsupportedModeSeen() const { return m_unsupported_seen; }
 
+  struct State
+  {
+    std::array<u8, REGISTER_END - REGISTER_BASE + 1> regs;
+    u32 pending_vectors;
+  };
+
+  State GetState() const { return State{m_regs, m_pending_vectors}; }
+
+  void SetState(const State& state)
+  {
+    m_regs = state.regs;
+    m_pending_vectors = state.pending_vectors;
+  }
+
   std::optional<u32> TakePendingInterrupt()
   {
     for (u32 i = 0; i < 4; i++)
