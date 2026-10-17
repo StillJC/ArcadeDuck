@@ -103,6 +103,8 @@ add_library(core
   arcade/devices/cpu/sh7014.h
   arcade/devices/namco/namco_system12_cdxa.cpp
   arcade/devices/namco/namco_system12_cdxa.h
+  arcade/devices/namco/namco_system12_hsc.cpp
+  arcade/devices/namco/namco_system12_hsc.h
   arcade/devices/security/cat702.cpp
   arcade/devices/storage/chd_hard_disk.cpp
   arcade/devices/storage/chd_hard_disk.h

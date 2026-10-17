@@ -67,6 +67,7 @@
     <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
     <ClCompile Include="arcade\devices\cpu\sh7014.cpp" />
     <ClCompile Include="arcade\devices\namco\namco_system12_cdxa.cpp" />
+    <ClCompile Include="arcade\devices\namco\namco_system12_hsc.cpp" />
     <ClCompile Include="arcade\devices\security\cat702.cpp" />
     <ClCompile Include="arcade\devices\storage\chd_hard_disk.cpp" />
     <ClCompile Include="arcade\third_party\qsound_hle\qsound.cpp">
@@ -290,6 +291,7 @@
     <ClInclude Include="arcade\third_party\qsound_hle\qsound.h" />
     <ClInclude Include="arcade\devices\cpu\sh7014.h" />
     <ClInclude Include="arcade\devices\namco\namco_system12_cdxa.h" />
+    <ClInclude Include="arcade\devices\namco\namco_system12_hsc.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm_adpcm.h" />
     <ClInclude Include="arcade\third_party\ymfm\ymfm_fm.h" />

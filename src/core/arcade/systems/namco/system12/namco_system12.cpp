@@ -13,6 +13,7 @@
 #include "core/arcade/devices/jvs/namco_emio102.h"
 #include "core/arcade/devices/jvs/namco_empri101.h"
 #include "core/arcade/devices/namco/namco_system12_cdxa.h"
+#include "core/arcade/devices/namco/namco_system12_hsc.h"
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
@@ -82,15 +83,6 @@ static constexpr u32 SHARED_RAM_BASE = 0x080000;
 static constexpr u32 SHARED_RAM_END = SHARED_RAM_BASE + PSX_SHARED_WINDOW_SIZE - 1;
 static constexpr u32 BOARD_CONTROL_BASE = 0x1bff08;
 static constexpr u32 BOARD_CONTROL_END = 0x1bff0f;
-
-static constexpr u32 LINK_SHARED_RAM_BASE = 0x780000;
-static constexpr u32 LINK_SHARED_RAM_END = 0x78ffff;
-static constexpr u32 LINK_RESET_BASE = 0x796000;
-static constexpr u32 LINK_RESET_END = 0x796003;
-static constexpr u32 LINK_REGISTER_RAM_BASE = 0x796000;
-static constexpr u32 LINK_REGISTER_RAM_END = 0x797003;
-static constexpr size_t LINK_SHARED_RAM_SIZE = 0x10000;
-static constexpr size_t LINK_REGISTER_RAM_SIZE = LINK_REGISTER_RAM_END - LINK_REGISTER_RAM_BASE + 1;
 
 static constexpr u32 GUN_INTERFACE_READ_BASE = 0x780000;
 static constexpr u32 GUN_INTERFACE_READ_END = 0x78000f;
@@ -203,10 +195,7 @@ struct RuntimeState
   LoadedContent content;
   std::array<u8, SHARED_RAM_SIZE> shared_ram{};
   std::array<u8, 8> board_control{};
-  std::array<u8, LINK_SHARED_RAM_SIZE> link_shared_ram{};
-  std::array<u8, LINK_REGISTER_RAM_SIZE> link_register_ram{};
-  bool has_link_board = false;
-  bool link_cpu_reset = true;
+  std::unique_ptr<Arcade::Namco::System12HSC> hsc;
   bool has_gun_interface = false;
   u8 gun_output_latch = 0;
   bool gun_output_latch_valid = false;
@@ -3266,7 +3255,11 @@ bool Initialize(LoadedContent content, Error* error)
 
   RuntimeState runtime;
   runtime.content = std::move(content);
-  runtime.has_link_board = HasLinkBoard(runtime.content);
+  if (HasLinkBoard(runtime.content))
+  {
+    runtime.hsc = std::make_unique<Arcade::Namco::System12HSC>();
+    runtime.hsc->Initialize();
+  }
   runtime.has_gun_interface = HasGunInterface(runtime.content);
   runtime.test_switch_maintained = HasMaintainedTestSwitch(runtime.content);
   runtime.buttons_on_direction_lines = runtime.content.input_profile == "mdhorse" ||
@@ -3345,6 +3338,9 @@ void Reset()
   s_runtime->m8f4_transaction_count = 0;
   s_runtime->m8f4_dma_count = 0;
 
+  if (s_runtime->hsc)
+    s_runtime->hsc->Reset();
+
   if (s_runtime->cdxa)
   {
     s_runtime->cdxa->Reset();
@@ -3365,6 +3361,9 @@ void Shutdown()
 
   if (s_runtime && s_runtime->cdxa_timing_event && s_runtime->cdxa_timing_event->IsActive())
     s_runtime->cdxa_timing_event->Deactivate();
+
+  if (s_runtime && s_runtime->hsc)
+    s_runtime->hsc->Shutdown();
 
   // Clear the shared DMA5 request before removing the System 12 provider.
   DMA::SetRequest(DMA::Channel::PIO, false);
@@ -3451,73 +3450,14 @@ bool AccessFitsRange(u32 offset, u32 width, u32 base, u32 end)
          width <= (end - offset + 1);
 }
 
-bool IsLinkRegisterRAMAccess(u32 offset, u32 width)
-{
-  return AccessFitsRange(offset, width, UINT32_C(0x796004), UINT32_C(0x79600B)) ||
-         AccessFitsRange(offset, width, UINT32_C(0x796014), UINT32_C(0x796017)) ||
-         AccessFitsRange(offset, width, UINT32_C(0x796020), UINT32_C(0x796023)) ||
-         AccessFitsRange(offset, width, UINT32_C(0x797000), UINT32_C(0x797003));
-}
-
 bool ReadLinkBoard(const RuntimeState& runtime, u32 width, u32 offset, u32* value)
 {
-  if (!runtime.has_link_board || !value)
-    return false;
-
-  if (AccessFitsRange(offset, width, LINK_SHARED_RAM_BASE, LINK_SHARED_RAM_END))
-  {
-    *value = ReadBytes(std::span<const u8>(runtime.link_shared_ram), width, offset - LINK_SHARED_RAM_BASE);
-    return true;
-  }
-
-  if (IsLinkRegisterRAMAccess(offset, width))
-  {
-    *value = ReadBytes(std::span<const u8>(runtime.link_register_ram), width, offset - LINK_REGISTER_RAM_BASE);
-    return true;
-  }
-
-  return false;
+  return runtime.hsc && value && runtime.hsc->ReadHost(width, offset, value);
 }
 
 bool WriteLinkBoard(RuntimeState& runtime, u32 width, u32 offset, u32 value)
 {
-  if (!runtime.has_link_board)
-    return false;
-
-  if (AccessFitsRange(offset, width, LINK_SHARED_RAM_BASE, LINK_SHARED_RAM_END))
-  {
-    WriteBytes(std::span<u8>(runtime.link_shared_ram), width, offset - LINK_SHARED_RAM_BASE, value);
-    return true;
-  }
-
-  if (AccessFitsRange(offset, width, LINK_RESET_BASE, LINK_RESET_END))
-  {
-    const u32 access_end = offset + width - 1;
-    const bool assert_reset = (offset <= LINK_RESET_BASE + 1 && access_end >= LINK_RESET_BASE);
-    const bool was_reset = runtime.link_cpu_reset;
-    if (assert_reset)
-      runtime.link_cpu_reset = true;
-    if (offset <= LINK_RESET_BASE + 3 && access_end >= LINK_RESET_BASE + 2)
-      runtime.link_cpu_reset = false;
-
-    // The link CPU is not emulated. With no network attached, the uploaded H8 program
-    // initialises its node id word at 0x1700 to 0xFFFF, which Kart Duel reads as
-    // "no link". Without it the game keeps re-running its link initialisation.
-    if ((was_reset || assert_reset) && !runtime.link_cpu_reset)
-    {
-      runtime.link_shared_ram[0x1700] = 0xFF;
-      runtime.link_shared_ram[0x1701] = 0xFF;
-    }
-    return true;
-  }
-
-  if (IsLinkRegisterRAMAccess(offset, width))
-  {
-    WriteBytes(std::span<u8>(runtime.link_register_ram), width, offset - LINK_REGISTER_RAM_BASE, value);
-    return true;
-  }
-
-  return false;
+  return runtime.hsc && runtime.hsc->WriteHost(width, offset, value);
 }
 
 u16 ScaleGunAxis(float normalized, u16 minimum, u16 maximum)
