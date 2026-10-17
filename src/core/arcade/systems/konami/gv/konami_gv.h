@@ -57,22 +57,22 @@ struct GVLoadedContent
 /// Returns the immutable definition for a case-insensitive exact arcade game-id match.
 const GVGameDefinition* GetGVGameDefinition(std::string_view set_name);
 
-/// Returns true when path names a ZIP archive. The extension comparison is case-insensitive.
+/// Returns true when path names a supported arcade archive. The extension comparison is case-insensitive.
 bool IsGVArchivePath(std::string_view path);
 
-/// Returns the archive basename without its ZIP extension, or an empty view for non-ZIP paths.
+/// Returns the archive basename without its extension, or an empty view for unsupported paths.
 std::string_view GetGVSetNameFromArchivePath(std::string_view path);
 
-/// Identifies an exact Konami GV arcade game from a ZIP archive path.
+/// Identifies an exact Konami GV arcade game from an archive path.
 const GVGameDefinition* IdentifyGVArchive(std::string_view path);
 
 /// Returns the physical filename for a definition's extensionless CHD media basename.
 std::string GetGVCHDFilename(const GVGameDefinition& definition);
 
-/// Returns the complete companion CHD path for a selected GV ZIP archive.
-std::string GetGVCompanionCHDPath(std::string_view zip_path, const GVGameDefinition& definition);
+/// Returns the complete companion CHD path for a selected GV archive.
+std::string GetGVCompanionCHDPath(std::string_view archive_path, const GVGameDefinition& definition);
 
-/// Loads and validates the non-merged ZIP EEPROM and companion CHD for a recognized GV archive.
+/// Loads and validates the non-merged EEPROM archive and companion CHD for a recognized GV set.
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error);
 
 /// Initializes the GV board lifecycle and installs its BIOS.

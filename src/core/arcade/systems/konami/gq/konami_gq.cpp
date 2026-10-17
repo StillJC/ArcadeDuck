@@ -3,6 +3,7 @@
 
 #include "core/arcade/systems/konami/gq/konami_gq.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/systems/konami/gq/konami_gq_eeprom.h"
@@ -15,7 +16,6 @@
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
-#include "common/minizip_helpers.h"
 #include "common/path.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
@@ -66,110 +66,6 @@ struct GQRuntimeState
 };
 
 std::optional<GQRuntimeState> s_gq_runtime;
-
-static bool LoadGQROMMember(const char* archive_path, std::string_view expected_member_name, u32 expected_crc32,
-                            std::string_view expected_sha1, u32 expected_size, std::vector<u8>* output, Error* error)
-{
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Konami GQ set ZIP '{}'.", archive_path);
-    return false;
-  }
-
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Konami GQ set ZIP '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read Konami GQ ZIP member information from '{}'.", archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, expected_member_name))
-    {
-      if (file_info.uncompressed_size != expected_size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GQ ROM '{}' has size {}, expected {} bytes.", expected_member_name,
-                            file_info.uncompressed_size, expected_size);
-        return false;
-      }
-      if (static_cast<u32>(file_info.crc) != expected_crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GQ ROM '{}' CRC32 mismatch.", expected_member_name);
-        return false;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Konami GQ ROM '{}'.", expected_member_name);
-        return false;
-      }
-
-      output->resize(expected_size);
-      size_t offset = 0;
-      while (offset < output->size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, output->data() + offset,
-                                                  static_cast<unsigned>(output->size() - offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading Konami GQ ROM '{}'.", expected_member_name);
-          return false;
-        }
-        offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for Konami GQ ROM '{}'.", expected_member_name);
-        return false;
-      }
-
-      auto digest = SHA1Digest::GetDigest(std::span<const u8>(output->data(), output->size()));
-      const std::string digest_string = SHA1Digest::DigestToString(digest);
-      if (!StringUtil::EqualNoCase(digest_string, expected_sha1))
-      {
-        Error::SetStringFmt(error, "Konami GQ ROM '{}' SHA-1 mismatch.", expected_member_name);
-        return false;
-      }
-
-      VERBOSE_LOG("KonamiGQ.Content rom_validated member='{}' size={} crc32={:08x} sha1='{}'",
-               expected_member_name, expected_size, expected_crc32, expected_sha1);
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while scanning Konami GQ set ZIP '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Konami GQ set ZIP '{}' is missing ROM '{}'.", archive_path, expected_member_name);
-  return false;
-}
 
 static u16 ScaleLightgunAxis(float normalized, u16 min_value, u16 max_value)
 {
@@ -277,7 +173,7 @@ const GQGameDefinition* GetGQGameDefinition(std::string_view set_name)
 
 bool IsGQArchivePath(std::string_view path)
 {
-  return StringUtil::EqualNoCase(Path::GetExtension(path), "zip");
+  return Arcade::Database::IsArchivePath(path);
 }
 
 std::string_view GetGQSetNameFromArchivePath(std::string_view path)
@@ -296,10 +192,10 @@ std::string GetGQCHDFilename(const GQGameDefinition& definition)
                                                                 std::string(definition.chd_disk_name);
 }
 
-std::string GetGQCompanionCHDPath(std::string_view zip_path, const GQGameDefinition& definition)
+std::string GetGQCompanionCHDPath(std::string_view archive_path, const GQGameDefinition& definition)
 {
   const std::string filename = GetGQCHDFilename(definition);
-  return Arcade::Database::GetCompanionMediaPath(zip_path, definition.set_name, std::string_view{},
+  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{},
                                                   filename);
 }
 
@@ -571,12 +467,25 @@ std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* er
     return std::nullopt;
   }
 
-  VERBOSE_LOG("KonamiGQ.Content opening_zip canonical_set='{}'", definition->set_name);
+  VERBOSE_LOG("KonamiGQ.Content opening_archive canonical_set='{}'", definition->set_name);
   GQLoadedContent content = {definition, definition->set_name, {}, {}, {}, definition->chd_sha1};
-  if (!LoadGQROMMember(archive_path, definition->sound_program_member_name, definition->sound_program_crc32,
-                       definition->sound_program_sha1, definition->rom_size, &content.sound_program, error) ||
-      !LoadGQROMMember(archive_path, definition->pcm_member_name, definition->pcm_crc32, definition->pcm_sha1,
-                       definition->rom_size, &content.pcm_samples, error))
+
+  Arcade::Database::ROMDefinition sound_program_rom;
+  sound_program_rom.name = definition->sound_program_member_name;
+  sound_program_rom.sha1 = definition->sound_program_sha1;
+  sound_program_rom.crc32 = definition->sound_program_crc32;
+  sound_program_rom.size = definition->rom_size;
+  sound_program_rom.has_crc32 = true;
+
+  Arcade::Database::ROMDefinition pcm_rom;
+  pcm_rom.name = definition->pcm_member_name;
+  pcm_rom.sha1 = definition->pcm_sha1;
+  pcm_rom.crc32 = definition->pcm_crc32;
+  pcm_rom.size = definition->rom_size;
+  pcm_rom.has_crc32 = true;
+
+  if (!Arcade::LoadROMFromArchive(archive_path, sound_program_rom, &content.sound_program, error) ||
+      !Arcade::LoadROMFromArchive(archive_path, pcm_rom, &content.pcm_samples, error))
   {
     return std::nullopt;
   }

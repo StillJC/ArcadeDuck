@@ -46,20 +46,20 @@ struct GQLoadedContent
 /// Returns the immutable definition for a case-insensitive exact arcade game-id match.
 const GQGameDefinition* GetGQGameDefinition(std::string_view set_name);
 
-/// Returns true when path names a ZIP archive. The extension comparison is case-insensitive.
+/// Returns true when path names a supported arcade archive. The extension comparison is case-insensitive.
 bool IsGQArchivePath(std::string_view path);
 
-/// Returns the archive basename without its ZIP extension, or an empty view for non-ZIP paths.
+/// Returns the archive basename without its extension, or an empty view for unsupported paths.
 std::string_view GetGQSetNameFromArchivePath(std::string_view path);
 
-/// Identifies an exact Konami GQ arcade game from a ZIP archive path.
+/// Identifies an exact Konami GQ arcade game from an archive path.
 const GQGameDefinition* IdentifyGQArchive(std::string_view path);
 
 /// Returns the physical filename for a definition's extensionless CHD media basename.
 std::string GetGQCHDFilename(const GQGameDefinition& definition);
 
-/// Returns the complete companion CHD path for a selected GQ ZIP archive.
-std::string GetGQCompanionCHDPath(std::string_view zip_path, const GQGameDefinition& definition);
+/// Returns the complete companion CHD path for a selected GQ archive.
+std::string GetGQCompanionCHDPath(std::string_view archive_path, const GQGameDefinition& definition);
 
 /// Loads and validates the GQ sound ROMs and companion hard-disk CHD.
 std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error);

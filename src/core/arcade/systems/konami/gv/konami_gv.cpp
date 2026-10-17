@@ -3,13 +3,13 @@
 
 #include "core/arcade/systems/konami/gv/konami_gv.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
 
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
-#include "common/minizip_helpers.h"
 #include "common/path.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
@@ -1564,7 +1564,7 @@ const GVGameDefinition* GetGVGameDefinition(std::string_view set_name)
 
 bool IsGVArchivePath(std::string_view path)
 {
-  return StringUtil::EqualNoCase(Path::GetExtension(path), "zip");
+  return Arcade::Database::IsArchivePath(path);
 }
 
 std::string_view GetGVSetNameFromArchivePath(std::string_view path)
@@ -1583,10 +1583,10 @@ std::string GetGVCHDFilename(const GVGameDefinition& definition)
                                                                std::string(definition.chd_disk_name);
 }
 
-std::string GetGVCompanionCHDPath(std::string_view zip_path, const GVGameDefinition& definition)
+std::string GetGVCompanionCHDPath(std::string_view archive_path, const GVGameDefinition& definition)
 {
   const std::string filename = GetGVCHDFilename(definition);
-  return Arcade::Database::GetCompanionMediaPath(zip_path, definition.set_name, std::string_view{},
+  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{},
                                                   filename);
 }
 
@@ -2606,96 +2606,31 @@ std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* er
     return std::nullopt;
   }
 
-  VERBOSE_LOG("KonamiGV.Content opening_zip canonical_set='{}' eeprom_member='{}'", definition->set_name,
+  VERBOSE_LOG("KonamiGV.Content opening_archive canonical_set='{}' eeprom_member='{}'", definition->set_name,
            definition->eeprom_member_name);
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Konami GV set ZIP '{}'.", archive_path);
-    return std::nullopt;
-  }
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Konami GV set ZIP '{}' is empty or unreadable.", archive_path);
+  Arcade::Database::ROMDefinition eeprom_rom;
+  eeprom_rom.name = definition->eeprom_member_name;
+  eeprom_rom.sha1 = definition->eeprom_sha1;
+  eeprom_rom.crc32 = definition->eeprom_crc32;
+  eeprom_rom.size = definition->eeprom_size;
+  eeprom_rom.has_crc32 = true;
+
+  std::vector<u8> eeprom_data;
+  if (!Arcade::LoadROMFromArchive(archive_path, eeprom_rom, &eeprom_data, error))
     return std::nullopt;
-  }
 
   GVLoadedContent content = {definition, definition->set_name, {}, {}, definition->chd_sha1};
-  bool found_eeprom = false;
-  for (;;)
+  if (eeprom_data.size() != content.default_eeprom.size())
   {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read Konami GV ZIP member information from '{}'.", archive_path);
-      return std::nullopt;
-    }
-
-    if (StringUtil::EqualNoCase(member_name, definition->eeprom_member_name))
-    {
-      found_eeprom = true;
-      if (file_info.uncompressed_size != definition->eeprom_size ||
-          content.default_eeprom.size() != definition->eeprom_size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GV EEPROM '{}' has size {}, expected {} bytes.", definition->eeprom_member_name,
-                            file_info.uncompressed_size, definition->eeprom_size);
-        return std::nullopt;
-      }
-      if (static_cast<u32>(file_info.crc) != definition->eeprom_crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GV EEPROM '{}' CRC32 mismatch.", definition->eeprom_member_name);
-        return std::nullopt;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Konami GV EEPROM '{}'.", definition->eeprom_member_name);
-        return std::nullopt;
-      }
-      const int bytes_read = unzReadCurrentFile(zf, content.default_eeprom.data(),
-                                                 static_cast<unsigned>(content.default_eeprom.size()));
-      if (bytes_read != static_cast<int>(content.default_eeprom.size()) || unzCloseCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed reading or validating Konami GV EEPROM '{}'.", definition->eeprom_member_name);
-        return std::nullopt;
-      }
-      auto digest = SHA1Digest::GetDigest(std::span<const u8>(content.default_eeprom));
-      const std::string digest_string = SHA1Digest::DigestToString(digest);
-      if (!StringUtil::EqualNoCase(digest_string, definition->eeprom_sha1))
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GV EEPROM '{}' SHA-1 mismatch.", definition->eeprom_member_name);
-        return std::nullopt;
-      }
-      VERBOSE_LOG("KonamiGV.Content eeprom_validated canonical_set='{}' size={} crc32={:08x} sha1='{}' bad_dump={}",
-               definition->set_name, definition->eeprom_size, definition->eeprom_crc32,
-               definition->eeprom_sha1, definition->bad_dump);
-      break;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while scanning Konami GV set ZIP '{}'.", archive_path);
-      return std::nullopt;
-    }
-  }
-  unzClose(zf);
-  if (!found_eeprom)
-  {
-    Error::SetStringFmt(error, "Konami GV set ZIP '{}' is missing EEPROM '{}'.", archive_path, definition->eeprom_member_name);
+    Error::SetStringFmt(error, "Konami GV EEPROM '{}' has size {}, expected {} bytes.", definition->eeprom_member_name,
+                        eeprom_data.size(), content.default_eeprom.size());
     return std::nullopt;
   }
+  std::copy(eeprom_data.begin(), eeprom_data.end(), content.default_eeprom.begin());
+  VERBOSE_LOG("KonamiGV.Content eeprom_validated canonical_set='{}' size={} crc32={:08x} sha1='{}' bad_dump={}",
+              definition->set_name, definition->eeprom_size, definition->eeprom_crc32,
+              definition->eeprom_sha1, definition->bad_dump);
 
   content.chd_path = GetGVCompanionCHDPath(archive_path, *definition);
   VERBOSE_LOG("KonamiGV.Content expected_chd canonical_set='{}' disk_basename='{}' candidate_path='{}'", definition->set_name,

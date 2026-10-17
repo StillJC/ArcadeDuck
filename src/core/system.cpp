@@ -25,6 +25,7 @@
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
@@ -1699,7 +1700,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       return false;
     }
 
-    if (!arcade_machine_handler->Preflight(*arcade_boot_context, error))
+    Arcade::ClearROMArchiveCache();
+    const bool preflight_succeeded = arcade_machine_handler->Preflight(*arcade_boot_context, error);
+    Arcade::ClearROMArchiveCache();
+    if (!preflight_succeeded)
       return false;
   }
 

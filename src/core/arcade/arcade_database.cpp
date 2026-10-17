@@ -61,9 +61,14 @@ std::string NormalizeKey(std::string_view value)
   return result;
 }
 
+std::string GetArchiveLookupKey(std::string_view archive_name)
+{
+  return NormalizeKey(Path::GetFileTitle(archive_name));
+}
+
 std::string FindIndexedArchivePath(std::string_view archive_name)
 {
-  const std::string key = NormalizeKey(archive_name);
+  const std::string key = GetArchiveLookupKey(archive_name);
   std::string path;
   {
     std::lock_guard lock(s_archive_path_index_mutex);
@@ -991,7 +996,7 @@ bool ParseGame(const ryml::ConstNodeRef& node)
   ParseProperties(node, &game.properties);
 
   const std::string game_key = NormalizeKey(game.id);
-  const std::string archive_key = NormalizeKey(game.archive_name);
+  const std::string archive_key = GetArchiveLookupKey(game.archive_name);
   if (s_game_lookup.contains(game_key) || s_archive_lookup.contains(archive_key))
   {
     ERROR_LOG("Duplicate arcade game id or archive for '{}'.", game.id);
@@ -1364,7 +1369,8 @@ const FirmwareDefinition* ResolveFirmwareProfile(const SystemDefinition& system)
 
 bool IsArchivePath(std::string_view path)
 {
-  return StringUtil::EqualNoCase(Path::GetExtension(path), "zip");
+  const std::string_view extension = Path::GetExtension(path);
+  return StringUtil::EqualNoCase(extension, "zip") || StringUtil::EqualNoCase(extension, "7z");
 }
 
 std::string_view GetSetNameFromArchivePath(std::string_view path)
@@ -1378,7 +1384,7 @@ const GameDefinition* IdentifyArchive(std::string_view path)
     return nullptr;
 
   EnsureLoaded();
-  const auto iterator = s_archive_lookup.find(NormalizeKey(Path::GetFileName(path)));
+  const auto iterator = s_archive_lookup.find(GetArchiveLookupKey(path));
   return (iterator != s_archive_lookup.end()) ? &s_games[iterator->second] : nullptr;
 }
 
@@ -1414,7 +1420,7 @@ void IndexArchivePath(std::string_view path)
   if (!game)
     return;
 
-  const std::string key = NormalizeKey(game->archive_name);
+  const std::string key = GetArchiveLookupKey(game->archive_name);
   std::lock_guard lock(s_archive_path_index_mutex);
   s_archive_path_index.try_emplace(key, path);
 }
@@ -1429,23 +1435,39 @@ std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path,
   std::vector<std::string> paths;
   const auto add_path = [&paths](std::string path) {
     if (path.empty() || !FileSystem::FileExists(path.c_str()))
-      return;
+      return false;
 
     const bool duplicate = std::any_of(paths.begin(), paths.end(), [&path](const std::string& existing) {
       return StringUtil::EqualNoCase(existing, path);
     });
     if (!duplicate)
       paths.push_back(std::move(path));
+    return true;
   };
 
   add_path(std::string(archive_path));
   const std::string archive_directory(Path::GetDirectory(archive_path));
+  const bool prefer_seven_zip = StringUtil::EqualNoCase(Path::GetExtension(archive_path), "7z");
+  const std::string_view preferred_extension = prefer_seven_zip ? "7z" : "zip";
+  const std::string_view alternate_extension = prefer_seven_zip ? "zip" : "7z";
+  const auto add_archive_variants = [&](std::string_view archive_name) {
+    const std::string_view archive_title = Path::GetFileTitle(archive_name);
+    std::string filename(archive_title);
+    filename.append(".").append(preferred_extension);
+    add_path(Path::Combine(archive_directory, filename));
+
+    filename.assign(archive_title);
+    filename.append(".").append(alternate_extension);
+    add_path(Path::Combine(archive_directory, filename));
+
+    add_path(FindIndexedArchivePath(archive_name));
+  };
+
   const GameDefinition* current = &game;
   std::unordered_set<std::string> visited;
   while (current && visited.emplace(NormalizeKey(current->id)).second)
   {
-    add_path(Path::Combine(archive_directory, current->archive_name));
-    add_path(FindIndexedArchivePath(current->archive_name));
+    add_archive_variants(current->archive_name);
 
     if (current->parent.empty())
       break;

@@ -82,7 +82,7 @@ static_assert(sizeof(PSEXEHeader) == 0x800);
 
 std::optional<Image> LoadImageFromFile(const char* filename, Error* error);
 
-/// Loads and validates the Konami GV BIOS directly from konamigv.zip in a BIOS directory.
+/// Loads and validates the Konami GV BIOS from konamigv.zip or konamigv.7z in a BIOS directory.
 std::optional<Image> LoadKonamiGVImageFromDirectory(const char* directory, Error* error);
 
 /// Loads the Konami GQ BIOS directly from a recognized MAME set archive and validates its contents.

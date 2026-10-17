@@ -113,7 +113,7 @@ static void ConstrainWindowSizingRectTo16By9(RECT* rect, WPARAM edge, LONG extra
 
 Log_SetChannel(MainWindow);
 
-static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip)");
+static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip *.7z)");
 
 MainWindow* g_main_window = nullptr;
 
