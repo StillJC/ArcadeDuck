@@ -702,6 +702,21 @@ void FullscreenUI::OpenPauseMenu()
   FixStateIfPaused();
 }
 
+void FullscreenUI::OpenCheatMenu()
+{
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  if (!Initialize() || s_current_main_window != MainWindowType::None)
+    return;
+
+  PauseForMenuOpen(false);
+  s_current_main_window = MainWindowType::Cheats;
+  QueueResetFocus(FocusResetType::ViewChanged);
+  ForceKeyNavEnabled();
+  FixStateIfPaused();
+}
+
 void FullscreenUI::FixStateIfPaused()
 {
   if (!System::IsValid() || System::IsRunning())
@@ -3737,6 +3752,9 @@ void FullscreenUI::DrawHotkeySettingsPage()
   const HotkeyInfo* last_category = nullptr;
   for (const HotkeyInfo* hotkey : s_hotkey_list_cache)
   {
+    if (!hotkey->visible_in_ui)
+      continue;
+
     if (!last_category || std::strcmp(hotkey->category, last_category->category) != 0)
     {
       MenuHeading(Host::TranslateToCString("Hotkeys", hotkey->category));

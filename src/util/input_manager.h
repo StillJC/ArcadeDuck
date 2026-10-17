@@ -145,14 +145,17 @@ struct HotkeyInfo
   const char* name;
   const char* category;
   const char* display_name;
+  bool visible_in_ui;
   void (*handler)(s32 pressed);
 };
 #define DECLARE_HOTKEY_LIST(name) extern const HotkeyInfo name[]
 #define BEGIN_HOTKEY_LIST(name) const HotkeyInfo name[] = {
-#define DEFINE_HOTKEY(name, category, display_name, handler) {(name), (category), (display_name), (handler)},
+#define DEFINE_HOTKEY(name, category, display_name, handler) {(name), (category), (display_name), true, (handler)},
+#define DEFINE_HIDDEN_HOTKEY(name, category, display_name, handler)                                                    \
+  {(name), (category), (display_name), false, (handler)},
 #define END_HOTKEY_LIST()                                                                                              \
   {                                                                                                                    \
-    nullptr, nullptr, nullptr, nullptr                                                                                 \
+    nullptr, nullptr, nullptr, false, nullptr                                                                          \
   }                                                                                                                    \
   }                                                                                                                    \
   ;
