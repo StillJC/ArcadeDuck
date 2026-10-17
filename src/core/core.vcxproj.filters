@@ -50,14 +50,14 @@
       <ClCompile Include="arcade\systems\konami\gq\konami_gq_sound_cpu.cpp" />
       <ClCompile Include="arcade\systems\konami\gq\konami_gq_tms57002.cpp" />
       <ClCompile Include="arcade\systems\konami\gq\konami_gq_tms57002_ops.cpp" />
-      <ClCompile Include="m37710\m37710.cpp" />
-      <ClCompile Include="m37710\m37710o0.cpp" />
-      <ClCompile Include="m37710\m37710o1.cpp" />
-      <ClCompile Include="m37710\m37710o2.cpp" />
-      <ClCompile Include="m37710\m37710o3.cpp" />
-          <ClCompile Include="musashi\m68k_bus.cpp" />
-    <ClCompile Include="musashi\m68kcpu.c" />
-      <ClCompile Include="musashi\m68kops.c" />
+      <ClCompile Include="arcade\third_party\m37710\m37710.cpp" />
+      <ClCompile Include="arcade\third_party\m37710\m37710o0.cpp" />
+      <ClCompile Include="arcade\third_party\m37710\m37710o1.cpp" />
+      <ClCompile Include="arcade\third_party\m37710\m37710o2.cpp" />
+      <ClCompile Include="arcade\third_party\m37710\m37710o3.cpp" />
+          <ClCompile Include="arcade\third_party\musashi\m68k_bus.cpp" />
+    <ClCompile Include="arcade\third_party\musashi\m68kcpu.c" />
+      <ClCompile Include="arcade\third_party\musashi\m68kops.c" />
       <ClCompile Include="arcade\systems\konami\gv\konami_gv_cdrom.cpp" />
       <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
       <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
@@ -100,7 +100,6 @@
     <ClCompile Include="texture_replacements.cpp" />
     <ClCompile Include="host.cpp" />
     <ClCompile Include="game_database.cpp" />
-    <ClCompile Include="pcdrv.cpp" />
     <ClCompile Include="game_list.cpp" />
     <ClCompile Include="imgui_overlays.cpp" />
     <ClCompile Include="fullscreen_ui.cpp" />
@@ -114,7 +113,6 @@
     <ClCompile Include="cpu_newrec_compiler_riscv64.cpp" />
     <ClCompile Include="cpu_newrec_compiler_aarch32.cpp" />
     <ClCompile Include="legacy_pad_state.cpp" />
-    <ClCompile Include="pine_server.cpp" />
     <ClCompile Include="gdb_server.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -175,15 +173,15 @@
       <ClInclude Include="arcade\systems\konami\gq\konami_gq_sound_cpu.h" />
       <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.h" />
       <ClInclude Include="arcade\systems\konami\gq\konami_gq_tms57002.hxx" />
-      <ClInclude Include="m37710\m37710.h" />
-      <ClInclude Include="m37710\m37710cm.h" />
-      <ClInclude Include="m37710\m37710il.h" />
-      <ClInclude Include="m37710\m37710op.h" />
-          <ClInclude Include="musashi\m68k_bus.h" />
-    <ClInclude Include="musashi\m68k.h" />
-      <ClInclude Include="musashi\m68kconf.h" />
-      <ClInclude Include="musashi\m68kcpu.h" />
-      <ClInclude Include="musashi\m68kops.h" />
+      <ClInclude Include="arcade\third_party\m37710\m37710.h" />
+      <ClInclude Include="arcade\third_party\m37710\m37710cm.h" />
+      <ClInclude Include="arcade\third_party\m37710\m37710il.h" />
+      <ClInclude Include="arcade\third_party\m37710\m37710op.h" />
+          <ClInclude Include="arcade\third_party\musashi\m68k_bus.h" />
+    <ClInclude Include="arcade\third_party\musashi\m68k.h" />
+      <ClInclude Include="arcade\third_party\musashi\m68kconf.h" />
+      <ClInclude Include="arcade\third_party\musashi\m68kcpu.h" />
+      <ClInclude Include="arcade\third_party\musashi\m68kops.h" />
       <ClInclude Include="arcade\systems\konami\gv\konami_gv_cdrom.h" />
       <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
       <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
@@ -233,7 +231,6 @@
     <ClInclude Include="achievements.h" />
     <ClInclude Include="game_database.h" />
     <ClInclude Include="input_types.h" />
-    <ClInclude Include="pcdrv.h" />
     <ClInclude Include="game_list.h" />
     <ClInclude Include="imgui_overlays.h" />
     <ClInclude Include="fullscreen_ui.h" />
@@ -248,7 +245,6 @@
     <ClInclude Include="cpu_newrec_compiler_aarch32.h" />
     <ClInclude Include="achievements_private.h" />
     <ClInclude Include="legacy_pad_state.h" />
-    <ClInclude Include="pine_server.h" />
     <ClInclude Include="gdb_server.h" />
   </ItemGroup>
   <ItemGroup>

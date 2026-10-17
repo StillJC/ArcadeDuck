@@ -48,7 +48,6 @@
 
 Log_SetChannel(FileSystem);
 
-#ifndef __ANDROID__
 
 #ifdef _WIN32
 static std::time_t ConvertFileTimeToUnixTime(const FILETIME& ft)
@@ -1218,7 +1217,7 @@ FileSystem::AtomicRenamedFile FileSystem::CreateAtomicRenamedFile(std::string fi
 
 #ifdef _WIN32
     _mktemp_s(name_buf.get(), name_buf_size);
-#elif defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__)
+#elif defined(__linux__) || defined(__APPLE__)
     mkstemp(name_buf.get());
 #else
     mktemp(name_buf.get());
@@ -1256,7 +1255,6 @@ void FileSystem::DiscardAtomicRenamedFile(AtomicRenamedFile& file)
   file.get_deleter().discard();
 }
 
-#endif
 
 FileSystem::ManagedCFilePtr FileSystem::OpenManagedCFile(const char* filename, const char* mode, Error* error)
 {
@@ -2188,7 +2186,7 @@ bool FileSystem::SetPathCompression(const char* path, bool enable)
   return result;
 }
 
-#elif !defined(__ANDROID__)
+#else
 
 static u32 TranslateStatAttributes(struct stat& st)
 {

@@ -123,7 +123,7 @@ std::string GetGQCompanionCHDPath(std::string_view zip_path, const GQGameDefinit
 /// Loads and validates the GQ sound ROMs and companion hard-disk CHD.
 std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error);
 
-/// Initializes the Stage 1 GV board lifecycle and installs its already-validated BIOS.
+/// Initializes the GV board lifecycle and installs its BIOS.
 bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, std::string_view persistence_directory,
                   Error* error);
 void ResetGV();
@@ -147,7 +147,7 @@ void ResetGQArcadeInputs();
 void SetGQArcadeButton(u32 player, u32 button_mask, bool pressed);
 void SetGQTest(bool pressed);
 void SetGQLightgunPosition(u32 player, float x, float y);
-/// Returns whether the active GV lifecycle retained validated companion-disc content.
+/// Returns whether the active GV lifecycle has usable companion-disc content.
 bool HasValidGVDiscContent();
 bool ReadGVDataSector(u32 lba, u8* buffer, u32* cdimage_lba = nullptr, u32* track_number = nullptr);
 u32 BuildGVTOC(bool msf, u8 requested_track, u8* response, u32 response_size);

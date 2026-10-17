@@ -1253,8 +1253,8 @@ void Chip::GenerateNativeSample()
 
         const s32 sample_a = ReadPCMSample(slot, sample_index);
         const s32 sample_b = ReadPCMSample(slot, sample_index + 1u);
-        // The current reference model uses the upper eight bits of the 16-bit
-        // fractional PCM position as the linear-interpolation weight.
+        // Use the upper eight bits of the 16-bit fractional PCM position as
+        // the linear-interpolation weight.
         const u32 fraction = static_cast<u32>((slot.phase >> 8) & 0xffu);
         const s32 sample = static_cast<s32>(
           ((static_cast<s64>(sample_a) * static_cast<s64>(256u - fraction)) +

@@ -44,7 +44,7 @@ float GetCurrentMessageTime();
 bool IsConsoleOutputEnabled();
 void SetConsoleOutputParams(bool enabled, bool timestamps = true);
 
-// adds a debug console output [win32/android only]
+// adds a debug console output [Windows only]
 bool IsDebugOutputEnabled();
 void SetDebugOutputParams(bool enabled);
 

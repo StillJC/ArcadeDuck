@@ -80,8 +80,8 @@ bool Core::UpdateFIFOEmpty() const
 
 void Core::SetSerialInputs(s32 input0, s32 input1, s32 input2, s32 input3)
 {
-  // Match MAME's device_sound_interface conversion: a normalized K054539 sample
-  // is multiplied by 32768, and SIM adds a further 256x serial-input scale.
+  // Convert normalized K054539 samples to the TMS serial-input scale.
+  // SIM applies a further 256x scale.
   const s64 input_scale = (st0 & ST0_SIM) ? 256 : 1;
   const auto encode_input = [input_scale](s32 input) {
     return static_cast<u32>(static_cast<s64>(input) * input_scale) & 0x00ffffffu;
@@ -98,8 +98,7 @@ s32 Core::GetSerialOutput(u32 channel) const
   if (channel >= 4)
     return 0;
 
-  // Sign-extend the 24-bit serial output and convert it to a 16-bit PCM scale,
-  // matching MAME's so[channel] / 2^23 normalized stream conversion.
+  // Sign-extend the 24-bit serial output and convert it to a 16-bit PCM scale.
   return static_cast<s32>(so[channel] << 8) >> 16;
 }
 

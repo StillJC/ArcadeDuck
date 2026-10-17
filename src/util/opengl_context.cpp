@@ -19,8 +19,6 @@
 #include "opengl_context_wgl.h"
 #elif defined(__APPLE__)
 #include "opengl_context_agl.h"
-#elif defined(__ANDROID__)
-#include "opengl_context_egl_android.h"
 #else
 #ifdef ENABLE_EGL
 #ifdef ENABLE_WAYLAND
@@ -36,9 +34,7 @@ Log_SetChannel(OpenGLContext);
 
 static bool ShouldPreferESContext()
 {
-#if defined(__ANDROID__)
-  return true;
-#elif !defined(_MSC_VER)
+#if !defined(_MSC_VER)
   const char* value = std::getenv("PREFER_GLES_CONTEXT");
   return (value && std::strcmp(value, "1") == 0);
 #else
@@ -152,8 +148,6 @@ std::unique_ptr<OpenGLContext> OpenGLContext::Create(const WindowInfo& wi, Error
   context = OpenGLContextWGL::Create(wi, versions_to_try, error);
 #elif defined(__APPLE__)
   context = OpenGLContextAGL::Create(wi, versions_to_try, error);
-#elif defined(__ANDROID__)
-  context = ContextEGLAndroid::Create(wi, versions_to_try, error);
 #else
 #if defined(ENABLE_X11)
   if (wi.type == WindowInfo::Type::X11)

@@ -18,7 +18,6 @@ struct WindowInfo
     X11,
     Wayland,
     MacOS,
-    Android,
     Display,
   };
 

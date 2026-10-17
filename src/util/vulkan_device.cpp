@@ -165,9 +165,9 @@ VkInstance VulkanDevice::CreateVulkanInstance(const WindowInfo& wi, OptionalExte
   VkApplicationInfo app_info = {};
   app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   app_info.pNext = nullptr;
-  app_info.pApplicationName = "DuckStation";
+  app_info.pApplicationName = "ArcadeDuck";
   app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
-  app_info.pEngineName = "DuckStation";
+  app_info.pEngineName = "ArcadeDuck";
   app_info.engineVersion = VK_MAKE_VERSION(0, 1, 0);
   app_info.apiVersion = apiVersion;
 
@@ -256,10 +256,6 @@ bool VulkanDevice::SelectInstanceExtensions(ExtensionList* extension_list, const
 #endif
 #if defined(VK_USE_PLATFORM_METAL_EXT)
   if (wi.type == WindowInfo::Type::MacOS && !SupportsExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME, true))
-    return false;
-#endif
-#if defined(VK_USE_PLATFORM_ANDROID_KHR)
-  if (wi.type == WindowInfo::Type::Android && !SupportsExtension(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME, true))
     return false;
 #endif
 
@@ -501,7 +497,7 @@ bool VulkanDevice::SelectDeviceExtensions(ExtensionList* extension_list, bool en
   {
     // VK_KHR_dynamic_rendering_local_read appears to be broken on RDNA3, like everything else...
     // Just causes GPU resets when you actually use a feedback loop. Assume Mesa is fine.
-#if defined(_WIN32) || defined(__ANDROID__)
+#if defined(_WIN32)
     m_optional_extensions.vk_khr_dynamic_rendering_local_read = false;
     WARNING_LOG("Disabling VK_KHR_dynamic_rendering_local_read on broken AMD driver.");
 #endif
@@ -1942,10 +1938,6 @@ void VulkanDevice::DestroyFramebuffer(VkFramebuffer fbo)
 
 bool VulkanDevice::IsSuitableDefaultRenderer()
 {
-#ifdef __ANDROID__
-  // No way in hell.
-  return false;
-#else
   GPUList gpus = EnumerateGPUs();
   if (gpus.empty())
   {
@@ -1974,7 +1966,6 @@ bool VulkanDevice::IsSuitableDefaultRenderer()
 
   INFO_LOG("Allowing Vulkan as default renderer.");
   return true;
-#endif
 }
 
 RenderAPI VulkanDevice::GetRenderAPI() const

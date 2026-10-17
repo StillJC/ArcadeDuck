@@ -145,6 +145,7 @@ static std::array<float, 4> s_pointer_absolute_display_rect = {};
 static std::array<std::array<float, 2>, InputManager::MAX_POINTER_DEVICES> s_raw_pointer_virtual_positions = {};
 static std::array<bool, InputManager::MAX_POINTER_DEVICES> s_raw_pointer_virtual_position_initialized = {};
 static std::mutex s_raw_pointer_virtual_position_mutex;
+static float s_raw_pointer_virtual_scale = 1.0f;
 
 // Window size, used for clamping the mouse position in raw input modes.
 static std::array<float, 2> s_window_size = {};
@@ -562,6 +563,13 @@ void InputManager::SetRawPointerVirtualPosition(u32 index, float x, float y)
   }};
   s_raw_pointer_virtual_position_initialized[index] = true;
 }
+
+void InputManager::SetRawPointerVirtualScale(float scale)
+{
+  std::lock_guard<std::mutex> lock(s_raw_pointer_virtual_position_mutex);
+  s_raw_pointer_virtual_scale = std::max(scale, 0.01f);
+}
+
 std::pair<float, float> InputManager::UpdateRawPointerVirtualPosition(u32 index, float delta_x, float delta_y)
 {
   if (index >= MAX_POINTER_DEVICES)
@@ -578,8 +586,10 @@ std::pair<float, float> InputManager::UpdateRawPointerVirtualPosition(u32 index,
   if (s_window_size[0] <= 0.0f || s_window_size[1] <= 0.0f)
     return {position[0], position[1]};
 
-  position[0] = std::clamp(position[0] + (delta_x / s_window_size[0]), -0.25f, 1.25f);
-  position[1] = std::clamp(position[1] + (delta_y / s_window_size[1]), -0.25f, 1.25f);
+  position[0] =
+    std::clamp(position[0] + ((delta_x * s_raw_pointer_virtual_scale) / s_window_size[0]), -0.25f, 1.25f);
+  position[1] =
+    std::clamp(position[1] + ((delta_y * s_raw_pointer_virtual_scale) / s_window_size[1]), -0.25f, 1.25f);
   return {position[0], position[1]};
 }
 
@@ -637,12 +647,8 @@ static std::array<const char*, static_cast<u32>(InputSourceType::Count)> s_input
   "DInput",
   "XInput",
 #endif
-#ifndef __ANDROID__
   "SDL",
   "RawInput",
-#else
-  "Android",
-#endif
 }};
 
 InputSource* InputManager::GetInputSourceInterface(InputSourceType type)
@@ -671,15 +677,10 @@ bool InputManager::GetInputSourceDefaultEnabled(InputSourceType type)
       return false;
 #endif
 
-#ifndef __ANDROID__
     case InputSourceType::SDL:
       return true;
     case InputSourceType::RawInput:
       return false;
-#else
-    case InputSourceType::Android:
-      return true;
-#endif
 
     default:
       return false;
@@ -1140,13 +1141,11 @@ void InputManager::UpdatePointerCount()
     return;
   }
 
-#ifndef __ANDROID__
   InputSource* ris = GetInputSourceInterface(InputSourceType::RawInput);
   DebugAssert(ris);
 
   s_pointer_count = 0;
   s_pointer_count = std::min<u32>(static_cast<u32>(ris->EnumeratePointerDevices().size()), MAX_POINTER_DEVICES);
-#endif
 }
 
 u32 InputManager::GetPointerCount()
@@ -1548,12 +1547,6 @@ GenericInputBindingMapping InputManager::GetGenericBindingMapping(std::string_vi
 
 bool InputManager::IsInputSourceEnabled(SettingsInterface& si, InputSourceType type)
 {
-#ifdef __ANDROID__
-  // Force Android source to always be enabled so nobody accidentally breaks it via ini.
-  if (type == InputSourceType::Android)
-    return true;
-#endif
-
   return si.GetBoolValue("InputSources", InputManager::InputSourceToString(type), GetInputSourceDefaultEnabled(type));
 }
 
@@ -1596,11 +1589,7 @@ void InputManager::ReloadSources(SettingsInterface& si, std::unique_lock<std::mu
   UpdateInputSourceState(si, settings_lock, InputSourceType::XInput, &InputSource::CreateXInputSource);
   UpdateInputSourceState(si, settings_lock, InputSourceType::RawInput, &InputSource::CreateWin32RawInputSource);
 #endif
-#ifndef __ANDROID__
   UpdateInputSourceState(si, settings_lock, InputSourceType::SDL, &InputSource::CreateSDLSource);
-#else
-  UpdateInputSourceState(si, settings_lock, InputSourceType::Android, &InputSource::CreateAndroidSource);
-#endif
 
   UpdatePointerCount();
 }

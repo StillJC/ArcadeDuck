@@ -109,6 +109,8 @@ AudioSettingsWidget::AudioSettingsWidget(SettingsWindow* dialog, QWidget* parent
   }
   connect(m_ui.resetVolume, &QToolButton::clicked, this, [this]() { resetVolume(false); });
   connect(m_ui.resetFastForwardVolume, &QToolButton::clicked, this, [this]() { resetVolume(true); });
+  connect(m_ui.resetArcadeCabinetGain, &QToolButton::clicked, this,
+          [this]() { m_ui.arcadeCabinetGain->setValue(0); });
 
   dialog->registerWidgetHelp(
     m_ui.audioBackend, tr("Audio Backend"), QStringLiteral("Cubeb"),
@@ -139,8 +141,10 @@ AudioSettingsWidget::AudioSettingsWidget(SettingsWindow* dialog, QWidget* parent
   dialog->registerWidgetHelp(
     m_ui.arcadeCabinetGain, tr("Arcade Gain Adjustment"), tr("0 dB"),
     tr("Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the normal "
-       "level; use -6 dB to +6 dB trim for quieter or louder playback. Boosted output remains protected by the "
+       "level; use -30 dB to +12 dB trim for quieter or louder playback. Boosted output remains protected by the "
        "zero-lookahead peak limiter."));
+  dialog->registerWidgetHelp(m_ui.resetArcadeCabinetGain, tr("Reset Arcade Gain"), tr("N/A"),
+                             tr("Resets arcade gain adjustment back to 0 dB."));
   dialog->registerWidgetHelp(m_ui.muted, tr("Mute All Sound"), tr("Unchecked"),
                              tr("Prevents the emulator from producing any audible sound."));
   dialog->registerWidgetHelp(m_ui.muteCDAudio, tr("Mute CD Audio"), tr("Unchecked"),

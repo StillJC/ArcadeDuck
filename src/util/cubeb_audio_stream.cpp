@@ -119,7 +119,7 @@ bool CubebAudioStream::Initialize(const char* driver_name, const char* device_na
 {
   cubeb_set_log_callback(CUBEB_LOG_NORMAL, LogCallback);
 
-  int rv = cubeb_init(&m_context, "DuckStation", (driver_name && *driver_name) ? driver_name : nullptr);
+  int rv = cubeb_init(&m_context, "ArcadeDuck", (driver_name && *driver_name) ? driver_name : nullptr);
   if (rv != CUBEB_OK)
   {
     Error::SetStringFmt(error, "Could not initialize cubeb context: {}", GetCubebErrorString(rv));
@@ -344,7 +344,7 @@ std::vector<AudioStream::DeviceInfo> AudioStream::GetCubebOutputDevices(const ch
   ret.emplace_back(std::string(), TRANSLATE_STR("AudioStream", "Default"), 0);
 
   cubeb* context;
-  int rv = cubeb_init(&context, "DuckStation", (driver && *driver) ? driver : nullptr);
+  int rv = cubeb_init(&context, "ArcadeDuck", (driver && *driver) ? driver : nullptr);
   if (rv != CUBEB_OK)
   {
     ERROR_LOG("cubeb_init() failed: {}", GetCubebErrorString(rv));

@@ -4,8 +4,8 @@
 #include "core/arcade/systems/sony/zn/atlus_zn1_sound.h"
 
 #include "core/arcade/systems/sony/zn/ymz280b.h"
-#include "core/musashi/m68k.h"
-#include "core/musashi/m68k_bus.h"
+#include "core/arcade/third_party/musashi/m68k.h"
+#include "core/arcade/third_party/musashi/m68k_bus.h"
 #include "core/system.h"
 
 #include "common/error.h"

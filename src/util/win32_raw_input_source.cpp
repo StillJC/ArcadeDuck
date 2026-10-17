@@ -547,14 +547,25 @@ bool Win32RawInputSource::ProcessRawInputEvent(const RAWINPUT* event)
     state.last_x = rm.lLastX;
     state.last_y = rm.lLastY;
     const bool virtual_desktop = (rm.usFlags & MOUSE_VIRTUAL_DESKTOP) != 0;
-    const int left = virtual_desktop ? GetSystemMetrics(SM_XVIRTUALSCREEN) : 0;
-    const int top = virtual_desktop ? GetSystemMetrics(SM_YVIRTUALSCREEN) : 0;
-    const int width = GetSystemMetrics(virtual_desktop ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
-    const int height = GetSystemMetrics(virtual_desktop ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
+    const int virtual_left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int virtual_top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int virtual_width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virtual_height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    const int source_left = virtual_desktop ? virtual_left : 0;
+    const int source_top = virtual_desktop ? virtual_top : 0;
+    const int source_width = virtual_desktop ? virtual_width : GetSystemMetrics(SM_CXSCREEN);
+    const int source_height = virtual_desktop ? virtual_height : GetSystemMetrics(SM_CYSCREEN);
+
+    // Raw absolute coordinates target either the primary monitor or the virtual desktop.
+    // Convert both cases into the virtual-desktop normalized space used by the display rect.
+    const float source_x =
+      static_cast<float>(source_left) + (static_cast<float>(rm.lLastX) / 65535.0f) * source_width;
+    const float source_y =
+      static_cast<float>(source_top) + (static_cast<float>(rm.lLastY) / 65535.0f) * source_height;
 
     InputManager::InvokePointerAbsoluteCallbacks(
-      state.identifier, (static_cast<float>(left) + (static_cast<float>(rm.lLastX) / 65535.0f) * width - left) / width,
-      (static_cast<float>(top) + (static_cast<float>(rm.lLastY) / 65535.0f) * height - top) / height);
+      state.identifier, (source_x - static_cast<float>(virtual_left)) / static_cast<float>(virtual_width),
+      (source_y - static_cast<float>(virtual_top)) / static_cast<float>(virtual_height));
   }
   else
   {

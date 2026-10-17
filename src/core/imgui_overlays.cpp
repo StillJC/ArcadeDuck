@@ -541,14 +541,12 @@ void ImGuiManager::DrawPerformanceOverlay(float& position_y, float scale, float 
         DRAW_LINE(fixed_font, text, IM_COL32(255, 255, 255, 255));
       }
 
-#ifndef __ANDROID__
       if (MediaCapture* cap = System::GetMediaCapture())
       {
         text.assign("CAP: ");
         FormatProcessorStat(text, cap->GetCaptureThreadUsage(), cap->GetCaptureThreadTime());
         DRAW_LINE(fixed_font, text, IM_COL32(255, 255, 255, 255));
       }
-#endif
     }
 
     if (g_settings.display_show_gpu_usage && g_gpu_device->IsGPUTimingEnabled())
@@ -676,7 +674,6 @@ void ImGuiManager::DrawEnhancementsOverlay()
 
 void ImGuiManager::DrawMediaCaptureOverlay(float& position_y, float scale, float margin, float spacing)
 {
-#ifndef __ANDROID__
   MediaCapture* const cap = System::GetMediaCapture();
   if (!cap || FullscreenUI::HasActiveWindow())
     return;
@@ -711,7 +708,6 @@ void ImGuiManager::DrawMediaCaptureOverlay(float& position_y, float scale, float
               IM_COL32(255, 255, 255, 255), text_msg.c_str(), text_msg.end_ptr());
 
   position_y += box_size.y + spacing;
-#endif
 }
 
 void ImGuiManager::DrawFrameTimeOverlay(float& position_y, float scale, float margin, float spacing)

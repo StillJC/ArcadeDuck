@@ -1684,7 +1684,7 @@ void SPU::DMARead(u32* words, u32 word_count)
   u32 halfword_count = word_count * 2;
 
   const u32 size = s_state.transfer_fifo.GetSize();
-  if (word_count > size)
+  if (halfword_count > size)
   {
     u16 fill_value = 0;
     if (size > 0)
@@ -2162,10 +2162,16 @@ ALWAYS_INLINE_RELEASE std::tuple<s32, s32> SPU::SampleVoice(u32 voice_index)
   {
     ADPCMBlock block;
     ReadADPCMBlock(voice.current_address, &block);
+
+    // Preserve the first repeat point across adjacent loop-start blocks.
+    // A loop-end boundary terminates the run, so the next pass can latch normally.
+    const bool continuing_loop_start_run =
+      !voice.is_first_block && voice.current_block_flags.loop_start && !voice.current_block_flags.loop_end;
+
     voice.DecodeBlock(block);
     voice.has_samples = true;
 
-    if (voice.current_block_flags.loop_start && !voice.ignore_loop_address)
+    if (voice.current_block_flags.loop_start && !continuing_loop_start_run && !voice.ignore_loop_address)
     {
       TRACE_LOG("Voice {} loop start @ 0x{:08X}", voice_index, voice.current_address);
       voice.regs.adpcm_repeat_address = voice.current_address;
@@ -2669,13 +2675,11 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
       }
     }
 
-#ifndef __ANDROID__
     if (MediaCapture* cap = System::GetMediaCapture()) [[unlikely]]
     {
       if (!cap->DeliverAudioFrames(output_frame_start, frames_in_this_batch))
         System::StopMediaCapture();
     }
-#endif
 
     output_stream->EndWrite(frames_in_this_batch);
     remaining_frames -= frames_in_this_batch;

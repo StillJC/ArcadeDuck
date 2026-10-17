@@ -166,7 +166,6 @@ using ImGuiFullscreen::ThreeWayToggleButton;
 using ImGuiFullscreen::ToggleButton;
 using ImGuiFullscreen::WantsToCloseMenu;
 
-#ifndef __ANDROID__
 namespace FullscreenUI {
 enum class MainWindowType
 {
@@ -3773,8 +3772,8 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 
   DrawEnumSetting(
     bsi, FSUI_CSTR("Deinterlacing Mode"),
-    FSUI_CSTR("Controls how interlaced video modes are presented. Adaptive is the ArcadeDuck default and is recommended for arcade titles. "
-              "Choose Disabled, Weave, or Blend only when a title or display setup benefits from a different presentation."),
+    FSUI_CSTR("Controls how interlaced video modes are presented. Disabled preserves native behavior and is the default. "
+              "Enable a deinterlacing method per game when visible combing or flicker requires it."),
     "Display", "DeinterlacingMode", Settings::DEFAULT_DISPLAY_DEINTERLACING_MODE,
     &Settings::ParseDisplayDeinterlacingMode, &Settings::GetDisplayDeinterlacingModeName,
     &Settings::GetDisplayDeinterlacingModeDisplayName, DisplayDeinterlacingMode::Count);
@@ -4537,7 +4536,7 @@ void FullscreenUI::DrawAudioSettingsPage()
     bsi, FSUI_CSTR("Arcade Gain Adjustment"),
     FSUI_CSTR("Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the "
               "normal level; use negative or positive trim for quieter or louder playback."),
-    "Audio", "ArcadeGainAdjustmentDB", 0, -6, 6, FSUI_CSTR("%d dB"));
+    "Audio", "ArcadeGainAdjustmentDB", 0, -30, 12, FSUI_CSTR("%d dB"));
   DrawToggleSetting(bsi, FSUI_CSTR("Mute All Sound"),
                     FSUI_CSTR("Prevents the emulator from producing any audible sound."), "Audio", "OutputMuted",
                     false);
@@ -4611,18 +4610,6 @@ void FullscreenUI::DrawAudioSettingsPage()
 
 void FullscreenUI::DrawAchievementsSettingsPage()
 {
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-  {
-    BeginMenuButtons();
-    ActiveButton(
-      FSUI_ICONSTR(ICON_FA_BAN,
-                   FSUI_CSTR("RAIntegration is being used instead of the built-in achievements implementation.")),
-      false, false, LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
-    EndMenuButtons();
-    return;
-  }
-#endif
 
   SettingsInterface* bsi = GetEditingSettingsInterface();
 
@@ -6540,7 +6527,7 @@ void FullscreenUI::DrawAboutWindow()
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_COMMENT, "Support"), false))
       ExitFullscreenAndOpenURL("https://discord.gg/fQ9HvgKCg");
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_PEOPLE_CARRY, "Contributor List"), false))
-      ExitFullscreenAndOpenURL("https://github.com/stenzek/duckstation/blob/master/CONTRIBUTORS.md");
+      ExitFullscreenAndOpenURL("https://github.com/StillJC/ArcadeDuck/blob/main/CONTRIBUTORS.md");
 
     if (ActiveButton(FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close"), false) || WantsToCloseMenu())
     {
@@ -6629,7 +6616,6 @@ bool FullscreenUI::IsLeaderboardsWindowOpen()
   return (s_current_main_window == MainWindowType::Leaderboards);
 }
 
-#endif // __ANDROID__
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Translation String Area
@@ -6702,7 +6688,6 @@ TRANSLATE_NOOP("FullscreenUI", "Account");
 TRANSLATE_NOOP("FullscreenUI", "Accurate Blending");
 TRANSLATE_NOOP("FullscreenUI", "Achievement Notifications");
 TRANSLATE_NOOP("FullscreenUI", "Achievements");
-TRANSLATE_NOOP("FullscreenUI", "Achievements Settings");
 TRANSLATE_NOOP("FullscreenUI", "Achievements are not enabled.");
 TRANSLATE_NOOP("FullscreenUI", "Active Profile: {}");
 TRANSLATE_NOOP("FullscreenUI", "Add Search Directory");
@@ -6713,7 +6698,6 @@ TRANSLATE_NOOP("FullscreenUI", "Adjusts arcade playback level relative to Arcade
 TRANSLATE_NOOP("FullscreenUI", "Adjusts emulation speed so the arcade display refresh rate matches the host when VSync is enabled.");
 TRANSLATE_NOOP("FullscreenUI", "Adjusts texture coordinates to reduce seams at higher internal resolutions. It is disabled by default because it can break effects in some games.");
 TRANSLATE_NOOP("FullscreenUI", "Advanced");
-TRANSLATE_NOOP("FullscreenUI", "Advanced Settings");
 TRANSLATE_NOOP("FullscreenUI", "All Time: {}");
 TRANSLATE_NOOP("FullscreenUI", "An error occurred while deleting empty game settings:\n{}");
 TRANSLATE_NOOP("FullscreenUI", "An error occurred while saving game settings:\n{}");
@@ -6735,11 +6719,12 @@ TRANSLATE_NOOP("FullscreenUI", "Arcade metadata is unavailable for this set.");
 TRANSLATE_NOOP("FullscreenUI", "Arcade system copied to clipboard.");
 TRANSLATE_NOOP("FullscreenUI", "ArcadeDuck is a free and open-source emulator for supported arcade systems.");
 TRANSLATE_NOOP("FullscreenUI", "Are you sure you want to clear the current post-processing chain? All configuration will be lost.");
+TRANSLATE_NOOP("FullscreenUI", "Artwork Settings");
 TRANSLATE_NOOP("FullscreenUI", "Aspect Ratio");
 TRANSLATE_NOOP("FullscreenUI", "Attempts to preserve thin polygon lines when rendering above native resolution. It is unnecessary at 1x Native and is disabled by default.");
+TRANSLATE_NOOP("FullscreenUI", "Audio");
 TRANSLATE_NOOP("FullscreenUI", "Audio Backend");
 TRANSLATE_NOOP("FullscreenUI", "Audio Control");
-TRANSLATE_NOOP("FullscreenUI", "Audio Settings");
 TRANSLATE_NOOP("FullscreenUI", "Automatic based on window size");
 TRANSLATE_NOOP("FullscreenUI", "Automatically saves the emulator state when powering down or exiting. You can then resume directly from where you left off next time.");
 TRANSLATE_NOOP("FullscreenUI", "Automatically switches to fullscreen mode when the program is started.");
@@ -6748,13 +6733,16 @@ TRANSLATE_NOOP("FullscreenUI", "Back");
 TRANSLATE_NOOP("FullscreenUI", "Back To Pause Menu");
 TRANSLATE_NOOP("FullscreenUI", "Backend Settings");
 TRANSLATE_NOOP("FullscreenUI", "Behavior");
+TRANSLATE_NOOP("FullscreenUI", "Bezels Directory");
 TRANSLATE_NOOP("FullscreenUI", "Board configuration is selected by the arcade database.");
 TRANSLATE_NOOP("FullscreenUI", "Borderless Fullscreen");
 TRANSLATE_NOOP("FullscreenUI", "Bound Axis");
 TRANSLATE_NOOP("FullscreenUI", "Browse and launch recognized arcade sets from your library.");
 TRANSLATE_NOOP("FullscreenUI", "Buffer Size");
+TRANSLATE_NOOP("FullscreenUI", "Bypasses optional Windows audio signal processing when Cubeb is using WASAPI. RAW remains shared mode; it does not enable exclusive output or change ArcadeDuck's Low Latency target.");
 TRANSLATE_NOOP("FullscreenUI", "CPU Emulation");
 TRANSLATE_NOOP("FullscreenUI", "CPU Mode");
+TRANSLATE_NOOP("FullscreenUI", "Cache Directory");
 TRANSLATE_NOOP("FullscreenUI", "Cancel");
 TRANSLATE_NOOP("FullscreenUI", "Capture");
 TRANSLATE_NOOP("FullscreenUI", "Change Page");
@@ -6783,10 +6771,9 @@ TRANSLATE_NOOP("FullscreenUI", "Controller summary copied to clipboard.");
 TRANSLATE_NOOP("FullscreenUI", "Controllers");
 TRANSLATE_NOOP("FullscreenUI", "Controllers: %s");
 TRANSLATE_NOOP("FullscreenUI", "Controls");
-TRANSLATE_NOOP("FullscreenUI", "Controls Settings");
 TRANSLATE_NOOP("FullscreenUI", "Controls filtering for 3D textures. Nearest-Neighbor preserves the original texture sampling and is the ArcadeDuck default. Smoother filters can blur artwork or create texture seams.");
 TRANSLATE_NOOP("FullscreenUI", "Controls filtering for sprites, HUD elements, and other 2D artwork. Nearest-Neighbor is recommended to keep text and overlays sharp.");
-TRANSLATE_NOOP("FullscreenUI", "Controls how interlaced video modes are presented. Adaptive is the ArcadeDuck default and is recommended for arcade titles. Choose Disabled, Weave, or Blend only when a title or display setup benefits from a different presentation.");
+TRANSLATE_NOOP("FullscreenUI", "Controls how interlaced video modes are presented. Disabled preserves native behavior and is the default. Enable a deinterlacing method per game when visible combing or flicker requires it.");
 TRANSLATE_NOOP("FullscreenUI", "Controls how the final image is resized to the host display. Bilinear (Smooth) is recommended for aspect-correct arcade output and non-square pixels. Nearest-Neighbor is sharper but can produce uneven pixels at non-integer scales.");
 TRANSLATE_NOOP("FullscreenUI", "Controls the final scale used by Box downsampling. 1x returns the upscaled image to the original hardware resolution.");
 TRANSLATE_NOOP("FullscreenUI", "Controls the physical shape of the displayed image. Auto uses the game or arcade hardware's native presentation rules and is recommended. ArcadeDuck may apply hardware-specific aspect handling when raw pixel dimensions are not the intended display shape.");
@@ -6800,13 +6787,13 @@ TRANSLATE_NOOP("FullscreenUI", "Copies the current global settings to this arcad
 TRANSLATE_NOOP("FullscreenUI", "Copies the global arcade control configuration to this set.");
 TRANSLATE_NOOP("FullscreenUI", "Copy Global Controls");
 TRANSLATE_NOOP("FullscreenUI", "Copy Settings");
-TRANSLATE_NOOP("FullscreenUI", "Artwork Settings");
 TRANSLATE_NOOP("FullscreenUI", "Covers Directory");
 TRANSLATE_NOOP("FullscreenUI", "Create");
 TRANSLATE_NOOP("FullscreenUI", "Create Game Configuration");
 TRANSLATE_NOOP("FullscreenUI", "Create New...");
 TRANSLATE_NOOP("FullscreenUI", "Create Save State Backups");
 TRANSLATE_NOOP("FullscreenUI", "Crop Mode");
+TRANSLATE_NOOP("FullscreenUI", "Crosshairs Directory");
 TRANSLATE_NOOP("FullscreenUI", "Culling Correction");
 TRANSLATE_NOOP("FullscreenUI", "Current Game");
 TRANSLATE_NOOP("FullscreenUI", "Debugging Settings");
@@ -6849,7 +6836,6 @@ TRANSLATE_NOOP("FullscreenUI", "Downsampling");
 TRANSLATE_NOOP("FullscreenUI", "Downsampling Display Scale");
 TRANSLATE_NOOP("FullscreenUI", "Duck icon by icons8 (https://icons8.com/icon/74847/platforms.undefined.short-title)");
 TRANSLATE_NOOP("FullscreenUI", "Dump Replaceable VRAM Writes");
-TRANSLATE_NOOP("FullscreenUI", "Emulation Settings");
 TRANSLATE_NOOP("FullscreenUI", "Emulation Speed");
 TRANSLATE_NOOP("FullscreenUI", "Enable Achievements");
 TRANSLATE_NOOP("FullscreenUI", "Enable DInput");
@@ -6862,6 +6848,7 @@ TRANSLATE_NOOP("FullscreenUI", "Enable Recompiler Memory Exceptions");
 TRANSLATE_NOOP("FullscreenUI", "Enable Rewinding");
 TRANSLATE_NOOP("FullscreenUI", "Enable SDL Input");
 TRANSLATE_NOOP("FullscreenUI", "Enable Subdirectory Scanning");
+TRANSLATE_NOOP("FullscreenUI", "Enable System Link");
 TRANSLATE_NOOP("FullscreenUI", "Enable VRAM Write Texture Replacement");
 TRANSLATE_NOOP("FullscreenUI", "Enable Windows Raw Input");
 TRANSLATE_NOOP("FullscreenUI", "Enable XInput");
@@ -6873,11 +6860,13 @@ TRANSLATE_NOOP("FullscreenUI", "Enables alignment and bus exceptions. Not needed
 TRANSLATE_NOOP("FullscreenUI", "Enables developer-level diagnostic logging for troubleshooting. This can substantially increase log volume.");
 TRANSLATE_NOOP("FullscreenUI", "Enables more precise frame pacing at the cost of battery life.");
 TRANSLATE_NOOP("FullscreenUI", "Enables stable raw mouse and lightgun device identities.");
+TRANSLATE_NOOP("FullscreenUI", "Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal single-cabinet operation.");
 TRANSLATE_NOOP("FullscreenUI", "Enables the older, less accurate MDEC decoding routines. May be required for old replacement backgrounds to match/load.");
 TRANSLATE_NOOP("FullscreenUI", "Enables the replacement of background textures in supported games.");
 TRANSLATE_NOOP("FullscreenUI", "Encore Mode");
 TRANSLATE_NOOP("FullscreenUI", "Ensures every frame generated is displayed for optimal pacing. Enable for variable refresh displays, such as GSync/FreeSync. Disable if you are having speed or sound issues.");
 TRANSLATE_NOOP("FullscreenUI", "Enter Value");
+TRANSLATE_NOOP("FullscreenUI", "Enter the IPv4 address of the host machine.");
 TRANSLATE_NOOP("FullscreenUI", "Enter the name of the input profile you wish to create.");
 TRANSLATE_NOOP("FullscreenUI", "Error");
 TRANSLATE_NOOP("FullscreenUI", "Execution Mode");
@@ -6896,6 +6885,7 @@ TRANSLATE_NOOP("FullscreenUI", "Failed to save input profile '{}'.");
 TRANSLATE_NOOP("FullscreenUI", "Fast Forward Speed");
 TRANSLATE_NOOP("FullscreenUI", "Fast Forward Volume");
 TRANSLATE_NOOP("FullscreenUI", "File Size: %.2f MB");
+TRANSLATE_NOOP("FullscreenUI", "Folders");
 TRANSLATE_NOOP("FullscreenUI", "Force 4:3 For FMVs");
 TRANSLATE_NOOP("FullscreenUI", "Force NTSC Timings");
 TRANSLATE_NOOP("FullscreenUI", "Forces 24-bit video playback to 4:3. Leave disabled by default because Auto aspect and hardware-specific rules normally determine the correct presentation.");
@@ -6910,7 +6900,6 @@ TRANSLATE_NOOP("FullscreenUI", "GPU Renderer");
 TRANSLATE_NOOP("FullscreenUI", "GPU adapter will be applied after restarting.");
 TRANSLATE_NOOP("FullscreenUI", "Game Grid");
 TRANSLATE_NOOP("FullscreenUI", "Game List");
-TRANSLATE_NOOP("FullscreenUI", "Game List Settings");
 TRANSLATE_NOOP("FullscreenUI", "Game Quick Save");
 TRANSLATE_NOOP("FullscreenUI", "Game Slot {0}##game_slot_{0}");
 TRANSLATE_NOOP("FullscreenUI", "Game Specific Configuration");
@@ -6925,7 +6914,7 @@ TRANSLATE_NOOP("FullscreenUI", "Geometry Tolerance");
 TRANSLATE_NOOP("FullscreenUI", "GitHub Repository");
 TRANSLATE_NOOP("FullscreenUI", "Global Slot {0} - {1}##global_slot_{0}");
 TRANSLATE_NOOP("FullscreenUI", "Global Slot {0}##global_slot_{0}");
-TRANSLATE_NOOP("FullscreenUI", "Graphics Settings");
+TRANSLATE_NOOP("FullscreenUI", "Graphics");
 TRANSLATE_NOOP("FullscreenUI", "Hardcore Mode");
 TRANSLATE_NOOP("FullscreenUI", "Hardcore mode will be enabled on next game restart.");
 TRANSLATE_NOOP("FullscreenUI", "Hardware");
@@ -6933,9 +6922,11 @@ TRANSLATE_NOOP("FullscreenUI", "Hardware copied to clipboard.");
 TRANSLATE_NOOP("FullscreenUI", "Hardware: %s");
 TRANSLATE_NOOP("FullscreenUI", "Hide Cursor In Fullscreen");
 TRANSLATE_NOOP("FullscreenUI", "Hides the mouse pointer/cursor when the emulator is in fullscreen mode.");
-TRANSLATE_NOOP("FullscreenUI", "Hotkey Settings");
+TRANSLATE_NOOP("FullscreenUI", "Host IPv4 Address");
+TRANSLATE_NOOP("FullscreenUI", "Hotkeys");
 TRANSLATE_NOOP("FullscreenUI", "How many saves will be kept for rewinding. Higher values have greater memory requirements.");
 TRANSLATE_NOOP("FullscreenUI", "How often a rewind state will be created. Higher frequencies have greater system requirements.");
+TRANSLATE_NOOP("FullscreenUI", "IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck instances are running on the same PC.");
 TRANSLATE_NOOP("FullscreenUI", "Identifies any new files added to the game directories.");
 TRANSLATE_NOOP("FullscreenUI", "If not enabled, the current post processing chain will be ignored.");
 TRANSLATE_NOOP("FullscreenUI", "Increase Timer Resolution");
@@ -6945,7 +6936,7 @@ TRANSLATE_NOOP("FullscreenUI", "Input Sources");
 TRANSLATE_NOOP("FullscreenUI", "Input profile '{}' loaded.");
 TRANSLATE_NOOP("FullscreenUI", "Input profile '{}' saved.");
 TRANSLATE_NOOP("FullscreenUI", "Integration");
-TRANSLATE_NOOP("FullscreenUI", "Interface Settings");
+TRANSLATE_NOOP("FullscreenUI", "Interface");
 TRANSLATE_NOOP("FullscreenUI", "Internal Resolution");
 TRANSLATE_NOOP("FullscreenUI", "Invert Pointer X");
 TRANSLATE_NOOP("FullscreenUI", "Invert Pointer Y");
@@ -6980,7 +6971,6 @@ TRANSLATE_NOOP("FullscreenUI", "Logs messages to the debug console where support
 TRANSLATE_NOOP("FullscreenUI", "Logs out of RetroAchievements.");
 TRANSLATE_NOOP("FullscreenUI", "Low Latency Target");
 TRANSLATE_NOOP("FullscreenUI", "Machine");
-TRANSLATE_NOOP("FullscreenUI", "Machine Settings");
 TRANSLATE_NOOP("FullscreenUI", "Manufacturer");
 TRANSLATE_NOOP("FullscreenUI", "Manufacturer copied to clipboard.");
 TRANSLATE_NOOP("FullscreenUI", "Minimal Output Latency");
@@ -6991,6 +6981,7 @@ TRANSLATE_NOOP("FullscreenUI", "Moves this shader lower in the chain, applying i
 TRANSLATE_NOOP("FullscreenUI", "Mute All Sound");
 TRANSLATE_NOOP("FullscreenUI", "Mute CD Audio");
 TRANSLATE_NOOP("FullscreenUI", "Navigate");
+TRANSLATE_NOOP("FullscreenUI", "Network");
 TRANSLATE_NOOP("FullscreenUI", "No Binding");
 TRANSLATE_NOOP("FullscreenUI", "No Device");
 TRANSLATE_NOOP("FullscreenUI", "No Game Selected");
@@ -7009,8 +7000,8 @@ TRANSLATE_NOOP("FullscreenUI", "On-Screen Display");
 TRANSLATE_NOOP("FullscreenUI", "Open Containing Directory");
 TRANSLATE_NOOP("FullscreenUI", "Open in File Browser");
 TRANSLATE_NOOP("FullscreenUI", "Operations");
+TRANSLATE_NOOP("FullscreenUI", "Operator");
 TRANSLATE_NOOP("FullscreenUI", "Operator Controls");
-TRANSLATE_NOOP("FullscreenUI", "Operator Settings");
 TRANSLATE_NOOP("FullscreenUI", "Optimal Frame Pacing");
 TRANSLATE_NOOP("FullscreenUI", "Optional PGXP compatibility mode that applies correction to all CPU instructions. It only matters while PGXP Geometry Correction is enabled and has a high performance cost.");
 TRANSLATE_NOOP("FullscreenUI", "Optional PGXP compatibility workaround that discards corrected geometry beyond the selected offset. It only matters while PGXP Geometry Correction is enabled; leave it disabled unless a game has verified geometry issues.");
@@ -7046,7 +7037,8 @@ TRANSLATE_NOOP("FullscreenUI", "Plays sound effects for events such as achieveme
 TRANSLATE_NOOP("FullscreenUI", "Pointer Input Mode");
 TRANSLATE_NOOP("FullscreenUI", "Pointer X Scale");
 TRANSLATE_NOOP("FullscreenUI", "Pointer Y Scale");
-TRANSLATE_NOOP("FullscreenUI", "Post-Processing Settings");
+TRANSLATE_NOOP("FullscreenUI", "Port");
+TRANSLATE_NOOP("FullscreenUI", "Post-Processing");
 TRANSLATE_NOOP("FullscreenUI", "Post-processing chain cleared.");
 TRANSLATE_NOOP("FullscreenUI", "Post-processing shaders reloaded.");
 TRANSLATE_NOOP("FullscreenUI", "Power Off And Save State");
@@ -7060,7 +7052,6 @@ TRANSLATE_NOOP("FullscreenUI", "Prevents the screen saver from activating and th
 TRANSLATE_NOOP("FullscreenUI", "Processes rendering work on a separate thread. It is recommended and enabled by default because it generally improves performance without changing emulation behavior.");
 TRANSLATE_NOOP("FullscreenUI", "Push a controller button or axis now.");
 TRANSLATE_NOOP("FullscreenUI", "Quick Save");
-TRANSLATE_NOOP("FullscreenUI", "RAIntegration is being used instead of the built-in achievements implementation.");
 TRANSLATE_NOOP("FullscreenUI", "Recommended: {}");
 TRANSLATE_NOOP("FullscreenUI", "Recompiler Fast Memory Access");
 TRANSLATE_NOOP("FullscreenUI", "Reduce Input Latency");
@@ -7109,6 +7100,7 @@ TRANSLATE_NOOP("FullscreenUI", "Save Profile");
 TRANSLATE_NOOP("FullscreenUI", "Save Screenshot");
 TRANSLATE_NOOP("FullscreenUI", "Save State");
 TRANSLATE_NOOP("FullscreenUI", "Save State On Exit");
+TRANSLATE_NOOP("FullscreenUI", "Save States Directory");
 TRANSLATE_NOOP("FullscreenUI", "Saved {:%c}");
 TRANSLATE_NOOP("FullscreenUI", "Saves state periodically so you can rewind any mistakes while playing.");
 TRANSLATE_NOOP("FullscreenUI", "Scaled Dithering");
@@ -7123,6 +7115,7 @@ TRANSLATE_NOOP("FullscreenUI", "Screen Rotation");
 TRANSLATE_NOOP("FullscreenUI", "Screenshot Format");
 TRANSLATE_NOOP("FullscreenUI", "Screenshot Quality");
 TRANSLATE_NOOP("FullscreenUI", "Screenshot Size");
+TRANSLATE_NOOP("FullscreenUI", "Screenshots Directory");
 TRANSLATE_NOOP("FullscreenUI", "Search");
 TRANSLATE_NOOP("FullscreenUI", "Search Arcade Sets");
 TRANSLATE_NOOP("FullscreenUI", "Search Directories");
@@ -7203,11 +7196,12 @@ TRANSLATE_NOOP("FullscreenUI", "Stores these arcade controls in an input profile
 TRANSLATE_NOOP("FullscreenUI", "Stretch Display Vertically");
 TRANSLATE_NOOP("FullscreenUI", "Stretch Mode");
 TRANSLATE_NOOP("FullscreenUI", "Stretches the image to fill more of the host window vertically. This overrides the calculated presentation shape and is disabled by default.");
-TRANSLATE_NOOP("FullscreenUI", "Summary");
 TRANSLATE_NOOP("FullscreenUI", "Support");
 TRANSLATE_NOOP("FullscreenUI", "Switches between full screen and windowed when the window is double-clicked.");
 TRANSLATE_NOOP("FullscreenUI", "Sync To Host Refresh Rate");
 TRANSLATE_NOOP("FullscreenUI", "Synchronizes presentation of emulated frames to the host. GSync/FreeSync users should enable Optimal Frame Pacing instead.");
+TRANSLATE_NOOP("FullscreenUI", "System Link");
+TRANSLATE_NOOP("FullscreenUI", "TCP port shared by all ArcadeDuck instances participating in the same system-link group. All cabinets must use the same port.");
 TRANSLATE_NOOP("FullscreenUI", "Temporarily disables all enhancements, useful when testing.");
 TRANSLATE_NOOP("FullscreenUI", "Test Unofficial Achievements");
 TRANSLATE_NOOP("FullscreenUI", "Texture Filtering");
@@ -7250,6 +7244,8 @@ TRANSLATE_NOOP("FullscreenUI", "Value: {} | Default: {} | Minimum: {} | Maximum:
 TRANSLATE_NOOP("FullscreenUI", "Version: %s");
 TRANSLATE_NOOP("FullscreenUI", "Vertex Cache");
 TRANSLATE_NOOP("FullscreenUI", "Vertical Sync (VSync)");
+TRANSLATE_NOOP("FullscreenUI", "Videos Directory");
+TRANSLATE_NOOP("FullscreenUI", "WASAPI RAW Output");
 TRANSLATE_NOOP("FullscreenUI", "When enabled and logged in, ArcadeDuck will scan for achievements on startup.");
 TRANSLATE_NOOP("FullscreenUI", "When enabled, ArcadeDuck will assume all achievements are locked and not send any unlock notifications to the server.");
 TRANSLATE_NOOP("FullscreenUI", "When enabled, ArcadeDuck will list achievements from unofficial sets. These achievements are not tracked by RetroAchievements.");

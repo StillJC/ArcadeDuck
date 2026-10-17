@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 StillJC
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "core/musashi/m68k_bus.h"
+#include "core/arcade/third_party/musashi/m68k_bus.h"
 
 namespace MusashiBus {
 namespace {

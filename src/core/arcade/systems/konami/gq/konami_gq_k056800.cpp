@@ -16,7 +16,6 @@ namespace {
 static constexpr u32 WINDOW_BASE_OFFSET = 0x100000;
 static constexpr u32 WINDOW_END_OFFSET = 0x10001f;
 static constexpr u32 REGISTER_COUNT = 8;
-static constexpr u32 ACCESS_LOG_LIMIT = 32;
 
 struct State
 {
@@ -27,20 +26,15 @@ struct State
   u8 common_volume = 0;
   u8 output_control = 0;
   bool output_control_seen = false;
-  std::array<u8, 8> sound_control = {};
-  std::array<bool, 8> sound_control_seen = {};
-  std::array<u32, 8> sound_control_writes = {};
   u32 output_control_writes = 0;
   bool interrupt_pending = false;
   bool interrupt_enabled = false;
   bool active = false;
-  bool first_access_logged = false;
   u32 host_reads = 0;
   u32 host_writes = 0;
   u32 sound_reads = 0;
   u32 sound_writes = 0;
   u32 host_commands = 0;
-  u32 access_logs = 0;
 };
 
 static State s_state;
@@ -58,25 +52,6 @@ static bool IsActiveByteOffset(u32 offset)
 static u32 GetRegister(u32 offset)
 {
   return ((offset - WINDOW_BASE_OFFSET) >> 1) & (REGISTER_COUNT - 1);
-}
-
-static void LogFirstAccess(bool write, u32 width, u32 offset)
-{
-  if (s_state.first_access_logged)
-    return;
-
-  s_state.first_access_logged = true;
-  DEV_LOG("KonamiGQ.K056800 first_access operation='{}' width={} offset=0x{:06X}", write ? "write" : "read",
-           width, offset);
-}
-
-static bool ShouldLogAccess()
-{
-  if (s_state.access_logs >= ACCESS_LOG_LIMIT)
-    return false;
-
-  s_state.access_logs++;
-  return true;
 }
 
 static u8 ReadHostRegister(u32 reg)
@@ -114,38 +89,6 @@ static void UpdateCommonVolume()
 {
   if (s_state.front_volume == s_state.rear_volume)
     s_state.common_volume = s_state.front_volume;
-}
-
-static void TraceSoundControlWrite(u32 reg, u8 value)
-{
-  if (reg >= s_state.sound_control.size())
-    return;
-
-  const u8 old_value = s_state.sound_control[reg];
-  const bool first_write = !s_state.sound_control_seen[reg];
-  s_state.sound_control_seen[reg] = true;
-  s_state.sound_control[reg] = value;
-  s_state.sound_control_writes[reg]++;
-
-  if (!first_write && old_value == value)
-    return;
-
-  if (reg == 5)
-  {
-    DEV_LOG(
-      "KonamiGQ.K056800 sound_control_transition register=5 write_index={} first={} old=0x{:02X} new=0x{:02X} "
-      "field_high={} field_low={} reg2=0x{:02X} reg3=0x{:02X}",
-      s_state.sound_control_writes[reg], first_write, old_value, value, (value >> 4) & 0x07u, value & 0x07u,
-      s_state.sound_control[2], s_state.sound_control[3]);
-  }
-  else
-  {
-    DEV_LOG(
-      "KonamiGQ.K056800 sound_control_transition register={} write_index={} first={} old=0x{:02X} new=0x{:02X} "
-      "reg2=0x{:02X} reg3=0x{:02X} reg5=0x{:02X}",
-      reg, s_state.sound_control_writes[reg], first_write, old_value, value, s_state.sound_control[2],
-      s_state.sound_control[3], s_state.sound_control[5]);
-  }
 }
 
 static void WriteHostRegister(u32 reg, u8 value, u32 pc)
@@ -199,14 +142,6 @@ static void WriteHostRegister(u32 reg, u8 value, u32 pc)
       s_state.host_commands++;
       if (s_state.interrupt_enabled)
         s_state.interrupt_pending = true;
-      if (s_state.host_commands <= 16 || (s_state.host_commands & (s_state.host_commands - 1)) == 0)
-      {
-        DEV_LOG(
-          "KonamiGQ.K056800 host_command index={} command=0x{:02X} args='{:02X} {:02X} {:02X}' "
-          "interrupt_enabled={} interrupt_pending={} pc=0x{:08X}",
-          s_state.host_commands, s_state.host_to_sound[0], s_state.host_to_sound[1], s_state.host_to_sound[2],
-          s_state.host_to_sound[3], s_state.interrupt_enabled, s_state.interrupt_pending, pc);
-      }
       break;
     }
 
@@ -224,14 +159,6 @@ static u8 ReadActiveByte(u32 offset)
   const u8 value = ReadHostRegister(reg);
   s_state.host_reads++;
 
-  if (ShouldLogAccess())
-  {
-    DEV_LOG(
-      "KonamiGQ.K056800 host_read index={} offset=0x{:06X} register={} value=0x{:02X} "
-      "sound_to_host='{:02X} {:02X}'",
-      s_state.host_reads, offset, reg, value, s_state.sound_to_host[0], s_state.sound_to_host[1]);
-  }
-
   return value;
 }
 
@@ -244,16 +171,6 @@ static void WriteActiveByte(u32 offset, u8 value, u32 pc)
   s_state.host_writes++;
   WriteHostRegister(reg, value, pc);
 
-  if (ShouldLogAccess())
-  {
-    DEV_LOG(
-      "KonamiGQ.K056800 host_write index={} offset=0x{:06X} register={} value=0x{:02X} "
-      "host_to_sound='{:02X} {:02X} {:02X} {:02X}' front_volume={} rear_volume={} output_control=0x{:02X} "
-      "pc=0x{:08X}",
-      s_state.host_writes, offset, reg, value, s_state.host_to_sound[0], s_state.host_to_sound[1],
-      s_state.host_to_sound[2], s_state.host_to_sound[3], s_state.front_volume, s_state.rear_volume,
-      s_state.output_control, pc);
-  }
 }
 
 } // namespace
@@ -279,19 +196,14 @@ void Reset()
   s_state.common_volume = 0;
   s_state.output_control = 0;
   s_state.output_control_seen = false;
-  s_state.sound_control.fill(0);
-  s_state.sound_control_seen.fill(false);
-  s_state.sound_control_writes.fill(0);
   s_state.output_control_writes = 0;
   s_state.interrupt_pending = false;
   s_state.interrupt_enabled = false;
-  s_state.first_access_logged = false;
   s_state.host_reads = 0;
   s_state.host_writes = 0;
   s_state.sound_reads = 0;
   s_state.sound_writes = 0;
   s_state.host_commands = 0;
-  s_state.access_logs = 0;
   VERBOSE_LOG("KonamiGQ.K056800 reset");
 }
 
@@ -302,14 +214,10 @@ void Shutdown()
     VERBOSE_LOG(
       "KonamiGQ.K056800 shutdown host_reads={} host_writes={} sound_reads={} sound_writes={} host_commands={} "
       "interrupt_enabled={} interrupt_pending={} front_volume={} rear_volume={} output_control=0x{:02X} "
-      "output_control_writes={} sound_reg2=0x{:02X} sound_reg2_writes={} sound_reg3=0x{:02X} "
-      "sound_reg3_writes={} sound_reg5=0x{:02X} sound_reg5_high={} sound_reg5_low={} sound_reg5_writes={}",
+      "output_control_writes={}",
       s_state.host_reads, s_state.host_writes, s_state.sound_reads, s_state.sound_writes, s_state.host_commands,
       s_state.interrupt_enabled, s_state.interrupt_pending, s_state.front_volume, s_state.rear_volume,
-      s_state.output_control, s_state.output_control_writes, s_state.sound_control[2], s_state.sound_control_writes[2],
-      s_state.sound_control[3], s_state.sound_control_writes[3], s_state.sound_control[5],
-      (s_state.sound_control[5] >> 4) & 0x07u, s_state.sound_control[5] & 0x07u,
-      s_state.sound_control_writes[5]);
+      s_state.output_control, s_state.output_control_writes);
   }
 
   s_state = {};
@@ -324,8 +232,6 @@ u32 ReadHost(u32 width, u32 offset)
 {
   if (!s_state.active || !IsWindowOffset(offset))
     return UINT32_C(0xffffffff);
-
-  LogFirstAccess(false, width, offset);
 
   switch (width)
   {
@@ -348,8 +254,6 @@ void WriteHost(u32 width, u32 offset, u32 value, u32 pc)
 {
   if (!s_state.active || !IsWindowOffset(offset))
     return;
-
-  LogFirstAccess(true, width, offset);
 
   switch (width)
   {
@@ -384,10 +288,6 @@ u8 ReadSound(u32 offset)
     value = s_state.host_to_sound[reg];
 
   s_state.sound_reads++;
-  if (ShouldLogAccess())
-  {
-    DEV_LOG("KonamiGQ.K056800 sound_read index={} register={} value=0x{:02X}", s_state.sound_reads, reg, value);
-  }
   return value;
 }
 
@@ -408,9 +308,7 @@ void WriteSound(u32 offset, u8 value)
 
     case 2:
     case 3:
-      // Unknown sound-side MIRAC controls. Trace transitions independently of
-      // the generic 256-access log cap so later gameplay changes are visible.
-      TraceSoundControlWrite(reg, value);
+      // Sound-side MIRAC controls are not currently modeled.
       break;
 
     case 4:
@@ -420,24 +318,14 @@ void WriteSound(u32 offset, u8 value)
       break;
 
     case 5:
-      // Crypt Killer firmware writes 0x44/0x77 through a helper that encodes
-      // two independent three-bit fields. Keep semantics unknown for now and
-      // capture every transition for correlation with speech/music/effects.
-      TraceSoundControlWrite(reg, value);
+      // Crypt Killer writes 0x44/0x77 here; the two three-bit fields are not
+      // currently modeled.
       break;
 
     default:
       break;
   }
 
-  if (ShouldLogAccess())
-  {
-    DEV_LOG(
-      "KonamiGQ.K056800 sound_write index={} register={} value=0x{:02X} sound_to_host='{:02X} {:02X}' "
-      "interrupt_enabled={} interrupt_pending={}",
-      s_state.sound_writes, reg, value, s_state.sound_to_host[0], s_state.sound_to_host[1],
-      s_state.interrupt_enabled, s_state.interrupt_pending);
-  }
 }
 
 bool IsSoundInterruptPending()

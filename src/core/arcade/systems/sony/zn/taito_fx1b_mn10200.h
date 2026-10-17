@@ -36,7 +36,7 @@ public:
   void Reset();
   int Execute(int cycles);
 
-  // MAME's external-input API uses ASSERT_LINE as a low physical pin.
+  // ASSERT_LINE represents a low physical pin.
   void SetInput(u32 irq, bool asserted);
   void PulseIRQ(u32 irq);
 

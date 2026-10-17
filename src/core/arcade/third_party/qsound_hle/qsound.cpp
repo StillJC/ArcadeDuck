@@ -134,12 +134,14 @@ static void state_refresh_filter_2(struct qsound_chip *chip);
 static void state_normal_update(struct qsound_chip *chip);
 
 static inline int16_t get_sample(struct qsound_chip *chip, uint16_t bank,uint16_t address);
-static inline int16_t* get_filter_table(struct qsound_chip *chip, uint16_t offset);
-static inline int16_t pcm_update(struct qsound_chip *chip, struct qsound_voice *v, int32_t *echo_out);
+static inline int16_t get_filter_coefficient(uint16_t base, unsigned index);
+static inline int64_t wrap_accumulator(int64_t value);
+static inline int16_t accumulator_to_bus(int64_t value);
+static inline int16_t pcm_update(struct qsound_chip *chip, struct qsound_voice *v, int64_t *echo_out);
 static inline void adpcm_update(struct qsound_chip *chip, int voice_no, int nibble);
-static inline int16_t echo(struct qsound_echo *r,int32_t input);
-static inline int32_t fir(struct qsound_fir *f, int16_t input);
-static inline int32_t delay(struct qsound_delay *d, int32_t input);
+static inline int16_t echo(struct qsound_echo *r,int64_t input);
+static inline int64_t fir(struct qsound_fir *f, int16_t input);
+static inline int32_t delay(struct qsound_delay *d, int64_t input);
 static inline void delay_update(struct qsound_delay *d);
 
 // ============================================================================
@@ -297,23 +299,28 @@ static inline int16_t get_sample(struct qsound_chip *chip, uint16_t bank,uint16_
 	bank &= 0x7FFF;
 	rom_addr = (bank << 16) | (address << 0);
 	
-	sample_data = chip->rom_data[rom_addr];
+	sample_data = chip->rom_data[rom_addr & chip->rom_mask];
 	
 	return (int16_t)((sample_data << 8) | (sample_data << 0));	// MAME currently expands the 8 bit ROM data to 16 bits this way.
 }
 
-static inline int16_t* get_filter_table(struct qsound_chip *chip, uint16_t offset)
+static inline int16_t get_filter_coefficient(uint16_t base, unsigned index)
 {
-	int index;
-	
-	if (offset >= 0xf2e && offset < 0xfff)
-		return (int16_t*)&qsound_filter_data2[offset-0xf2e];	// overlapping filter data
-	
-	index = (offset-0xd53)/95;
-	if(index >= 0 && index < 5)
-		return (int16_t*)&qsound_filter_data[index];	// normal tables
-	
-	return NULL;	// no filter found.
+  if (base >= 0x1000)
+    return 0;
+
+  const uint16_t offset = (base + index) & 0x0FFF;
+
+  if (offset >= 0xD53 && offset <= 0xF2D)
+  {
+    const unsigned table_index = offset - 0xD53;
+    return qsound_filter_data[table_index / 95][table_index % 95];
+  }
+
+  if (offset >= 0xF2E && offset <= 0xFFE)
+    return qsound_filter_data2[offset - 0xF2E];
+
+  return 0;
 }
 
 /********************************************************************/
@@ -415,16 +422,13 @@ static void state_init(struct qsound_chip *chip)
 // Updates filter parameters for mode 1
 static void state_refresh_filter_1(struct qsound_chip *chip)
 {
-	const int16_t *table;
-	
 	for(int ch=0; ch<2; ch++)
 	{
 		chip->filter[ch].delay_pos = 0;
 		chip->filter[ch].tap_count = 95;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->filter[ch].taps, table, 95 * sizeof(int16_t));
+		for (int i = 0; i < 95; i++)
+				chip->filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
 	}
 	
 	chip->state = chip->next_state = STATE_NORMAL1;
@@ -433,38 +437,58 @@ static void state_refresh_filter_1(struct qsound_chip *chip)
 // Updates filter parameters for mode 2
 static void state_refresh_filter_2(struct qsound_chip *chip)
 {
-	const int16_t *table;
-	
 	for(int ch=0; ch<2; ch++)
 	{
 		chip->filter[ch].delay_pos = 0;
 		chip->filter[ch].tap_count = 45;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->filter[ch].taps, table, 45 * sizeof(int16_t));
+		for (int i = 0; i < 45; i++)
+				chip->filter[ch].taps[i] = get_filter_coefficient(chip->filter[ch].table_pos, i);
 		
 		chip->alt_filter[ch].delay_pos = 0;
 		chip->alt_filter[ch].tap_count = 44;
 	
-		table = get_filter_table(chip,chip->filter[ch].table_pos);
-		if (table != NULL)
-			memcpy(chip->alt_filter[ch].taps, table, 44 * sizeof(int16_t));
+		for (int i = 0; i < 44; i++)
+				chip->alt_filter[ch].taps[i] = get_filter_coefficient(chip->alt_filter[ch].table_pos, i);
 	}
 	
 	chip->state = chip->next_state = STATE_NORMAL2;
 }
 
+static inline int64_t wrap_accumulator(int64_t value)
+{
+	const uint64_t mask = (UINT64_C(1) << 36) - 1;
+	uint64_t wrapped = static_cast<uint64_t>(value) & mask;
+
+	if (wrapped & (UINT64_C(1) << 35))
+		wrapped |= ~mask;
+
+	return static_cast<int64_t>(wrapped);
+}
+
+static inline int16_t accumulator_to_bus(int64_t value)
+{
+	value = wrap_accumulator(value);
+
+	if (value > INT32_MAX)
+		value = INT32_MAX;
+	else if (value < INT32_MIN)
+		value = INT32_MIN;
+
+	return static_cast<int16_t>(value >> 16);
+}
+
 // Updates a PCM voice. There are 16 voices, each are updated every sample
 // with full rate and volume control.
-static inline int16_t pcm_update(struct qsound_chip *chip, struct qsound_voice *v, int32_t *echo_out)
+static inline int16_t pcm_update(struct qsound_chip *chip, struct qsound_voice *v, int64_t *echo_out)
 {
 	int32_t new_phase;
 	
 	// Read sample from rom and apply volume
-	int16_t output = (v->volume * get_sample(chip, v->bank, v->addr))>>14;
+	const int64_t sample_product = static_cast<int64_t>(v->volume) * get_sample(chip, v->bank, v->addr);
+	const int16_t output = accumulator_to_bus(sample_product * 4);
 	
-	*echo_out += (output * v->echo)<<2;
+	*echo_out = wrap_accumulator(*echo_out + (static_cast<int64_t>(output) * v->echo * 4));
 	
 	// Add delta to the phase and loop back if required
 	new_phase = v->rate + ((v->addr<<12) | (v->phase>>4));
@@ -535,10 +559,9 @@ static inline void adpcm_update(struct qsound_chip *chip, int voice_no, int nibb
 
 // The echo effect is pretty simple. A moving average filter is used on
 // the output from the delay line to smooth samples over time. 
-static inline int16_t echo(struct qsound_echo *r,int32_t input)
+static inline int16_t echo(struct qsound_echo *r,int64_t input)
 {
 	// get average of last 2 samples from the delay line
-	int32_t new_sample;
 	int32_t old_sample = r->delay_line[r->delay_pos];
 	int32_t last_sample = r->last_sample;
 	
@@ -546,8 +569,9 @@ static inline int16_t echo(struct qsound_echo *r,int32_t input)
 	old_sample = (old_sample+last_sample) >> 1;
 	
 	// add current sample to the delay line
-	new_sample = input + ((old_sample * r->feedback)<<2);
-	r->delay_line[r->delay_pos++] = new_sample>>16;
+	const int64_t feedback = static_cast<int64_t>(old_sample) * r->feedback * 4;
+	const int64_t new_sample = wrap_accumulator(input + feedback);
+	r->delay_line[r->delay_pos++] = accumulator_to_bus(new_sample);
 	
 	if(r->delay_pos >= r->length)
 		r->delay_pos = 0;
@@ -559,7 +583,7 @@ static inline int16_t echo(struct qsound_echo *r,int32_t input)
 static void state_normal_update(struct qsound_chip *chip)
 {
 	int v, ch;
-	int32_t echo_input = 0;
+	int64_t echo_input = 0;
 	int16_t echo_output;
 	
 	chip->ready_flag = 0x80;
@@ -586,9 +610,9 @@ static void state_normal_update(struct qsound_chip *chip)
 	{
 		// Echo is output on the unfiltered component of the left channel and
 		// the filtered component of the right channel.
-		int32_t wet = (ch == 1) ? echo_output<<16 : 0;
-		int32_t dry = (ch == 0) ? echo_output<<16 : 0;
-		int32_t output = 0;
+		int64_t wet = (ch == 1) ? static_cast<int64_t>(echo_output) * 0x10000 : 0;
+		int64_t dry = (ch == 0) ? static_cast<int64_t>(echo_output) * 0x10000 : 0;
+		int64_t output = 0;
 		
 		for(int v=0; v<19; v++)
 		{
@@ -597,23 +621,28 @@ static void state_normal_update(struct qsound_chip *chip)
 				pan_index = 97;
 			
 			// Apply different volume tables on the dry and wet inputs.
-			dry -= (chip->voice_output[v] * chip->pan_tables[ch][PANTBL_DRY][pan_index])<<2;
-			wet -= (chip->voice_output[v] * chip->pan_tables[ch][PANTBL_WET][pan_index])<<2;
+			const int64_t dry_product = static_cast<int64_t>(chip->voice_output[v]) * chip->pan_tables[ch][PANTBL_DRY][pan_index] * 4;
+			const int64_t wet_product = static_cast<int64_t>(chip->voice_output[v]) * chip->pan_tables[ch][PANTBL_WET][pan_index] * 4;
+			dry = wrap_accumulator(dry - dry_product);
+			wet = wrap_accumulator(wet - wet_product);
 		}
 		
 		// Apply FIR filter on 'wet' input
-		wet = fir(&chip->filter[ch], wet >> 16);
+		wet = fir(&chip->filter[ch], accumulator_to_bus(wet));
 		
 		// in mode 2, we do this on the 'dry' input too
 		if(chip->state == STATE_NORMAL2)
-			dry = fir(&chip->alt_filter[ch], dry >> 16);
+			dry = fir(&chip->alt_filter[ch], accumulator_to_bus(dry));
 		
 		// output goes through a delay line and attenuation
-		output = (delay(&chip->wet[ch], wet) + delay(&chip->dry[ch], dry))<<2;
+		const int64_t wet_delay = delay(&chip->wet[ch], wet);
+		const int64_t dry_delay = delay(&chip->dry[ch], dry);
+		output = wrap_accumulator((wet_delay + dry_delay) * 4);
 		
 		// DSP round function
-		output = (output + 0x8000) & ~0xffff;
-		chip->out[ch] = output >> 16;
+		output = wrap_accumulator(output + 0x8000);
+		output &= ~INT64_C(0xffff);
+		chip->out[ch] = accumulator_to_bus(output);
 		
 		if(chip->delay_update)
 		{
@@ -634,19 +663,22 @@ static void state_normal_update(struct qsound_chip *chip)
 }
 
 // Apply the FIR filter used as the Q1 transfer function
-static inline int32_t fir(struct qsound_fir *f, int16_t input)
+static inline int64_t fir(struct qsound_fir *f, int16_t input)
 {
-	int32_t output = 0, tap = 0;
+	int64_t output = 0;
+	int tap = 0;
 	
 	for(; tap < (f->tap_count-1); tap++)
 	{
-		output -= (f->taps[tap] * f->delay_line[f->delay_pos++])<<2;
+		const int64_t product = static_cast<int64_t>(f->taps[tap]) * f->delay_line[f->delay_pos++] * 4;
+		output = wrap_accumulator(output - product);
 		
 		if(f->delay_pos >= f->tap_count-1)
 			f->delay_pos = 0;
 	}
 	
-	output -= (f->taps[tap] * input)<<2;
+	const int64_t product = static_cast<int64_t>(f->taps[tap]) * input * 4;
+	output = wrap_accumulator(output - product);
 	
 	f->delay_line[f->delay_pos++] = input;
 	if(f->delay_pos >= f->tap_count-1)
@@ -656,11 +688,11 @@ static inline int32_t fir(struct qsound_fir *f, int16_t input)
 }
 
 // Apply delay line and component volume
-static inline int32_t delay(struct qsound_delay *d, int32_t input)
+static inline int32_t delay(struct qsound_delay *d, int64_t input)
 {
 	int32_t output;
 	
-	d->delay_line[d->write_pos++] = input>>16;
+	d->delay_line[d->write_pos++] = accumulator_to_bus(input);
 	if(d->write_pos >= 51)
 		d->write_pos = 0;
 

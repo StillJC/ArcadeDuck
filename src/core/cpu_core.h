@@ -76,6 +76,7 @@ struct State
   u32 downcount = 0;
   u32 pending_ticks = 0;
   u32 gte_completion_tick = 0;
+  u32 muldiv_completion_tick = 0;
 
   Registers regs = {};
   Cop0Registers cop0_regs = {};
@@ -155,6 +156,10 @@ ALWAYS_INLINE static void ResetPendingTicks()
 {
   g_state.gte_completion_tick =
     (g_state.pending_ticks < g_state.gte_completion_tick) ? (g_state.gte_completion_tick - g_state.pending_ticks) : 0;
+  g_state.muldiv_completion_tick =
+    (g_state.pending_ticks < g_state.muldiv_completion_tick) ?
+      (g_state.muldiv_completion_tick - g_state.pending_ticks) :
+      0;
   g_state.pending_ticks = 0;
 }
 ALWAYS_INLINE static void AddPendingTicks(TickCount ticks)

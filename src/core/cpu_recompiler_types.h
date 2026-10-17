@@ -41,7 +41,7 @@ constexpr u32 MAX_FAR_HOST_BYTES_PER_INSTRUCTION = 128;
 
 static constexpr u32 FUNCTION_CALL_SHADOW_SPACE = 32;
 
-#elif defined(__linux__) || defined(__ANDROID__) || defined(__APPLE__) || defined(__FreeBSD__)
+#elif defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
 #define ABI_SYSV 1
 
 #define RWRET Xbyak::Reg32(Xbyak::Operand::EAX)

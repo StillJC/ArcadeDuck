@@ -45,7 +45,6 @@
 #pragma comment(lib, "mfuuid")
 #endif
 
-#ifndef __ANDROID__
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -70,7 +69,6 @@ extern "C" {
 #pragma warning(pop)
 #endif
 
-#endif
 
 Log_SetChannel(MediaCapture);
 
@@ -1786,7 +1784,6 @@ bool MediaCaptureMF::ProcessAudioPackets(s64 video_pts, Error* error)
 
 #endif
 
-#ifndef __ANDROID__
 
 // We're using deprecated fields because we're targeting multiple ffmpeg versions.
 #if defined(_MSC_VER)
@@ -2863,7 +2860,6 @@ MediaCapture::CodecList MediaCaptureFFmpeg::GetAudioCodecList(const char* contai
   return GetCodecListForContainer(container, AVMEDIA_TYPE_AUDIO);
 }
 
-#endif
 
 } // namespace
 
@@ -2871,17 +2867,13 @@ static constexpr const std::array s_backend_names = {
 #ifdef _WIN32
   "MediaFoundation",
 #endif
-#ifndef __ANDROID__
   "FFmpeg",
-#endif
 };
 static constexpr const std::array s_backend_display_names = {
 #ifdef _WIN32
   TRANSLATE_NOOP("MediaCapture", "Media Foundation"),
 #endif
-#ifndef __ANDROID__
   TRANSLATE_NOOP("MediaCapture", "FFmpeg"),
-#endif
 };
 static_assert(s_backend_names.size() == static_cast<size_t>(MediaCaptureBackend::MaxCount));
 static_assert(s_backend_display_names.size() == static_cast<size_t>(MediaCaptureBackend::MaxCount));
@@ -2928,11 +2920,9 @@ MediaCapture::ContainerList MediaCapture::GetContainerList(MediaCaptureBackend b
       ret = MediaCaptureMF::GetContainerList();
       break;
 #endif
-#ifndef __ANDROID__
     case MediaCaptureBackend::FFmpeg:
       ret = MediaCaptureFFmpeg::GetContainerList();
       break;
-#endif
     default:
       break;
   }
@@ -2949,11 +2939,9 @@ MediaCapture::CodecList MediaCapture::GetVideoCodecList(MediaCaptureBackend back
       ret = MediaCaptureMF::GetVideoCodecList(container);
       break;
 #endif
-#ifndef __ANDROID__
     case MediaCaptureBackend::FFmpeg:
       ret = MediaCaptureFFmpeg::GetVideoCodecList(container);
       break;
-#endif
     default:
       break;
   }
@@ -2970,11 +2958,9 @@ MediaCapture::CodecList MediaCapture::GetAudioCodecList(MediaCaptureBackend back
       ret = MediaCaptureMF::GetAudioCodecList(container);
       break;
 #endif
-#ifndef __ANDROID__
     case MediaCaptureBackend::FFmpeg:
       ret = MediaCaptureFFmpeg::GetAudioCodecList(container);
       break;
-#endif
     default:
       break;
   }
@@ -2989,10 +2975,8 @@ std::unique_ptr<MediaCapture> MediaCapture::Create(MediaCaptureBackend backend, 
     case MediaCaptureBackend::MediaFoundation:
       return MediaCaptureMF::Create(error);
 #endif
-#ifndef __ANDROID__
     case MediaCaptureBackend::FFmpeg:
       return MediaCaptureFFmpeg::Create(error);
-#endif
     default:
       return nullptr;
   }

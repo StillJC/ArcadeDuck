@@ -357,7 +357,6 @@ bool SaveScreenshot(const char* filename = nullptr, DisplayScreenshotMode mode =
                     DisplayScreenshotFormat format = g_settings.display_screenshot_format,
                     u8 quality = g_settings.display_screenshot_quality, bool compress_on_thread = true);
 
-#ifndef __ANDROID__
 
 /// Returns the path that a new media capture would be saved to by default. Safe to call from any thread.
 std::string GetNewMediaCapturePath(const std::string_view title, const std::string_view container);
@@ -370,7 +369,6 @@ bool StartMediaCapture(std::string path = {});
 bool StartMediaCapture(std::string path, bool capture_video, bool capture_audio);
 void StopMediaCapture();
 
-#endif
 
 /// Loads the cheat list for the current game title from the user directory.
 bool LoadCheatList();
@@ -424,7 +422,7 @@ void CalculateRewindMemoryUsage(u32 num_saves, u32 resolution_scale, u64* ram_us
 void ClearMemorySaveStates();
 void SetRunaheadReplayFlag();
 
-/// Shared socket multiplexer, used by PINE/GDB/etc.
+/// Shared socket multiplexer used by GDB and arcade networking transports.
 SocketMultiplexer* GetSocketMultiplexer();
 void ReleaseSocketMultiplexer();
 

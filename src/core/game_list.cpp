@@ -517,10 +517,6 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   INISettingsInterface custom_attributes_ini(GetCustomPropertiesFile());
   custom_attributes_ini.Load();
 
-#ifdef __ANDROID__
-  recursive_dirs.push_back(Path::Combine(EmuFolders::DataRoot, "games"));
-#endif
-
   if (!dirs.empty() || !recursive_dirs.empty())
   {
     progress->SetProgressRange(static_cast<u32>(dirs.size() + recursive_dirs.size()));
