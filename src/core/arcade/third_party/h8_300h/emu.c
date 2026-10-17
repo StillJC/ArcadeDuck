@@ -1678,19 +1678,11 @@ H8_OP(op01)
       }
       case 0x8:
       {
+        /** MOV.L ERs, @aa:16 */
         h8_u8 ers = system->dbus.bl;
 
         h8_fetch(system);
-        if (!ers)
-          /** MOV.L ERs, @aa:16 */
-          rs_md_l(system, *rd_l(system, ers), system->dbus.bits.u, mov_l);
-        else
-        {
-          /** STC.W CCR, @aa:16 */
-          h8_word_t w;
-          w.u = system->cpu.ccr.raw.u;
-          h8_write_w(system, system->dbus.bits.u, w);
-        }
+        rs_md_l(system, *rd_l(system, ers), aa16(system->dbus.bits), mov_l);
         break;
       }
       case 0xA:
