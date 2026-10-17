@@ -3881,8 +3881,7 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
   ApplySettings(true);
 
   ClearMAMECheats(!booting);
-  if (g_settings.enable_cheats)
-    LoadMAMECheats();
+  LoadMAMECheats();
 
   if (s_running_game_serial != prev_serial)
     UpdateSessionTime(prev_serial);
@@ -4019,7 +4018,7 @@ void System::LoadMAMECheats()
 {
   ClearMAMECheats(false);
 
-  if (!g_settings.enable_cheats || Achievements::IsHardcoreModeActive() || s_running_game_serial.empty())
+  if (Achievements::IsHardcoreModeActive() || s_running_game_serial.empty())
     return;
 
   const Arcade::Database::GameDefinition* const arcade_game = Arcade::Database::GetGame(s_running_game_serial);
@@ -4364,14 +4363,6 @@ void System::CheckForSettingsChanges(const Settings& old_settings)
              g_settings.bios_tty_logging != old_settings.bios_tty_logging)
     {
       CPU::UpdateDebugDispatcherFlag();
-    }
-
-    if (g_settings.enable_cheats != old_settings.enable_cheats)
-    {
-      if (g_settings.enable_cheats)
-        LoadMAMECheats();
-      else
-        ClearMAMECheats(true);
     }
 
     UpdateVolume();
