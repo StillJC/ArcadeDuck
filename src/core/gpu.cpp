@@ -658,9 +658,13 @@ u32 GPU::ReadRegister(u32 offset)
 
       // Type-2 reports the selected interlaced display field through GPUSTAT
       // bits 13 and 31. Use the already-advanced display-field state for readback.
+      // With the interlace bit set in a 240-line mode the field still alternates every frame;
+      // System 12 games wait for it to toggle in their VSync routine.
       if (IsCXD8561QMode() && m_GPUSTAT.vertical_interlace)
       {
-        const u32 field = ZeroExtend32(m_crtc_state.interlaced_display_field & 1u);
+        const u32 field = ZeroExtend32((m_GPUSTAT.InInterleaved480iMode() ? m_crtc_state.interlaced_display_field :
+                                                                           m_crtc_state.interlaced_field) &
+                                       1u);
         u32 stat = m_GPUSTAT.bits;
         stat &= ~((1u << 13) | (1u << 31));
         stat |= (field << 13) | (field << 31);
