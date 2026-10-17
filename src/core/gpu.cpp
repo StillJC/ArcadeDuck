@@ -660,14 +660,17 @@ u32 GPU::ReadRegister(u32 offset)
       // bits 13 and 31. Use the already-advanced display-field state for readback.
       // With the interlace bit set in a 240-line mode the field still alternates every frame;
       // System 12 games wait for it to toggle in their VSync routine.
+      // In 480i, bit 31 is the parity of the line being scanned out and reads 0 during vblank,
+      // so a VSync() waiting for it to change returns at the start of active display.
       if (IsCXD8561QMode() && m_GPUSTAT.vertical_interlace)
       {
-        const u32 field = ZeroExtend32((m_GPUSTAT.InInterleaved480iMode() ? m_crtc_state.interlaced_display_field :
-                                                                           m_crtc_state.interlaced_field) &
-                                       1u);
+        const bool interleaved = m_GPUSTAT.InInterleaved480iMode();
+        const u32 field =
+          ZeroExtend32((interleaved ? m_crtc_state.interlaced_display_field : m_crtc_state.interlaced_field) & 1u);
+        const u32 line_lsb = interleaved ? BoolToUInt32(m_GPUSTAT.display_line_lsb) : field;
         u32 stat = m_GPUSTAT.bits;
         stat &= ~((1u << 13) | (1u << 31));
-        stat |= (field << 13) | (field << 31);
+        stat |= (field << 13) | (line_lsb << 31);
         return stat;
       }
 
