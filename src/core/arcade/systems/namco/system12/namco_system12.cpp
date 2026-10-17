@@ -3493,10 +3493,21 @@ bool WriteLinkBoard(RuntimeState& runtime, u32 width, u32 offset, u32 value)
   if (AccessFitsRange(offset, width, LINK_RESET_BASE, LINK_RESET_END))
   {
     const u32 access_end = offset + width - 1;
-    if (offset <= LINK_RESET_BASE + 1 && access_end >= LINK_RESET_BASE)
+    const bool assert_reset = (offset <= LINK_RESET_BASE + 1 && access_end >= LINK_RESET_BASE);
+    const bool was_reset = runtime.link_cpu_reset;
+    if (assert_reset)
       runtime.link_cpu_reset = true;
     if (offset <= LINK_RESET_BASE + 3 && access_end >= LINK_RESET_BASE + 2)
       runtime.link_cpu_reset = false;
+
+    // The link CPU is not emulated. With no network attached, the uploaded H8 program
+    // initialises its node id word at 0x1700 to 0xFFFF, which Kart Duel reads as
+    // "no link". Without it the game keeps re-running its link initialisation.
+    if ((was_reset || assert_reset) && !runtime.link_cpu_reset)
+    {
+      runtime.link_shared_ram[0x1700] = 0xFF;
+      runtime.link_shared_ram[0x1701] = 0xFF;
+    }
     return true;
   }
 
