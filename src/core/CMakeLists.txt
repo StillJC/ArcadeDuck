@@ -11,6 +11,8 @@ add_library(core
   arcade/arcade_database.h
   arcade/arcade_input.cpp
   arcade/arcade_input.h
+  arcade/arcade_link.cpp
+  arcade/arcade_link.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
   arcade/arcade_output.cpp

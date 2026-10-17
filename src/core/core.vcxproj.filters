@@ -5,6 +5,7 @@
     <ClCompile Include="arcade\arcade_control_registry.cpp" />
     <ClCompile Include="arcade\arcade_database.cpp" />
     <ClCompile Include="arcade\arcade_input.cpp" />
+    <ClCompile Include="arcade\arcade_link.cpp" />
     <ClCompile Include="arcade\arcade_machine_handler.cpp" />
     <ClCompile Include="arcade\devices\cpu\sh7014.cpp" />
     <ClCompile Include="arcade\devices\namco\namco_system12_cdxa.cpp" />
@@ -121,6 +122,7 @@
     <ClInclude Include="arcade\arcade_control_registry.h" />
     <ClInclude Include="arcade\arcade_database.h" />
     <ClInclude Include="arcade\arcade_input.h" />
+    <ClInclude Include="arcade\arcade_link.h" />
     <ClInclude Include="arcade\arcade_machine_handler.h" />
     <ClInclude Include="arcade\devices\security\cat702.h" />
     <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />
