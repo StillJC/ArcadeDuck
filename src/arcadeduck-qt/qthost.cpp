@@ -123,7 +123,6 @@ static std::unique_ptr<INISettingsInterface> s_base_settings_interface;
 static std::unique_ptr<QTimer> s_settings_save_timer;
 static bool s_batch_mode = false;
 static bool s_nogui_mode = false;
-static bool s_start_fullscreen_ui = false;
 static bool s_start_fullscreen_ui_fullscreen = false;
 static bool s_run_setup_wizard = false;
 static bool s_cleanup_after_update = false;
@@ -603,7 +602,7 @@ void QtHost::SetResourcesDirectory()
 
 bool QtHost::SetDataDirectory()
 {
-  // Already set, e.g. by -portable.
+  // Honor an already-selected data root.
   if (!EmuFolders::DataRoot.empty())
     return true;
 
@@ -2243,7 +2242,6 @@ void QtHost::PrintCommandLineVersion()
   std::fprintf(stderr, "\n");
   std::fprintf(stderr, "  -help: Displays this information and exits.\n");
   std::fprintf(stderr, "  -version: Displays version information and exits.\n");
-  std::fprintf(stderr, "  -batch: Enables batch mode (exits after powering off).\n");
   std::fprintf(stderr, "  -resume: Load resume save state. If a boot filename is provided,\n"
                        "    that game's resume state will be loaded, otherwise the most\n"
                        "    recent resume save state will be loaded.\n");
@@ -2257,8 +2255,6 @@ void QtHost::PrintCommandLineVersion()
   std::fprintf(stderr, "  -fullscreen: Enters fullscreen mode immediately after starting.\n");
   std::fprintf(stderr, "  -nofullscreen: Prevents fullscreen mode from triggering if enabled.\n");
   std::fprintf(stderr, "  -nogui: Disables main window from being shown, exits on shutdown.\n");
-  std::fprintf(stderr, "  -bigpicture: Automatically starts big picture UI.\n");
-  std::fprintf(stderr, "  -portable: Forces \"portable mode\", data in same directory.\n");
   std::fprintf(stderr, "  -settings <filename>: Loads a custom settings configuration from the\n"
                        "    specified filename. Default settings applied if file not found.\n");
   std::fprintf(stderr, "  -earlyconsole: Creates console as early as possible, for logging.\n");
@@ -2300,12 +2296,6 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       {
         PrintCommandLineVersion();
         return false;
-      }
-      else if (CHECK_ARG("-batch"))
-      {
-        INFO_LOG("Command Line: Using batch mode.");
-        s_batch_mode = true;
-        continue;
       }
       else if (CHECK_ARG("-nogui"))
       {
@@ -2351,22 +2341,10 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         AutoBoot(autoboot)->override_fullscreen = false;
         continue;
       }
-      else if (CHECK_ARG("-portable"))
-      {
-        INFO_LOG("Command Line: Using portable mode.");
-        EmuFolders::DataRoot = EmuFolders::AppRoot;
-        continue;
-      }
       else if (CHECK_ARG_PARAM("-settings"))
       {
         settings_filename = args[++i].toStdString();
         INFO_LOG("Command Line: Overriding settings filename: {}", settings_filename);
-        continue;
-      }
-      else if (CHECK_ARG("-bigpicture"))
-      {
-        INFO_LOG("Command Line: Starting big picture mode.");
-        s_start_fullscreen_ui = true;
         continue;
       }
       else if (CHECK_ARG("-setupwizard"))
@@ -2506,14 +2484,10 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
   if (autoboot && autoboot->filename.empty() && autoboot->save_state.empty())
     autoboot.reset();
 
-  // if we don't have autoboot, we definitely don't want batch mode (because that'll skip
-  // scanning the game list).
-  if (s_batch_mode && !autoboot && !s_start_fullscreen_ui)
+  if (s_nogui_mode && !autoboot)
   {
-    QMessageBox::critical(
-      nullptr, qApp->translate("QtHost", "Error"),
-      s_nogui_mode ? qApp->translate("QtHost", "Cannot use no-gui mode, because no boot filename was specified.") :
-                     qApp->translate("QtHost", "Cannot use batch mode, because no boot filename was specified."));
+    QMessageBox::critical(nullptr, qApp->translate("QtHost", "Error"),
+                          qApp->translate("QtHost", "Cannot use no-gui mode, because no boot filename was specified."));
     return false;
   }
 
@@ -2609,11 +2583,7 @@ int main(int argc, char* argv[])
   if (!s_nogui_mode)
     main_window->show();
 
-  // Initialize big picture mode if requested.
-  if (s_start_fullscreen_ui)
-    g_emu_thread->startFullscreenUI();
-  else
-    s_start_fullscreen_ui_fullscreen = false;
+  s_start_fullscreen_ui_fullscreen = false;
 
   // Skip the update check if we're booting a game directly.
   if (autoboot)

@@ -1,5 +1,6 @@
 # ArcadeDuck universal arcade database.
-# Game archives are always complete non-merged sets. Parent relationships are metadata only.
+# Game definitions describe complete logical sets; supported handlers can resolve those ROMs from non-merged,
+# split, or merged archive layouts. Parent relationships define clone lineage and ROM fallback where supported.
 # The title field keeps the canonical game/edition name; region, board revision, and set notes use dedicated fields.
 schemaVersion: 1
 
