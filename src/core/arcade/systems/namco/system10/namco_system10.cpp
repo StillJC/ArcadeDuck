@@ -11,6 +11,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
+#include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
@@ -160,246 +161,10 @@ static_assert(PROGRAM_FIRST_END == UINT32_C(0x0e0) * MemNRawNAND::DATA_BYTES_PER
 static_assert((PROGRAM_ROM_SIZE - PROGRAM_FILL_END) ==
               UINT32_C(0x1f00) * MemNRawNAND::DATA_BYTES_PER_PAGE);
 
-struct Type2Equation
-{
-  std::array<u16, 3> cipher_taps;
-  std::array<u16, 3> plain_taps;
-  bool constant;
-  bool nonlinear_mask_12_and_14;
-};
-
-struct Type2State
-{
-  // History index 0 is the most recently consumed protected word.
-  std::array<u16, 3> cipher_history = {};
-  std::array<u16, 3> plain_history = {};
-  u64 previous_cipherwords = 0;
-  u64 previous_plainwords = 0;
-  u16 mask = 0;
-};
-
-// Gamshara KC020A Type-2 profile data. The linear masks and initialization
-// behavior are derived from MAME's BSD-3-Clause System 10 decrypter dataset
-// (Andreas Naive; namcos10 driver by smf/windyfairy).
-struct Type2LinearLogic
-{
-  std::array<u64, 16> cipher_masks;
-  std::array<u64, 16> plain_masks;
-  u16 xor_mask;
-};
-
-static constexpr Type2LinearLogic GAMSHARA_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x0000000000000028), UINT64_C(0x0000cae83f389fd9),
-    UINT64_C(0x0000000000001000), UINT64_C(0x0000000042823402),
-    UINT64_C(0x0000cae8736a0592), UINT64_C(0x0000cae8736a8596),
-    UINT64_C(0x000000008b4095b9), UINT64_C(0x0000000000002100),
-    UINT64_C(0x0000000004018228), UINT64_C(0x0000000000000042),
-    UINT64_C(0x0000000000000818), UINT64_C(0x0000000000004010),
-    UINT64_C(0x000000008b4099f1), UINT64_C(0x00000000044bce08),
-    UINT64_C(0x00000000000000c1), UINT64_C(0x0000000042823002),
-  },
-  {
-    UINT64_C(0x0000000000000028), UINT64_C(0x00000904c2048dd9),
-    UINT64_C(0x0000000000008000), UINT64_C(0x0000000054021002),
-    UINT64_C(0x00000904e0078592), UINT64_C(0x00000904e00785b2),
-    UINT64_C(0x00000000440097f9), UINT64_C(0x0000000000002104),
-    UINT64_C(0x0000000029018308), UINT64_C(0x0000000000000042),
-    UINT64_C(0x0000000000000850), UINT64_C(0x0000000000004012),
-    UINT64_C(0x000000004400d1f1), UINT64_C(0x000000006001ce08),
-    UINT64_C(0x00000000000000c8), UINT64_C(0x0000000054023002),
-  },
-  UINT16_C(0x25ab),
-};
-
-static constexpr Type2LinearLogic KONOTAKO_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x000000000000004c), UINT64_C(0x00000000d39e3d3d),
-    UINT64_C(0x0000000000001110), UINT64_C(0x0000000000002200),
-    UINT64_C(0x000000003680c008), UINT64_C(0x0000000000000281),
-    UINT64_C(0x0000000000005002), UINT64_C(0x00002a7371895a47),
-    UINT64_C(0x0000000000000003), UINT64_C(0x00002a7371897a4e),
-    UINT64_C(0x00002a73aea17a41), UINT64_C(0x00002a73fd895a4f),
-    UINT64_C(0x000000005328200a), UINT64_C(0x0000000000000010),
-    UINT64_C(0x0000000000000040), UINT64_C(0x0000000000000200),
-  },
-  {
-    UINT64_C(0x000000000000008c), UINT64_C(0x0000000053003d25),
-    UINT64_C(0x0000000000001120), UINT64_C(0x0000000000002200),
-    UINT64_C(0x0000000037004008), UINT64_C(0x0000000000000282),
-    UINT64_C(0x0000000000006002), UINT64_C(0x0000060035005a47),
-    UINT64_C(0x0000000000000003), UINT64_C(0x0000060035001a4e),
-    UINT64_C(0x0000060025007a41), UINT64_C(0x00000600b5005a2f),
-    UINT64_C(0x000000009000200b), UINT64_C(0x0000000000000310),
-    UINT64_C(0x0000000000001840), UINT64_C(0x0000000000000400),
-  },
-  UINT16_C(0x0748),
-};
-
-
-static constexpr Type2LinearLogic PANIKURU_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x0000000000000130), UINT64_C(0x0000000018802004), UINT64_C(0x0000b04a04781081), UINT64_C(0x0000000006802000),
-    UINT64_C(0x0000000000000c02), UINT64_C(0x0000000042040020), UINT64_C(0x0000000000000003), UINT64_C(0x0000b040c00c0940),
-    UINT64_C(0x0000000000000009), UINT64_C(0x00001020a0010400), UINT64_C(0x0000000010204104), UINT64_C(0x000000005a840004),
-    UINT64_C(0x0000000000000290), UINT64_C(0x0000000010204380), UINT64_C(0x0000000000001041), UINT64_C(0x0000000000006100),
-  },
-  {
-    UINT64_C(0x0000000000000120), UINT64_C(0x0000000028002004), UINT64_C(0x0000010800480001), UINT64_C(0x0000000006040100),
-    UINT64_C(0x0000000000000c00), UINT64_C(0x0000000042000820), UINT64_C(0x0000000000001003), UINT64_C(0x0000910212040100),
-    UINT64_C(0x0000000000008009), UINT64_C(0x0000900021018000), UINT64_C(0x0000000090004104), UINT64_C(0x000000006a004004),
-    UINT64_C(0x0000000000000214), UINT64_C(0x0000000090004190), UINT64_C(0x0000000000001040), UINT64_C(0x0000000000006008),
-  },
-  UINT16_C(0x7c29),
-};
-
-static constexpr Type2LinearLogic KNPUZZLE_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x00000000c0a4208c), UINT64_C(0x00000000204100a8), UINT64_C(0x000000000c0306a0), UINT64_C(0x000000000819e944),
-    UINT64_C(0x0000000000001400), UINT64_C(0x0000000000000061), UINT64_C(0x000000000141401c), UINT64_C(0x0000000000000020),
-    UINT64_C(0x0000000001418010), UINT64_C(0x00008d6a1eb690cf), UINT64_C(0x00008d6a4d3b90ce), UINT64_C(0x0000000000004201),
-    UINT64_C(0x00000000012c00a2), UINT64_C(0x000000000c0304a4), UINT64_C(0x0000000000000500), UINT64_C(0x0000000000000980),
-  },
-  {
-    UINT64_C(0x000000002a22608c), UINT64_C(0x00000000002300a8), UINT64_C(0x0000000000390ea0), UINT64_C(0x000000000100a9c4),
-    UINT64_C(0x0000000000001400), UINT64_C(0x0000000000000041), UINT64_C(0x0000000003014014), UINT64_C(0x0000000000000022),
-    UINT64_C(0x0000000003010110), UINT64_C(0x00000800031a80cf), UINT64_C(0x00000800003398de), UINT64_C(0x0000000000004200),
-    UINT64_C(0x00000000012a04a2), UINT64_C(0x00000000003984a4), UINT64_C(0x0000000000000700), UINT64_C(0x0000000000000882),
-  },
-  UINT16_C(0x01e2),
-};
-
-static constexpr Type2LinearLogic MRDRILLERG_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x0000115c68620401), UINT64_C(0x0000008102802094), UINT64_C(0x00000081a65270a8), UINT64_C(0x0000000000810010),
-    UINT64_C(0x00004c2c080f3059), UINT64_C(0x00000081470a9500), UINT64_C(0x000000816a123009), UINT64_C(0x00000081a2b23038),
-    UINT64_C(0x00002d18a06b9000), UINT64_C(0x000001186c02000c), UINT64_C(0x00000081a2b2704c), UINT64_C(0x0000702811016302),
-    UINT64_C(0x00000081470a1122), UINT64_C(0x0000000000006200), UINT64_C(0x00009170ac403013), UINT64_C(0x0000000000001044),
-  },
-  {
-    UINT64_C(0x0000115c68620401), UINT64_C(0x0000008102802094), UINT64_C(0x00000081a65270a8), UINT64_C(0x0000000000810010),
-    UINT64_C(0x00004c2c080f3059), UINT64_C(0x00000081470a9500), UINT64_C(0x000000816a123009), UINT64_C(0x00000081a2b23038),
-    UINT64_C(0x00002d18a06b9000), UINT64_C(0x000001186c02000c), UINT64_C(0x00000081a2b2704c), UINT64_C(0x0000702811016302),
-    UINT64_C(0x00000081470a1122), UINT64_C(0x0000000000006200), UINT64_C(0x00009170ac403013), UINT64_C(0x0000000000001044),
-  },
-  UINT16_C(0x0000),
-};
-
-static constexpr Type2LinearLogic GJSPACE_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x0000000000000240), UINT64_C(0x0000d617eb0f1ab1), UINT64_C(0x00000000451111c0), UINT64_C(0x00000000013b1f44),
-    UINT64_C(0x0000aab0b356abce), UINT64_C(0x00007ca76b89602a), UINT64_C(0x0000000000001800), UINT64_C(0x00000000031d1303),
-    UINT64_C(0x0000000000000801), UINT64_C(0x0000000030111160), UINT64_C(0x0000000001ab3978), UINT64_C(0x00000000c131b160),
-    UINT64_C(0x0000000000001110), UINT64_C(0x0000000000008002), UINT64_C(0x00000000e1113540), UINT64_C(0x0000d617fdce8bfc),
-  },
-  {
-    UINT64_C(0x0000000000008240), UINT64_C(0x000000002f301ab1), UINT64_C(0x00000000050011c0), UINT64_C(0x00000000412817c4),
-    UINT64_C(0x00000004c338abc6), UINT64_C(0x000000046108602a), UINT64_C(0x0000000000005800), UINT64_C(0x00000000c3081347),
-    UINT64_C(0x0000000000000801), UINT64_C(0x0000000061001160), UINT64_C(0x0000000061183978), UINT64_C(0x00000000e520b142),
-    UINT64_C(0x0000000000001101), UINT64_C(0x000000000000a002), UINT64_C(0x0000000029001740), UINT64_C(0x00000000a4309bfc),
-  },
-  UINT16_C(0x2e7f),
-};
-
-static constexpr Type2LinearLogic CHOCOVADER_TYPE2_LOGIC = {
-  {
-    UINT64_C(0x00005239351ec1da), UINT64_C(0x0000000000008090), UINT64_C(0x0000000048264808), UINT64_C(0x0000000000004820),
-    UINT64_C(0x0000000000000500), UINT64_C(0x0000000058ff5a54), UINT64_C(0x00000000d8220208), UINT64_C(0x00005239351e91d3),
-    UINT64_C(0x000000009a1dfaff), UINT64_C(0x0000000090040001), UINT64_C(0x0000000000000100), UINT64_C(0x0000000000001408),
-    UINT64_C(0x0000000032efd3f1), UINT64_C(0x00000000000000d0), UINT64_C(0x0000000032efd2d7), UINT64_C(0x0000000000000840),
-  },
-  {
-    UINT64_C(0x00002000410485da), UINT64_C(0x0000000000008081), UINT64_C(0x0000000008044088), UINT64_C(0x0000000000004802),
-    UINT64_C(0x0000000000000500), UINT64_C(0x00000000430cda54), UINT64_C(0x0000000010000028), UINT64_C(0x00002000410491db),
-    UINT64_C(0x000000001100fafe), UINT64_C(0x0000000018040001), UINT64_C(0x0000000000000010), UINT64_C(0x0000000000000508),
-    UINT64_C(0x000000006800d3f5), UINT64_C(0x0000000000000058), UINT64_C(0x000000006800d2d5), UINT64_C(0x0000000000001840),
-  },
-  UINT16_C(0x5b22),
-};
-
-static constexpr std::array<u16, 16> TYPE2_INITIAL_CIPHER_HISTORY = {
-  UINT16_C(0x0000), UINT16_C(0x9000), UINT16_C(0x9100), UINT16_C(0x1800),
-  UINT16_C(0x0800), UINT16_C(0x1000), UINT16_C(0x8100), UINT16_C(0x8000),
-  UINT16_C(0x8900), UINT16_C(0x0100), UINT16_C(0x1900), UINT16_C(0x9900),
-  UINT16_C(0x8800), UINT16_C(0x1100), UINT16_C(0x9800), UINT16_C(0x0900),
-};
-
-static constexpr std::array<u16, 16> PANIKURU_TYPE2_INITIAL_CIPHER_HISTORY = {
-  UINT16_C(0x0000), UINT16_C(0x020e), UINT16_C(0x0412), UINT16_C(0x0411),
-  UINT16_C(0x0204), UINT16_C(0x001b), UINT16_C(0x0009), UINT16_C(0x0207),
-  UINT16_C(0x2040), UINT16_C(0x2440), UINT16_C(0x0012), UINT16_C(0x0001),
-  UINT16_C(0x0614), UINT16_C(0x000a), UINT16_C(0x0214), UINT16_C(0x041b),
-};
-
-static constexpr std::array<u16, 16> MRDRILLERG_TYPE2_INITIAL_CIPHER_HISTORY = {
-  UINT16_C(0x0000), UINT16_C(0x0000), UINT16_C(0x0000), UINT16_C(0x2000),
-  UINT16_C(0x801a), UINT16_C(0x6000), UINT16_C(0x0002), UINT16_C(0x0000),
-  UINT16_C(0x0000), UINT16_C(0x0018), UINT16_C(0x0000), UINT16_C(0x0420),
-  UINT16_C(0x0000), UINT16_C(0x8800), UINT16_C(0x0000), UINT16_C(0xc000),
-};
-
 struct Type1State
 {
   u16 mask = 0;
   u32 counter = 0;
-};
-
-// CORROBORATED, not locally hardware-proven: this reduced Star Trigon model
-// was fitted against protected-stream input/output behavior. It is expressed
-// as profile-local three-word history equations and remains separate from the
-// ordinary static MEM(N) permutation.
-//
-// Each row computes one bit of the next XOR mask. Tap words are ordered newest
-// to oldest. The final flag selects the recovered nonlinear term for that bit.
-static constexpr std::array<Type2Equation, 16> STAR_TRIGON_TYPE2_EQUATIONS = {
-  Type2Equation{{UINT16_C(0x75a4), UINT16_C(0x2cf8), UINT16_C(0x0036)},
-                {UINT16_C(0x75a5), UINT16_C(0x0230), UINT16_C(0x0012)},
-                false, false},
-  Type2Equation{{UINT16_C(0x010c), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x0008), UINT16_C(0x0000), UINT16_C(0x0000)},
-                true, false},
-  Type2Equation{{UINT16_C(0x0781), UINT16_C(0x2290), UINT16_C(0x0036)},
-                {UINT16_C(0x8581), UINT16_C(0x0200), UINT16_C(0x0012)},
-                true, false},
-  Type2Equation{{UINT16_C(0x49b5), UINT16_C(0xd6d2), UINT16_C(0x8fd4)},
-                {UINT16_C(0x4da5), UINT16_C(0x0832), UINT16_C(0x0010)},
-                false, false},
-  Type2Equation{{UINT16_C(0x0080), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x2000), UINT16_C(0x0000), UINT16_C(0x0000)},
-                false, true},
-  Type2Equation{{UINT16_C(0x8c00), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x8800), UINT16_C(0x0000), UINT16_C(0x0000)},
-                false, false},
-  Type2Equation{{UINT16_C(0xc7e4), UINT16_C(0xf79e), UINT16_C(0x8fd4)},
-                {UINT16_C(0xc7e4), UINT16_C(0x0277), UINT16_C(0x0010)},
-                true, false},
-  Type2Equation{{UINT16_C(0x102a), UINT16_C(0x097c), UINT16_C(0x0000)},
-                {UINT16_C(0x10a8), UINT16_C(0x0860), UINT16_C(0x0000)},
-                false, false},
-  Type2Equation{{UINT16_C(0x103a), UINT16_C(0x097c), UINT16_C(0x0000)},
-                {UINT16_C(0x1038), UINT16_C(0x0860), UINT16_C(0x0000)},
-                false, false},
-  Type2Equation{{UINT16_C(0xc4e4), UINT16_C(0xf7ba), UINT16_C(0x8fd4)},
-                {UINT16_C(0x85e4), UINT16_C(0x0273), UINT16_C(0x0010)},
-                false, false},
-  Type2Equation{{UINT16_C(0x2200), UINT16_C(0x0024), UINT16_C(0x0000)},
-                {UINT16_C(0x0200), UINT16_C(0x0004), UINT16_C(0x0000)},
-                true, false},
-  Type2Equation{{UINT16_C(0x6040), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x2040), UINT16_C(0x0000), UINT16_C(0x0000)},
-                true, false},
-  Type2Equation{{UINT16_C(0x0420), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x0428), UINT16_C(0x0000), UINT16_C(0x0000)},
-                false, false},
-  Type2Equation{{UINT16_C(0x1801), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x1001), UINT16_C(0x0000), UINT16_C(0x0000)},
-                false, false},
-  Type2Equation{{UINT16_C(0x1d80), UINT16_C(0x2290), UINT16_C(0x0036)},
-                {UINT16_C(0x0d80), UINT16_C(0x0200), UINT16_C(0x0012)},
-                false, false},
-  Type2Equation{{UINT16_C(0x0105), UINT16_C(0x0000), UINT16_C(0x0000)},
-                {UINT16_C(0x0144), UINT16_C(0x0000), UINT16_C(0x0000)},
-                true, false},
 };
 
 enum class I2CPhase : u8
@@ -429,7 +194,8 @@ struct RuntimeState
   std::string set_name;
   MediaType media_type = MediaType::None;
 
-  MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
+  const MemNProfile* memn_profile = nullptr;
+  u16 data_xor = 0;
   std::vector<MemNRawNAND> nands;
   std::vector<u8> lookup_ram;
   u16 control_latch = 0;
@@ -457,6 +223,7 @@ struct RuntimeState
   u32 type2_generation = 0;
   u32 type2_trace_words = 0;
   Type2State type2_state;
+  std::vector<u8> type2_nonlinear_table;
 
   I2CState i2c;
 
@@ -480,37 +247,6 @@ struct RuntimeState
 
 std::optional<RuntimeState> s_runtime;
 std::unique_ptr<TimingEvent> s_baseboard_io_event;
-
-// PROVEN/CORROBORATED: Star Trigon ordinary MEM(N) data is stored with a
-// pre-permute XOR of 0xAAAA and this recovered 16-bit bit permutation.
-// The array lists the source bit for output bits 15 down to 0.
-static constexpr std::array<u8, 16> STAR_TRIGON_STATIC_BIT_ORDER = {
-  14, 13, 12, 15, 9, 11, 8, 10, 4, 5, 6, 7, 0, 3, 2, 1,
-};
-
-static constexpr std::array<u8, 16> GAMSHARA_STATIC_BIT_ORDER = {
-  13, 12, 15, 14, 8, 9, 11, 10, 5, 7, 4, 6, 0, 1, 2, 3,
-};
-
-static constexpr std::array<u8, 16> KONOTAKO_STATIC_BIT_ORDER = {
-  14, 15, 12, 13, 8, 9, 11, 10, 5, 4, 7, 6, 0, 1, 3, 2,
-};
-
-static constexpr std::array<u8, 16> PANIKURU_STATIC_BIT_ORDER = {
-  14, 12, 15, 13, 8, 9, 10, 11, 4, 7, 6, 5, 1, 0, 3, 2,
-};
-static constexpr std::array<u8, 16> KNPUZZLE_STATIC_BIT_ORDER = {
-  14, 15, 12, 13, 10, 8, 11, 9, 4, 5, 6, 7, 1, 3, 0, 2,
-};
-static constexpr std::array<u8, 16> MRDRILLERG_STATIC_BIT_ORDER = {
-  14, 12, 15, 13, 10, 9, 8, 11, 4, 5, 6, 7, 0, 1, 3, 2,
-};
-static constexpr std::array<u8, 16> GJSPACE_STATIC_BIT_ORDER = {
-  8, 10, 6, 5, 7, 14, 4, 15, 13, 9, 1, 0, 2, 11, 12, 3,
-};
-static constexpr std::array<u8, 16> CHOCOVADER_STATIC_BIT_ORDER = {
-  13, 12, 14, 15, 9, 8, 10, 11, 4, 7, 6, 5, 0, 3, 2, 1,
-};
 
 // CORROBORATED behavior for the KC001A MEM(M) board used by Mr. Driller 2.
 // These bit orders describe observable transforms; they are kept profile-local
@@ -545,40 +281,6 @@ constexpr u16 Permute16(u16 value, const std::array<u8, 16>& source_bits)
     result |= static_cast<u16>(((value >> source_bits[i]) & 1u) << output_bit);
   }
   return result;
-}
-
-constexpr u16 DecodeStaticWord(MemNBoardProfile profile, u16 raw_word)
-{
-  switch (profile)
-  {
-    case MemNBoardProfile::StarTrigon:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), STAR_TRIGON_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::Gamshara:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), GAMSHARA_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::KonoTako:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), KONOTAKO_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::Panikuru:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), PANIKURU_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::KNPuzzle:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), KNPUZZLE_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::MrDrillerG:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), MRDRILLERG_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::GJSpace:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), GJSPACE_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::Chocovader:
-      return Permute16(static_cast<u16>(raw_word ^ UINT16_C(0xaaaa)), CHOCOVADER_STATIC_BIT_ORDER);
-
-    case MemNBoardProfile::Unknown:
-    default:
-      return raw_word;
-  }
 }
 
 constexpr u16 DecodeMemMStaticWord(MemMBoardProfile profile, u16 raw_word)
@@ -630,203 +332,6 @@ constexpr u16 DecodeMrDriller2Type1Word(Type1State& state, u16 cipher_word)
   return plain_word;
 }
 
-static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0xaaaa)) == UINT16_C(0x0000));
-static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0x5555)) == UINT16_C(0xffff));
-static_assert(DecodeStaticWord(MemNBoardProfile::StarTrigon, UINT16_C(0x1234)) == UINT16_C(0x7497));
-
-constexpr void PushType2History(std::array<u16, 3>& history, u16 word)
-{
-  history[2] = history[1];
-  history[1] = history[0];
-  history[0] = word;
-}
-
-constexpr u16 ComputeStarTrigonType2NextMask(const Type2State& state, u16 used_mask)
-{
-  u16 next_mask = 0;
-
-  for (u32 bit = 0; bit < STAR_TRIGON_TYPE2_EQUATIONS.size(); bit++)
-  {
-    const Type2Equation& equation = STAR_TRIGON_TYPE2_EQUATIONS[bit];
-    u16 parity_input = 0;
-
-    for (u32 history_index = 0; history_index < 3; history_index++)
-    {
-      parity_input ^= static_cast<u16>(state.cipher_history[history_index] &
-                                       equation.cipher_taps[history_index]);
-      parity_input ^= static_cast<u16>(state.plain_history[history_index] &
-                                       equation.plain_taps[history_index]);
-    }
-
-    u32 bit_value = (std::popcount(static_cast<u32>(parity_input)) & 1u) ^
-                    (equation.constant ? 1u : 0u);
-
-    if (equation.nonlinear_mask_12_and_14 &&
-        (used_mask & UINT16_C(0x5000)) == UINT16_C(0x5000))
-    {
-      bit_value ^= 1u;
-    }
-
-    next_mask |= static_cast<u16>(bit_value << bit);
-  }
-
-  return next_mask;
-}
-
-constexpr u16 DecodeStarTrigonType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 used_mask = state.mask;
-  const u16 plain_word = static_cast<u16>(cipher_word ^ used_mask);
-
-  PushType2History(state.cipher_history, cipher_word);
-  PushType2History(state.plain_history, plain_word);
-  state.mask = ComputeStarTrigonType2NextMask(state, used_mask);
-  return plain_word;
-}
-
-constexpr u32 Parity64(u64 value)
-{
-  return std::popcount(value) & 1u;
-}
-
-constexpr u16 ComputeLinearType2NextMask(const Type2LinearLogic& logic, u64 previous_cipherwords,
-                                         u64 previous_plainwords, u16 nonlinear)
-{
-  u16 mask = 0;
-  for (s32 bit = 15; bit >= 0; bit--)
-  {
-    mask = static_cast<u16>(mask << 1);
-    mask ^= static_cast<u16>(Parity64(logic.cipher_masks[static_cast<size_t>(bit)] & previous_cipherwords));
-    mask ^= static_cast<u16>(Parity64(logic.plain_masks[static_cast<size_t>(bit)] & previous_plainwords));
-  }
-
-  return static_cast<u16>(mask ^ logic.xor_mask ^ nonlinear);
-}
-
-constexpr u16 DecodeGamsharaType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
-  const u16 nonlinear = static_cast<u16>(((previous_masks >> 7) & (previous_masks >> 13) & UINT64_C(1)) << 2);
-  state.mask = ComputeLinearType2NextMask(GAMSHARA_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, nonlinear);
-  return plain_word;
-}
-
-constexpr u16 DecodeKonoTakoType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
-  const u16 nonlinear = static_cast<u16>(((previous_masks >> 7) & (previous_masks >> 15) & UINT64_C(1)) << 15);
-  state.mask = ComputeLinearType2NextMask(KONOTAKO_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, nonlinear);
-  return plain_word;
-}
-
-constexpr u16 DecodePanikuruType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u16 a = static_cast<u16>(Parity64(UINT64_C(0x0000000088300281) & state.previous_cipherwords) ^
-                                 Parity64(UINT64_C(0x0000000004600281) & state.previous_plainwords));
-  const u16 b = static_cast<u16>(Parity64(UINT64_C(0x0000a13140090000) & state.previous_cipherwords) ^
-                                 Parity64(UINT64_C(0x0000806240090000) & state.previous_plainwords));
-  state.mask = ComputeLinearType2NextMask(PANIKURU_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, static_cast<u16>((a & b) << 2));
-  return plain_word;
-}
-
-constexpr u16 DecodeKNPuzzleType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
-  const u16 nonlinear = static_cast<u16>(((previous_masks >> 19) &
-    (Parity64(UINT64_C(0x0000000014001290) & state.previous_cipherwords) ^
-     Parity64(UINT64_C(0x0000000000021290) & state.previous_plainwords)) & UINT64_C(1)) << 1);
-  state.mask = ComputeLinearType2NextMask(KNPUZZLE_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, nonlinear);
-  return plain_word;
-}
-
-constexpr u16 DecodeMrDrillerGType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
-  const u16 nonlinear = static_cast<u16>((Parity64(previous_masks & UINT64_C(0x120100400000)) &
-                                          Parity64(previous_masks & UINT64_C(0x011800020000))) * 0x11);
-  state.mask = ComputeLinearType2NextMask(MRDRILLERG_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, nonlinear);
-  return plain_word;
-}
-
-constexpr u16 DecodeGJSpaceType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-  state.mask = ComputeLinearType2NextMask(GJSPACE_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, 0);
-  return plain_word;
-}
-
-constexpr u16 DecodeChocovaderType2Word(Type2State& state, u16 cipher_word)
-{
-  const u16 plain_word = static_cast<u16>(cipher_word ^ state.mask);
-  state.previous_cipherwords = (state.previous_cipherwords << 16) | cipher_word;
-  state.previous_plainwords = (state.previous_plainwords << 16) | plain_word;
-
-  const u64 previous_masks = state.previous_cipherwords ^ state.previous_plainwords;
-  const u16 nonlinear = static_cast<u16>(((previous_masks >> 9) &
-    (Parity64(UINT64_C(0x0000000010065810) & state.previous_cipherwords) ^
-     Parity64(UINT64_C(0x0000000021005810) & state.previous_plainwords)) & UINT64_C(1)) << 10);
-  state.mask = ComputeLinearType2NextMask(CHOCOVADER_TYPE2_LOGIC, state.previous_cipherwords,
-                                          state.previous_plainwords, nonlinear);
-  return plain_word;
-}
-
-constexpr bool ValidateStarTrigonType2KnownAnswer()
-{
-  // First 32 bytes of the protected stream captured by S10-02A. The plaintext
-  // forms a coherent MIPS entry sequence: J 0x80012220, NOP, then an address
-  // ladder beginning at 0x800126BC.
-  constexpr std::array<u16, 16> cipher = {
-    UINT16_C(0x4888), UINT16_C(0xbed6), UINT16_C(0x1c94), UINT16_C(0x1b5c),
-    UINT16_C(0xa21c), UINT16_C(0x1d38), UINT16_C(0x082b), UINT16_C(0xdf32),
-    UINT16_C(0x4600), UINT16_C(0x5275), UINT16_C(0x985d), UINT16_C(0x73d4),
-    UINT16_C(0xa392), UINT16_C(0x9563), UINT16_C(0x86e1), UINT16_C(0xebc8),
-  };
-  constexpr std::array<u16, 16> expected_plain = {
-    UINT16_C(0x4888), UINT16_C(0x0800), UINT16_C(0x0000), UINT16_C(0x0000),
-    UINT16_C(0x26bc), UINT16_C(0x8001), UINT16_C(0x26cc), UINT16_C(0x8001),
-    UINT16_C(0x26dc), UINT16_C(0x8001), UINT16_C(0x26ec), UINT16_C(0x8001),
-    UINT16_C(0x26fc), UINT16_C(0x8001), UINT16_C(0x270c), UINT16_C(0x8001),
-  };
-
-  Type2State state;
-  for (u32 i = 0; i < cipher.size(); i++)
-  {
-    if (DecodeStarTrigonType2Word(state, cipher[i]) != expected_plain[i])
-      return false;
-  }
-
-  return true;
-}
-
-static_assert(ValidateStarTrigonType2KnownAnswer());
 
 void ResetType1State(RuntimeState& runtime, u8 iv)
 {
@@ -837,36 +342,18 @@ void ResetType1State(RuntimeState& runtime, u8 iv)
 
 void ResetType2State(RuntimeState& runtime)
 {
+  // The nonlinear table address counter is not reset by the Type-2 enable.
+  const u32 nonlinear_count = runtime.type2_state.nonlinear_count;
   runtime.type2_state = {};
+  runtime.type2_state.nonlinear_count = nonlinear_count;
   runtime.type2_trace_words = 0;
 }
 
 void InitializeType2State(RuntimeState& runtime, u8 iv)
 {
   ResetType2State(runtime);
-  switch (runtime.board_profile)
-  {
-    case MemNBoardProfile::Panikuru:
-      runtime.type2_state.previous_cipherwords = PANIKURU_TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
-      break;
-
-    case MemNBoardProfile::MrDrillerG:
-      runtime.type2_state.previous_cipherwords = MRDRILLERG_TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
-      break;
-
-    case MemNBoardProfile::Gamshara:
-    case MemNBoardProfile::KonoTako:
-    case MemNBoardProfile::KNPuzzle:
-    case MemNBoardProfile::GJSpace:
-    case MemNBoardProfile::Chocovader:
-      runtime.type2_state.previous_cipherwords = TYPE2_INITIAL_CIPHER_HISTORY[iv & 0x0f];
-      break;
-
-    case MemNBoardProfile::StarTrigon:
-    case MemNBoardProfile::Unknown:
-    default:
-      break;
-  }
+  if (runtime.memn_profile && runtime.memn_profile->type2)
+    InitializeType2State(*runtime.memn_profile->type2, runtime.type2_state, iv);
 }
 
 void ResetI2CState(RuntimeState& runtime)
@@ -1210,15 +697,7 @@ bool HandleType2SwitchWrite(RuntimeState& runtime, u32 width, u32 offset, u32 va
     runtime.type2_enabled = true;
     runtime.type2_iv = static_cast<u8>(reg & UINT16_C(0x000f));
     runtime.type2_generation++;
-    runtime.type2_transform_supported =
-      (runtime.board_profile == MemNBoardProfile::StarTrigon && runtime.type2_iv == 0) ||
-      (runtime.board_profile == MemNBoardProfile::Gamshara) ||
-      (runtime.board_profile == MemNBoardProfile::KonoTako) ||
-      (runtime.board_profile == MemNBoardProfile::Panikuru) ||
-      (runtime.board_profile == MemNBoardProfile::KNPuzzle) ||
-      (runtime.board_profile == MemNBoardProfile::MrDrillerG) ||
-      (runtime.board_profile == MemNBoardProfile::GJSpace) ||
-      (runtime.board_profile == MemNBoardProfile::Chocovader);
+    runtime.type2_transform_supported = runtime.memn_profile && runtime.memn_profile->type2;
     if (runtime.type2_transform_supported)
       InitializeType2State(runtime, runtime.type2_iv);
     else
@@ -1252,7 +731,7 @@ bool ShouldApplyStaticTransform(const RuntimeState& runtime, const MemNRawNAND& 
   if (runtime.nand_device == 0 && nand.GetCurrentBlock() < 2)
     return false;
 
-  return runtime.board_profile != MemNBoardProfile::Unknown;
+  return runtime.memn_profile != nullptr;
 }
 
 bool ReadVectorWordLE(std::span<const u8> bytes, u64 word_index, u16* value)
@@ -2181,7 +1660,8 @@ u8 ReadProgramByte(const RuntimeState& runtime, u32 offset)
   // 16-bit word, then expose the resulting program aperture in PSX little-endian
   // byte order. The immutable NAND image itself is never rewritten.
   const u16 raw_word = static_cast<u16>((static_cast<u16>(data[column]) << 8) | data[column + 1]);
-  const u16 decoded_word = DecodeStaticWord(runtime.board_profile, raw_word);
+  const u16 decoded_word =
+    runtime.memn_profile ? DecodeMemNStaticWord(*runtime.memn_profile, raw_word, runtime.data_xor) : raw_word;
   return static_cast<u8>((decoded_word >> ((offset & 1u) * 8)) & UINT16_C(0x00ff));
 }
 
@@ -2494,27 +1974,17 @@ bool LoadSimpleROMMember(const char* archive_path, const Arcade::Database::ROMDe
   return false;
 }
 
-static constexpr std::array<BoardProfile, 9> s_board_profiles = {{
-  {"ns10_startrgn", BoardKind::MemN, MemNBoardProfile::StarTrigon, MemMBoardProfile::Unknown},
-  {"ns10_gamshara", BoardKind::MemN, MemNBoardProfile::Gamshara, MemMBoardProfile::Unknown},
-  {"ns10_konotako", BoardKind::MemN, MemNBoardProfile::KonoTako, MemMBoardProfile::Unknown},
-  {"ns10_panikuru", BoardKind::MemN, MemNBoardProfile::Panikuru, MemMBoardProfile::Unknown},
-  {"ns10_knpuzzle", BoardKind::MemN, MemNBoardProfile::KNPuzzle, MemMBoardProfile::Unknown},
-  {"ns10_mrdrilrg", BoardKind::MemN, MemNBoardProfile::MrDrillerG, MemMBoardProfile::Unknown},
-  {"ns10_gjspace", BoardKind::MemN, MemNBoardProfile::GJSpace, MemMBoardProfile::Unknown},
-  {"ns10_chocovdr", BoardKind::MemN, MemNBoardProfile::Chocovader, MemMBoardProfile::Unknown},
-  {"ns10_mrdrilr2", BoardKind::MemM, MemNBoardProfile::Unknown, MemMBoardProfile::MrDriller2},
-}};
-
 } // namespace
 
-const BoardProfile* FindBoardProfile(std::string_view hardware_profile)
+std::optional<BoardProfile> FindBoardProfile(std::string_view hardware_profile)
 {
-  const auto it = std::find_if(s_board_profiles.begin(), s_board_profiles.end(),
-                               [hardware_profile](const BoardProfile& profile) {
-                                 return profile.hardware_profile == hardware_profile;
-                               });
-  return (it != s_board_profiles.end()) ? &(*it) : nullptr;
+  if (hardware_profile == "ns10_mrdrilr2")
+    return BoardProfile{hardware_profile, BoardKind::MemM, nullptr, MemMBoardProfile::MrDriller2};
+
+  if (const MemNProfile* memn_profile = FindMemNProfile(hardware_profile))
+    return BoardProfile{hardware_profile, BoardKind::MemN, memn_profile, MemMBoardProfile::Unknown};
+
+  return std::nullopt;
 }
 
 std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
@@ -2591,30 +2061,38 @@ std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
   return content;
 }
 
-std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
-                                                      const Arcade::Database::GameDefinition& game, Error* error)
+std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const Arcade::Database::GameDefinition& game,
+                                                Error* error)
 {
-  const BoardProfile* profile = FindBoardProfile(game.hardware_profile);
-  if (!profile || profile->kind != BoardKind::MemN || profile->memn_profile == MemNBoardProfile::Unknown)
+  const std::optional<BoardProfile> profile = FindBoardProfile(game.hardware_profile);
+  if (!profile || profile->kind != BoardKind::MemN || !profile->memn_profile)
   {
     Error::SetStringFmt(error, "System 10 MEM(N) loader has no supported profile '{}'.",
                         game.hardware_profile);
     return std::nullopt;
   }
 
-  static constexpr size_t MAX_MEMN_NANDS = 8;
+  static constexpr size_t MAX_MEMN_NANDS = 16;
   std::array<const Arcade::Database::ROMDefinition*, MAX_MEMN_NANDS> nand_roms = {};
   size_t nand_region_count = 0;
+  const Arcade::Database::ROMDefinition* nonlinear_rom = nullptr;
 
   for (const Arcade::Database::ROMDefinition& rom : game.roms)
   {
-    if (rom.region.size() != 5 || rom.region.compare(0, 4, "nand") != 0 ||
-        rom.region[4] < '0' || rom.region[4] > '7')
+    if (rom.region == "decrypter:nonlinear_table")
     {
+      nonlinear_rom = &rom;
       continue;
     }
 
-    const size_t index = static_cast<size_t>(rom.region[4] - '0');
+    if (rom.region.size() < 5 || rom.region.size() > 6 || rom.region.compare(0, 4, "nand") != 0)
+      continue;
+
+    const std::optional<u32> region_index = StringUtil::FromChars<u32>(std::string_view(rom.region).substr(4));
+    if (!region_index.has_value() || region_index.value() >= MAX_MEMN_NANDS)
+      continue;
+
+    const size_t index = region_index.value();
     if (nand_roms[index])
     {
       Error::SetStringFmt(error, "System 10 MEM(N) profile '{}' defines duplicate region '{}'.",
@@ -2647,12 +2125,27 @@ std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
 
   MemNLoadedContent content;
   content.set_name = game.id;
-  content.board_profile = profile->memn_profile;
+  content.profile = profile->memn_profile;
   content.nands.resize(nand_region_count);
 
   for (size_t index = 0; index < nand_region_count; index++)
   {
     if (!LoadRawNANDMember(archive_path, *nand_roms[index], &content.nands[index], error))
+      return std::nullopt;
+  }
+
+  const Type2Logic* type2 = content.profile->type2;
+  if (type2 && type2->nonlinear_table_shift != 0)
+  {
+    if (!nonlinear_rom || nonlinear_rom->offset != 0 || nonlinear_rom->size == 0)
+    {
+      Error::SetStringFmt(error, "System 10 MEM(N) profile '{}' requires its Type-2 nonlinear table ROM.",
+                          game.hardware_profile);
+      return std::nullopt;
+    }
+
+    content.nonlinear_table.resize(nonlinear_rom->size);
+    if (!LoadSimpleROMMember(archive_path, *nonlinear_rom, std::span<u8>(content.nonlinear_table), error))
       return std::nullopt;
   }
 
@@ -2702,7 +2195,7 @@ std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
   *eligible = true;
   MemNLoadedContent content;
   content.set_name = game.id;
-  content.board_profile = MemNBoardProfile::Unknown;
+  content.profile = nullptr;
   content.nands.resize(nand_region_count);
 
   for (size_t index = 0; index < nand_region_count; index++)
@@ -2734,7 +2227,9 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
   RuntimeState runtime;
   runtime.set_name = std::move(content.set_name);
   runtime.media_type = MediaType::MemN;
-  runtime.board_profile = content.board_profile;
+  runtime.memn_profile = content.profile;
+  runtime.data_xor = content.profile ? content.profile->data_xor : UINT16_C(0xaaaa);
+  runtime.type2_nonlinear_table = std::move(content.nonlinear_table);
 
   if (content.nands.size() < 2)
   {
@@ -2828,6 +2323,7 @@ void Reset()
     runtime.type2_transform_supported = false;
     runtime.type2_iv = 0;
     runtime.type2_generation = 0;
+    runtime.type2_state.nonlinear_count = 0;
     ResetType2State(runtime);
     std::fill(runtime.lookup_ram.begin(), runtime.lookup_ram.end(), 0);
   }
@@ -2958,44 +2454,8 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
         u16 plain_word = raw_word;
         if (runtime.type2_transform_supported)
         {
-          switch (runtime.board_profile)
-          {
-            case MemNBoardProfile::StarTrigon:
-              plain_word = DecodeStarTrigonType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::Gamshara:
-              plain_word = DecodeGamsharaType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::KonoTako:
-              plain_word = DecodeKonoTakoType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::Panikuru:
-              plain_word = DecodePanikuruType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::KNPuzzle:
-              plain_word = DecodeKNPuzzleType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::MrDrillerG:
-              plain_word = DecodeMrDrillerGType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::GJSpace:
-              plain_word = DecodeGJSpaceType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::Chocovader:
-              plain_word = DecodeChocovaderType2Word(runtime.type2_state, raw_word);
-              break;
-
-            case MemNBoardProfile::Unknown:
-            default:
-              break;
-          }
+          plain_word = DecodeType2Word(*runtime.memn_profile->type2, runtime.type2_state, raw_word,
+                                       std::span<const u8>(runtime.type2_nonlinear_table));
         }
 
         if (runtime.type2_trace_words < TYPE2_TRACE_WORD_LIMIT)
@@ -3014,7 +2474,8 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
       }
 
       const bool apply_static_transform = ShouldApplyStaticTransform(runtime, *nand);
-      *value = apply_static_transform ? DecodeStaticWord(runtime.board_profile, raw_word) : raw_word;
+      *value =
+        apply_static_transform ? DecodeMemNStaticWord(*runtime.memn_profile, raw_word, runtime.data_xor) : raw_word;
       return true;
     }
 

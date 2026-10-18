@@ -146,7 +146,7 @@ public:
     m_memn_content.reset();
     m_memm_content.reset();
 
-    const NamcoSystem10::BoardProfile* profile =
+    const std::optional<NamcoSystem10::BoardProfile> profile =
       NamcoSystem10::FindBoardProfile(context.game_definition->hardware_profile);
     if (!profile)
     {
@@ -159,7 +159,7 @@ public:
     {
       case NamcoSystem10::BoardKind::MemN:
         m_memn_content =
-          NamcoSystem10::LoadStarTrigonContent(context.archive_path.c_str(), *context.game_definition, error);
+          NamcoSystem10::LoadMemNContent(context.archive_path.c_str(), *context.game_definition, error);
         return m_memn_content.has_value();
 
       case NamcoSystem10::BoardKind::MemM:

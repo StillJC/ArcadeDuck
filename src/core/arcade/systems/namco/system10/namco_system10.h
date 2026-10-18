@@ -24,24 +24,14 @@ enum class BoardKind : u8
   MemM,
 };
 
-enum class MemNBoardProfile : u8
-{
-  Unknown = 0,
-  StarTrigon,
-  Gamshara,
-  KonoTako,
-  Panikuru,
-  KNPuzzle,
-  MrDrillerG,
-  GJSpace,
-  Chocovader,
-};
+struct MemNProfile;
 
 struct MemNLoadedContent
 {
   std::string set_name;
-  MemNBoardProfile board_profile = MemNBoardProfile::Unknown;
+  const MemNProfile* profile = nullptr;
   std::vector<std::vector<u8>> nands;
+  std::vector<u8> nonlinear_table;
 };
 
 enum class MemMBoardProfile : u8
@@ -62,21 +52,21 @@ struct BoardProfile
 {
   std::string_view hardware_profile;
   BoardKind kind;
-  MemNBoardProfile memn_profile = MemNBoardProfile::Unknown;
+  const MemNProfile* memn_profile = nullptr;
   MemMBoardProfile memm_profile = MemMBoardProfile::Unknown;
 };
 
-const BoardProfile* FindBoardProfile(std::string_view hardware_profile);
+std::optional<BoardProfile> FindBoardProfile(std::string_view hardware_profile);
 
 /// Loads the Mr. Driller 2 MEM(M) board without modifying the dumped flash or
 /// mask-ROM bytes. Static/dynamic board transforms are applied at read time.
 std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
                                                        const Arcade::Database::GameDefinition& game, Error* error);
 
-/// Loads the first supported MEM(N) bring-up target without transforming the
-/// NAND bytes. The raw 0x210-byte page image, including spare/OOB, is retained.
-std::optional<MemNLoadedContent> LoadStarTrigonContent(const char* archive_path,
-                                                      const Arcade::Database::GameDefinition& game, Error* error);
+/// Loads a MEM(N)-family board without transforming the NAND bytes. The raw
+/// 0x210-byte page image, including spare/OOB, is retained.
+std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const Arcade::Database::GameDefinition& game,
+                                                Error* error);
 
 std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
   const char* archive_path, const Arcade::Database::GameDefinition& game, bool* eligible, Error* error);
