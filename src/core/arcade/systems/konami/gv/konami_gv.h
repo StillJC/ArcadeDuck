@@ -36,13 +36,8 @@ struct GVGameDefinition
   std::string_view title;
   GVBIOSProfile bios_profile;
   std::string_view hardware_profile;
-  std::string_view eeprom_member_name;
-  u32 eeprom_crc32;
-  std::string_view eeprom_sha1;
   std::string_view chd_disk_name;
   std::string_view chd_sha1;
-  bool bad_dump;
-  u32 eeprom_size = 0x80;
 };
 
 struct GVLoadedContent
@@ -72,7 +67,7 @@ std::string GetGVCHDFilename(const GVGameDefinition& definition);
 /// Returns the complete companion CHD path for a selected GV archive.
 std::string GetGVCompanionCHDPath(std::string_view archive_path, const GVGameDefinition& definition);
 
-/// Loads and validates the non-merged EEPROM archive and companion CHD for a recognized GV set.
+/// Loads and validates the EEPROM and companion CHD for a recognized GV set.
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error);
 
 /// Initializes the GV board lifecycle and installs its BIOS.

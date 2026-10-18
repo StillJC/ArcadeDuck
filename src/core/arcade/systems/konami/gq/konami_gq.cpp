@@ -132,28 +132,15 @@ void EnsureGQGameDefinitionsInitialized()
     if (!system || system->machine_handler != "konami_gq")
       continue;
 
-    const Arcade::Database::ROMDefinition* const sound_program =
-      Arcade::Database::GetROMByRole(game, "sound_program");
-    const Arcade::Database::ROMDefinition* const pcm_samples =
-      Arcade::Database::GetROMByRole(game, "pcm_samples");
     const Arcade::Database::MediaDefinition* const harddisk =
       Arcade::Database::GetMediaByRole(game, "harddisk");
-    if (!sound_program || !pcm_samples || !harddisk)
+    if (!harddisk)
     {
-      ERROR_LOG("Konami GQ database entry '{}' is missing its sound ROM or hard-disk manifest.", game.id);
+      ERROR_LOG("Konami GQ database entry '{}' is missing its hard-disk manifest.", game.id);
       continue;
     }
 
-    if (sound_program->size != pcm_samples->size)
-    {
-      ERROR_LOG("Konami GQ database entry '{}' has mismatched sound ROM sizes.", game.id);
-      continue;
-    }
-
-    s_gq_game_definitions.push_back({game.id, game.title, game.hardware_profile,
-                                     sound_program->name, sound_program->crc32, sound_program->sha1,
-                                     pcm_samples->name, pcm_samples->crc32, pcm_samples->sha1,
-                                     harddisk->name, harddisk->sha1, sound_program->size});
+    s_gq_game_definitions.push_back({game.id, game.title, game.hardware_profile, harddisk->name, harddisk->sha1});
   }
 }
 
@@ -183,7 +170,8 @@ std::string_view GetGQSetNameFromArchivePath(std::string_view path)
 
 const GQGameDefinition* IdentifyGQArchive(std::string_view path)
 {
-  return GetGQGameDefinition(GetGQSetNameFromArchivePath(path));
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(path);
+  return game ? GetGQGameDefinition(game->id) : nullptr;
 }
 
 std::string GetGQCHDFilename(const GQGameDefinition& definition)
@@ -460,32 +448,18 @@ void SetGQLightgunPosition(u32 player, float x, float y)
 
 std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error)
 {
-  const GQGameDefinition* const definition = IdentifyGQArchive(archive_path);
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  const GQGameDefinition* const definition = game ? GetGQGameDefinition(game->id) : nullptr;
   if (!definition)
   {
-    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized non-merged arcade set.", archive_path);
+    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized arcade set.", archive_path);
     return std::nullopt;
   }
 
   VERBOSE_LOG("KonamiGQ.Content opening_archive canonical_set='{}'", definition->set_name);
   GQLoadedContent content = {definition, definition->set_name, {}, {}, {}, definition->chd_sha1};
-
-  Arcade::Database::ROMDefinition sound_program_rom;
-  sound_program_rom.name = definition->sound_program_member_name;
-  sound_program_rom.sha1 = definition->sound_program_sha1;
-  sound_program_rom.crc32 = definition->sound_program_crc32;
-  sound_program_rom.size = definition->rom_size;
-  sound_program_rom.has_crc32 = true;
-
-  Arcade::Database::ROMDefinition pcm_rom;
-  pcm_rom.name = definition->pcm_member_name;
-  pcm_rom.sha1 = definition->pcm_sha1;
-  pcm_rom.crc32 = definition->pcm_crc32;
-  pcm_rom.size = definition->rom_size;
-  pcm_rom.has_crc32 = true;
-
-  if (!Arcade::LoadROMFromArchive(archive_path, sound_program_rom, &content.sound_program, error) ||
-      !Arcade::LoadROMFromArchive(archive_path, pcm_rom, &content.pcm_samples, error))
+  if (!Arcade::LoadGameROMByRole(archive_path, *game, "sound_program", &content.sound_program, error) ||
+      !Arcade::LoadGameROMByRole(archive_path, *game, "pcm_samples", &content.pcm_samples, error))
   {
     return std::nullopt;
   }

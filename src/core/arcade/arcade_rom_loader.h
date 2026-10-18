@@ -22,6 +22,8 @@ bool LoadROMFromArchives(std::span<const std::string> archive_paths, const Datab
                          std::vector<u8>* data, Error* error);
 bool LoadGameROM(std::string_view archive_path, const Database::GameDefinition& game,
                  const Database::ROMDefinition& rom, std::vector<u8>* data, Error* error);
+bool LoadGameROMByRole(std::string_view archive_path, const Database::GameDefinition& game, std::string_view role,
+                       std::vector<u8>* data, Error* error);
 bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefinition& game);
 
 } // namespace Arcade

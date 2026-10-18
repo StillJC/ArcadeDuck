@@ -1534,17 +1534,15 @@ void EnsureGVGameDefinitionsInitialized()
     if (!system || system->machine_handler != "konami_gv")
       continue;
 
-    const Arcade::Database::ROMDefinition* const eeprom = Arcade::Database::GetROMByRole(game, "eeprom");
     const Arcade::Database::MediaDefinition* const disc = Arcade::Database::GetMediaByRole(game, "disc");
-    if (!eeprom || !disc)
+    if (!disc)
     {
-      ERROR_LOG("Konami GV database entry '{}' is missing its EEPROM or disc manifest.", game.id);
+      ERROR_LOG("Konami GV database entry '{}' is missing its disc manifest.", game.id);
       continue;
     }
 
-    s_gv_game_definitions.push_back({game.id, game.title, GVBIOSProfile::KonamiGV, game.hardware_profile,
-                                     eeprom->name, eeprom->crc32, eeprom->sha1, disc->name, disc->sha1,
-                                     eeprom->bad_dump, eeprom->size});
+    s_gv_game_definitions.push_back(
+      {game.id, game.title, GVBIOSProfile::KonamiGV, game.hardware_profile, disc->name, disc->sha1});
   }
 }
 
@@ -1574,7 +1572,8 @@ std::string_view GetGVSetNameFromArchivePath(std::string_view path)
 
 const GVGameDefinition* IdentifyGVArchive(std::string_view path)
 {
-  return GetGVGameDefinition(GetGVSetNameFromArchivePath(path));
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(path);
+  return game ? GetGVGameDefinition(game->id) : nullptr;
 }
 
 std::string GetGVCHDFilename(const GVGameDefinition& definition)
@@ -2599,38 +2598,30 @@ bool DoGVState(StateWrapper& sw)
 
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error)
 {
-  const GVGameDefinition* const definition = IdentifyGVArchive(archive_path);
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  const GVGameDefinition* const definition = game ? GetGVGameDefinition(game->id) : nullptr;
   if (!definition)
   {
-    Error::SetStringFmt(error, "Konami GV content archive '{}' is not a recognized non-merged arcade set.", archive_path);
+    Error::SetStringFmt(error, "Konami GV content archive '{}' is not a recognized arcade set.", archive_path);
     return std::nullopt;
   }
 
-  VERBOSE_LOG("KonamiGV.Content opening_archive canonical_set='{}' eeprom_member='{}'", definition->set_name,
-           definition->eeprom_member_name);
-
-  Arcade::Database::ROMDefinition eeprom_rom;
-  eeprom_rom.name = definition->eeprom_member_name;
-  eeprom_rom.sha1 = definition->eeprom_sha1;
-  eeprom_rom.crc32 = definition->eeprom_crc32;
-  eeprom_rom.size = definition->eeprom_size;
-  eeprom_rom.has_crc32 = true;
+  VERBOSE_LOG("KonamiGV.Content opening_archive canonical_set='{}'", definition->set_name);
 
   std::vector<u8> eeprom_data;
-  if (!Arcade::LoadROMFromArchive(archive_path, eeprom_rom, &eeprom_data, error))
+  if (!Arcade::LoadGameROMByRole(archive_path, *game, "eeprom", &eeprom_data, error))
     return std::nullopt;
 
   GVLoadedContent content = {definition, definition->set_name, {}, {}, definition->chd_sha1};
   if (eeprom_data.size() != content.default_eeprom.size())
   {
-    Error::SetStringFmt(error, "Konami GV EEPROM '{}' has size {}, expected {} bytes.", definition->eeprom_member_name,
+    Error::SetStringFmt(error, "Konami GV EEPROM for '{}' has size {}, expected {} bytes.", definition->set_name,
                         eeprom_data.size(), content.default_eeprom.size());
     return std::nullopt;
   }
   std::copy(eeprom_data.begin(), eeprom_data.end(), content.default_eeprom.begin());
-  VERBOSE_LOG("KonamiGV.Content eeprom_validated canonical_set='{}' size={} crc32={:08x} sha1='{}' bad_dump={}",
-              definition->set_name, definition->eeprom_size, definition->eeprom_crc32,
-              definition->eeprom_sha1, definition->bad_dump);
+  VERBOSE_LOG("KonamiGV.Content eeprom_validated canonical_set='{}' size={}", definition->set_name,
+              eeprom_data.size());
 
   content.chd_path = GetGVCompanionCHDPath(archive_path, *definition);
   VERBOSE_LOG("KonamiGV.Content expected_chd canonical_set='{}' disk_basename='{}' candidate_path='{}'", definition->set_name,

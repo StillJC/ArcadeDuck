@@ -21,6 +21,7 @@
 #include <mutex>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 
 Log_SetChannel(ArcadeROMLoader);
 
@@ -552,6 +553,25 @@ bool LoadGameROM(std::string_view archive_path, const Database::GameDefinition& 
 {
   const std::vector<std::string> archive_paths = Database::GetROMArchiveSearchPaths(archive_path, game);
   return LoadROMFromArchives(archive_paths, rom, data, error);
+}
+
+bool LoadGameROMByRole(std::string_view archive_path, const Database::GameDefinition& game, std::string_view role,
+                       std::vector<u8>* data, Error* error)
+{
+  const Database::GameDefinition* current = &game;
+  std::unordered_set<std::string> visited;
+  while (current && visited.emplace(current->id).second)
+  {
+    if (const Database::ROMDefinition* const rom = Database::GetROMByRole(*current, role))
+      return LoadGameROM(archive_path, game, *rom, data, error);
+
+    if (current->parent.empty())
+      break;
+    current = Database::GetGame(current->parent);
+  }
+
+  Error::SetStringFmt(error, "Arcade game '{}' and its parents are missing required ROM role '{}'.", game.id, role);
+  return false;
 }
 
 bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefinition& game)

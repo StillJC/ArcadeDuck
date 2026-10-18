@@ -22,15 +22,8 @@ struct GQGameDefinition
   std::string_view set_name;
   std::string_view title;
   std::string_view hardware_profile;
-  std::string_view sound_program_member_name;
-  u32 sound_program_crc32;
-  std::string_view sound_program_sha1;
-  std::string_view pcm_member_name;
-  u32 pcm_crc32;
-  std::string_view pcm_sha1;
   std::string_view chd_disk_name;
   std::string_view chd_sha1;
-  u32 rom_size = 0x80000;
 };
 
 struct GQLoadedContent
