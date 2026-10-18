@@ -728,6 +728,125 @@ void EmuThread::setDefaultSettings(bool system /* = true */, bool controller /* 
     emit settingsResetToDefault(system, controller);
 }
 
+static void RemoveHiddenDefaultSettings(SettingsInterface& si, bool system, bool controller)
+{
+  if (system)
+  {
+    si.ClearSection("CDROM");
+    si.ClearSection("Cheevos");
+    si.ClearSection("Debug");
+    si.ClearSection("Hacks");
+    si.ClearSection("Logging");
+    si.ClearSection("MediaCapture");
+    si.ClearSection("TextureReplacements");
+
+    si.DeleteValue("Main", "FastForwardSpeed");
+    si.DeleteValue("Main", "TurboSpeed");
+    si.DeleteValue("Main", "IncreaseTimerResolution");
+    si.DeleteValue("Main", "PauseOnControllerDisconnection");
+    si.DeleteValue("Main", "SaveStateCompression");
+    si.DeleteValue("Main", "EnableDiscordPresence");
+    si.DeleteValue("Main", "LoadDevicesFromSaveStates");
+    si.DeleteValue("Main", "DisableAllEnhancements");
+    si.DeleteValue("Main", "RewindEnable");
+    si.DeleteValue("Main", "RewindFrequency");
+    si.DeleteValue("Main", "RewindSaveSlots");
+    si.DeleteValue("Main", "RunaheadFrameCount");
+
+    si.DeleteValue("Console", "Region");
+    si.DeleteValue("Console", "Enable8MBRAM");
+
+    si.DeleteValue("CPU", "OverclockEnable");
+    si.DeleteValue("CPU", "OverclockNumerator");
+    si.DeleteValue("CPU", "OverclockDenominator");
+    si.DeleteValue("CPU", "RecompilerMemoryExceptions");
+    si.DeleteValue("CPU", "RecompilerBlockLinking");
+    si.DeleteValue("CPU", "RecompilerICache");
+    si.DeleteValue("CPU", "FastmemMode");
+
+    si.DeleteValue("GPU", "UseDebugDevice");
+    si.DeleteValue("GPU", "DisableShaderCache");
+    si.DeleteValue("GPU", "DisableDualSourceBlend");
+    si.DeleteValue("GPU", "DisableFramebufferFetch");
+    si.DeleteValue("GPU", "DisableTextureBuffers");
+    si.DeleteValue("GPU", "DisableTextureCopyToSelf");
+    si.DeleteValue("GPU", "DisableMemoryImport");
+    si.DeleteValue("GPU", "DisableRasterOrderViews");
+    si.DeleteValue("GPU", "PerSampleShading");
+    si.DeleteValue("GPU", "UseThread");
+    si.DeleteValue("GPU", "ThreadedPresentation");
+    si.DeleteValue("GPU", "Debanding");
+    si.DeleteValue("GPU", "ScaledDithering");
+    si.DeleteValue("GPU", "AccurateBlending");
+    si.DeleteValue("GPU", "SpriteTextureFilter");
+    si.DeleteValue("GPU", "LineDetectMode");
+    si.DeleteValue("GPU", "DownsampleMode");
+    si.DeleteValue("GPU", "DownsampleScale");
+    si.DeleteValue("GPU", "WireframeMode");
+    si.DeleteValue("GPU", "DisableInterlacing");
+    si.DeleteValue("GPU", "ForceNTSCTimings");
+    si.DeleteValue("GPU", "ChromaSmoothing24Bit");
+    si.DeleteValue("GPU", "UseSoftwareRendererForReadbacks");
+    si.DeleteValue("GPU", "ForceRoundTextureCoordinates");
+    si.DeleteValue("GPU", "PGXPCulling");
+    si.DeleteValue("GPU", "PGXPTextureCorrection");
+    si.DeleteValue("GPU", "PGXPColorCorrection");
+    si.DeleteValue("GPU", "PGXPVertexCache");
+    si.DeleteValue("GPU", "PGXPCPU");
+    si.DeleteValue("GPU", "PGXPPreserveProjFP");
+    si.DeleteValue("GPU", "PGXPTolerance");
+    si.DeleteValue("GPU", "PGXPDepthBuffer");
+    si.DeleteValue("GPU", "PGXPDisableOn2DPolygons");
+    si.DeleteValue("GPU", "PGXPDepthClearThreshold");
+
+    si.DeleteValue("Display", "ActiveStartOffset");
+    si.DeleteValue("Display", "ActiveEndOffset");
+    si.DeleteValue("Display", "LineStartOffset");
+    si.DeleteValue("Display", "LineEndOffset");
+    si.DeleteValue("Display", "OptimalFramePacing");
+    si.DeleteValue("Display", "PreFrameSleep");
+    si.DeleteValue("Display", "SkipPresentingDuplicateFrames");
+    si.DeleteValue("Display", "PreFrameSleepBuffer");
+    si.DeleteValue("Display", "DisableMailboxPresentation");
+    si.DeleteValue("Display", "ExclusiveFullscreenControl");
+    si.DeleteValue("Display", "ShowLatencyStatistics");
+    si.DeleteValue("Display", "ShowGPUStatistics");
+    si.DeleteValue("Display", "ShowCPU");
+    si.DeleteValue("Display", "ShowGPU");
+    si.DeleteValue("Display", "ShowFrameTimes");
+    si.DeleteValue("Display", "ShowInputs");
+    si.DeleteValue("Display", "ShowEnhancements");
+
+    si.DeleteValue("Audio", "StretchSequenceLengthMS");
+    si.DeleteValue("Audio", "StretchSeekWindowMS");
+    si.DeleteValue("Audio", "StretchOverlapMS");
+    si.DeleteValue("Audio", "StretchUseQuickSeek");
+    si.DeleteValue("Audio", "StretchUseAAFilter");
+    si.DeleteValue("Audio", "ExpandBlockSize");
+    si.DeleteValue("Audio", "ExpandCircularWrap");
+    si.DeleteValue("Audio", "ExpandShift");
+    si.DeleteValue("Audio", "ExpandDepth");
+    si.DeleteValue("Audio", "ExpandFocus");
+    si.DeleteValue("Audio", "ExpandCenterImage");
+    si.DeleteValue("Audio", "ExpandFrontSeparation");
+    si.DeleteValue("Audio", "ExpandRearSeparation");
+    si.DeleteValue("Audio", "ExpandLowCutoff");
+    si.DeleteValue("Audio", "ExpandHighCutoff");
+
+    si.DeleteValue("BIOS", "TTYLogging");
+  }
+
+  if (controller)
+  {
+    si.DeleteValue("Hotkeys", "LoadSelectedSaveState");
+    si.DeleteValue("Hotkeys", "SaveSelectedSaveState");
+    si.DeleteValue("Hotkeys", "SelectPreviousSaveStateSlot");
+    si.DeleteValue("Hotkeys", "SelectNextSaveStateSlot");
+  }
+
+  si.RemoveEmptySections();
+}
+
 void QtHost::SetDefaultSettings(SettingsInterface& si, bool system, bool controller)
 {
   if (system)
@@ -743,6 +862,8 @@ void QtHost::SetDefaultSettings(SettingsInterface& si, bool system, bool control
     Settings::SetDefaultControllerConfig(si);
     Settings::SetDefaultHotkeyConfig(si);
   }
+
+  RemoveHiddenDefaultSettings(si, system, controller);
 }
 
 void QtHost::MigrateSettings()
