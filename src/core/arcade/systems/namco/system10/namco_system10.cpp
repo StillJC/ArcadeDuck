@@ -10,6 +10,7 @@
 
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 
+#include "core/arcade/systems/namco/system10/namco_system10_exio.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
@@ -152,6 +153,7 @@ static constexpr u32 BASEBOARD_INPUT_TRACE_LIMIT = 32;
 static constexpr u32 EXIO_IDENT_TRACE_LIMIT = 16;
 
 static constexpr u32 PROGRAM_ROM_SIZE = 0x400000;
+static constexpr u32 EXIO_WINDOW_OFFSET = 0x200000;
 static constexpr u32 PROGRAM_FIRST_PAGE = 0x040;
 static constexpr u32 PROGRAM_FIRST_END = 0x01c000;
 static constexpr u32 PROGRAM_FILL_END = 0x020000;
@@ -233,9 +235,9 @@ struct RuntimeState
   bool test_switch_was_pressed = false;
   bool test_switch_latched = false;
 
-  // Optional expansion-board identifier serializer. No EXIO board is populated
-  // for the current Star Trigon / Mr. Driller 2 targets, so the serialized
-  // response is 0xff.
+  std::unique_ptr<EXIOBoard> exio;
+
+  // Expansion-board identifier serializer.
   s8 exio_ident_bit = 0;
   u32 exio_ident_byte = 0;
   u32 exio_ident_trace_events = 0;
@@ -491,7 +493,7 @@ u16 ReadEXIOIdentifier(RuntimeState& runtime)
   // The base board shifts one expansion-board ID bit onto both low return bits.
   // A board-less cabinet reports 0xff, so every serialized bit is high. After
   // 0x20 response bytes the line remains in the high/high idle state.
-  constexpr u8 response = UINT8_C(0xff);
+  const u8 response = runtime.exio ? runtime.exio->GetIdentifier() : UINT8_C(0xff);
 
   u16 result;
   if (runtime.exio_ident_byte >= 0x20)
@@ -631,6 +633,50 @@ void BaseboardIOEventCallback(void*, TickCount, TickCount)
              runtime.baseboard_irq_trace_events, runtime.baseboard_interrupt_status);
     runtime.baseboard_irq_trace_events++;
   }
+}
+
+u16 ReadEXIOAnalog(void*, u32)
+{
+  // Centered sticks.
+  return 0x200;
+}
+
+u32 ReadEXIOLightgun(void*, u32 index)
+{
+  // Gun counters span 0-0x13F horizontally and 0-0xEF vertically. Off-screen
+  // reports X=0, Y=0xF0.
+  const u32 player = index / 2;
+  const bool x_axis = (index & 1) == 0;
+  const ArcadeInput::LightgunPresentationState state = ArcadeInput::GetLightgunPresentationState();
+  if (player >= state.ports.size() || state.ports[player].offscreen)
+    return x_axis ? 0x000 : 0x0f0;
+
+  const float position = std::clamp(x_axis ? state.ports[player].x : state.ports[player].y, 0.0f, 1.0f);
+  const float maximum = x_axis ? 319.0f : 239.0f;
+  return static_cast<u32>(position * maximum + 0.5f);
+}
+
+u32 ReadEXIOInput(void*, u32)
+{
+  return UINT32_C(0xffffffff);
+}
+
+void CreateExpansionBoard(RuntimeState& runtime)
+{
+  runtime.exio.reset();
+  if (!runtime.memn_profile)
+    return;
+
+  const ExpansionBoard type = runtime.memn_profile->expansion;
+  if (type != ExpansionBoard::EXIO && type != ExpansionBoard::EXIOG)
+    return;
+
+  EXIOBoard::Cabinet cabinet;
+  cabinet.analog = &ReadEXIOAnalog;
+  cabinet.lightgun = &ReadEXIOLightgun;
+  cabinet.input = &ReadEXIOInput;
+  runtime.exio = std::make_unique<EXIOBoard>(type, cabinet);
+  runtime.exio->Reset();
 }
 
 void ResetBaseboardInterruptState(RuntimeState& runtime, bool schedule_event)
@@ -2256,6 +2302,7 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
               runtime.nands.size());
 
   s_runtime = std::move(runtime);
+  CreateExpansionBoard(*s_runtime);
   ResetBaseboardInterruptState(*s_runtime, true);
   return true;
 }
@@ -2340,6 +2387,9 @@ void Reset()
     runtime.memm_trace_events = 0;
   }
 
+  if (runtime.exio)
+    runtime.exio->Reset();
+
   ResetI2CState(runtime);
   ResetBaseboardInputState(runtime);
   ResetBaseboardInterruptState(runtime, true);
@@ -2354,6 +2404,7 @@ void Shutdown()
     else if (s_runtime->media_type == MediaType::MemN)
       SaveMemNPersistence(*s_runtime);
     ResetBaseboardInterruptState(*s_runtime, false);
+    s_runtime->exio.reset();
   }
 
   s_baseboard_io_event.reset();
@@ -2379,6 +2430,26 @@ u32 ReadProgramROM(u32 width, u32 offset)
     value |= static_cast<u32>(ReadProgramByte(runtime, offset + i)) << (i * 8);
 
   return value;
+}
+
+u32 ReadBIOSWindow(u32 width, u32 offset)
+{
+  // An expansion board decodes the upper 2 MiB of the 4 MiB BIOS window.
+  if (s_runtime.has_value() && s_runtime->exio && offset >= EXIO_WINDOW_OFFSET)
+  {
+    u32 value = 0;
+    if (s_runtime->exio->Read(width, offset - EXIO_WINDOW_OFFSET, &value))
+      return value;
+    return (width == 4) ? UINT32_MAX : ((1u << (width * 8)) - 1);
+  }
+
+  return ReadProgramROM(width, offset);
+}
+
+void WriteBIOSWindow(u32 width, u32 offset, u32 value)
+{
+  if (s_runtime.has_value() && s_runtime->exio && offset >= EXIO_WINDOW_OFFSET)
+    s_runtime->exio->Write(width, offset - EXIO_WINDOW_OFFSET, value);
 }
 
 bool ReadEXP1(u32 width, u32 offset, u32* value)

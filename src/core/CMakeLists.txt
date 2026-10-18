@@ -219,6 +219,8 @@ add_library(core
   arcade/systems/konami/gv/konami_gv_scsi.h
   arcade/systems/namco/system10/namco_system10.cpp
   arcade/systems/namco/system10/namco_system10.h
+  arcade/systems/namco/system10/namco_system10_exio.cpp
+  arcade/systems/namco/system10/namco_system10_exio.h
   arcade/systems/namco/system10/namco_system10_memn.cpp
   arcade/systems/namco/system10/namco_system10_memn.h
   arcade/systems/namco/system10/namco_system10_protection.cpp

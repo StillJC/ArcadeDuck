@@ -81,6 +81,11 @@ bool IsActive();
 /// the PlayStation BIOS window. Unsupported/out-of-range reads return all ones.
 u32 ReadProgramROM(u32 width, u32 offset);
 
+/// Data access to the 4 MiB BIOS window (0x1FC00000), including an attached
+/// EXIO board in its upper 2 MiB.
+u32 ReadBIOSWindow(u32 width, u32 offset);
+void WriteBIOSWindow(u32 width, u32 offset, u32 value);
+
 /// Handles System 10 devices mapped into the PlayStation EXP1 window.
 /// Returns false when the offset is not owned by the active System 10 profile.
 bool ReadEXP1(u32 width, u32 offset, u32* value);

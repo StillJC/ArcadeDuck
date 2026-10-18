@@ -1064,6 +1064,7 @@ template<MemoryAccessSize size> static u32 RAMReadHandler(VirtualMemoryAddress a
 template<MemoryAccessSize size> static void RAMWriteHandler(VirtualMemoryAddress address, u32 value);
 
 template<MemoryAccessSize size> static u32 BIOSReadHandler(VirtualMemoryAddress address);
+template<MemoryAccessSize size> static void BIOSWriteHandler(VirtualMemoryAddress address, u32 value);
 
 template<MemoryAccessSize size> static u32 ScratchpadReadHandler(VirtualMemoryAddress address);
 template<MemoryAccessSize size> static void ScratchpadWriteHandler(VirtualMemoryAddress address, u32 value);
@@ -1112,6 +1113,17 @@ template<MemoryAccessSize size>
 void Bus::IgnoreWriteHandler(VirtualMemoryAddress address, u32 value)
 {
   // noop
+}
+
+template<MemoryAccessSize size>
+void Bus::BIOSWriteHandler(VirtualMemoryAddress address, u32 value)
+{
+  // Namco System 10 expansion boards decode part of the BIOS window.
+  if (NamcoSystem10::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    NamcoSystem10::WriteBIOSWindow(width, address & (BIOS_MIRROR_SIZE - 1), value);
+  }
 }
 
 template<MemoryAccessSize size>
@@ -1180,7 +1192,7 @@ u32 Bus::BIOSReadHandler(VirtualMemoryAddress address)
   if (NamcoSystem10::IsActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
-    return NamcoSystem10::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
+    return NamcoSystem10::ReadBIOSWindow(width, address & (BIOS_MIRROR_SIZE - 1));
   }
 
   if (NamcoSystem11::IsActive())
@@ -2350,7 +2362,7 @@ void Bus::SetHandlers()
   // Cache isolated appears to affect KUSEG+KSEG0.
   SET(g_memory_handlers, KUSEG | RAM_BASE, RAM_MIRROR_SIZE, RAMReadHandler, RAMWriteHandler);
   SET(g_memory_handlers, KUSEG | CPU::SCRATCHPAD_ADDR, 0x1000, ScratchpadReadHandler, ScratchpadWriteHandler);
-  SET(g_memory_handlers, KUSEG | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, IgnoreWriteHandler);
+  SET(g_memory_handlers, KUSEG | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, BIOSWriteHandler);
   SET(g_memory_handlers, KUSEG | EXP1_BASE, EXP1_SIZE, EXP1ReadHandler, EXP1WriteHandler);
   SET(g_memory_handlers, KUSEG | HW_BASE, HW_SIZE, HardwareReadHandler, HardwareWriteHandler);
   SET(g_memory_handlers, KUSEG | EXP2_BASE, EXP2_SIZE, EXP2ReadHandler, EXP2WriteHandler);
@@ -2361,7 +2373,7 @@ void Bus::SetHandlers()
   // KSEG0 - Cached
   SET(g_memory_handlers, KSEG0 | RAM_BASE, RAM_MIRROR_SIZE, RAMReadHandler, RAMWriteHandler);
   SET(g_memory_handlers, KSEG0 | CPU::SCRATCHPAD_ADDR, 0x1000, ScratchpadReadHandler, ScratchpadWriteHandler);
-  SET(g_memory_handlers, KSEG0 | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, IgnoreWriteHandler);
+  SET(g_memory_handlers, KSEG0 | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, BIOSWriteHandler);
   SET(g_memory_handlers, KSEG0 | EXP1_BASE, EXP1_SIZE, EXP1ReadHandler, EXP1WriteHandler);
   SET(g_memory_handlers, KSEG0 | HW_BASE, HW_SIZE, HardwareReadHandler, HardwareWriteHandler);
   SET(g_memory_handlers, KSEG0 | EXP2_BASE, EXP2_SIZE, EXP2ReadHandler, EXP2WriteHandler);
@@ -2371,7 +2383,7 @@ void Bus::SetHandlers()
 
   // KSEG1 - Uncached
   SETUC(KSEG1 | RAM_BASE, RAM_MIRROR_SIZE, RAMReadHandler, RAMWriteHandler);
-  SETUC(KSEG1 | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, IgnoreWriteHandler);
+  SETUC(KSEG1 | BIOS_BASE, BIOS_MIRROR_SIZE, BIOSReadHandler, BIOSWriteHandler);
   SETUC(KSEG1 | EXP1_BASE, EXP1_SIZE, EXP1ReadHandler, EXP1WriteHandler);
   SETUC(KSEG1 | HW_BASE, HW_SIZE, HardwareReadHandler, HardwareWriteHandler);
   SETUC(KSEG1 | EXP2_BASE, EXP2_SIZE, EXP2ReadHandler, EXP2WriteHandler);
