@@ -113,6 +113,8 @@ add_library(core
   arcade/devices/jvs/namco_empri101.h
   arcade/devices/cpu/sh7014.cpp
   arcade/devices/cpu/sh7014.h
+  arcade/devices/cpu/tmp95c061.cpp
+  arcade/devices/cpu/tmp95c061.h
   arcade/devices/namco/namco_system12_cdxa.cpp
   arcade/devices/namco/namco_system12_cdxa.h
   arcade/devices/namco/namco_system12_hsc.cpp
