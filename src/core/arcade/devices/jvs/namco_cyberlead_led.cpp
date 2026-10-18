@@ -55,6 +55,24 @@ static constexpr u32 IRQ_VECTOR_SCI1_TX = 35;
 static constexpr u32 IRQ_VECTOR_SCI1_TE = 36;
 
 static constexpr u32 LED_VBLANK_HZ = 60;
+
+// AT29C020 command decoding, as MAME's atmel_29c020 (256-byte pages).
+static constexpr u32 FLASH_PAGE_SIZE = 0x100;
+static constexpr u8 FLASH_MAKER_ID = UINT8_C(0x1F);
+static constexpr u8 FLASH_DEVICE_ID = UINT8_C(0xDA);
+
+enum class FlashMode : u8
+{
+  Normal,
+  Unlock1,
+  Unlock2,
+  Erase1,
+  Erase2,
+  Erase3,
+  ReadID,
+  WritePage,
+};
+
 static constexpr u32 RX_QUEUE_SIZE = 4096;
 
 } // namespace
@@ -147,6 +165,10 @@ struct NamcoCyberLeadLEDDevice::Impl
   bool irq6_latched = false;
   u64 timer_clock_accumulator = 0;
   u32 flash_bank = 0;
+  FlashMode flash_mode = FlashMode::Normal;
+  u32 flash_page_count = 0;
+  bool flash_sdp = false;
+  bool flash_modified = false;
 
   std::array<bool, 64> pending_interrupts{};
 
@@ -225,6 +247,8 @@ struct NamcoCyberLeadLEDDevice::Impl
     irq6_latched = false;
     timer_clock_accumulator = 0;
     flash_bank = 0;
+    flash_mode = FlashMode::Normal;
+    flash_page_count = 0;
     pending_interrupts.fill(false);
     port_ddr.fill(0);
     port_dr.fill(0);
@@ -676,10 +700,101 @@ struct NamcoCyberLeadLEDDevice::Impl
     AdvanceVBlank(clocks);
   }
 
+  u8 ReadFlash(u32 offset) const
+  {
+    offset &= FIRMWARE_SIZE - 1;
+    if (flash_mode == FlashMode::ReadID && (offset & 0xFF) <= 1)
+      return (offset & 1) ? FLASH_DEVICE_ID : FLASH_MAKER_ID;
+    return firmware[offset];
+  }
+
+  void WriteFlash(u32 offset, u8 value)
+  {
+    offset &= FIRMWARE_SIZE - 1;
+    const u32 command_address = offset & 0xFFFF;
+    switch (flash_mode)
+    {
+      case FlashMode::Normal:
+      case FlashMode::ReadID:
+        if (command_address == 0x5555 && value == 0xAA)
+          flash_mode = FlashMode::Unlock1;
+        else if (value == 0xF0)
+          flash_mode = FlashMode::Normal;
+        break;
+
+      case FlashMode::Unlock1:
+        flash_mode = (command_address == 0x2AAA && value == 0x55) ? FlashMode::Unlock2 : FlashMode::Normal;
+        break;
+
+      case FlashMode::Unlock2:
+        flash_mode = FlashMode::Normal;
+        if (command_address != 0x5555)
+          break;
+        if (value == 0x90)
+        {
+          flash_mode = FlashMode::ReadID;
+        }
+        else if (value == 0x80)
+        {
+          flash_mode = FlashMode::Erase1;
+        }
+        else if (value == 0xA0)
+        {
+          // Software data protection on; the next page is programmed.
+          flash_sdp = true;
+          flash_page_count = 0;
+          flash_mode = FlashMode::WritePage;
+        }
+        break;
+
+      case FlashMode::Erase1:
+        flash_mode = (command_address == 0x5555 && value == 0xAA) ? FlashMode::Erase2 : FlashMode::Normal;
+        break;
+
+      case FlashMode::Erase2:
+        flash_mode = (command_address == 0x2AAA && value == 0x55) ? FlashMode::Erase3 : FlashMode::Normal;
+        break;
+
+      case FlashMode::Erase3:
+        flash_mode = FlashMode::Normal;
+        if (command_address == 0x5555 && value == 0x10)
+        {
+          flash_modified |= std::any_of(firmware.begin(), firmware.end(), [](u8 v) { return v != 0xFF; });
+          firmware.fill(0xFF);
+        }
+        else if (command_address == 0x5555 && value == 0x20)
+        {
+          // Software data protection off; writes program the array directly.
+          flash_sdp = false;
+          flash_page_count = 0;
+          flash_mode = FlashMode::WritePage;
+        }
+        break;
+
+      case FlashMode::WritePage:
+        if (flash_page_count == 0 && !flash_sdp && (offset & 0xFFF) == 0x555 && value == 0xAA)
+        {
+          flash_mode = FlashMode::Unlock1;
+          break;
+        }
+
+        // Programming completes immediately, so data polling sees the value at once.
+        flash_modified |= (firmware[offset] != value);
+        firmware[offset] = value;
+        if (++flash_page_count == FLASH_PAGE_SIZE)
+        {
+          flash_page_count = 0;
+          if (flash_sdp)
+            flash_mode = FlashMode::Normal;
+        }
+        break;
+    }
+  }
+
   u8 Read(u16 address)
   {
     if (address <= UINT16_C(0x3FFF))
-      return firmware[address];
+      return ReadFlash(address);
     if (address >= UINT16_C(0x4000) && address <= UINT16_C(0x5FFF))
       return display_ram[address - UINT16_C(0x4000)];
     if (address >= UINT16_C(0x6000) && address <= UINT16_C(0x600F))
@@ -688,8 +803,7 @@ struct NamcoCyberLeadLEDDevice::Impl
       return scroll[address - UINT16_C(0x7000)];
     if (address >= UINT16_C(0x8000) && address <= UINT16_C(0xBFFF))
     {
-      const u32 offset = flash_bank + (address - UINT16_C(0x8000));
-      return (offset < firmware.size()) ? firmware[offset] : UINT8_C(0xFF);
+      return ReadFlash(flash_bank + (address - UINT16_C(0x8000)));
     }
 
     switch (address)
@@ -786,8 +900,7 @@ struct NamcoCyberLeadLEDDevice::Impl
   {
     if (address <= UINT16_C(0x3FFF))
     {
-      // 29C020 programming is not required for the first firmware-runner
-      // milestone. Preserve the supplied ROM image and ignore writes.
+      WriteFlash(address, value);
       return;
     }
     if (address >= UINT16_C(0x4000) && address <= UINT16_C(0x5FFF))
@@ -812,8 +925,7 @@ struct NamcoCyberLeadLEDDevice::Impl
     }
     if (address >= UINT16_C(0x8000) && address <= UINT16_C(0xBFFF))
     {
-      // Banked flash programming is intentionally deferred; reads are fully
-      // mapped so the unmodified cl1-leda.ic5 can execute.
+      WriteFlash(flash_bank + (address - UINT16_C(0x8000)), value);
       return;
     }
     if (address >= UINT16_C(0xFF84) && address <= UINT16_C(0xFF87))
@@ -1002,6 +1114,8 @@ bool NamcoCyberLeadLEDDevice::SetFirmware(std::span<const u8> firmware)
 
   std::copy(firmware.begin(), firmware.end(), m_impl->firmware.begin());
   m_impl->firmware_loaded = true;
+  m_impl->flash_modified = false;
+  m_impl->flash_sdp = false;
   m_impl->ResetRuntime();
   return (m_impl->cpu.error_code == H8_DEBUG_NO_ERROR &&
           static_cast<u32>(m_impl->cpu.cpu.pc) == UINT32_C(0x01E4));
@@ -1057,6 +1171,21 @@ std::span<const u8> NamcoCyberLeadLEDDevice::GetDisplayControl() const
 std::span<const u8> NamcoCyberLeadLEDDevice::GetScroll() const
 {
   return m_impl->scroll;
+}
+
+std::span<const u8> NamcoCyberLeadLEDDevice::GetFlash() const
+{
+  return m_impl->firmware;
+}
+
+bool NamcoCyberLeadLEDDevice::IsFlashModified() const
+{
+  return m_impl->flash_modified;
+}
+
+void NamcoCyberLeadLEDDevice::ClearFlashModified()
+{
+  m_impl->flash_modified = false;
 }
 
 } // namespace Arcade::JVS

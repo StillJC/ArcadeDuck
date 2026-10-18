@@ -107,6 +107,8 @@ public:
   NamcoCyberLeadLEDDevice(const NamcoCyberLeadLEDDevice&) = delete;
   NamcoCyberLeadLEDDevice& operator=(const NamcoCyberLeadLEDDevice&) = delete;
 
+  // Loads the AT29C020 contents: the factory image, or a saved copy that
+  // includes data games have programmed into it.
   bool SetFirmware(std::span<const u8> firmware);
   bool HasFirmware() const;
   void Reset();
@@ -125,6 +127,10 @@ public:
   std::span<const u8> GetDisplayRAM() const;
   std::span<const u8> GetDisplayControl() const;
   std::span<const u8> GetScroll() const;
+
+  std::span<const u8> GetFlash() const;
+  bool IsFlashModified() const;
+  void ClearFlashModified();
 
 private:
   struct Impl;
