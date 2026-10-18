@@ -1004,9 +1004,13 @@ void GPU::UpdateCRTCDisplayParameters()
     const u8 horizontal_resolution_index =
       m_GPUSTAT.horizontal_resolution_1.GetValue() | (m_GPUSTAT.horizontal_resolution_2.GetValue() << 2);
     const s32 logical_width = logical_widths[horizontal_resolution_index];
-    const s32 logical_height = m_GPUSTAT.pal_mode.GetValue() ?
+    const s32 logical_lines = m_GPUSTAT.pal_mode.GetValue() ?
       (m_GPUSTAT.vertical_resolution.GetValue() ? 512 : 256) :
       (m_GPUSTAT.vertical_resolution.GetValue() ? 480 : 240);
+    // A 240-line mode with the interlace bit set still scans out two fields per frame, so its envelope holds twice
+    // the lines, in the same output-line units as the interlaced source height below.
+    const s32 logical_height =
+      m_GPUSTAT.vertical_resolution.GetValue() ? logical_lines : (logical_lines << height_shift);
     const s32 horizontal_reference_start = m_GPUSTAT.pal_mode.GetValue() ? 0x27E : 0x260;
     const s32 vertical_reference_start = m_GPUSTAT.pal_mode.GetValue() ? 0x23 : 0x10;
 
