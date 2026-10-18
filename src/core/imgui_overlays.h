@@ -8,6 +8,7 @@
 #include <string>
 
 namespace ImGuiManager {
+void RenderCabinetOverlays();
 void RenderTextOverlays();
 void RenderDebugWindows();
 

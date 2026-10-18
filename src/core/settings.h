@@ -235,13 +235,10 @@ struct Settings
   std::string arcade_namco_system12_cyber_lead_led_monitor;
   bool arcade_namco_system12_cyber_lead_led_borderless_fullscreen : 1 = false;
 
-  u32 GetNamcoSystem12CyberLeadLEDStripHeight(u32 window_height) const
+  u32 GetNamcoSystem12CyberLeadLEDWidthPercentage() const
   {
-    const u32 percentage =
-      (arcade_namco_system12_cyber_lead_led_size <= 1) ? 6 :
-      ((arcade_namco_system12_cyber_lead_led_size >= 3) ? 10 : 8);
-    const u32 height = ((window_height * percentage) + 99u) / 100u;
-    return (height < 24u) ? 24u : height;
+    return (arcade_namco_system12_cyber_lead_led_size <= 1) ? 50 :
+           ((arcade_namco_system12_cyber_lead_led_size >= 3) ? 100 : 75);
   }
 
   // Common Sony ZN motherboard S551 settings used outside the Video System profile.

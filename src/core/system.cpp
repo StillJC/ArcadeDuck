@@ -5283,6 +5283,7 @@ bool System::PresentDisplay(bool skip_present, bool explicit_present)
 
   if (!skip_present)
   {
+    ImGuiManager::RenderCabinetOverlays();
     ImGuiManager::RenderBezelOverlay(g_settings.display_bezel_enabled, g_settings.display_bezel_path);
     FullscreenUI::Render();
     ImGuiManager::RenderTextOverlays();

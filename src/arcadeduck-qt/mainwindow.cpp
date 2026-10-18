@@ -178,6 +178,7 @@ protected:
 
     QPainter painter(this);
     painter.fillRect(rect(), Qt::black);
+    painter.setRenderHint(QPainter::Antialiasing, true);
 
     static constexpr u32 WIDTH = 96;
     static constexpr u32 HEIGHT = 16;
@@ -185,18 +186,17 @@ protected:
     if (!ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8>(pixels.data(), pixels.size())))
       return;
 
-    const qreal pad = 8.0;
-    const qreal available_width = std::max<qreal>(static_cast<qreal>(width()) - (pad * 2.0), 1.0);
-    const qreal available_height = std::max<qreal>(static_cast<qreal>(height()) - (pad * 2.0), 1.0);
-    const qreal cell = std::max<qreal>(
-      1.0, std::min(available_width / static_cast<qreal>(WIDTH),
-                    available_height / static_cast<qreal>(HEIGHT)));
-    const qreal gap = std::min(std::max(cell * 0.12, 0.5), cell * 0.35);
-    const qreal dot = std::max(cell - gap, 1.0);
-    const qreal grid_width = cell * static_cast<qreal>(WIDTH);
-    const qreal grid_height = cell * static_cast<qreal>(HEIGHT);
-    const qreal grid_x = (static_cast<qreal>(width()) - grid_width) * 0.5;
-    const qreal grid_y = (static_cast<qreal>(height()) - grid_height) * 0.5;
+    const int grid_width = std::max(width(), 1);
+    const int grid_height = std::max(
+      static_cast<int>(std::lround((static_cast<double>(grid_width) * static_cast<double>(HEIGHT)) /
+                                   static_cast<double>(WIDTH))),
+      1);
+    const int grid_x = 0;
+    const int grid_y = (height() - grid_height) / 2;
+    const qreal nominal_cell =
+      std::max<qreal>(1.0, static_cast<qreal>(grid_width) / static_cast<qreal>(WIDTH));
+    const int gap = static_cast<int>(
+      std::clamp(std::round(nominal_cell * 0.12), 1.0, std::max(nominal_cell - 1.0, 1.0)));
 
     static const std::array<QColor, 4> COLORS = {
       QColor(20, 16, 8),
@@ -208,12 +208,22 @@ protected:
     painter.setPen(Qt::NoPen);
     for (u32 y = 0; y < HEIGHT; y++)
     {
-      const qreal py = grid_y + (static_cast<qreal>(y) * cell);
+      const int cell_top = grid_y + ((static_cast<int>(y) * grid_height) / static_cast<int>(HEIGHT));
+      const int cell_bottom = grid_y + ((static_cast<int>(y + 1) * grid_height) / static_cast<int>(HEIGHT));
+      const int dot_bottom = std::max(cell_top + 1, cell_bottom - gap);
       for (u32 x = 0; x < WIDTH; x++)
       {
-        const qreal px = grid_x + (static_cast<qreal>(x) * cell);
+        const int cell_left = grid_x + ((static_cast<int>(x) * grid_width) / static_cast<int>(WIDTH));
+        const int cell_right = grid_x + ((static_cast<int>(x + 1) * grid_width) / static_cast<int>(WIDTH));
+        const int dot_right = std::max(cell_left + 1, cell_right - gap);
+        const qreal dot_size = static_cast<qreal>(std::min(dot_right - cell_left, dot_bottom - cell_top));
+        const qreal radius = dot_size * 0.2;
+
         painter.setBrush(COLORS[pixels[(y * WIDTH) + x] & 3]);
-        painter.drawRect(QRectF(px, py, dot, dot));
+        painter.drawRoundedRect(QRectF(static_cast<qreal>(cell_left), static_cast<qreal>(cell_top),
+                                       static_cast<qreal>(dot_right - cell_left),
+                                       static_cast<qreal>(dot_bottom - cell_top)),
+                                radius, radius);
       }
     }
   }

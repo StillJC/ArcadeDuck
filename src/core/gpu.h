@@ -234,6 +234,10 @@ public:
                                      bool apply_aspect_ratio, GSVector4i* display_rect,
                                      GSVector4i* draw_rect) const;
 
+  /// Computes the pixel-aligned rectangle for the attached Namco Cyber Lead LED panel.
+  bool CalculateCyberLeadLEDAttachedRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                         bool apply_aspect_ratio, GSVector4i* led_rect) const;
+
   /// Helper function for computing screenshot bounds.
   void CalculateScreenshotSize(DisplayScreenshotMode mode, u32* width, u32* height, GSVector4i* display_rect,
                                GSVector4i* draw_rect) const;

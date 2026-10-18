@@ -3017,6 +3017,52 @@ bool GPU::ApplyChromaSmoothing()
   return true;
 }
 
+bool GPU::CalculateCyberLeadLEDAttachedRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                             bool apply_aspect_ratio, GSVector4i* led_rect) const
+{
+  static constexpr s32 LED_ASPECT_WIDTH = 96;
+  static constexpr s32 LED_ASPECT_HEIGHT = 16;
+
+  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
+  if (!IsCyberLeadLEDGame() || (mode != 1 && mode != 2) || window_width < LED_ASPECT_WIDTH ||
+      window_height <= LED_ASPECT_HEIGHT)
+  {
+    return false;
+  }
+
+  const s32 width_percentage =
+    static_cast<s32>(g_settings.GetNamcoSystem12CyberLeadLEDWidthPercentage());
+  GSVector4i candidate_display_rect;
+  GSVector4i candidate_draw_rect;
+  s32 panel_height = 1;
+
+  // Panel height affects the final game width that the panel is sized from. Iterate to the
+  // stable 6:1 height; this converges quickly because the panel is much wider than it is tall.
+  for (u32 i = 0; i < 16; i++)
+  {
+    CalculateDrawRect(window_width, window_height - panel_height, apply_rotation, apply_aspect_ratio,
+                      &candidate_display_rect, &candidate_draw_rect);
+    const s32 panel_width = std::clamp(
+      ((candidate_draw_rect.width() * width_percentage) + 50) / 100, LED_ASPECT_WIDTH, window_width);
+    const s32 next_height = std::clamp(
+      ((panel_width * LED_ASPECT_HEIGHT) + (LED_ASPECT_WIDTH - 1)) / LED_ASPECT_WIDTH, LED_ASPECT_HEIGHT,
+      window_height - 1);
+    if (next_height == panel_height)
+      break;
+
+    panel_height = next_height;
+  }
+
+  CalculateDrawRect(window_width, window_height - panel_height, apply_rotation, apply_aspect_ratio,
+                    &candidate_display_rect, &candidate_draw_rect);
+  const s32 panel_width = std::clamp(
+    ((candidate_draw_rect.width() * width_percentage) + 50) / 100, LED_ASPECT_WIDTH, window_width);
+  const s32 panel_x = candidate_draw_rect.x + ((candidate_draw_rect.width() - panel_width) / 2);
+  const s32 panel_y = (mode == 1) ? 0 : (window_height - panel_height);
+  *led_rect = GSVector4i(panel_x, panel_y, panel_x + panel_width, panel_y + panel_height);
+  return true;
+}
+
 void GPU::CalculatePresentationDrawRect(s32 window_width, s32 window_height, bool apply_rotation,
                                         bool apply_aspect_ratio, GSVector4i* display_rect,
                                         GSVector4i* draw_rect) const
@@ -3024,15 +3070,12 @@ void GPU::CalculatePresentationDrawRect(s32 window_width, s32 window_height, boo
   s32 content_top = 0;
   s32 content_height = window_height;
 
-  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
-  if (IsCyberLeadLEDGame() && (mode == 1 || mode == 2) && window_height > 1)
+  GSVector4i led_rect;
+  if (CalculateCyberLeadLEDAttachedRect(window_width, window_height, apply_rotation, apply_aspect_ratio, &led_rect))
   {
-    const s32 strip_height = std::min<s32>(
-      static_cast<s32>(g_settings.GetNamcoSystem12CyberLeadLEDStripHeight(static_cast<u32>(window_height))),
-      window_height - 1);
-    content_height -= strip_height;
-    if (mode == 1)
-      content_top = strip_height;
+    content_height -= led_rect.height();
+    if (g_settings.arcade_namco_system12_cyber_lead_led_mode == 1)
+      content_top = led_rect.height();
   }
 
   CalculateDrawRect(window_width, content_height, apply_rotation, apply_aspect_ratio, display_rect, draw_rect);
