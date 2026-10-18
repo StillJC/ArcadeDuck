@@ -233,6 +233,20 @@ add_library(core
   arcade/third_party/h8_300h/rtc.h
   arcade/third_party/h8_300h/system.h
   arcade/third_party/h8_300h/types.h
+  arcade/third_party/tlcs900h/tlcs900h_arcadeduck.c
+  arcade/third_party/tlcs900h/tlcs900h_arcadeduck.h
+  arcade/third_party/tlcs900h/TLCS900h_interpret.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret.h
+  arcade/third_party/tlcs900h/TLCS900h_interpret_dst.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_dst.h
+  arcade/third_party/tlcs900h/TLCS900h_interpret_reg.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_reg.h
+  arcade/third_party/tlcs900h/TLCS900h_interpret_single.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_single.h
+  arcade/third_party/tlcs900h/TLCS900h_interpret_src.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_src.h
+  arcade/third_party/tlcs900h/TLCS900h_registers.c
+  arcade/third_party/tlcs900h/TLCS900h_registers.h
   arcade/systems/namco/system12/namco_system12.cpp
   arcade/systems/namco/system12/namco_system12.h
   legacy_pad_state.cpp
@@ -285,6 +299,13 @@ set_source_files_properties(
   arcade/third_party/m37710/m37710o3.cpp
   arcade/third_party/adsp2181/adsp2181_core.c
   arcade/third_party/h8_300h/emu.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_dst.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_reg.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_single.c
+  arcade/third_party/tlcs900h/TLCS900h_interpret_src.c
+  arcade/third_party/tlcs900h/TLCS900h_registers.c
+  arcade/third_party/tlcs900h/tlcs900h_arcadeduck.c
   arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
   arcade/third_party/musashi/m68kcpu.c
   arcade/third_party/musashi/m68kops.c
@@ -332,6 +353,13 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 
   set_source_files_properties(
     arcade/third_party/h8_300h/emu.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_dst.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_reg.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_single.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_src.c
+    arcade/third_party/tlcs900h/TLCS900h_registers.c
+    arcade/third_party/tlcs900h/tlcs900h_arcadeduck.c
     arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
     PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244;/wd4245;/wd4702"
   )
@@ -345,6 +373,13 @@ endif()
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
   set_source_files_properties(
     arcade/third_party/h8_300h/emu.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_dst.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_reg.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_single.c
+    arcade/third_party/tlcs900h/TLCS900h_interpret_src.c
+    arcade/third_party/tlcs900h/TLCS900h_registers.c
+    arcade/third_party/tlcs900h/tlcs900h_arcadeduck.c
     arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
     PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-function;-Wno-sign-compare"
   )

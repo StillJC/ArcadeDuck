@@ -71,6 +71,13 @@
       <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
       <ClCompile Include="arcade\third_party\h8_300h\emu.c" />
       <ClCompile Include="arcade\third_party\h8_300h\h8_arcadeduck_stubs.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_dst.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_reg.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_single.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_src.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_registers.c" />
+      <ClCompile Include="arcade\third_party\tlcs900h\tlcs900h_arcadeduck.c" />
       <ClCompile Include="arcade\devices\jvs\jvs_bus.cpp" />
       <ClCompile Include="arcade\devices\jvs\jvs_chain.cpp" />
       <ClCompile Include="arcade\devices\jvs\namco_cyberlead.cpp" />
@@ -213,6 +220,13 @@
       <ClInclude Include="arcade\third_party\h8_300h\rtc.h" />
       <ClInclude Include="arcade\third_party\h8_300h\system.h" />
       <ClInclude Include="arcade\third_party\h8_300h\types.h" />      <ClInclude Include="arcade\devices\jvs\jvs_bus.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_dst.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_reg.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_single.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_src.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_registers.h" />
+      <ClInclude Include="arcade\third_party\tlcs900h\tlcs900h_arcadeduck.h" />
       <ClInclude Include="arcade\devices\jvs\jvs_chain.h" />
       <ClInclude Include="arcade\devices\jvs\namco_cyberlead.h" />
       <ClInclude Include="arcade\devices\jvs\namco_cyberlead_led.h" />

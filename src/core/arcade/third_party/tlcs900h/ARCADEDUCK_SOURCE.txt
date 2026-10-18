@@ -1,0 +1,5 @@
+Upstream: https://github.com/libretro/beetle-ngp-libretro
+Commit: a50d5ac288a81f2104ddf43195a4efdd15c72227
+Path: mednafen/ngp/TLCS-900h
+Original project: NeoPop / Mednafen NGP
+License: GPL-2.0-or-later (source file notices retained)

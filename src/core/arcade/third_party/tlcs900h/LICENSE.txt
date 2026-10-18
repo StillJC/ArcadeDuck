@@ -1,0 +1,4 @@
+This directory contains NeoPop-derived TLCS-900/H source files distributed under
+the GNU General Public License version 2 or, at your option, any later version.
+See the retained notices at the top of the imported source files and the project
+root GPL license. ArcadeDuck adapter files are GPL-3.0-only.

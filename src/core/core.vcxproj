@@ -216,6 +216,76 @@
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;4245;4702;%(DisableSpecificWarnings)</DisableSpecificWarnings>
       <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>    <ClCompile Include="arcade\devices\jvs\jvs_bus.cpp" />
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_dst.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_reg.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_single.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_interpret_src.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\TLCS900h_registers.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <ClCompile Include="arcade\third_party\tlcs900h\tlcs900h_arcadeduck.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile></PrecompiledHeaderFile>
+      <ForcedIncludeFiles></ForcedIncludeFiles>
+      <CompileAs>CompileAsC</CompileAs>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4244;4245;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions Condition="$(Configuration.Contains(Clang))">-Wno-unused-parameter -Wno-unused-function -Wno-sign-compare %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="arcade\devices\jvs\jvs_chain.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_cyberlead.cpp" />
     <ClCompile Include="arcade\devices\jvs\namco_cyberlead_led.cpp" />
@@ -370,6 +440,13 @@
     <ClInclude Include="arcade\third_party\h8_300h\rtc.h" />
     <ClInclude Include="arcade\third_party\h8_300h\system.h" />
     <ClInclude Include="arcade\third_party\h8_300h\types.h" />    <ClInclude Include="arcade\devices\jvs\jvs_bus.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_dst.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_reg.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_single.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_interpret_src.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\TLCS900h_registers.h" />
+    <ClInclude Include="arcade\third_party\tlcs900h\tlcs900h_arcadeduck.h" />
     <ClInclude Include="arcade\devices\jvs\jvs_chain.h" />
     <ClInclude Include="arcade\devices\jvs\namco_cyberlead.h" />
     <ClInclude Include="arcade\devices\jvs\namco_cyberlead_led.h" />
