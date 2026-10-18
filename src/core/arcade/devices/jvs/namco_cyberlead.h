@@ -58,6 +58,7 @@ public:
   const LEDTransportState& GetLEDTransportState() const { return m_led_transport; }
   const NamcoCyberLeadLEDLink& GetLEDLink() const { return m_led_link; }
   const NamcoCyberLeadLEDDevice& GetLEDDevice() const { return m_led_device; }
+  NamcoCyberLeadLEDDevice& GetLEDDevice() { return m_led_device; }
 
 private:
   u32 ReadPlayerInputs(u32 player) const;

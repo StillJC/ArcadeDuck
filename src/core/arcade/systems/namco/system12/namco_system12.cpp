@@ -286,6 +286,7 @@ struct RuntimeState
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
+  std::string cyberlead_flash_path;
   bool eeprom_dirty = false;
 
   Arcade::H8::H83002Timer16 h8_timer16;
@@ -479,6 +480,51 @@ void SaveEEPROM(RuntimeState& runtime)
   runtime.eeprom_dirty = false;
   INFO_LOG("System12 AT28C16 saved set='{}' path='{}'",
            runtime.content.set_name, runtime.eeprom_path);
+}
+
+// The LED PCB's AT29C020 holds data games program into it, so it is kept with
+// the set's other non-volatile memory once written.
+void LoadCyberLeadFlash(RuntimeState& runtime)
+{
+  runtime.cyberlead_flash_path = Path::Combine(runtime.persistence_directory, "cl1-leda.ic5");
+  if (FileSystem::FileExists(runtime.cyberlead_flash_path.c_str()))
+  {
+    Error error;
+    const std::optional<DynamicHeapArray<u8>> data =
+      FileSystem::ReadBinaryFile(runtime.cyberlead_flash_path.c_str(), &error);
+    if (data && data->size() == CYBERLEAD_LED_FIRMWARE_SIZE &&
+        runtime.h8_cyberlead.SetLEDFirmware(data->cspan()))
+    {
+      INFO_LOG("CyberLead LED flash loaded path='{}'", runtime.cyberlead_flash_path);
+      return;
+    }
+
+    WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", runtime.cyberlead_flash_path);
+  }
+
+  if (!runtime.h8_cyberlead.SetLEDFirmware(std::span<const u8>(runtime.content.cyberlead_led_firmware)))
+  {
+    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
+    runtime.content.cyberlead_led_firmware.clear();
+  }
+}
+
+void SaveCyberLeadFlash(RuntimeState& runtime)
+{
+  Arcade::JVS::NamcoCyberLeadLEDDevice& led = runtime.h8_cyberlead.GetLEDDevice();
+  if (runtime.cyberlead_flash_path.empty() || !led.IsFlashModified())
+    return;
+
+  const std::span<const u8> flash = led.GetFlash();
+  if (!FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
+      !FileSystem::WriteBinaryFile(runtime.cyberlead_flash_path.c_str(), flash.data(), flash.size()))
+  {
+    ERROR_LOG("CyberLead LED flash save failed path='{}'", runtime.cyberlead_flash_path);
+    return;
+  }
+
+  led.ClearFlashModified();
+  INFO_LOG("CyberLead LED flash saved path='{}'", runtime.cyberlead_flash_path);
 }
 
 u32 ReadEEPROM(RuntimeState& runtime, u32 width, u32 offset)
@@ -3287,12 +3333,8 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
 
   runtime.h8_cpu = std::make_unique<h8_system_t>();
-  if (!runtime.content.cyberlead_led_firmware.empty() &&
-      !runtime.h8_cyberlead.SetLEDFirmware(std::span<const u8>(runtime.content.cyberlead_led_firmware)))
-  {
-    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
-    runtime.content.cyberlead_led_firmware.clear();
-  }
+  if (!runtime.content.cyberlead_led_firmware.empty())
+    LoadCyberLeadFlash(runtime);
 
   s_runtime = std::move(runtime);
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
@@ -3369,7 +3411,10 @@ void Shutdown()
   DMA::SetRequest(DMA::Channel::PIO, false);
 
   if (s_runtime)
+  {
     SaveEEPROM(*s_runtime);
+    SaveCyberLeadFlash(*s_runtime);
+  }
 
   ArcadeInput::SetOperatorServiceMinimumHold(0);
   s_runtime.reset();
