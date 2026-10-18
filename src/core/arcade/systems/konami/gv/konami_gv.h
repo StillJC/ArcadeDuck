@@ -15,6 +15,9 @@ class StateWrapper;
 namespace BIOS {
 struct Image;
 }
+namespace Arcade::Database {
+struct GameDefinition;
+}
 
 namespace Konami {
 
@@ -68,6 +71,8 @@ std::string GetGVCHDFilename(const GVGameDefinition& definition);
 std::string GetGVCompanionCHDPath(std::string_view archive_path, const GVGameDefinition& definition);
 
 /// Loads and validates the EEPROM and companion CHD for a recognized GV set.
+std::optional<GVLoadedContent> LoadGVContent(const char* archive_path,
+                                             const Arcade::Database::GameDefinition& game, Error* error);
 std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error);
 
 /// Initializes the GV board lifecycle and installs its BIOS.

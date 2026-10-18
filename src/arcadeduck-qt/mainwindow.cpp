@@ -1446,19 +1446,55 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
               [this, entry]() { g_emu_thread->bootSystem(getSystemBootParameters(entry->path)); });
 
       const Arcade::Database::GameDefinition* const parent_game = GetArcadeGameForEntry(entry);
+      const Arcade::Database::GameDefinition* const archive_game = Arcade::Database::IdentifyArchive(entry->path);
+      if (parent_game && archive_game && parent_game != archive_game)
+      {
+        WARNING_LOG("Arcade game-list identity mismatch for '{}': cached game '{}' differs from archive game '{}'.",
+                    entry->path, parent_game->id, archive_game->id);
+      }
+
       const Arcade::Database::SystemDefinition* const parent_system =
         parent_game ? Arcade::Database::GetSystem(parent_game->system_id) : nullptr;
-      if (parent_game && parent_game->parent.empty() && parent_system &&
-          Arcade::MachineHandlerSupportsSplitMergedSets(parent_system->machine_handler))
+      if (!parent_game)
       {
+        INFO_LOG("Clone launch unavailable for '{}' (serial '{}'): entry is not present in the arcade database.",
+                 entry->path, entry->serial);
+      }
+      else if (!parent_game->parent.empty())
+      {
+        INFO_LOG("Clone launch unavailable for '{}': database game '{}' is a clone of '{}'.", entry->path,
+                 parent_game->id, parent_game->parent);
+      }
+      else if (!parent_system)
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': arcade system '{}' was not found.", parent_game->id,
+                 parent_game->system_id);
+      }
+      else if (!Arcade::MachineHandlerSupportsSplitMergedSets(parent_system->machine_handler))
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': machine handler '{}' does not support split/merged sets.",
+                 parent_game->id, parent_system->machine_handler);
+      }
+      else
+      {
+        const auto clones = Arcade::Database::GetClones(parent_game->id);
+        if (clones.empty())
+          INFO_LOG("Clone launch unavailable for parent '{}': no clones are defined in the arcade database.",
+                   parent_game->id);
+
         QMenu* clone_menu = nullptr;
-        for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(parent_game->id))
+        for (const Arcade::Database::GameDefinition* const clone : clones)
         {
           std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
           if (clone_path.empty())
             clone_path = entry->path;
           if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+          {
+            INFO_LOG("Clone '{}' suppressed for parent '{}': required ROMs could not be resolved using archive anchor "
+                     "'{}'.",
+                     clone->id, parent_game->id, clone_path);
             continue;
+          }
 
           if (!clone_menu)
             clone_menu = menu.addMenu(tr("Start Clone"));
@@ -1475,6 +1511,13 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
                   [this, clone_path = std::move(clone_path), clone_id = clone->id]() mutable {
                     g_emu_thread->bootSystem(getSystemBootParameters(std::move(clone_path), std::move(clone_id)));
                   });
+        }
+
+        if (!clone_menu && !clones.empty())
+        {
+          INFO_LOG("Start Clone menu suppressed for parent '{}': none of {} database clone(s) could resolve their "
+                   "required ROMs.",
+                   parent_game->id, clones.size());
         }
       }
 

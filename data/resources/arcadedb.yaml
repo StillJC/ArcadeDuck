@@ -2515,6 +2515,7 @@ games:
   susume:
     archive: "susume.zip"
     title: "Susume! Taisen Puzzle-Dama"
+    parent: "lacrazyc"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Puzzle"
@@ -2706,6 +2707,7 @@ games:
   tmoshspa:
     archive: "tmoshspa.zip"
     title: "Tokimeki Memorial Oshiete Your Heart Seal Version Plus"
+    parent: "tmoshsp"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Simulation"
@@ -2762,6 +2764,7 @@ games:
   naganoj:
     archive: "naganoj.zip"
     title: "Hyper Olympics in Nagano"
+    parent: "nagano98"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Sports"

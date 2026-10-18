@@ -1584,9 +1584,14 @@ std::string GetGVCHDFilename(const GVGameDefinition& definition)
 
 std::string GetGVCompanionCHDPath(std::string_view archive_path, const GVGameDefinition& definition)
 {
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(definition.set_name);
+  const Arcade::Database::MediaDefinition* const disc =
+    game ? Arcade::Database::GetMediaByRole(*game, "disc") : nullptr;
+  if (game && disc)
+    return Arcade::Database::GetCompanionMediaPath(archive_path, *game, *disc);
+
   const std::string filename = GetGVCHDFilename(definition);
-  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{},
-                                                  filename);
+  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{}, filename);
 }
 
 bool InitializeGV(const BIOS::Image& bios, const GVLoadedContent& content, std::string_view persistence_directory,
@@ -2596,20 +2601,21 @@ bool DoGVState(StateWrapper& sw)
   return !sw.HasError();
 }
 
-std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error)
+std::optional<GVLoadedContent> LoadGVContent(const char* archive_path,
+                                             const Arcade::Database::GameDefinition& game, Error* error)
 {
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
-  const GVGameDefinition* const definition = game ? GetGVGameDefinition(game->id) : nullptr;
+  const GVGameDefinition* const definition = GetGVGameDefinition(game.id);
   if (!definition)
   {
-    Error::SetStringFmt(error, "Konami GV content archive '{}' is not a recognized arcade set.", archive_path);
+    Error::SetStringFmt(error, "Konami GV game '{}' is not a recognized GV set.", game.id);
     return std::nullopt;
   }
 
-  VERBOSE_LOG("KonamiGV.Content opening_archive canonical_set='{}'", definition->set_name);
+  VERBOSE_LOG("KonamiGV.Content opening_archive canonical_set='{}' archive_anchor='{}'", definition->set_name,
+              archive_path);
 
   std::vector<u8> eeprom_data;
-  if (!Arcade::LoadGameROMByRole(archive_path, *game, "eeprom", &eeprom_data, error))
+  if (!Arcade::LoadGameROMByRole(archive_path, game, "eeprom", &eeprom_data, error))
     return std::nullopt;
 
   GVLoadedContent content = {definition, definition->set_name, {}, {}, definition->chd_sha1};
@@ -2646,6 +2652,18 @@ std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* er
   VERBOSE_LOG("KonamiGV.Content preflight_complete canonical_set='{}' chd_sha1='{}'", definition->set_name,
            definition->chd_sha1);
   return content;
+}
+
+std::optional<GVLoadedContent> LoadGVContent(const char* archive_path, Error* error)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  if (!game)
+  {
+    Error::SetStringFmt(error, "Konami GV content archive '{}' is not a recognized arcade set.", archive_path);
+    return std::nullopt;
+  }
+
+  return LoadGVContent(archive_path, *game, error);
 }
 
 bool IsGVSet(std::string_view set_name)

@@ -527,14 +527,18 @@ bool LoadROMFromArchive(std::string_view archive_path, const Database::ROMDefini
 bool LoadROMFromArchives(std::span<const std::string> archive_paths, const Database::ROMDefinition& rom,
                          std::vector<u8>* data, Error* error)
 {
+  bool had_error = false;
   for (const std::string& archive_path : archive_paths)
   {
     const LoadResult result = TryLoadROMFromArchive(archive_path, rom, data, error);
     if (result == LoadResult::Loaded)
       return true;
     if (result == LoadResult::Error)
-      return false;
+      had_error = true;
   }
+
+  if (had_error)
+    return false;
 
   std::string searched_paths;
   for (const std::string& archive_path : archive_paths)
@@ -584,9 +588,20 @@ bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefin
   archive_members.reserve(archive_paths.size());
   for (const std::string& path : archive_paths)
   {
-    std::vector<ArchiveMemberInfo>& members = archive_members.emplace_back();
+    std::vector<ArchiveMemberInfo> members;
     if (!ReadArchiveMembers(path, &members))
-      return false;
+    {
+      VERBOSE_LOG("Skipping unreadable arcade ROM archive '{}' while resolving game '{}'.", path, game.id);
+      continue;
+    }
+
+    archive_members.push_back(std::move(members));
+  }
+
+  if (archive_members.empty())
+  {
+    VERBOSE_LOG("No readable arcade ROM archives are available while resolving game '{}'.", game.id);
+    return false;
   }
 
   for (const Database::ROMDefinition& rom : game.roms)
@@ -607,7 +622,10 @@ bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefin
     }
 
     if (!found)
+    {
+      VERBOSE_LOG("Required arcade ROM '{}' is unavailable while resolving game '{}'.", rom.name, game.id);
       return false;
+    }
   }
 
   return true;

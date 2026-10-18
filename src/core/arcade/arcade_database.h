@@ -217,6 +217,7 @@ struct ControlLayoutDefinition
 bool EnsureLoaded();
 void Unload();
 bool IsLoaded();
+std::string_view GetContentFingerprint();
 
 std::span<const SystemDefinition> GetSystems();
 std::span<const GameDefinition> GetGames();

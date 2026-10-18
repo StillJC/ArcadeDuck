@@ -19,6 +19,9 @@
 #include <vector>
 
 class Error;
+namespace Arcade::Database {
+struct GameDefinition;
+}
 
 namespace BIOS {
 enum : u32
@@ -85,7 +88,9 @@ std::optional<Image> LoadImageFromFile(const char* filename, Error* error);
 /// Loads and validates the Konami GV BIOS from konamigv.zip or konamigv.7z in a BIOS directory.
 std::optional<Image> LoadKonamiGVImageFromDirectory(const char* directory, Error* error);
 
-/// Loads the Konami GQ BIOS directly from a recognized MAME set archive and validates its contents.
+/// Loads the Konami GQ BIOS from the logical game's split/merged archive search path.
+std::optional<Image> LoadKonamiGQImageFromArchive(const char* archive_path,
+                                                  const Arcade::Database::GameDefinition& game, Error* error);
 std::optional<Image> LoadKonamiGQImageFromArchive(const char* archive_path, Error* error);
 
 /// Returns true when a valid Konami GV BIOS archive exists in a BIOS directory.

@@ -14,6 +14,9 @@ class Error;
 namespace BIOS {
 struct Image;
 }
+namespace Arcade::Database {
+struct GameDefinition;
+}
 
 namespace Konami {
 
@@ -55,6 +58,8 @@ std::string GetGQCHDFilename(const GQGameDefinition& definition);
 std::string GetGQCompanionCHDPath(std::string_view archive_path, const GQGameDefinition& definition);
 
 /// Loads and validates the GQ sound ROMs and companion hard-disk CHD.
+std::optional<GQLoadedContent> LoadGQContent(const char* archive_path,
+                                             const Arcade::Database::GameDefinition& game, Error* error);
 std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error);
 
 /// Initializes the GQ board lifecycle, hard-disk CHD, and NCR53CF96 host adapter.

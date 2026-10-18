@@ -82,7 +82,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id);
 /// Unknown handlers are unsupported.
 bool MachineHandlerSupportsSaveStates(std::string_view id);
 
-/// Returns whether the handler currently resolves split/merged game ROM archives.
+/// Returns whether the ID names a registered handler. All registered handlers must resolve non-merged, split, and
+/// merged game archives through the logical game definition.
 bool MachineHandlerSupportsSplitMergedSets(std::string_view id);
 
 } // namespace Arcade

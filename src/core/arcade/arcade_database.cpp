@@ -8,6 +8,7 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/path.h"
+#include "common/sha1_digest.h"
 #include "common/string_util.h"
 
 #include "ryml.hpp"
@@ -31,10 +32,11 @@ constexpr u32 SUPPORTED_SCHEMA_VERSION = 1;
 
 bool s_load_attempted = false;
 bool s_loaded = false;
+std::string s_content_fingerprint;
 std::vector<SystemDefinition> s_systems;
 std::vector<GameDefinition> s_games;
 std::vector<ControlLayoutDefinition> s_control_layouts;
-std::unordered_map<std::string, std::string> s_archive_path_index;
+std::unordered_map<std::string, std::vector<std::string>> s_archive_path_index;
 std::mutex s_archive_path_index_mutex;
 std::unordered_map<std::string, std::string> s_companion_media_index;
 std::mutex s_companion_media_index_mutex;
@@ -66,19 +68,29 @@ std::string GetArchiveLookupKey(std::string_view archive_name)
   return NormalizeKey(Path::GetFileTitle(archive_name));
 }
 
-std::string FindIndexedArchivePath(std::string_view archive_name)
+std::vector<std::string> FindIndexedArchivePaths(std::string_view archive_name)
 {
   const std::string key = GetArchiveLookupKey(archive_name);
-  std::string path;
+  std::vector<std::string> paths;
   {
     std::lock_guard lock(s_archive_path_index_mutex);
     const auto iter = s_archive_path_index.find(key);
     if (iter == s_archive_path_index.end())
       return {};
-    path = iter->second;
+    paths = iter->second;
   }
 
-  return FileSystem::FileExists(path.c_str()) ? path : std::string();
+  paths.erase(std::remove_if(paths.begin(), paths.end(), [](const std::string& path) {
+                return !FileSystem::FileExists(path.c_str());
+              }),
+              paths.end());
+  return paths;
+}
+
+std::string FindIndexedArchivePath(std::string_view archive_name)
+{
+  std::vector<std::string> paths = FindIndexedArchivePaths(archive_name);
+  return paths.empty() ? std::string() : std::move(paths.front());
 }
 
 std::string MakeCompanionMediaIndexKey(std::string_view set_name, std::string_view filename)
@@ -1246,6 +1258,9 @@ bool LoadDatabase()
   if (!valid)
     return false;
 
+  auto database_digest = SHA1Digest::GetDigest(data->data(), data->size());
+  s_content_fingerprint = SHA1Digest::DigestToString(database_digest);
+
   INFO_LOG("Loaded universal arcade database: {} systems, {} games, {} control layouts.", s_systems.size(),
            s_games.size(), s_control_layouts.size());
   size_t firmware_count = 0;
@@ -1281,6 +1296,7 @@ bool EnsureLoaded()
 
 void Unload()
 {
+  s_content_fingerprint.clear();
   s_systems.clear();
   s_games.clear();
   s_control_layouts.clear();
@@ -1297,6 +1313,11 @@ void Unload()
 bool IsLoaded()
 {
   return s_loaded;
+}
+
+std::string_view GetContentFingerprint()
+{
+  return EnsureLoaded() ? std::string_view(s_content_fingerprint) : std::string_view();
 }
 
 std::span<const SystemDefinition> GetSystems()
@@ -1422,7 +1443,12 @@ void IndexArchivePath(std::string_view path)
 
   const std::string key = GetArchiveLookupKey(game->archive_name);
   std::lock_guard lock(s_archive_path_index_mutex);
-  s_archive_path_index.try_emplace(key, path);
+  std::vector<std::string>& paths = s_archive_path_index[key];
+  if (std::none_of(paths.begin(), paths.end(),
+                   [&path](const std::string& existing) { return StringUtil::EqualNoCase(existing, path); }))
+  {
+    paths.emplace_back(path);
+  }
 }
 
 std::string GetIndexedArchivePath(std::string_view archive_name)
@@ -1460,7 +1486,8 @@ std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path,
     filename.append(".").append(alternate_extension);
     add_path(Path::Combine(archive_directory, filename));
 
-    add_path(FindIndexedArchivePath(archive_name));
+    for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
+      add_path(std::move(indexed_path));
   };
 
   const GameDefinition* current = &game;

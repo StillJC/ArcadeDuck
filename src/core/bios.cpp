@@ -171,10 +171,6 @@ static constexpr const char s_konami_gv_member_name[] = "999a01.7e";
 static constexpr u32 s_konami_gv_member_crc32 = 0xad498d2d;
 static constexpr const char s_konami_gv_member_sha1[] = "02a82a2fe1fba0404517c3602324bfa64e23e478";
 
-static constexpr const char s_konami_gq_member_name[] = "420b03.27p";
-static constexpr u32 s_konami_gq_member_crc32 = 0xaab391b1;
-static constexpr const char s_konami_gq_member_sha1[] = "bf9dc7c0c8168c22a4be266fe6a66d3738df916b";
-
 } // namespace BIOS
 
 TinyString BIOS::ImageInfo::GetHashString(const BIOS::ImageInfo::Hash& hash)
@@ -266,26 +262,38 @@ std::optional<BIOS::Image> BIOS::LoadKonamiGVImageFromDirectory(const char* dire
   return image;
 }
 
-std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(const char* archive_path, Error* error)
+std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(
+  const char* archive_path, const Arcade::Database::GameDefinition& game, Error* error)
 {
-  Arcade::Database::ROMDefinition rom;
-  rom.name = s_konami_gq_member_name;
-  rom.sha1 = s_konami_gq_member_sha1;
-  rom.crc32 = s_konami_gq_member_crc32;
-  rom.size = BIOS_SIZE;
-  rom.has_crc32 = true;
-
   std::vector<u8> data;
-  if (!Arcade::LoadROMFromArchive(archive_path, rom, &data, error))
+  if (!Arcade::LoadGameROMByRole(archive_path, game, "bios", &data, error))
     return std::nullopt;
+  if (data.size() != BIOS_SIZE)
+  {
+    Error::SetStringFmt(error, "Konami GQ BIOS for '{}' has size {}, expected {} bytes.", game.id, data.size(),
+                        static_cast<u32>(BIOS_SIZE));
+    return std::nullopt;
+  }
 
   Image image;
   image.data.resize(BIOS_SIZE);
   std::memcpy(image.data.data(), data.data(), data.size());
   image.hash = MD5Digest::HashData(image.data);
   image.info = nullptr;
-  INFO_LOG("Loaded Konami GQ BIOS member '{}' from '{}'.", s_konami_gq_member_name, archive_path);
+  INFO_LOG("Loaded Konami GQ BIOS for '{}' using archive anchor '{}'.", game.id, archive_path);
   return image;
+}
+
+std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(const char* archive_path, Error* error)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  if (!game)
+  {
+    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized arcade set.", archive_path);
+    return std::nullopt;
+  }
+
+  return LoadKonamiGQImageFromArchive(archive_path, *game, error);
 }
 
 const BIOS::ImageInfo* BIOS::GetInfoForHash(const std::span<u8> image, const ImageInfo::Hash& hash)

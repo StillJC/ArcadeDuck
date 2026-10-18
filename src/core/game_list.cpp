@@ -41,7 +41,7 @@ namespace {
 enum : u32
 {
   GAME_LIST_CACHE_SIGNATURE = 0x45434C48,
-  GAME_LIST_CACHE_VERSION = 40,
+  GAME_LIST_CACHE_VERSION = 41,
 
   PLAYED_TIME_SERIAL_LENGTH = 32,
   PLAYED_TIME_LAST_TIME_LENGTH = 20,  // uint64
@@ -175,6 +175,19 @@ bool GameList::LoadEntriesFromCache(BinaryFileReader& reader)
     return false;
   }
 
+  std::string database_fingerprint;
+  if (!reader.ReadSizePrefixedString(&database_fingerprint))
+  {
+    WARNING_LOG("Game list cache header is corrupted");
+    return false;
+  }
+
+  if (database_fingerprint != Arcade::Database::GetContentFingerprint())
+  {
+    INFO_LOG("Arcade database changed; rebuilding game list cache.");
+    return false;
+  }
+
   while (!reader.IsAtEnd())
   {
     std::string path;
@@ -244,6 +257,7 @@ bool GameList::LoadOrInitializeCache(std::FILE* fp, bool invalidate_cache)
   BinaryFileWriter writer(fp);
   writer.WriteU32(GAME_LIST_CACHE_SIGNATURE);
   writer.WriteU32((GAME_LIST_CACHE_VERSION));
+  writer.WriteSizePrefixedString(Arcade::Database::GetContentFingerprint());
   if (!writer.Flush(&error))
   {
     ERROR_LOG("Failed to write game list cache header: {}", error.GetDescription());

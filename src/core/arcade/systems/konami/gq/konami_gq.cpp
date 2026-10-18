@@ -182,9 +182,14 @@ std::string GetGQCHDFilename(const GQGameDefinition& definition)
 
 std::string GetGQCompanionCHDPath(std::string_view archive_path, const GQGameDefinition& definition)
 {
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(definition.set_name);
+  const Arcade::Database::MediaDefinition* const harddisk =
+    game ? Arcade::Database::GetMediaByRole(*game, "harddisk") : nullptr;
+  if (game && harddisk)
+    return Arcade::Database::GetCompanionMediaPath(archive_path, *game, *harddisk);
+
   const std::string filename = GetGQCHDFilename(definition);
-  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{},
-                                                  filename);
+  return Arcade::Database::GetCompanionMediaPath(archive_path, definition.set_name, std::string_view{}, filename);
 }
 
 bool InitializeGQ(const BIOS::Image& bios, GQLoadedContent content, std::string_view persistence_directory,
@@ -446,20 +451,21 @@ void SetGQLightgunPosition(u32 player, float x, float y)
   s_gq_runtime->lightgun_normalized_y[player] = std::clamp(y, 0.0f, 1.0f);
 }
 
-std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error)
+std::optional<GQLoadedContent> LoadGQContent(const char* archive_path,
+                                             const Arcade::Database::GameDefinition& game, Error* error)
 {
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
-  const GQGameDefinition* const definition = game ? GetGQGameDefinition(game->id) : nullptr;
+  const GQGameDefinition* const definition = GetGQGameDefinition(game.id);
   if (!definition)
   {
-    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized arcade set.", archive_path);
+    Error::SetStringFmt(error, "Konami GQ game '{}' is not a recognized GQ set.", game.id);
     return std::nullopt;
   }
 
-  VERBOSE_LOG("KonamiGQ.Content opening_archive canonical_set='{}'", definition->set_name);
+  VERBOSE_LOG("KonamiGQ.Content opening_archive canonical_set='{}' archive_anchor='{}'", definition->set_name,
+              archive_path);
   GQLoadedContent content = {definition, definition->set_name, {}, {}, {}, definition->chd_sha1};
-  if (!Arcade::LoadGameROMByRole(archive_path, *game, "sound_program", &content.sound_program, error) ||
-      !Arcade::LoadGameROMByRole(archive_path, *game, "pcm_samples", &content.pcm_samples, error))
+  if (!Arcade::LoadGameROMByRole(archive_path, game, "sound_program", &content.sound_program, error) ||
+      !Arcade::LoadGameROMByRole(archive_path, game, "pcm_samples", &content.pcm_samples, error))
   {
     return std::nullopt;
   }
@@ -486,6 +492,18 @@ std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* er
   VERBOSE_LOG("KonamiGQ.Content preflight_complete canonical_set='{}' chd_sha1='{}'", definition->set_name,
            definition->chd_sha1);
   return content;
+}
+
+std::optional<GQLoadedContent> LoadGQContent(const char* archive_path, Error* error)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  if (!game)
+  {
+    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized arcade set.", archive_path);
+    return std::nullopt;
+  }
+
+  return LoadGQContent(archive_path, *game, error);
 }
 
 bool IsGQSet(std::string_view set_name)
