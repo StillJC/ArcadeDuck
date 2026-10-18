@@ -118,6 +118,9 @@ public:
   // playable with the cabinet display absent.
   bool QueueWireBytes(std::span<const u8> wire);
 
+  // Returns the next byte the LED C77 transmitted back to the I/O C77.
+  bool PopTransmittedByte(u8* value);
+
   // Advance from a source clock domain while preserving the exact fractional
   // relationship to the LED C77's 14.7456 MHz clock.
   void Advance(u32 source_clocks, u32 source_clock_hz);

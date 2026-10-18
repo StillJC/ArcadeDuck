@@ -22,29 +22,6 @@ public:
     bool initialize_sense_after_response = false;
   };
 
-  struct LEDTransportState
-  {
-    // JVS 0x71/0x01: eight bytes supplied by the game. The physical I/O PCB
-    // augments these with cabinet status before forwarding 0x71/0x01 to the
-    // separate Cyber Lead LED PCB.
-    std::array<u8, 8> control_data{};
-
-    // JVS 0x71/0x02: one-byte selector followed by the eight-byte game/profile
-    // identifier (for Aplarail this is selector 01 + "AP_A    ").
-    u8 profile_selector = 0;
-    std::array<u8, 8> profile_id{};
-
-    // JVS 0x71/0x05: firmware-defined 70-byte custom data transfer.
-    std::array<u8, 70> custom_data{};
-
-    // JVS 0x71/0x06: one-byte status/query argument.
-    u8 status_argument = 0;
-
-    u8 last_subcommand = 0;
-    u64 generation = 0;
-    bool active = false;
-  };
-
   void Reset();
   PacketResult ProcessPacket(std::span<const u8> packet);
 
@@ -55,24 +32,80 @@ public:
                     u16* start_address = nullptr, u32* scroll_x = nullptr,
                     u32* scroll_y = nullptr, u64* generation = nullptr) const;
 
-  const LEDTransportState& GetLEDTransportState() const { return m_led_transport; }
-  const NamcoCyberLeadLEDLink& GetLEDLink() const { return m_led_link; }
   const NamcoCyberLeadLEDDevice& GetLEDDevice() const { return m_led_device; }
   NamcoCyberLeadLEDDevice& GetLEDDevice() { return m_led_device; }
 
 private:
+  // CL1-I/OB Ver1.03 LED-board link. The I/O C77 main loop calls the state
+  // function at C38C once per pass; each state sends one frame to the LED C77.
+  enum class LinkState : u8
+  {
+    Idle,         // 1494: 71/01 control and input data
+    Profile,      // 11EC: 71/02 profile query
+    Status,       // 1278: 71/04
+    Block,        // 12DE: 71/05 data block
+    BlockDone,    // 135E: sends nothing until the game continues
+    Commit,       // 1360: 71/06
+    CommitFinish, // 13CC: 71/07
+    Mode,         // 142E: 71/08
+  };
+
+  enum class LinkStep : u8
+  {
+    Run,
+    SecondWait,
+    Evaluate,
+  };
+
+  struct Link
+  {
+    LinkState state = LinkState::Idle;
+    LinkStep step = LinkStep::Run;
+    u64 clock = 0;
+    u64 wake_clock = 0;
+    u64 clock_fraction = 0;
+    u32 generation = 0;
+    u32 started_generation = 0;
+
+    u8 loop_counter = 0;    // C0B3
+    u8 attempts = 0;        // C389
+    u16 idle_countdown = 0; // C39C
+    u8 profile_result = 0;  // C398
+    u8 transaction_id = 0;  // C399
+    u8 transfer_result = 0; // C39A
+    u8 poll_count = 0;      // C39B
+    std::array<u8, 8> control_data{}; // C3A0
+    std::array<u8, 8> profile_id{};   // C390
+    std::array<u8, 70> block{};       // C500
+
+    // LED reply receiver (C380-C388), frame stored as at C400.
+    std::array<u8, 32> reply{};
+    u8 reply_size = 0;
+    u8 reply_state = 0;
+    u8 reply_remaining = 0;
+    u8 reply_previous = 0;
+    bool reply_received = false;
+  };
+
   u32 ReadPlayerInputs(u32 player) const;
   void UpdateCoinCounters();
-  void QueueLEDCommand(std::span<const u8> command);
-  void QueueLEDControlCommand();
+  u8 ReadBoardMemory(u16 address) const;
+
+  u64 SendLEDCommand(std::span<const u8> command);
+  void SetLinkState(LinkState state);
+  void RunLinkStep();
+  void StartLinkState();
+  void EvaluateLinkState();
+  void ReceiveLEDByte(u8 value);
+  bool LEDReplyAccepted() const;
 
   u8 m_address = UINT8_C(0xFF);
   std::array<u16, 2> m_coin_counter{};
+  std::array<u16, 2> m_coin_used{};
   std::array<bool, 2> m_coin_previous{};
-  LEDTransportState m_led_transport{};
+  Link m_link{};
   NamcoCyberLeadLEDLink m_led_link{};
   NamcoCyberLeadLEDDevice m_led_device{};
-  u32 m_led_link_diag_count = 0;
 };
 
 } // namespace Arcade::JVS

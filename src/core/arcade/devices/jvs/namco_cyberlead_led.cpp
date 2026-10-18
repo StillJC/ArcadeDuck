@@ -149,6 +149,11 @@ struct NamcoCyberLeadLEDDevice::Impl
   u32 rx_tail = 0;
   u32 rx_count = 0;
 
+  // Bytes the LED C77 has finished shifting out towards the I/O C77.
+  std::array<u8, RX_QUEUE_SIZE> tx_queue{};
+  u32 tx_head = 0;
+  u32 tx_count = 0;
+
   h8_system_t cpu{};
   Stats stats{};
   FrameState frame_state{};
@@ -234,6 +239,8 @@ struct NamcoCyberLeadLEDDevice::Impl
     rx_head = 0;
     rx_tail = 0;
     rx_count = 0;
+    tx_head = 0;
+    tx_count = 0;
     stats = {};
     frame_state = {};
     fault_logged = false;
@@ -530,6 +537,11 @@ struct NamcoCyberLeadLEDDevice::Impl
     sci1_tx_busy = false;
     sci1_tx_clocks_remaining = 0;
     stats.transmitted_wire_bytes++;
+    if (tx_count < tx_queue.size())
+    {
+      tx_queue[(tx_head + tx_count) % tx_queue.size()] = sci1_tx_shift;
+      tx_count++;
+    }
 
 
     if (sci1_tx_pending)
@@ -1134,6 +1146,18 @@ void NamcoCyberLeadLEDDevice::Reset()
 bool NamcoCyberLeadLEDDevice::QueueWireBytes(std::span<const u8> wire)
 {
   return m_impl->QueueWire(wire);
+}
+
+bool NamcoCyberLeadLEDDevice::PopTransmittedByte(u8* value)
+{
+  Impl& impl = *m_impl;
+  if (impl.tx_count == 0)
+    return false;
+
+  *value = impl.tx_queue[impl.tx_head];
+  impl.tx_head = (impl.tx_head + 1) % impl.tx_queue.size();
+  impl.tx_count--;
+  return true;
 }
 
 void NamcoCyberLeadLEDDevice::Advance(u32 source_clocks, u32 source_clock_hz)

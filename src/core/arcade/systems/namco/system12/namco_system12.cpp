@@ -2568,7 +2568,8 @@ void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_
   runtime.h8_peripherals.Advance(h8_clocks);
   H8SCI0CyberLeadAdvance(runtime, h8_clocks);
   H8SCI1Advance(runtime, h8_clocks);
-  runtime.h8_cyberlead.AdvanceLED(h8_clocks, H8_CLOCK_HZ);
+  if (runtime.h8_jvs.profile == JVSProfile::CyberLead)
+    runtime.h8_cyberlead.AdvanceLED(h8_clocks, H8_CLOCK_HZ);
 
   if (advance_c352)
     runtime.c352.AdvanceH8Clocks(h8_clocks, std::span<const u8>(runtime.content.c352_samples));
