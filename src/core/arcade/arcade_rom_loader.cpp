@@ -584,6 +584,10 @@ bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefin
   if (archive_paths.empty())
     return false;
 
+  const Database::SystemDefinition* const system = Database::GetSystem(game.system_id);
+  const Database::FirmwareDefinition* const firmware =
+    system ? Database::ResolveFirmwareProfile(*system) : nullptr;
+
   std::vector<std::vector<ArchiveMemberInfo>> archive_members;
   archive_members.reserve(archive_paths.size());
   for (const std::string& path : archive_paths)
@@ -608,6 +612,15 @@ bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefin
   {
     if (!rom.required)
       continue;
+
+    if (firmware && std::any_of(firmware->roms.begin(), firmware->roms.end(),
+                                [&rom](const Database::ROMDefinition& firmware_rom) {
+                                  return rom.size == firmware_rom.size &&
+                                         StringUtil::EqualNoCase(rom.sha1, firmware_rom.sha1);
+                                }))
+    {
+      continue;
+    }
 
     bool found = false;
     for (const std::vector<ArchiveMemberInfo>& members : archive_members)
