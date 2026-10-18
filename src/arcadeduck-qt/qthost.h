@@ -150,7 +150,6 @@ Q_SIGNALS:
   void achievementsLoginRequested(Achievements::LoginRequestReason reason);
   void achievementsRefreshed(quint32 id, const QString& game_info_string);
   void achievementsChallengeModeChanged(bool enabled);
-  void cheatEnabled(quint32 index, bool enabled);
   void mediaCaptureStarted();
   void mediaCaptureStopped();
 
@@ -195,8 +194,6 @@ public Q_SLOTS:
   void setFullscreen(bool fullscreen, bool allow_render_to_main);
   void setSurfaceless(bool surfaceless);
   void requestDisplaySize(float scale);
-  void setCheatEnabled(quint32 index, bool enabled);
-  void applyCheat(quint32 index);
   void reloadPostProcessingShaders();
   void updatePostProcessingSettings();
   void clearInputBindStateFromSource(InputBindingKey key);

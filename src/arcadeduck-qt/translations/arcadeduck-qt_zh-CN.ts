@@ -2003,75 +2003,11 @@ QFile::exists: %2</translation>
     </message>
 </context>
 <context>
-    <name>CheatCodeEditorDialog</name>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Error</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="43"/>
-        <source>Type:</source>
-        <translation>类型:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="14"/>
-        <source>Cheat Code Editor</source>
-        <translation>金手指代码编辑器</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <source>Description cannot be empty.</source>
-        <translation>描述不能为空。</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="23"/>
-        <source>Description:</source>
-        <translation>描述:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="33"/>
-        <source>Group:</source>
-        <translation>分组:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Instructions are invalid.</source>
-        <translation>指令无效。</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="53"/>
-        <source>Activation:</source>
-        <translation>激活:</translation>
-    </message>
-</context>
-<context>
     <name>CheatManagerWindow</name>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="14"/>
         <source>Cheat Manager</source>
         <translation>金手指管理器</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="26"/>
-        <source>&amp;Add Group...</source>
-        <translation>新建分组(&amp;A)…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="33"/>
-        <source>&amp;Add Code...</source>
-        <translation>新建代码(&amp;A)…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="40"/>
-        <source>&amp;Edit Code...</source>
-        <translation>编辑代码(&amp;E)…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="50"/>
-        <source>&amp;Delete Code</source>
-        <translation>删除代码(&amp;D)</translation>
     </message>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="60"/>
@@ -2082,26 +2018,6 @@ QFile::exists: %2</translation>
         <translation>激活</translation>
     </message>
     <message>
-        <location filename="../cheatmanagerwindow.ui" line="67"/>
-        <source>Import...</source>
-        <translation>导入…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="77"/>
-        <source>Export...</source>
-        <translation>导出…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="84"/>
-        <source>Clear</source>
-        <translation>清除</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="91"/>
-        <source>Reset</source>
-        <translation>重置</translation>
-    </message>
-    <message>
         <location filename="../cheatmanagerwindow.ui" line="120"/>
         <source>Name</source>
         <translation>名称</translation>
@@ -2110,139 +2026,6 @@ QFile::exists: %2</translation>
         <location filename="../cheatmanagerwindow.ui" line="125"/>
         <source>Type</source>
         <translation>类型</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="130"/>
-        <source>Activation</source>
-        <translation>激活</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="135"/>
-        <source>Instructions</source>
-        <translation>指令</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="281"/>
-        <source>Toggle</source>
-        <translation>开关</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Add Group</source>
-        <translation>新建分组</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Group Name:</source>
-        <translation>分组名:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Error</source>
-        <translation>错误</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <source>This group name already exists.</source>
-        <translation>已经存在此分组名。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="462"/>
-        <source>Delete Code</source>
-        <translation>删除代码</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="463"/>
-        <source>Are you sure you wish to delete the selected code? This action is not reversible.</source>
-        <translation>您确定想要删除选中的代码吗？此操作是不可逆的。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="490"/>
-        <source>From File...</source>
-        <translation>从文件…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="491"/>
-        <source>From Text...</source>
-        <translation>从文本…</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="497"/>
-        <source>PCSXR/Libretro Cheat Files (*.cht *.txt);;All Files (*.*)</source>
-        <translation>PCSXR/Libretro金手指文件 (*.cht *.txt);;全部文件 (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="499"/>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Import Cheats</source>
-        <translation>导入金手指</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <source>Failed to parse cheat file. The log may contain more information.</source>
-        <translation>无法解析金手指文件。日志可能包含更多信息。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Cheat File Text:</source>
-        <translation>金手指文件文本:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="545"/>
-        <source>PCSXR Cheat Files (*.cht);;All Files (*.*)</source>
-        <translation>PCSXR金手指文件 (*.cht);;全部文件 (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="547"/>
-        <source>Export Cheats</source>
-        <translation>导出金手指</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Failed to save cheat file. The log may contain more information.</source>
-        <translation>无法保存金手指文件。日志可能包含更多信息。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="557"/>
-        <source>Confirm Clear</source>
-        <translation>确认清除</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="558"/>
-        <source>Are you sure you want to remove all cheats? This is not reversible.</source>
-        <translation>您确定想要删除全部金手指吗？这是不可逆的。</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="571"/>
-        <source>Confirm Reset</source>
-        <translation>确认重置</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="572"/>
-        <source>Are you sure you want to reset the cheat list? Any cheats not in the built-in cheat database WILL BE LOST.</source>
-        <translation>确定要重置作弊列表吗？任何不在内置作弊数据库中的作弊内容都将丢失。</translation>
-    </message>
-</context>
-<context>
-    <name>Cheats</name>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2589"/>
-        <source>Gameshark</source>
-        <translation>金手指</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Manual</source>
-        <translation>手动操作</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Automatic (Frame End)</source>
-        <translation>自动操作 (帧结束)</translation>
     </message>
 </context>
 <context>

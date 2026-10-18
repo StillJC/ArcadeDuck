@@ -45,6 +45,9 @@ void HotkeySettingsWidget::createButtons()
   const std::vector<const HotkeyInfo*> hotkeys(InputManager::GetHotkeyList());
   for (const HotkeyInfo* hotkey : hotkeys)
   {
+    if (!hotkey->visible_in_ui)
+      continue;
+
     const QString category(qApp->translate("Hotkeys", hotkey->category));
 
     auto iter = m_categories.find(category);

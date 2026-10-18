@@ -35,11 +35,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GV game definition.");
+      return false;
+    }
+
     m_bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGVContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGVContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -74,11 +80,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
-    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), error);
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GQ game definition.");
+      return false;
+    }
+
+    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), *context.game_definition, error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGQContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGQContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -1181,6 +1193,13 @@ bool MachineHandlerSupportsSaveStates(std::string_view id)
 {
   const std::unique_ptr<MachineHandler> handler = CreateMachineHandler(id);
   return handler && handler->SupportsSaveStates();
+}
+
+bool MachineHandlerSupportsSplitMergedSets(std::string_view id)
+{
+  // Every registered arcade handler is required to resolve logical game content from non-merged, split, and merged
+  // archive layouts. Keep this tied to handler registration so new systems cannot silently omit clone launching.
+  return CreateMachineHandler(id) != nullptr;
 }
 
 } // namespace Arcade

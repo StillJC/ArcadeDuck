@@ -2010,75 +2010,11 @@ QFile::exists: %2</translation>
     </message>
 </context>
 <context>
-    <name>CheatCodeEditorDialog</name>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="14"/>
-        <source>Cheat Code Editor</source>
-        <translation>Éditeur de code de triche</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="23"/>
-        <source>Description:</source>
-        <translation>Description :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="33"/>
-        <source>Group:</source>
-        <translation>Groupe :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="43"/>
-        <source>Type:</source>
-        <translation>Type :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="53"/>
-        <source>Activation:</source>
-        <translation>Activation :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Error</source>
-        <translation>Erreur</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <source>Description cannot be empty.</source>
-        <translation>La description ne peut pas être vide.</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Instructions are invalid.</source>
-        <translation>Les instructions sont invalides.</translation>
-    </message>
-</context>
-<context>
     <name>CheatManagerWindow</name>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="14"/>
         <source>Cheat Manager</source>
         <translation>Gestionnaire de codes de triche</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="26"/>
-        <source>&amp;Add Group...</source>
-        <translation>&amp;Ajouter un groupe...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="33"/>
-        <source>&amp;Add Code...</source>
-        <translation>&amp;Ajouter un code...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="40"/>
-        <source>&amp;Edit Code...</source>
-        <translation>&amp;Modifier le code...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="50"/>
-        <source>&amp;Delete Code</source>
-        <translation>&amp;Supprimer le code</translation>
     </message>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="60"/>
@@ -2089,26 +2025,6 @@ QFile::exists: %2</translation>
         <translation>Activer</translation>
     </message>
     <message>
-        <location filename="../cheatmanagerwindow.ui" line="67"/>
-        <source>Import...</source>
-        <translation>Importer...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="77"/>
-        <source>Export...</source>
-        <translation>Exporter...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="84"/>
-        <source>Clear</source>
-        <translation>Effacer</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="91"/>
-        <source>Reset</source>
-        <translation>Réinitialiser</translation>
-    </message>
-    <message>
         <location filename="../cheatmanagerwindow.ui" line="120"/>
         <source>Name</source>
         <translation>Nom</translation>
@@ -2117,139 +2033,6 @@ QFile::exists: %2</translation>
         <location filename="../cheatmanagerwindow.ui" line="125"/>
         <source>Type</source>
         <translation>Type</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="130"/>
-        <source>Activation</source>
-        <translation>Activation</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="135"/>
-        <source>Instructions</source>
-        <translation>Instructions</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="281"/>
-        <source>Toggle</source>
-        <translation>Basculer</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Add Group</source>
-        <translation>Ajouter un groupe</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Group Name:</source>
-        <translation>Nom du groupe :</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Error</source>
-        <translation>Erreur</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <source>This group name already exists.</source>
-        <translation>Ce nom de groupe existe déjà.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="462"/>
-        <source>Delete Code</source>
-        <translation>Supprimer le code</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="463"/>
-        <source>Are you sure you wish to delete the selected code? This action is not reversible.</source>
-        <translation>Voulez-vous vraiment supprimer le code sélectionné ? Cette action est irréversible.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="490"/>
-        <source>From File...</source>
-        <translation>Depuis un fichier...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="491"/>
-        <source>From Text...</source>
-        <translation>Depuis du texte...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="497"/>
-        <source>PCSXR/Libretro Cheat Files (*.cht *.txt);;All Files (*.*)</source>
-        <translation>Fichiers de triche PCSXR/Libretro (*.cht *.txt);;Tous les fichiers (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="499"/>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Import Cheats</source>
-        <translation>Importer des codes de triche</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <source>Failed to parse cheat file. The log may contain more information.</source>
-        <translation>Impossible d’analyser le fichier de cheats. Le journal peut contenir plus d’informations.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Cheat File Text:</source>
-        <translation>Texte du fichier de triche :</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="545"/>
-        <source>PCSXR Cheat Files (*.cht);;All Files (*.*)</source>
-        <translation>Fichiers de triche PCSXR (*.cht);;Tous les fichiers (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="547"/>
-        <source>Export Cheats</source>
-        <translation>Exporter les codes de triche</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Failed to save cheat file. The log may contain more information.</source>
-        <translation>Impossible d’enregistrer le fichier de cheats. Le journal peut contenir plus d’informations.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="557"/>
-        <source>Confirm Clear</source>
-        <translation>Confirmer l’effacement</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="558"/>
-        <source>Are you sure you want to remove all cheats? This is not reversible.</source>
-        <translation>Voulez-vous vraiment supprimer tous les cheats ? Cette action est irréversible.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="571"/>
-        <source>Confirm Reset</source>
-        <translation>Confirmation de réinitialisation</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="572"/>
-        <source>Are you sure you want to reset the cheat list? Any cheats not in the built-in cheat database WILL BE LOST.</source>
-        <translation>Voulez-vous vraiment réinitialiser la liste des codes de triche ? Tous les codes qui ne figurent pas dans la base intégrée SERONT PERDUS.</translation>
-    </message>
-</context>
-<context>
-    <name>Cheats</name>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2589"/>
-        <source>Gameshark</source>
-        <translation>Gameshark</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Manual</source>
-        <translation>Manuel</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Automatic (Frame End)</source>
-        <translation>Automatique (image de fin)</translation>
     </message>
 </context>
 <context>

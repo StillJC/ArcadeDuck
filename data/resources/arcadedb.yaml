@@ -1,5 +1,6 @@
 # ArcadeDuck universal arcade database.
-# Game archives are always complete non-merged sets. Parent relationships are metadata only.
+# Game definitions describe complete logical sets; supported handlers can resolve those ROMs from non-merged,
+# split, or merged archive layouts. Parent relationships define clone lineage and ROM fallback where supported.
 # The title field keeps the canonical game/edition name; region, board revision, and set notes use dedicated fields.
 schemaVersion: 1
 
@@ -2789,6 +2790,7 @@ games:
   susume:
     archive: "susume.zip"
     title: "Susume! Taisen Puzzle-Dama"
+    parent: "lacrazyc"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Puzzle"
@@ -2980,6 +2982,7 @@ games:
   tmoshspa:
     archive: "tmoshspa.zip"
     title: "Tokimeki Memorial Oshiete Your Heart Seal Version Plus"
+    parent: "tmoshsp"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Simulation"
@@ -3036,6 +3039,7 @@ games:
   naganoj:
     archive: "naganoj.zip"
     title: "Hyper Olympics in Nagano"
+    parent: "nagano98"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Sports"

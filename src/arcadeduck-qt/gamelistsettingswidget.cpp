@@ -192,7 +192,7 @@ void GameListSettingsWidget::onDirectoryListContextMenuRequested(const QPoint& p
 void GameListSettingsWidget::addSearchDirectory(QWidget* parent_widget)
 {
   QString dir =
-    QDir::toNativeSeparators(QFileDialog::getExistingDirectory(parent_widget, tr("Select Search Directory")));
+    QDir::toNativeSeparators(QFileDialog::getExistingDirectory(parent_widget, tr("Select Content Directory")));
 
   if (dir.isEmpty())
     return;

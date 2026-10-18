@@ -4,7 +4,7 @@
 #include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 
 #include "core/cdrom.h"
-#include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/konami/gv/konami_gv.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "util/cd_image.h"

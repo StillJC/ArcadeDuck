@@ -1,6 +1,15 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClCompile Include="src\7zArcIn.c" />
+    <ClCompile Include="src\7zBuf.c" />
+    <ClCompile Include="src\7zCrc.c" />
+    <ClCompile Include="src\7zCrcOpt.c" />
+    <ClCompile Include="src\7zDec.c" />
+    <ClCompile Include="src\7zStream.c" />
+    <ClCompile Include="src\Bcj2.c" />
+    <ClCompile Include="src\Bra.c" />
+    <ClCompile Include="src\Lzma2Dec.c" />
     <ClCompile Include="src\BraIA64.c" />
     <ClCompile Include="src\CpuArch.c" />
     <ClCompile Include="src\Delta.c" />

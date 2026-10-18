@@ -15,6 +15,8 @@ add_library(core
   arcade/arcade_link.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
+  arcade/arcade_rom_loader.cpp
+  arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
   arcade/arcade_output.h
   arcade/arcade_output_network.cpp
@@ -30,8 +32,16 @@ add_library(core
   cdrom.h
   cdrom_async_reader.cpp
   cdrom_async_reader.h
-  cheats.cpp
-  cheats.h
+  memory_scanner.cpp
+  memory_scanner.h
+  mame_cheats.cpp
+  mame_cheats.h
+  mame_cheat_expression.cpp
+  mame_cheat_expression.h
+  mame_cheat_package.cpp
+  mame_cheat_package.h
+  mame_cheat_runtime.cpp
+  mame_cheat_runtime.h
   cpu_code_cache.cpp
   cpu_code_cache.h
   cpu_code_cache_private.h
@@ -164,6 +174,8 @@ add_library(core
   arcade/devices/storage/ncr53cf96.h
   arcade/systems/konami/konami.cpp
   arcade/systems/konami/konami.h
+  arcade/systems/konami/gq/konami_gq.cpp
+  arcade/systems/konami/gq/konami_gq.h
   arcade/systems/konami/gq/konami_gq_eeprom.cpp
   arcade/systems/konami/gq/konami_gq_eeprom.h
   arcade/systems/konami/gq/konami_gq_hdd.cpp
@@ -197,6 +209,8 @@ add_library(core
   arcade/third_party/musashi/m68kcpu.h
   arcade/third_party/musashi/m68kops.c
   arcade/third_party/musashi/m68kops.h
+  arcade/systems/konami/gv/konami_gv.cpp
+  arcade/systems/konami/gv/konami_gv.h
   arcade/systems/konami/gv/konami_gv_cdrom.cpp
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp
@@ -332,7 +346,7 @@ endif()
 target_include_directories(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(core PUBLIC Threads::Threads common util)
-target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr)
+target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr lzma)
 
 if(CPU_ARCH_X64)
   target_compile_definitions(core PUBLIC "ENABLE_RECOMPILER=1" "ENABLE_NEWREC=1" "ENABLE_MMAP_FASTMEM=1")

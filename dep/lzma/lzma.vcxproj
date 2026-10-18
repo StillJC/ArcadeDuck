@@ -3,7 +3,15 @@
   <Import Project="..\msvc\vsprops\Configurations.props" />
 
   <ItemGroup>
+    <ClCompile Include="src\7zArcIn.c" />
+    <ClCompile Include="src\7zBuf.c" />
+    <ClCompile Include="src\7zCrc.c" />
+    <ClCompile Include="src\7zCrcOpt.c" />
+    <ClCompile Include="src\7zDec.c" />
+    <ClCompile Include="src\7zStream.c" />
     <ClCompile Include="src\Alloc.c" />
+    <ClCompile Include="src\Bcj2.c" />
+    <ClCompile Include="src\Bra.c" />
     <ClCompile Include="src\Bra86.c" />
     <ClCompile Include="src\BraIA64.c" />
     <ClCompile Include="src\CpuArch.c" />
@@ -11,6 +19,7 @@
     <ClCompile Include="src\LzFind.c" />
     <ClCompile Include="src\Lzma86Dec.c" />
     <ClCompile Include="src\Lzma86Enc.c" />
+    <ClCompile Include="src\Lzma2Dec.c" />
     <ClCompile Include="src\LzmaDec.c" />
     <ClCompile Include="src\LzmaEnc.c" />
     <ClCompile Include="src\LzmaLib.c" />
