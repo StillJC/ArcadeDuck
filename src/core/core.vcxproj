@@ -70,6 +70,7 @@
     <ClCompile Include="imgui_overlays.cpp" />
     <ClCompile Include="interrupt_controller.cpp" />
     <ClCompile Include="arcade\devices\audio\k054539.cpp" />
+    <ClCompile Include="arcade\devices\audio\lc82310.cpp" />
     <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
     <ClCompile Include="arcade\devices\cpu\sh7014.cpp" />
     <ClCompile Include="arcade\devices\cpu\tmp95c061.cpp" />
@@ -377,6 +378,7 @@
     <ClInclude Include="input_types.h" />
     <ClInclude Include="interrupt_controller.h" />
     <ClInclude Include="arcade\devices\audio\k054539.h" />
+    <ClInclude Include="arcade\devices\audio\lc82310.h" />
     <ClInclude Include="arcade\devices\audio\ymf271.h" />
     <ClInclude Include="arcade\devices\security\cat702.h" />
     <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />

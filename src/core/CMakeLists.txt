@@ -94,7 +94,9 @@ add_library(core
   interrupt_controller.cpp
   interrupt_controller.h
   arcade/devices/audio/k054539.cpp
+  arcade/devices/audio/lc82310.cpp
   arcade/devices/audio/k054539.h
+  arcade/devices/audio/lc82310.h
   arcade/devices/audio/ymf271.cpp
   arcade/devices/audio/ymf271.h
   arcade/devices/jvs/jvs_bus.cpp

@@ -4,7 +4,8 @@ ArcadeDuck Third-Party Software Notices
 MAME - Namco System 10 reference-derived portions
 --------------------------------------------------
 Upstream: MAME (src/mame/namco/namcos10.cpp, src/mame/namco/ns10crypt.cpp,
-          src/mame/namco/namcos10_exio.cpp, src/devices/cpu/h8/h83006.cpp
+          src/mame/namco/namcos10_exio.cpp, src/devices/cpu/h8/h83006.cpp,
+          src/devices/sound/lc82310.cpp
           and the PSX RAM-window configuration table)
 License: BSD-3-Clause
 
