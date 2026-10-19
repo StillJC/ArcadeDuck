@@ -14400,6 +14400,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "lightgun", joystick: "none", layout: "pointblank2" }
+        - { type: "lightgun", joystick: "none", layout: "pointblank2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14435,6 +14439,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "lightgun", joystick: "none", layout: "pointblank2" }
+        - { type: "lightgun", joystick: "none", layout: "pointblank2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15704,6 +15712,9 @@ games:
     minPlayers: 1
     maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "lightgun", joystick: "none", layout: "golgo13" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
