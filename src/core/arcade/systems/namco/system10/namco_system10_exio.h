@@ -31,6 +31,8 @@ public:
     u32 (*input)(void* context, u32 index) = nullptr;
     // A byte left MCU serial channel n.
     void (*serial_transmit)(void* context, u32 channel, u8 value) = nullptr;
+    // JVS sense level as a 10-bit conversion of the J2 sense line (AN2).
+    u16 (*jvs_sense)(void* context) = nullptr;
   };
 
   static constexpr u32 SERIAL_CHANNELS = 2;

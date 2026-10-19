@@ -15,6 +15,8 @@
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/jvs/jvs_bus.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_input.h"
 #include "core/cpu_core.h"
 #include "core/interrupt_controller.h"
@@ -237,6 +239,12 @@ struct RuntimeState
 
   std::unique_ptr<EXIOBoard> exio;
 
+  // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
+  bool cyberlead_cabinet = false;
+  bool jvs_addressed = false;
+  Arcade::JVS::Bus jvs_bus;
+  Arcade::JVS::NamcoCyberLead cyberlead;
+
   // Expansion-board identifier serializer.
   s8 exio_ident_bit = 0;
   u32 exio_ident_byte = 0;
@@ -249,6 +257,7 @@ struct RuntimeState
 
 std::optional<RuntimeState> s_runtime;
 std::unique_ptr<TimingEvent> s_baseboard_io_event;
+std::unique_ptr<TimingEvent> s_cabinet_io_event;
 
 // CORROBORATED behavior for the KC001A MEM(M) board used by Mr. Driller 2.
 // These bit orders describe observable transforms; they are kept profile-local
@@ -480,12 +489,14 @@ void ResetBaseboardInputState(RuntimeState& runtime)
   runtime.baseboard_input_trace_events = 0;
 }
 
-u16 ReadBaseboardSystemSwitches()
+u16 ReadBaseboardSystemSwitches(const RuntimeState& runtime)
 {
-  // Main-board DSW1 and the still-unidentified/JVS-sense bit are active-low.
-  // No title-specific DIP override is required for the current System 10
-  // targets, so their normal cabinet state is all ones.
-  return UINT16_C(0xffff);
+  // Main-board DSW1 and the JVS sense input (bit 10) are active-low. Sense is
+  // pulled low while a JVS I/O board is connected.
+  u16 value = UINT16_C(0xffff);
+  if (runtime.cyberlead_cabinet)
+    value &= static_cast<u16>(~UINT16_C(0x0400));
+  return value;
 }
 
 u16 ReadEXIOIdentifier(RuntimeState& runtime)
@@ -661,20 +672,96 @@ u32 ReadEXIOInput(void*, u32)
   return UINT32_C(0xffffffff);
 }
 
+void EXIOSerialTransmit(void*, u32 channel, u8 value)
+{
+  if (!s_runtime.has_value() || channel != 1 || !s_runtime->cyberlead_cabinet)
+    return;
+
+  RuntimeState& runtime = *s_runtime;
+  if (!runtime.jvs_bus.FeedByte(value))
+    return;
+
+  const Arcade::JVS::NamcoCyberLead::PacketResult result = runtime.cyberlead.ProcessPacket(runtime.jvs_bus.GetPacket());
+  runtime.jvs_bus.ClearPacket();
+  if (result.reset_requested)
+  {
+    runtime.cyberlead.Reset();
+    runtime.jvs_addressed = false;
+  }
+  if (result.initialize_sense_after_response)
+    runtime.jvs_addressed = true;
+  if (result.response_length == 0)
+    return;
+
+  runtime.jvs_bus.QueueResponse(std::span<const u8>(result.response.data(), result.response_length));
+  while (runtime.jvs_bus.HasResponseByte())
+    runtime.exio->ReceiveSerial(1, runtime.jvs_bus.ReadResponseByte());
+}
+
+u16 ReadJVSSense(void*)
+{
+  // A JVS device holds sense at 2.5 V until it has an address, then pulls it to 0 V.
+  if (!s_runtime.has_value() || !s_runtime->cyberlead_cabinet)
+    return 0x3ff;
+  return s_runtime->jvs_addressed ? 0x000 : 0x200;
+}
+
+void CabinetIOEventCallback(void*, TickCount ticks, TickCount)
+{
+  if (s_runtime.has_value() && s_runtime->cyberlead_cabinet && ticks > 0)
+    s_runtime->cyberlead.AdvanceLED(static_cast<u32>(ticks), static_cast<u32>(System::GetTicksPerSecond()));
+}
+
+bool HasCyberLeadCabinet(std::string_view set_name)
+{
+  const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(set_name);
+  if (!game)
+    return false;
+
+  return std::any_of(game->properties.begin(), game->properties.end(), [](const Arcade::Database::Property& p) {
+    return p.name == "ioBoard" && p.value == "cyberlead";
+  });
+}
+
 void CreateExpansionBoard(RuntimeState& runtime)
 {
   runtime.exio.reset();
-  if (!runtime.memn_profile)
-    return;
+  runtime.cyberlead_cabinet = HasCyberLeadCabinet(runtime.set_name);
 
-  const ExpansionBoard type = runtime.memn_profile->expansion;
+  // A Cyber Lead cabinet connects its JVS I/O through a full EXIO board.
+  ExpansionBoard type = runtime.memn_profile ? runtime.memn_profile->expansion : ExpansionBoard::None;
+  if (runtime.cyberlead_cabinet && type == ExpansionBoard::None)
+    type = ExpansionBoard::EXIO;
   if (type != ExpansionBoard::EXIO && type != ExpansionBoard::EXIOG)
+  {
+    runtime.cyberlead_cabinet = false;
     return;
+  }
+
+  runtime.jvs_bus.Reset();
+  runtime.cyberlead.Reset();
+  runtime.jvs_addressed = false;
+  if (runtime.cyberlead_cabinet)
+  {
+    // The LED PCB keeps the data games program into it with the set's NVRAM.
+    const std::string flash_path =
+      Path::Combine(Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name), "cl1-leda.ic5");
+    const std::vector<u8> factory_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
+    runtime.cyberlead.InitializeLEDFlash(std::span<const u8>(factory_firmware), flash_path);
+    Arcade::JVS::NamcoCyberLead::SetActive(&runtime.cyberlead);
+
+    const TickCount interval = std::max<TickCount>(1, System::GetTicksPerSecond() / 1000);
+    s_cabinet_io_event =
+      std::make_unique<TimingEvent>("Namco System 10 cabinet I/O", interval, interval, CabinetIOEventCallback, nullptr);
+    s_cabinet_io_event->SetPeriodAndSchedule(interval);
+  }
 
   EXIOBoard::Cabinet cabinet;
   cabinet.analog = &ReadEXIOAnalog;
   cabinet.lightgun = &ReadEXIOLightgun;
   cabinet.input = &ReadEXIOInput;
+  cabinet.serial_transmit = &EXIOSerialTransmit;
+  cabinet.jvs_sense = &ReadJVSSense;
   runtime.exio = std::make_unique<EXIOBoard>(type, cabinet);
   runtime.exio->Reset();
 }
@@ -2350,6 +2437,7 @@ bool InitializeMemM(MemMLoadedContent content, Error* error)
            runtime.set_name, runtime.memm_program_flash.size(), runtime.memm_data_rom.size());
 
   s_runtime = std::move(runtime);
+  CreateExpansionBoard(*s_runtime);
   ResetBaseboardInterruptState(*s_runtime, true);
   return true;
 }
@@ -2389,6 +2477,10 @@ void Reset()
 
   if (runtime.exio)
     runtime.exio->Reset();
+  runtime.jvs_bus.Reset();
+  runtime.cyberlead.Reset();
+  runtime.cyberlead.ResetLED();
+  runtime.jvs_addressed = false;
 
   ResetI2CState(runtime);
   ResetBaseboardInputState(runtime);
@@ -2405,7 +2497,16 @@ void Shutdown()
       SaveMemNPersistence(*s_runtime);
     ResetBaseboardInterruptState(*s_runtime, false);
     s_runtime->exio.reset();
+    if (s_runtime->cyberlead_cabinet)
+    {
+      s_runtime->cyberlead.SaveLEDFlash();
+      Arcade::JVS::NamcoCyberLead::SetActive(nullptr);
+    }
   }
+
+  if (s_cabinet_io_event)
+    s_cabinet_io_event->Deactivate();
+  s_cabinet_io_event.reset();
 
   s_baseboard_io_event.reset();
   s_runtime.reset();
@@ -2719,7 +2820,7 @@ bool ReadEXP3(u32 width, u32 offset, u32* value)
 
   if (offset >= EXP3_SYSTEM_SWITCH_BASE && offset < (EXP3_SYSTEM_SWITCH_BASE + 2))
   {
-    return ReadU16Register(ReadBaseboardSystemSwitches(), offset - EXP3_SYSTEM_SWITCH_BASE, width, value);
+    return ReadU16Register(ReadBaseboardSystemSwitches(runtime), offset - EXP3_SYSTEM_SWITCH_BASE, width, value);
   }
 
   if (offset == EXP3_EXIO_IDENT_BASE && width == 2)

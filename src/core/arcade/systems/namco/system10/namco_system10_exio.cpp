@@ -169,6 +169,13 @@ void EXIOBoard::MCUPortWrite(void* context, Arcade::TMP95C061::Port port, u8 val
 u16 EXIOBoard::MCUAnalogRead(void* context, u32 channel)
 {
   EXIOBoard* self = static_cast<EXIOBoard*>(context);
+  if (channel == 2)
+  {
+    // The JVS sense line divider is measured on AN2. Without a connected
+    // device the line is pulled up to 5 V.
+    return self->m_cabinet.jvs_sense ? (self->m_cabinet.jvs_sense(self->m_cabinet.context) & 0x3ff) : 0x3ff;
+  }
+
   if (channel >= 2 || !self->m_cabinet.analog)
     return 0;
 
