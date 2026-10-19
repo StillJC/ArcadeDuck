@@ -81,6 +81,9 @@ bool IsActive();
 /// Advances the board watchdog by one frame. Returns true when it expires and the system must be reset.
 bool ProcessFrame();
 
+/// One 44.1 kHz frame of board audio outside the SPU (MEM(P3) MP3 decoder).
+void GenerateAudioFrame(s32* left, s32* right);
+
 /// Reads the active System 10 profile's boot/program aperture as seen through
 /// the PlayStation BIOS window. Unsupported/out-of-range reads return all ones.
 u32 ReadProgramROM(u32 width, u32 offset);

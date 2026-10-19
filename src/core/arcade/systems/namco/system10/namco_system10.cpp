@@ -14,6 +14,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10_medal.h"
 #include "core/arcade/systems/namco/system10/namco_system10_mgexio.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
+#include "core/arcade/systems/namco/system10/namco_system10_memp3.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
 #include "core/arcade/arcade_database.h"
@@ -267,6 +268,7 @@ struct RuntimeState
   const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
   std::unique_ptr<Arcade::ATAPICDROM> cdrom;
+  std::unique_ptr<MemP3Board> memp3;
   bool cdrom_dma = false;
   std::unique_ptr<MGEXIOBoard> mgexio;
   MedalCabinet medal_cabinet;
@@ -603,6 +605,7 @@ enum class CabinetAnalog : u8
   None,
   Sticks, // two players, two analog sticks each
   Drums,  // piezo drum sensors, full scale while struck
+  Scope,  // MEM(P3) sub-CPU AN0/AN1: sniper scope Y (reversed) and X
 };
 
 struct CabinetInputs
@@ -691,7 +694,7 @@ constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"konotako", KONOTAKO_IN1, {}, CabinetAnalog::None},
   {"nflclsfb", NFLCLSFB_IN1, NFLCLSFB_EXIO_IN1, CabinetAnalog::None, CabinetSerial::Trackballs},
   {"gahaha", GAHAHA_IN1, {}, CabinetAnalog::Sticks},
-  {"g13jnr", G13JNR_IN1, {}, CabinetAnalog::None},
+  {"g13jnr", G13JNR_IN1, {}, CabinetAnalog::Scope},
   {"mgexio_medal", OPERATOR_PANEL_IN1, {}, CabinetAnalog::None},
   {"taiko", OPERATOR_PANEL_IN1, {}, CabinetAnalog::Drums},
   {"nicetsuk", NICETSUK_IN1, {}, CabinetAnalog::None},
@@ -2656,6 +2659,20 @@ std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
   return content;
 }
 
+u16 ReadMemP3Analog(void*, u32 channel)
+{
+  if (!s_runtime->cabinet_inputs || s_runtime->cabinet_inputs->analog != CabinetAnalog::Scope || channel > 1)
+    return 0;
+
+  // 10-bit position of the scope's aim point; Y counts upwards.
+  const ArcadeInput::LightgunPresentationState state = ArcadeInput::GetLightgunPresentationState();
+  if (state.ports.empty())
+    return 0x200;
+  const float x = std::clamp(state.ports[0].x, 0.0f, 1.0f);
+  const float y = std::clamp(state.ports[0].y, 0.0f, 1.0f);
+  return static_cast<u16>(((channel == 0) ? (1.0f - y) : x) * 1023.0f + 0.5f);
+}
+
 void CDROMInterrupt(void*, bool asserted)
 {
   RuntimeState& runtime = *s_runtime;
@@ -2739,6 +2756,13 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
 
   s_runtime = std::move(runtime);
   CreateExpansionBoard(*s_runtime);
+  if (s_runtime->memn_profile && s_runtime->memn_profile->board == MemNBoard::MemP3)
+  {
+    MemP3Board::Cabinet cabinet;
+    cabinet.analog = &ReadMemP3Analog;
+    s_runtime->memp3 = std::make_unique<MemP3Board>(cabinet);
+    s_runtime->memp3->Reset();
+  }
   ResetBaseboardInterruptState(*s_runtime, true);
   return true;
 }
@@ -2831,6 +2855,8 @@ void Reset()
   if (runtime.cdrom)
     runtime.cdrom->Reset();
   runtime.cdrom_dma = false;
+  if (runtime.memp3)
+    runtime.memp3->Reset();
   if (runtime.mgexio)
   {
     runtime.mgexio->Reset();
@@ -2879,6 +2905,14 @@ void Shutdown()
 bool IsActive()
 {
   return s_runtime.has_value();
+}
+
+void GenerateAudioFrame(s32* left, s32* right)
+{
+  *left = 0;
+  *right = 0;
+  if (s_runtime.has_value() && s_runtime->memp3)
+    s_runtime->memp3->GenerateAudioFrame(left, right);
 }
 
 bool ProcessFrame()
@@ -2951,6 +2985,9 @@ bool ReadEXP1(u32 width, u32 offset, u32* value)
 
   if (runtime.media_type != MediaType::MemN)
     return false;
+
+  if (runtime.memp3 && MemP3Board::HandlesOffset(offset))
+    return runtime.memp3->Read(width, offset, value);
 
   if (offset >= LOOKUP_RAM_BASE && offset < (LOOKUP_RAM_BASE + LOOKUP_RAM_SIZE))
   {
@@ -3066,6 +3103,10 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     return WriteLittleEndian(std::span<u8>(runtime.lookup_ram.data(), runtime.lookup_ram.size()),
                              offset - LOOKUP_RAM_BASE, width, value);
   }
+
+  // MEM(P3) uses 0x1F300000 for its sub-CPU; its decrypter switch is the 0x1F380000 alias.
+  if (runtime.memp3 && MemP3Board::HandlesOffset(offset))
+    return runtime.memp3->Write(width, offset, value);
 
   if (HandleType2SwitchWrite(runtime, width, offset, value))
     return true;

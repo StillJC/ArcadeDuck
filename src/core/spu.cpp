@@ -13,6 +13,7 @@
 #include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 #include "core/arcade/systems/konami/gq/konami_gq_sound_cpu.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "system.h"
@@ -2669,6 +2670,12 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
       NamcoSystem12::GenerateAudioFrame(&system12_left, &system12_right);
       output_left += system12_left;
       output_right += system12_right;
+
+      s32 system10_left = 0;
+      s32 system10_right = 0;
+      NamcoSystem10::GenerateAudioFrame(&system10_left, &system10_right);
+      output_left += system10_left;
+      output_right += system10_right;
 
       s32 sony_zn_left = 0;
       s32 sony_zn_right = 0;
