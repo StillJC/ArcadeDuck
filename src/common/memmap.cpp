@@ -27,7 +27,7 @@
 #include <mach/mach_vm.h>
 #include <mach/vm_map.h>
 #include <sys/mman.h>
-#elif !defined(__ANDROID__)
+#else
 #include <cerrno>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -598,7 +598,7 @@ void MemMap::EndCodeWrite()
 
 #endif
 
-#elif !defined(__ANDROID__)
+#else
 
 bool MemMap::MemProtect(void* baseaddr, size_t size, PageProtect mode)
 {
@@ -855,7 +855,7 @@ void* MemMap::AllocateJITMemory(size_t size)
   Assert(size <= max_displacement);
 
   // Try to find a region in the max displacement range of the process base address.
-  // Assume that the DuckStation binary will at max be some size, release is currently around 12MB on Windows.
+  // Assume that the emulator binary will at max be some size, release is currently around 12MB on Windows.
   // Therefore the max offset is +/- 12MB + code_size. Try allocating in steps by incrementing the pointer, then if no
   // address range is found, go backwards from the base address (which will probably fail).
   const u8* min_address =

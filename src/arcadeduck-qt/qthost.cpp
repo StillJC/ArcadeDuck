@@ -16,7 +16,6 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
-#include "core/cheats.h"
 #include "core/fullscreen_ui.h"
 #include "core/game_database.h"
 #include "core/game_list.h"
@@ -89,7 +88,7 @@ static constexpr u32 BACKGROUND_CONTROLLER_POLLING_INTERVAL = 100;
 /// Poll at half the vsync rate for FSUI to reduce the chance of getting a press+release in the same frame.
 static constexpr u32 FULLSCREEN_UI_CONTROLLER_POLLING_INTERVAL = 8;
 
-/// Poll at 1ms when running GDB server. We can get rid of this once we move networking to its own thread.
+/// Poll at 1 ms while the GDB server uses the Qt host polling path.
 static constexpr u32 GDB_SERVER_POLLING_INTERVAL = 1;
 
 //////////////////////////////////////////////////////////////////////////
@@ -124,7 +123,6 @@ static std::unique_ptr<INISettingsInterface> s_base_settings_interface;
 static std::unique_ptr<QTimer> s_settings_save_timer;
 static bool s_batch_mode = false;
 static bool s_nogui_mode = false;
-static bool s_start_fullscreen_ui = false;
 static bool s_start_fullscreen_ui_fullscreen = false;
 static bool s_run_setup_wizard = false;
 static bool s_cleanup_after_update = false;
@@ -200,11 +198,6 @@ bool QtHost::PerformEarlyHardwareChecks()
 
 bool QtHost::EarlyProcessStartup()
 {
-  // Config-based RAIntegration switch must happen before the main window is displayed.
-#ifdef ENABLE_RAINTEGRATION
-  if (!Achievements::IsUsingRAIntegration() && Host::GetBaseBoolSettingValue("Cheevos", "UseRAIntegration", false))
-    Achievements::SwitchToRAIntegration();
-#endif
 
   Error error;
   if (System::Internal::ProcessStartup(&error)) [[likely]]
@@ -609,7 +602,7 @@ void QtHost::SetResourcesDirectory()
 
 bool QtHost::SetDataDirectory()
 {
-  // Already set, e.g. by -portable.
+  // Honor an already-selected data root.
   if (!EmuFolders::DataRoot.empty())
     return true;
 
@@ -624,15 +617,15 @@ bool QtHost::SetDataDirectory()
   // override individual folders through settings when they explicitly want data stored elsewhere.
   EmuFolders::DataRoot = EmuFolders::AppRoot;
 #elif defined(__linux__) || defined(__FreeBSD__)
-  // Use $XDG_CONFIG_HOME/duckstation if it exists.
+  // Use $XDG_CONFIG_HOME/arcadeduck if it exists.
   const char* xdg_config_home = getenv("XDG_CONFIG_HOME");
   if (xdg_config_home && Path::IsAbsolute(xdg_config_home))
   {
-    EmuFolders::DataRoot = Path::RealPath(Path::Combine(xdg_config_home, "duckstation"));
+    EmuFolders::DataRoot = Path::RealPath(Path::Combine(xdg_config_home, "arcadeduck"));
   }
   else
   {
-    // Use ~/.local/share/duckstation otherwise.
+    // Use ~/.local/share/arcadeduck otherwise.
     const char* home_dir = getenv("HOME");
     if (home_dir)
     {
@@ -641,11 +634,11 @@ bool QtHost::SetDataDirectory()
       const std::string share_dir(Path::Combine(local_dir, "share"));
       FileSystem::EnsureDirectoryExists(local_dir.c_str(), false);
       FileSystem::EnsureDirectoryExists(share_dir.c_str(), false);
-      EmuFolders::DataRoot = Path::RealPath(Path::Combine(share_dir, "duckstation"));
+      EmuFolders::DataRoot = Path::RealPath(Path::Combine(share_dir, "arcadeduck"));
     }
   }
 #elif defined(__APPLE__)
-  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/DuckStation";
+  static constexpr char MAC_DATA_DIR[] = "Library/Application Support/ArcadeDuck";
   const char* home_dir = getenv("HOME");
   if (home_dir)
     EmuFolders::DataRoot = Path::RealPath(Path::Combine(home_dir, MAC_DATA_DIR));
@@ -735,6 +728,125 @@ void EmuThread::setDefaultSettings(bool system /* = true */, bool controller /* 
     emit settingsResetToDefault(system, controller);
 }
 
+static void RemoveHiddenDefaultSettings(SettingsInterface& si, bool system, bool controller)
+{
+  if (system)
+  {
+    si.ClearSection("CDROM");
+    si.ClearSection("Cheevos");
+    si.ClearSection("Debug");
+    si.ClearSection("Hacks");
+    si.ClearSection("Logging");
+    si.ClearSection("MediaCapture");
+    si.ClearSection("TextureReplacements");
+
+    si.DeleteValue("Main", "FastForwardSpeed");
+    si.DeleteValue("Main", "TurboSpeed");
+    si.DeleteValue("Main", "IncreaseTimerResolution");
+    si.DeleteValue("Main", "PauseOnControllerDisconnection");
+    si.DeleteValue("Main", "SaveStateCompression");
+    si.DeleteValue("Main", "EnableDiscordPresence");
+    si.DeleteValue("Main", "LoadDevicesFromSaveStates");
+    si.DeleteValue("Main", "DisableAllEnhancements");
+    si.DeleteValue("Main", "RewindEnable");
+    si.DeleteValue("Main", "RewindFrequency");
+    si.DeleteValue("Main", "RewindSaveSlots");
+    si.DeleteValue("Main", "RunaheadFrameCount");
+
+    si.DeleteValue("Console", "Region");
+    si.DeleteValue("Console", "Enable8MBRAM");
+
+    si.DeleteValue("CPU", "OverclockEnable");
+    si.DeleteValue("CPU", "OverclockNumerator");
+    si.DeleteValue("CPU", "OverclockDenominator");
+    si.DeleteValue("CPU", "RecompilerMemoryExceptions");
+    si.DeleteValue("CPU", "RecompilerBlockLinking");
+    si.DeleteValue("CPU", "RecompilerICache");
+    si.DeleteValue("CPU", "FastmemMode");
+
+    si.DeleteValue("GPU", "UseDebugDevice");
+    si.DeleteValue("GPU", "DisableShaderCache");
+    si.DeleteValue("GPU", "DisableDualSourceBlend");
+    si.DeleteValue("GPU", "DisableFramebufferFetch");
+    si.DeleteValue("GPU", "DisableTextureBuffers");
+    si.DeleteValue("GPU", "DisableTextureCopyToSelf");
+    si.DeleteValue("GPU", "DisableMemoryImport");
+    si.DeleteValue("GPU", "DisableRasterOrderViews");
+    si.DeleteValue("GPU", "PerSampleShading");
+    si.DeleteValue("GPU", "UseThread");
+    si.DeleteValue("GPU", "ThreadedPresentation");
+    si.DeleteValue("GPU", "Debanding");
+    si.DeleteValue("GPU", "ScaledDithering");
+    si.DeleteValue("GPU", "AccurateBlending");
+    si.DeleteValue("GPU", "SpriteTextureFilter");
+    si.DeleteValue("GPU", "LineDetectMode");
+    si.DeleteValue("GPU", "DownsampleMode");
+    si.DeleteValue("GPU", "DownsampleScale");
+    si.DeleteValue("GPU", "WireframeMode");
+    si.DeleteValue("GPU", "DisableInterlacing");
+    si.DeleteValue("GPU", "ForceNTSCTimings");
+    si.DeleteValue("GPU", "ChromaSmoothing24Bit");
+    si.DeleteValue("GPU", "UseSoftwareRendererForReadbacks");
+    si.DeleteValue("GPU", "ForceRoundTextureCoordinates");
+    si.DeleteValue("GPU", "PGXPCulling");
+    si.DeleteValue("GPU", "PGXPTextureCorrection");
+    si.DeleteValue("GPU", "PGXPColorCorrection");
+    si.DeleteValue("GPU", "PGXPVertexCache");
+    si.DeleteValue("GPU", "PGXPCPU");
+    si.DeleteValue("GPU", "PGXPPreserveProjFP");
+    si.DeleteValue("GPU", "PGXPTolerance");
+    si.DeleteValue("GPU", "PGXPDepthBuffer");
+    si.DeleteValue("GPU", "PGXPDisableOn2DPolygons");
+    si.DeleteValue("GPU", "PGXPDepthClearThreshold");
+
+    si.DeleteValue("Display", "ActiveStartOffset");
+    si.DeleteValue("Display", "ActiveEndOffset");
+    si.DeleteValue("Display", "LineStartOffset");
+    si.DeleteValue("Display", "LineEndOffset");
+    si.DeleteValue("Display", "OptimalFramePacing");
+    si.DeleteValue("Display", "PreFrameSleep");
+    si.DeleteValue("Display", "SkipPresentingDuplicateFrames");
+    si.DeleteValue("Display", "PreFrameSleepBuffer");
+    si.DeleteValue("Display", "DisableMailboxPresentation");
+    si.DeleteValue("Display", "ExclusiveFullscreenControl");
+    si.DeleteValue("Display", "ShowLatencyStatistics");
+    si.DeleteValue("Display", "ShowGPUStatistics");
+    si.DeleteValue("Display", "ShowCPU");
+    si.DeleteValue("Display", "ShowGPU");
+    si.DeleteValue("Display", "ShowFrameTimes");
+    si.DeleteValue("Display", "ShowInputs");
+    si.DeleteValue("Display", "ShowEnhancements");
+
+    si.DeleteValue("Audio", "StretchSequenceLengthMS");
+    si.DeleteValue("Audio", "StretchSeekWindowMS");
+    si.DeleteValue("Audio", "StretchOverlapMS");
+    si.DeleteValue("Audio", "StretchUseQuickSeek");
+    si.DeleteValue("Audio", "StretchUseAAFilter");
+    si.DeleteValue("Audio", "ExpandBlockSize");
+    si.DeleteValue("Audio", "ExpandCircularWrap");
+    si.DeleteValue("Audio", "ExpandShift");
+    si.DeleteValue("Audio", "ExpandDepth");
+    si.DeleteValue("Audio", "ExpandFocus");
+    si.DeleteValue("Audio", "ExpandCenterImage");
+    si.DeleteValue("Audio", "ExpandFrontSeparation");
+    si.DeleteValue("Audio", "ExpandRearSeparation");
+    si.DeleteValue("Audio", "ExpandLowCutoff");
+    si.DeleteValue("Audio", "ExpandHighCutoff");
+
+    si.DeleteValue("BIOS", "TTYLogging");
+  }
+
+  if (controller)
+  {
+    si.DeleteValue("Hotkeys", "LoadSelectedSaveState");
+    si.DeleteValue("Hotkeys", "SaveSelectedSaveState");
+    si.DeleteValue("Hotkeys", "SelectPreviousSaveStateSlot");
+    si.DeleteValue("Hotkeys", "SelectNextSaveStateSlot");
+  }
+
+  si.RemoveEmptySections();
+}
+
 void QtHost::SetDefaultSettings(SettingsInterface& si, bool system, bool controller)
 {
   if (system)
@@ -750,6 +862,8 @@ void QtHost::SetDefaultSettings(SettingsInterface& si, bool system, bool control
     Settings::SetDefaultControllerConfig(si);
     Settings::SetDefaultHotkeyConfig(si);
   }
+
+  RemoveHiddenDefaultSettings(si, system, controller);
 }
 
 void QtHost::MigrateSettings()
@@ -1283,30 +1397,6 @@ void EmuThread::setSystemPaused(bool paused, bool wait_until_paused /* = false *
   }
 
   System::PauseSystem(paused);
-}
-
-void EmuThread::setCheatEnabled(quint32 index, bool enabled)
-{
-  if (!isOnThread())
-  {
-    QMetaObject::invokeMethod(this, "setCheatEnabled", Qt::QueuedConnection, Q_ARG(quint32, index),
-                              Q_ARG(bool, enabled));
-    return;
-  }
-
-  System::SetCheatCodeState(index, enabled);
-  emit cheatEnabled(index, false);
-}
-
-void EmuThread::applyCheat(quint32 index)
-{
-  if (!isOnThread())
-  {
-    QMetaObject::invokeMethod(this, "applyCheat", Qt::QueuedConnection, Q_ARG(quint32, index));
-    return;
-  }
-
-  System::ApplyCheatCode(index);
 }
 
 void EmuThread::reloadPostProcessingShaders()
@@ -2273,7 +2363,6 @@ void QtHost::PrintCommandLineVersion()
   std::fprintf(stderr, "\n");
   std::fprintf(stderr, "  -help: Displays this information and exits.\n");
   std::fprintf(stderr, "  -version: Displays version information and exits.\n");
-  std::fprintf(stderr, "  -batch: Enables batch mode (exits after powering off).\n");
   std::fprintf(stderr, "  -resume: Load resume save state. If a boot filename is provided,\n"
                        "    that game's resume state will be loaded, otherwise the most\n"
                        "    recent resume save state will be loaded.\n");
@@ -2282,17 +2371,14 @@ void QtHost::PrintCommandLineVersion()
                        "    a global state will be loaded.\n");
   std::fprintf(stderr, "  -statefile <filename>: Loads state from the specified filename.\n"
                        "    No boot filename is required with this option.\n");
+  std::fprintf(stderr, "  -arcadegame <id>: Selects the logical arcade game to launch from the\n"
+                       "    supplied archive. Used to launch clones from split or merged ROM sets.\n");
   std::fprintf(stderr, "  -fullscreen: Enters fullscreen mode immediately after starting.\n");
   std::fprintf(stderr, "  -nofullscreen: Prevents fullscreen mode from triggering if enabled.\n");
   std::fprintf(stderr, "  -nogui: Disables main window from being shown, exits on shutdown.\n");
-  std::fprintf(stderr, "  -bigpicture: Automatically starts big picture UI.\n");
-  std::fprintf(stderr, "  -portable: Forces \"portable mode\", data in same directory.\n");
   std::fprintf(stderr, "  -settings <filename>: Loads a custom settings configuration from the\n"
                        "    specified filename. Default settings applied if file not found.\n");
   std::fprintf(stderr, "  -earlyconsole: Creates console as early as possible, for logging.\n");
-#ifdef ENABLE_RAINTEGRATION
-  std::fprintf(stderr, "  -raintegration: Use RAIntegration instead of built-in achievement support.\n");
-#endif
   std::fprintf(stderr, "  --: Signals that no more arguments will follow and the remaining\n"
                        "    parameters make up the filename. Use when the filename contains\n"
                        "    spaces or starts with a dash.\n");
@@ -2332,12 +2418,6 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         PrintCommandLineVersion();
         return false;
       }
-      else if (CHECK_ARG("-batch"))
-      {
-        INFO_LOG("Command Line: Using batch mode.");
-        s_batch_mode = true;
-        continue;
-      }
       else if (CHECK_ARG("-nogui"))
       {
         INFO_LOG("Command Line: Using NoGUI mode.");
@@ -2363,6 +2443,12 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         INFO_LOG("Command Line: Loading state file: '{}'", autoboot->save_state);
         continue;
       }
+      else if (CHECK_ARG_PARAM("-arcadegame"))
+      {
+        AutoBoot(autoboot)->arcade_game_id = args[++i].toStdString();
+        INFO_LOG("Command Line: Selecting arcade game: '{}'", autoboot->arcade_game_id);
+        continue;
+      }
       else if (CHECK_ARG("-fullscreen"))
       {
         INFO_LOG("Command Line: Using fullscreen.");
@@ -2376,22 +2462,10 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         AutoBoot(autoboot)->override_fullscreen = false;
         continue;
       }
-      else if (CHECK_ARG("-portable"))
-      {
-        INFO_LOG("Command Line: Using portable mode.");
-        EmuFolders::DataRoot = EmuFolders::AppRoot;
-        continue;
-      }
       else if (CHECK_ARG_PARAM("-settings"))
       {
         settings_filename = args[++i].toStdString();
         INFO_LOG("Command Line: Overriding settings filename: {}", settings_filename);
-        continue;
-      }
-      else if (CHECK_ARG("-bigpicture"))
-      {
-        INFO_LOG("Command Line: Starting big picture mode.");
-        s_start_fullscreen_ui = true;
         continue;
       }
       else if (CHECK_ARG("-setupwizard"))
@@ -2409,13 +2483,6 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         s_cleanup_after_update = AutoUpdaterDialog::isSupported();
         continue;
       }
-#ifdef ENABLE_RAINTEGRATION
-      else if (CHECK_ARG("-raintegration"))
-      {
-        Achievements::SwitchToRAIntegration();
-        continue;
-      }
-#endif
       else if (CHECK_ARG("--"))
       {
         no_more_args = true;
@@ -2453,6 +2520,12 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       QMessageBox::critical(nullptr, qApp->translate("QtHost", "Error"), message);
   };
 
+  if (autoboot && !autoboot->arcade_game_id.empty() && autoboot->filename.empty())
+  {
+    report_command_line_error(qApp->translate("QtHost", "-arcadegame requires a boot filename."));
+    return false;
+  }
+
   const Arcade::Database::GameDefinition* command_line_game = nullptr;
   if (autoboot && !autoboot->filename.empty())
   {
@@ -2481,6 +2554,20 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
       report_command_line_error(qApp->translate("QtHost", "Archive '%1' is not a recognized ArcadeDuck set.")
                                   .arg(QtUtils::StringViewToQString(Path::GetFileName(autoboot->filename))));
       return false;
+    }
+
+    if (!autoboot->arcade_game_id.empty())
+    {
+      const Arcade::Database::GameDefinition* const requested_game =
+        Arcade::Database::GetGame(autoboot->arcade_game_id);
+      if (!requested_game)
+      {
+        report_command_line_error(qApp->translate("QtHost", "Arcade game '%1' is not present in arcadedb.yaml.")
+                                    .arg(QString::fromStdString(autoboot->arcade_game_id)));
+        return false;
+      }
+
+      command_line_game = requested_game;
     }
 
     autoboot->boot_intent = SystemBootIntent::PublicArcade;
@@ -2518,14 +2605,10 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
   if (autoboot && autoboot->filename.empty() && autoboot->save_state.empty())
     autoboot.reset();
 
-  // if we don't have autoboot, we definitely don't want batch mode (because that'll skip
-  // scanning the game list).
-  if (s_batch_mode && !autoboot && !s_start_fullscreen_ui)
+  if (s_nogui_mode && !autoboot)
   {
-    QMessageBox::critical(
-      nullptr, qApp->translate("QtHost", "Error"),
-      s_nogui_mode ? qApp->translate("QtHost", "Cannot use no-gui mode, because no boot filename was specified.") :
-                     qApp->translate("QtHost", "Cannot use batch mode, because no boot filename was specified."));
+    QMessageBox::critical(nullptr, qApp->translate("QtHost", "Error"),
+                          qApp->translate("QtHost", "Cannot use no-gui mode, because no boot filename was specified."));
     return false;
   }
 
@@ -2574,7 +2657,7 @@ int main(int argc, char* argv[])
   if (!QtHost::EarlyProcessStartup())
     return EXIT_FAILURE;
 
-  // Remove any previous-version remanants.
+  // Remove any previous-version remnants.
   if (s_cleanup_after_update)
     AutoUpdaterDialog::cleanupAfterUpdate();
 
@@ -2621,11 +2704,7 @@ int main(int argc, char* argv[])
   if (!s_nogui_mode)
     main_window->show();
 
-  // Initialize big picture mode if requested.
-  if (s_start_fullscreen_ui)
-    g_emu_thread->startFullscreenUI();
-  else
-    s_start_fullscreen_ui_fullscreen = false;
+  s_start_fullscreen_ui_fullscreen = false;
 
   // Skip the update check if we're booting a game directly.
   if (autoboot)

@@ -5,6 +5,7 @@
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/devices/security/cat702.h"
 #include "core/arcade/devices/storage/chd_hard_disk.h"
@@ -33,9 +34,6 @@
 #include "common/log.h"
 #include "common/path.h"
 #include "common/md5_digest.h"
-#include "common/minizip_helpers.h"
-#include "common/sha1_digest.h"
-#include "common/string_util.h"
 
 #include "libchdr/chd.h"
 
@@ -149,6 +147,7 @@ static constexpr u32 BAM2_CD_DATA_SECTOR_SIZE = 2048;
 static constexpr u32 BAM2_CD_MODE1_DATA_OFFSET = 16;
 static constexpr u32 BAM2_PCM_BUFFER_SIZE = 0x20000;
 static constexpr u32 BAM2_PCM_PREFETCH_BYTES_PER_FRAME = 0x1000;
+static constexpr u32 BAM2_H8_PLAY_COMPLETION_FRAMES = 100;
 static constexpr u32 TAITO_BANK_SIZE = 0x800000;
 static constexpr u32 TAITO_EXP1_SIZE = 0x800000;
 static constexpr u32 TECMO_BANK_SIZE = 0x800000;
@@ -439,6 +438,7 @@ struct RuntimeState
   u16 acclaim_rax_host_latch = 0xffff;
   u8 security_select = 0;
   u8 coin = 0;
+  u16 zn2_spu_hack = 0;
   std::string persistence_directory;
   std::string at28_path;
   bool at28_dirty = false;
@@ -453,9 +453,7 @@ struct RuntimeState
   u64 at28_busy_remaining_ticks = 0;
   u64 at28_rebase_ticks_per_second = 0;
 
-  u32 at28_trace_count = 0;
   bool known_unknown_io_read_logged = false;
-  u16 zn2_spu_toggle = 0;
   bool unknown_read_logged = false;
   bool unknown_write_logged = false;
   bool taito_unpopulated_bank_logged = false;
@@ -468,9 +466,10 @@ struct RuntimeState
   BustAMove2Media bam2_media = BustAMove2Media::HardDisk;
   std::array<u16, 4> bam2_mcu_ports{};
   bool bam2_outputs_initialized = false;
-  u16 bam2_h8_status = UINT16_C(0x0004);
+  u16 bam2_h8_status = UINT16_C(0x0000);
   u16 bam2_h8_opcode = 0;
   bool bam2_h8_waiting_for_argument = false;
+  u32 bam2_h8_play_completion_frames = 0;
   bool bam2_test_switch_latched = false;
   bool bam2_test_was_pressed = false;
   u16 bam2_selected_track = 0;
@@ -496,6 +495,7 @@ struct RuntimeState
   u32 bam2_pcm_buffer_read = 0;
   u32 bam2_pcm_buffer_write = 0;
   u32 bam2_pcm_buffered_bytes = 0;
+
   bool tecmo_gr2_link_enabled = false;
 
   // G-Net FC-board state. The low control bits select host flash/media windows;
@@ -626,13 +626,10 @@ struct RuntimeState
   bool sio0_tx_full = false;
   bool sio0_transfer_active = false;
   bool sio0_interrupt_pending = false;
-  u32 sio_exchange_count = 0;
-  u32 sio_register_trace_count = 0;
-  u32 sio_status_trace_count = 0;
 
   // Sony ZN motherboard MCU transport. The uPD78081 internal ROM is undumped;
-  // this models the externally-observed digital I/O serial contract used by
-  // MAME's ZN MCU device: select -> 50 us -> DSR low for 5 us -> data byte.
+  // model the external digital I/O serial contract as:
+  // select -> 50 us -> DSR low for 5 us -> data byte.
   bool mcu_selected = false;
   bool mcu_dsr_active = false;
   u8 mcu_byte_index = 0;
@@ -739,8 +736,8 @@ static bool EnsurePersistenceDirectories(const RuntimeState& runtime)
 static bool WriteAT28PersistenceAtomically(std::string_view final_path, Error* error)
 {
   // The temporary file must be owned by this writer for its entire lifetime.
-  // A fixed "at28c16.tmp" allows another process to truncate/replace the file
-  // after we validated it but before our rename. Use exclusive creation and
+  // A fixed "at28c16.tmp" allows another process to truncate or replace the file
+  // after validation but before rename. Use exclusive creation and
   // numbered same-directory candidates instead. Existing candidates belong to
   // another writer or are stale from a crashed process and are never touched.
   static constexpr u32 MAX_TEMP_ATTEMPTS = 1024;
@@ -829,7 +826,6 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
   runtime.at28_timing_rebase_pending = false;
   runtime.at28_busy_remaining_ticks = 0;
   runtime.at28_rebase_ticks_per_second = 0;
-  runtime.at28_trace_count = 0;
   s_at28.fill(0xff);
 
   const bool persistence_exists = FileSystem::FileExists(runtime.at28_path.c_str());
@@ -1118,12 +1114,6 @@ static u8 ReadAT28Byte(RuntimeState& runtime, u32 offset)
 
   // While programming, data polling returns the last programmed byte with bit 7 inverted.
   const u8 value = runtime.at28_busy ? static_cast<u8>(runtime.at28_last_write ^ 0x80) : s_at28[offset];
-  if (runtime.at28_trace_count < 64)
-  {
-    DEV_LOG("SonyZN.AT28 read={} offset=0x{:03X} value=0x{:02X} busy={}", runtime.at28_trace_count, offset, value,
-             runtime.at28_busy);
-  }
-  runtime.at28_trace_count++;
   return value;
 }
 
@@ -1133,24 +1123,12 @@ static void WriteAT28Byte(RuntimeState& runtime, u32 offset, u8 value)
 
   if (runtime.at28_busy)
   {
-    if (runtime.at28_trace_count < 64)
-    {
-      DEV_LOG("SonyZN.AT28 write={} offset=0x{:03X} value=0x{:02X} ignored=busy", runtime.at28_trace_count,
-               offset, value);
-    }
-    runtime.at28_trace_count++;
     return;
   }
 
   const u8 old_value = s_at28[offset];
   if (old_value == value)
   {
-    if (runtime.at28_trace_count < 64)
-    {
-      DEV_LOG("SonyZN.AT28 write={} offset=0x{:03X} value=0x{:02X} unchanged", runtime.at28_trace_count, offset,
-               value);
-    }
-    runtime.at28_trace_count++;
     return;
   }
 
@@ -1160,12 +1138,6 @@ static void WriteAT28Byte(RuntimeState& runtime, u32 offset, u8 value)
   runtime.at28_busy_until = GetAT28Now() + GetAT28WriteCycleTicks();
   runtime.at28_dirty = true;
 
-  if (runtime.at28_trace_count < 64)
-  {
-    DEV_LOG("SonyZN.AT28 write={} offset=0x{:03X} old=0x{:02X} new=0x{:02X} busy_ticks={}",
-             runtime.at28_trace_count, offset, old_value, value, GetAT28WriteCycleTicks());
-  }
-  runtime.at28_trace_count++;
 }
 
 const Arcade::Database::ROMRegionDefinition* FindRegion(const Arcade::Database::FirmwareDefinition& firmware,
@@ -1223,108 +1195,10 @@ const Arcade::Database::ROMDefinition* FindFirmwareROM(const Arcade::Database::F
 bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
                    Error* error)
 {
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Sony ZN archive '{}'.", archive_path);
-    return false;
-  }
+  if (const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path))
+    return Arcade::LoadGameROM(archive_path, *game, rom, data, error);
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Sony ZN archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Sony ZN archive '{}'.", archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Sony ZN ROM '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Sony ZN ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Sony ZN ROM '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      data->resize(rom.size);
-      size_t read_offset = 0;
-      while (read_offset < data->size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, data->data() + read_offset,
-                                                  static_cast<unsigned>(data->size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading Sony ZN ROM '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for Sony ZN ROM '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "Sony ZN ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Sony ZN archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Sony ZN archive '{}' does not contain required ROM '{}'.", archive_path, rom.name);
-  return false;
+  return Arcade::LoadROMFromArchive(archive_path, rom, data, error);
 }
 
 bool PlaceSimpleROM(const Arcade::Database::ROMDefinition& rom, std::span<const u8> source,
@@ -1332,8 +1206,7 @@ bool PlaceSimpleROM(const Arcade::Database::ROMDefinition& rom, std::span<const 
 {
   if (!rom.segments.empty() || rom.group_size != 1 || rom.skip != 0 || rom.word_swap || rom.interleave != 1)
   {
-    Error::SetStringFmt(error, "Sony ZN ROM '{}' uses a load layout not enabled for the initial Capcom bring-up.",
-                        rom.name);
+    Error::SetStringFmt(error, "Sony ZN ROM '{}' uses an unsupported simple-ROM load layout.", rom.name);
     return false;
   }
 
@@ -1354,7 +1227,7 @@ bool PlaceTaitoBankedROM(const Arcade::Database::ROMDefinition& rom, std::span<c
   if (rom.segments.empty() && !rom.word_swap && rom.group_size == 1 && rom.interleave == 1 && rom.skip == 0)
     return PlaceSimpleROM(rom, source, destination, error);
 
-  // Taito FX-1 program ROM pairs use MAME's ROM_LOAD16_BYTE layout.
+  // Taito FX-1 program ROM pairs are byte-interleaved.
   if (!rom.segments.empty() || rom.word_swap || rom.group_size != 1 || rom.interleave != 2 || rom.skip != 1)
   {
     Error::SetStringFmt(error, "Sony ZN Taito ROM '{}' uses an unsupported banked-ROM layout.", rom.name);
@@ -1715,8 +1588,8 @@ u8 ReadCapcomPlayerPort(u32 player)
 
   u8 value = UINT8_C(0xff);
 
-  // Common ZN P1/P2 direction bits. MAME's glpracr profile inherits the
-  // standard P1 digital directions while leaving the entire P2 port unused.
+  // Common ZN P1/P2 direction bits. Gallop Racer uses the standard P1
+  // digital directions while leaving the entire P2 port unused.
   if (IsArcadeControlPressed(player, "Up"))
     value &= ~UINT8_C(0x01);
   if (IsArcadeControlPressed(player, "Down"))
@@ -2190,8 +2063,8 @@ u8 ReadCapcomKickPort(u32 player)
 
 bool IsZNMCUSelected(u8 value)
 {
-  // Hardware decode used by MAME: the motherboard MCU is selected when
-  // security-select bits 7, 3 and 2 are all asserted.
+  // The motherboard MCU is selected when security-select bits 7, 3 and 2
+  // are all asserted.
   return (value & UINT8_C(0x8c)) == UINT8_C(0x8c);
 }
 
@@ -2252,7 +2125,7 @@ void ZNMCUDSRAssertEventCallback(void*, TickCount, TickCount)
 
   SetZNMCUDSRActive(*s_runtime, true);
 
-  // MAME's ZN MCU holds DSR low for 5 microseconds before releasing it.
+  // Hold DSR low for 5 microseconds before releasing it.
   if (s_mcu_dsr_release_event)
     s_mcu_dsr_release_event->Schedule(ZNMCUMicrosecondsToTicks(5));
 }
@@ -2958,14 +2831,17 @@ bool PrefetchBAM2PCM(RuntimeState& runtime, u32 max_bytes)
 
 void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
 {
-  runtime.bam2_h8_status = UINT16_C(0x0004);
+  // The BAM2 H8 command model clears the response when an argument is accepted.
+  // PLAY later raises bit 2 asynchronously after 100 screen periods.
+  runtime.bam2_h8_status = UINT16_C(0x0000);
 
   switch (opcode)
   {
     case 0x0081:
-    case 0x0087:
     {
-      const u16 track = static_cast<u16>((opcode == 0x0081 ? 1 : 129) + (argument & UINT16_C(0x00ff)));
+      // 0x81 is the sole file/track-select command. The protocol passes a
+      // zero-based virtual file ID; ArcadeDuck's internal track IDs are 1-based.
+      const u16 track = static_cast<u16>(1 + (argument & UINT16_C(0x00ff)));
       if (!IsBAM2TrackValid(runtime, track))
       {
         runtime.bam2_selected_track = 0;
@@ -2973,9 +2849,8 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
         return;
       }
 
-      // The game can re-issue SELECT for the track which is already playing.
-      // Re-preparing that same active track discards the live PCM ring and
-      // creates an artificial underrun before the next PLAY command.
+      // Re-selecting the already-playing track must not discard the live PCM
+      // ring, preserving retry protection.
       if (runtime.bam2_pcm_playing && runtime.bam2_selected_track == track)
         return;
 
@@ -2989,20 +2864,26 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
     }
 
     case 0x0082:
+      // bam2up schedules PLAY completion before attempting play_audio().
+      // This matters during the boot-time timing probe, where no file has yet
+      // been selected: audio does not start, but response bit 2 still appears
+      // after 100 screen periods.
+      runtime.bam2_h8_play_completion_frames = BAM2_H8_PLAY_COMPLETION_FRAMES;
+
       if (!IsBAM2TrackValid(runtime, runtime.bam2_selected_track))
       {
-        runtime.bam2_h8_status = UINT16_C(0x0001);
+        runtime.bam2_pcm_playing = false;
         return;
       }
 
-      // Track selection normally precedes PLAY by about a second, allowing
-      // ProcessFrame() to stage media data. A repeated PLAY restarts the track.
+      // PCM starts immediately. The H8 response remains 0 while the game polls
+      // for the delayed 0x0004 completion flag.
       if (runtime.bam2_pcm_output_bytes != 0)
         ResetBAM2PCMBuffer(runtime);
       if (runtime.bam2_pcm_buffered_bytes < 4 &&
           !PrefetchBAM2PCM(runtime, BAM2_PCM_PREFETCH_BYTES_PER_FRAME))
       {
-        runtime.bam2_h8_status = UINT16_C(0x0001);
+        runtime.bam2_pcm_playing = false;
         return;
       }
 
@@ -3014,15 +2895,31 @@ void ExecuteBAM2H8Command(RuntimeState& runtime, u16 opcode, u16 argument)
       return;
 
     case 0x0084:
-    case 0x0088:
+      // Mounted media => response 0.
       return;
 
     case 0x0086:
       runtime.bam2_tc9293_attenuation = static_cast<u8>(argument & UINT16_C(0x007f));
       return;
 
+    case 0x0087:
+      // Boot-time drive/media probe. The game issues 0x7f, 0x1c and 0x1b here;
+      // this is not a second track selector.
+      if (argument == UINT16_C(0x007f))
+      {
+        runtime.bam2_h8_status = UINT16_C(0x0001);
+      }
+      else if (runtime.bam2_media == BustAMove2Media::HardDisk &&
+               (argument == UINT16_C(0x001b) || argument == UINT16_C(0x001c)))
+      {
+        runtime.bam2_h8_status = static_cast<u16>((~argument) & UINT16_C(0x0001));
+      }
+      return;
+
+    case 0x0088:
+      return;
+
     default:
-      runtime.bam2_h8_status = UINT16_C(0x0001);
       return;
   }
 }
@@ -3033,7 +2930,6 @@ void WriteBAM2H8CommandWord(RuntimeState& runtime, u16 value)
   {
     runtime.bam2_h8_opcode = value;
     runtime.bam2_h8_waiting_for_argument = true;
-    runtime.bam2_h8_status = UINT16_C(0x0004);
     return;
   }
 
@@ -3053,7 +2949,6 @@ void WriteBAM2H8CommandWord(RuntimeState& runtime, u16 value)
       case 0x0086:
       case 0x0087:
       case 0x0088:
-        runtime.bam2_h8_status = UINT16_C(0x0004);
         return;
 
       default:
@@ -3070,6 +2965,7 @@ u16 ReadBAM2MCUPort(RuntimeState& runtime, u32 port)
 {
   if ((port & 3u) == 2)
     return runtime.bam2_h8_status;
+
   return runtime.bam2_mcu_ports[port & 3u];
 }
 
@@ -3115,15 +3011,15 @@ void ApplyBAM2MCUPortWrite(RuntimeState& runtime, u32 port)
       // The game writes 0x0007 before a command sequence and 0x0001 when
       // acknowledging a stream error. Both clear the externally-visible
       // command/error result before the next H8 transaction.
-      runtime.bam2_h8_status = UINT16_C(0x0004);
+      runtime.bam2_h8_status = UINT16_C(0x0000);
       break;
 
     case 3:
     {
       // Active-low two-phase cabinet output/lamp latch. Bit 0 selects which
       // seven-line group is being presented; bits 1..7 are that group's
-      // active-low output payload. The mapping below was validated directly
-      // against BAM2's fourteen-entry OUTPUT TEST menu.
+      // active-low output payload. The mapping corresponds to BAM2's
+      // fourteen-entry OUTPUT TEST menu.
       //
       // Phase 1:
       //   line 0 = 1P_BUTTONS_LAMP
@@ -3240,6 +3136,7 @@ bool ReadBAM2PCMFrame(RuntimeState& runtime, s16* left, s16* right)
 
   *left = static_cast<s16>(ReadBAM2LE16(frame.data()));
   *right = static_cast<s16>(ReadBAM2LE16(frame.data() + 2));
+
   return true;
 }
 
@@ -3254,7 +3151,7 @@ void ApplySecuritySelect(RuntimeState& runtime, u8 value)
 
   // Eighting/Raizing folds the 8 MiB game-ROM bank selector into the ordinary
   // ZN security-select register. Bits 1:0 select one of four decode states;
-  // the validated RA9701 content populates banks 0-2.
+  // RA9701 populates banks 0-2.
   if (runtime.board_type == BoardType::EightingRaizingZN1)
   {
     const u8 new_bank = value & UINT8_C(0x03);
@@ -3301,8 +3198,9 @@ void ClockTimeWarnerWatchdog(RuntimeState& runtime)
 }
 TickCount TaitoWatchdogTimeoutTicks()
 {
-  // Match the validated MB3773 model: a CK falling edge restarts a five-second
-  // watchdog interval.
+  // MB3773 tWD is set by the external CT capacitor: tWD(ms) ~= 100 * CT(uF).
+  // The exact Taito SROM PCB-A CT value is unknown, so use a five-second
+  // functional timeout without implying a hardware-derived board value.
   return std::max<TickCount>(System::GetTicksPerSecond() * 5, 1);
 }
 
@@ -3362,7 +3260,7 @@ std::optional<BIOS::Image> LoadFirmwareBIOS(const char* firmware_archive_path,
   std::memcpy(image.data.data(), data.data(), BIOS::BIOS_SIZE);
   image.hash = MD5Digest::HashData(image.data);
 
-  VERBOSE_LOG("SonyZN BIOS validated archive='{}' member='{}' variant='{}' size={}", firmware_archive_path,
+  VERBOSE_LOG("SonyZN BIOS loaded archive='{}' member='{}' variant='{}' size={}", firmware_archive_path,
            bios_rom->name, bios_variant, static_cast<u32>(BIOS::BIOS_SIZE));
   return image;
 }
@@ -3505,7 +3403,7 @@ std::optional<CapcomZNContent> LoadCapcomZNContent(const char* archive_path,
   }
 
   VERBOSE_LOG(
-    "SonyZN Capcom content validated set='{}' country={} bytes banked={} bytes banked_roms={} "
+    "SonyZN Capcom content loaded set='{}' country={} bytes banked={} bytes banked_roms={} "
     "audio_cpu={} bytes audio_roms={} qsound={} bytes qsound_roms={} qsound_enabled={} cat702_keys=2",
     content.set_name, content.country_rom.size(), content.banked_rom.size(), banked_count, content.audio_cpu_rom.size(),
     audio_cpu_count, content.qsound_rom.size(), qsound_count, content.qsound_enabled);
@@ -3596,7 +3494,7 @@ std::optional<VideoSystemZN1Content> LoadVideoSystemZN1Content(
   }
 
   VERBOSE_LOG(
-    "SonyZN Video System content validated set='{}' fixed={} bytes fixed_roms={} banked={} bytes "
+    "SonyZN Video System content loaded set='{}' fixed={} bytes fixed_roms={} banked={} bytes "
     "banked_roms={} cat702_keys=2",
     content.set_name, content.fixed_rom.size(), fixed_count, content.banked_rom.size(), banked_count);
   return content;
@@ -3702,7 +3600,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
   }
 
   VERBOSE_LOG(
-    "SonyZN Atlus content validated set='{}' banked={} bytes banked_roms={} audiocpu={} bytes audio_roms={} "
+    "SonyZN Atlus content loaded set='{}' banked={} bytes banked_roms={} audiocpu={} bytes audio_roms={} "
     "ymz280b={} bytes ymz_roms={} cat702_keys=2",
     content.set_name, content.banked_rom.size(), banked_count, content.audio_cpu_rom.size(), audio_cpu_count,
     content.ymz280b_rom.size(), ymz280b_count);
@@ -3885,7 +3783,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
   content.has_ps9805_flash = (ps9805_flash_count == 2);
 
   VERBOSE_LOG(
-    "SonyZN Eighting/Raizing content validated set='{}' banked={} bytes banked_roms={} audiocpu={} bytes "
+    "SonyZN Eighting/Raizing content loaded set='{}' banked={} bytes banked_roms={} audiocpu={} bytes "
     "audio_roms={} ymf271={} bytes ymf_roms={} at28_seed={} ps9805_flash={} cat702_keys=2",
     content.set_name, content.banked_rom.size(), banked_count, content.audio_cpu_rom.size(), audio_cpu_count,
     content.ymf271_rom.size(), ymf271_count, at28_count == 1, content.has_ps9805_flash);
@@ -3981,7 +3879,7 @@ std::optional<BustAMove2ZN1Content> LoadBustAMove2ZN1Content(
   content.media_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *media);
 
   VERBOSE_LOG(
-    "SonyZN BAM2 content validated set='{}' banked={} bytes banked_roms={} fixed=4MiB bank_window=4MiB "
+    "SonyZN BAM2 content loaded set='{}' banked={} bytes banked_roms={} fixed=4MiB bank_window=4MiB "
     "bank_select=4bit media='{}' cat702_keys=2 h8='undumped, MTR990601 command HLE'",
     content.set_name, content.banked_rom.size(), banked_count, GetBAM2MediaName(content.media));
   return content;
@@ -4097,7 +3995,7 @@ std::optional<TimeWarnerZN1Content> LoadTimeWarnerZN1Content(
   }
   content.harddisk_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *media);
 
-  VERBOSE_LOG("SonyZN Time Warner content validated set='{}' program={} bytes program_roms={} at28_seed={} "
+  VERBOSE_LOG("SonyZN Time Warner content loaded set='{}' program={} bytes program_roms={} at28_seed={} "
            "harddisk='{}' cat702_keys=2",
            content.set_name, content.program_rom.size(), program_count, content.at28_initial.size(),
            content.harddisk_path);
@@ -4216,7 +4114,7 @@ std::optional<AcclaimZN1Content> LoadAcclaimZN1Content(const char* archive_path,
     content.harddisk_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *harddisk);
   }
 
-  VERBOSE_LOG("SonyZN Acclaim content validated set='{}' profile='{}' banked={} bytes banked_roms={} "
+  VERBOSE_LOG("SonyZN Acclaim content loaded set='{}' profile='{}' banked={} bytes banked_roms={} "
            "rax={} bytes rax_roms={} cat702_keys=2 hdd='{}'",
            content.set_name, game.hardware_profile, content.banked_rom.size(), banked_count,
            content.rax_rom.size(), rax_count, content.harddisk_path);
@@ -4323,7 +4221,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
   }
 
   VERBOSE_LOG(
-    "SonyZN Taito FX-1A content validated set='{}' banked={} bytes banked_roms={} audio_cpu={} bytes "
+    "SonyZN Taito FX-1A content loaded set='{}' banked={} bytes banked_roms={} audio_cpu={} bytes "
     "adpcma={} bytes cat702_keys=2",
     content.set_name, content.banked_rom.size(), banked_count, content.audio_cpu_rom.size(),
     content.ym2610_adpcma_rom.size());
@@ -4431,7 +4329,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
   }
 
   VERBOSE_LOG(
-    "SonyZN Taito FX-1B content validated set='{}' banked={} bytes banked_roms={} mn10200={} bytes "
+    "SonyZN Taito FX-1B content loaded set='{}' banked={} bytes banked_roms={} mn10200={} bytes "
     "zsg2={} bytes zsg2_roms={} vram={}MiB cat702_keys=2",
     content.set_name, content.banked_rom.size(), banked_count, content.mn10200_rom.size(), content.zsg2_rom.size(),
     zsg2_count, content.use_2mb_vram ? 2 : 1);
@@ -4550,9 +4448,8 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
     else if (rom.region == "blprot")
     {
       // The cbajbl dump includes a 128 KiB ROM associated with the bootleg
-      // protection/logic device. Current reference drivers do not map it into
-      // the PSX/Z80 address spaces. Validate that the dumped device image is
-      // present, but do not invent an unverified hardware mapping.
+      // protection/logic device. No PSX/Z80 mapping is currently known for it.
+      // Validate that the dumped device image is present without inventing one.
       if (game.id != "cbajbl" || bootleg_prot_count != 0 || rom.size != 0x20000)
       {
         Error::SetStringFmt(error, "Unexpected Tecmo TPS bootleg protection ROM '{}'.", rom.name);
@@ -4611,7 +4508,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
   }
 
   VERBOSE_LOG(
-    "SonyZN Tecmo TPS content validated set='{}' banked={} bytes banked_roms={} at28_seed={} bytes "
+    "SonyZN Tecmo TPS content loaded set='{}' banked={} bytes banked_roms={} at28_seed={} bytes "
     "cbaj_sound={} audiocpu={} bytes ymz280b={} bytes ymz_roms={} gr2_link={} linkcpu={} bytes "
     "bootleg_prot={} cat702_keys=2",
     content.set_name, content.banked_rom.size(), banked_count, content.at28_initial.size(), cbaj_sound_enabled,
@@ -4924,7 +4821,7 @@ bool InitializeCapcomZN(const BIOS::Image& bios, CapcomZNContent content, std::s
       content.banked_rom.size() != expected_banked_size || content.audio_cpu_rom.size() != 0x40000 ||
       content.qsound_rom.size() != 0x400000)
   {
-    Error::SetStringView(error, "Invalid Capcom ZN validated content.");
+    Error::SetStringView(error, "Invalid Capcom ZN content.");
     return false;
   }
 
@@ -4966,8 +4863,8 @@ bool InitializeCapcomZN(const BIOS::Image& bios, CapcomZNContent content, std::s
   }
   else
   {
-    // Gallop Racer's Z80/QSound ROM sockets are physically unpopulated.
-    // MAME holds the audio CPU in reset; an inactive QSound backend is equivalent here.
+    // Gallop Racer's Z80/QSound ROM sockets are physically unpopulated, so keep
+    // the QSound backend inactive.
     CapcomQSound::Shutdown();
   }
 
@@ -4993,7 +4890,7 @@ bool InitializeVideoSystemZN1(const BIOS::Image& bios, VideoSystemZN1Content con
   if (bios.data.size() != BIOS::BIOS_SIZE || content.fixed_rom.size() != VIDEO_SYSTEM_FIXED_ROM_SIZE ||
       content.banked_rom.size() != VIDEO_SYSTEM_BANKED_ROM_SIZE)
   {
-    Error::SetStringView(error, "Invalid Video System ZN-1 validated content.");
+    Error::SetStringView(error, "Invalid Video System ZN-1 content.");
     return false;
   }
 
@@ -5062,7 +4959,7 @@ bool InitializeAtlusZN1(const BIOS::Image& bios, AtlusZN1Content content,
   if (bios.data.size() != BIOS::BIOS_SIZE || content.banked_rom.size() != ATLUS_BANKED_ROM_SIZE ||
       content.audio_cpu_rom.size() != ATLUS_AUDIO_ROM_SIZE || content.ymz280b_rom.size() != ATLUS_YMZ280B_ROM_SIZE)
   {
-    Error::SetStringView(error, "Invalid Atlus ZN-1 validated content.");
+    Error::SetStringView(error, "Invalid Atlus ZN-1 content.");
     return false;
   }
 
@@ -5137,7 +5034,7 @@ bool InitializeEightingRaizingZN1(const BIOS::Image& bios, EightingRaizingZN1Con
       content.audio_cpu_rom.size() > EIGHTING_AUDIO_ROM_MAX_SIZE ||
       content.ymf271_rom.size() != EIGHTING_YMF271_ROM_SIZE)
   {
-    Error::SetStringView(error, "Invalid Eighting/Raizing ZN-1 validated content.");
+    Error::SetStringView(error, "Invalid Eighting/Raizing ZN-1 content.");
     return false;
   }
 
@@ -5211,7 +5108,7 @@ bool InitializeBustAMove2ZN1(const BIOS::Image& bios, BustAMove2ZN1Content conte
 {
   if (bios.data.size() != BIOS::BIOS_SIZE || content.banked_rom.size() != BAM2_BANKED_ROM_SIZE)
   {
-    Error::SetStringView(error, "Invalid Bust a Move 2 validated content.");
+    Error::SetStringView(error, "Invalid Bust a Move 2 content.");
     return false;
   }
 
@@ -5295,7 +5192,7 @@ bool InitializeTimeWarnerZN1(const BIOS::Image& bios, TimeWarnerZN1Content conte
   if (bios.data.size() != BIOS::BIOS_SIZE || content.program_rom.size() != TIME_WARNER_PROGRAM_ROM_SIZE ||
       content.at28_initial.size() != AT28_SIZE || content.harddisk_path.empty())
   {
-    Error::SetStringView(error, "Invalid Time Warner ZN-1 validated content.");
+    Error::SetStringView(error, "Invalid Time Warner ZN-1 content.");
     return false;
   }
 
@@ -5375,7 +5272,7 @@ bool InitializeAcclaimZN1(const BIOS::Image& bios, AcclaimZN1Content content,
       (content.game == AcclaimZN1Game::NBAJamExtreme && content.rax_rom.size() != 0x800000) ||
       (content.game == AcclaimZN1Game::JudgeDredd && !content.rax_rom.empty()))
   {
-    Error::SetStringView(error, "Invalid Acclaim ZN-1 validated content.");
+    Error::SetStringView(error, "Invalid Acclaim ZN-1 content.");
     return false;
   }
 
@@ -5463,7 +5360,7 @@ bool InitializeTaitoFX1A(const BIOS::Image& bios, TaitoFX1AContent content, std:
   if (bios.data.size() != BIOS::BIOS_SIZE || content.banked_rom.size() != 0x1000000 ||
       content.audio_cpu_rom.size() != 0x20000 || !valid_adpcma_size)
   {
-    Error::SetStringView(error, "Invalid Taito FX-1A validated content.");
+    Error::SetStringView(error, "Invalid Taito FX-1A content.");
     return false;
   }
 
@@ -5539,7 +5436,7 @@ bool InitializeTaitoFX1B(const BIOS::Image& bios, TaitoFX1BContent content, std:
   if (bios.data.size() != BIOS::BIOS_SIZE || content.banked_rom.size() != 0x1000000 ||
       content.mn10200_rom.size() != 0x80000 || !valid_zsg2_size)
   {
-    Error::SetStringView(error, "Invalid Taito FX-1B validated content.");
+    Error::SetStringView(error, "Invalid Taito FX-1B content.");
     return false;
   }
 
@@ -5634,7 +5531,7 @@ bool InitializeTecmoTPS(const BIOS::Image& bios, TecmoTPSContent content, std::s
         content.ymz280b_rom.size() != TECMO_CBAJ_YMZ_ROM_SIZE)) ||
       (content.gr2_link_enabled && content.link_cpu_rom.size() != TECMO_GR2_LINK_ROM_SIZE))
   {
-    Error::SetStringView(error, "Invalid Tecmo TPS validated content.");
+    Error::SetStringView(error, "Invalid Tecmo TPS content.");
     return false;
   }
 
@@ -5851,9 +5748,10 @@ void Reset()
     s_runtime->bam2_mcu_ports.fill(0);
     s_runtime->bam2_mcu_ports[0] = 1;
     s_runtime->bam2_outputs_initialized = false;
-    s_runtime->bam2_h8_status = UINT16_C(0x0004);
+    s_runtime->bam2_h8_status = UINT16_C(0x0000);
     s_runtime->bam2_h8_opcode = 0;
     s_runtime->bam2_h8_waiting_for_argument = false;
+    s_runtime->bam2_h8_play_completion_frames = 0;
     s_runtime->bam2_selected_track = 0;
     s_runtime->bam2_tc9293_attenuation = 0;
     s_runtime->bam2_pcm_playing = false;
@@ -5862,7 +5760,6 @@ void Reset()
     ResetBAM2PCMBuffer(*s_runtime);
   }
   // AT28C16 contents and an in-flight write cycle are independent of the PSX reset line.
-  s_runtime->at28_trace_count = 0;
   AtlusZN1Sound::Reset();
   EightingRaizingSound::Reset();
   CapcomQSound::Reset();
@@ -5895,9 +5792,6 @@ void Reset()
   s_runtime->sio0_tx_full = false;
   s_runtime->sio0_transfer_active = false;
   SetSIO0Interrupt(*s_runtime, false);
-  s_runtime->sio_exchange_count = 0;
-  s_runtime->sio_register_trace_count = 0;
-  s_runtime->sio_status_trace_count = 0;
   s_runtime->mcu_selected = false;
   s_runtime->mcu_byte_index = 0;
   CancelZNMCUDSR(*s_runtime);
@@ -5951,10 +5845,12 @@ void ApplySPUOutputGain(s32* left, s32* right)
   if (!s_runtime)
     return;
 
-  // Base ZN routes the onboard SPU at 0.35. Atlus ZN-1 and Taito FX-1B
-  // override that board-level route to 0.175 and 0.30 respectively.
+  // Base ZN routes the onboard SPU at 0.35. Bust-A-Move 2, Atlus ZN-1,
+  // and Taito FX-1B use unity gain for their onboard SPU route.
   u32 gain_per_thousand = 350;
-  if (s_runtime->board_type == BoardType::AtlusZN1)
+  if (s_runtime->board_type == BoardType::BustAMove2ZN1)
+    gain_per_thousand = 1000;
+  else if (s_runtime->board_type == BoardType::AtlusZN1)
     gain_per_thousand = 1000;
   else if (s_runtime->board_type == BoardType::TaitoFX1B)
     gain_per_thousand = 1000;
@@ -6055,6 +5951,16 @@ void ProcessFrame()
   {
     TecmoGR2Link::ProcessFrame();
     return;
+  }
+
+  if (s_runtime->board_type == BoardType::BustAMove2ZN1 &&
+      s_runtime->bam2_h8_play_completion_frames != 0)
+  {
+    s_runtime->bam2_h8_play_completion_frames--;
+    if (s_runtime->bam2_h8_play_completion_frames == 0)
+    {
+      s_runtime->bam2_h8_status |= UINT16_C(0x0004);
+    }
   }
 
   if (s_runtime->board_type == BoardType::BustAMove2ZN1 && s_runtime->bam2_selected_track != 0)
@@ -6168,12 +6074,6 @@ static u8 ExchangeCAT702Byte(RuntimeState& runtime, u8 tx)
     runtime.game_cat702.SetClockLine(true);
   }
 
-  if (runtime.sio_exchange_count < 64)
-  {
-    DEV_LOG("SonyZN.SIO0 CAT702 byte={} sec=0x{:02X} tx=0x{:02X} rx=0x{:02X}", runtime.sio_exchange_count,
-            runtime.security_select, tx, rx);
-  }
-  runtime.sio_exchange_count++;
   return rx;
 }
 
@@ -6306,15 +6206,6 @@ u32 ReadSIO0Register(u32 offset)
       if (s_runtime->sio0_interrupt_pending)
         status |= UINT32_C(0x00000200); // SIO0 interrupt request pending.
 
-      if (s_runtime->sio_status_trace_count < 32)
-      {
-        DEV_LOG("SonyZN.SIO0 STAT read={} value=0x{:08X} rx_full={} tx_full={} active={} ctrl=0x{:04X} mode=0x{:04X} baud=0x{:04X}",
-                 s_runtime->sio_status_trace_count, status, s_runtime->sio0_rx_full, s_runtime->sio0_tx_full,
-                 s_runtime->sio0_transfer_active, s_runtime->sio0_control, s_runtime->sio0_mode,
-                 s_runtime->sio0_baud);
-      }
-      s_runtime->sio_status_trace_count++;
-
       return status;
     }
 
@@ -6355,18 +6246,11 @@ void WriteSIO0Register(u32 offset, u32 value)
     case 0x08: // JOY_MODE
 
       s_runtime->sio0_mode = static_cast<u16>(value);
-      if (s_runtime->sio_register_trace_count < 32)
-        DEV_LOG("SonyZN.SIO0 MODE <- 0x{:04X}", s_runtime->sio0_mode);
-      s_runtime->sio_register_trace_count++;
       return;
 
     case 0x0a: // JOY_CTRL
     {
       const u16 control = static_cast<u16>(value);
-
-      if (s_runtime->sio_register_trace_count < 32)
-        DEV_LOG("SonyZN.SIO0 CTRL <- 0x{:04X}", control);
-      s_runtime->sio_register_trace_count++;
 
       if ((control & UINT16_C(0x0010)) != 0) // SIO0 interrupt acknowledge
         SetSIO0Interrupt(*s_runtime, false);
@@ -6407,15 +6291,9 @@ void WriteSIO0Register(u32 offset, u32 value)
     case 0x0e: // JOY_BAUD
 
       s_runtime->sio0_baud = static_cast<u16>(value);
-      if (s_runtime->sio_register_trace_count < 32)
-        DEV_LOG("SonyZN.SIO0 BAUD <- 0x{:04X}", s_runtime->sio0_baud);
-      s_runtime->sio_register_trace_count++;
       return;
 
     default:
-      if (s_runtime->sio_register_trace_count < 32)
-        DEV_LOG("SonyZN.SIO0 unhandled write offset=0x{:02X} value=0x{:08X}", offset, value);
-      s_runtime->sio_register_trace_count++;
       return;
   }
 }
@@ -8487,24 +8365,21 @@ u32 ReadEXP3(u32 width, u32 offset)
     return ReadBytePortWindow(ReadCapcomKickPort(1), width, offset - CAPCOM_KICK2_BASE);
 
   // COH-3002C software probes this region. Exact hardware semantics remain unknown;
-  // a benign zero read is sufficient for all validated ZN2 software.
+  // a benign zero read is sufficient for the supported ZN2/G-Net software.
   if ((s_runtime->board_type == BoardType::CapcomZN2 || s_runtime->board_type == BoardType::TaitoGNet) &&
       offset >= ZN2_UNKNOWN_1FA51C00_BASE && offset <= ZN2_UNKNOWN_1FA51C00_END)
   {
     return 0;
   }
-  // ZN-2 SPU synchronization/status source.
-  // MAME's ZN-2 implementation toggles bit 3 on each read;
-  // G-Net inherits the ZN-2 motherboard map.
+  // COH-3002C software expects bit 3 of this 16-bit register to change state.
+  // Holding it at a constant zero can stall ZN-2 software, so toggle it on each read.
+  // G-Net inherits the ZN-2 motherboard map and uses the same status source.
   if ((s_runtime->board_type == BoardType::CapcomZN2 ||
        s_runtime->board_type == BoardType::TaitoGNet) &&
-      offset >= ZN2_UNKNOWN_1FA60000_BASE &&
-      offset <= ZN2_UNKNOWN_1FA60000_END)
+      offset >= ZN2_UNKNOWN_1FA60000_BASE && offset <= ZN2_UNKNOWN_1FA60000_END)
   {
-    s_runtime->zn2_spu_toggle ^= UINT16_C(0x0008);
-    return ReadHalfwordPortWindow(
-      s_runtime->zn2_spu_toggle, width,
-      offset - ZN2_UNKNOWN_1FA60000_BASE);
+    s_runtime->zn2_spu_hack ^= UINT16_C(0x0008);
+    return ReadHalfwordPortWindow(s_runtime->zn2_spu_hack, width, offset - ZN2_UNKNOWN_1FA60000_BASE);
   }
 
   if (offset == BOARD_CONFIG)
@@ -8930,8 +8805,6 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
     if (changed && s_runtime->acclaim_game == AcclaimZN1Game::NBAJamExtreme)
       CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, ACCLAIM_EXP1_SIZE);
 
-    DEV_LOG("SonyZN Acclaim bank regs <- [0x{:04X}, 0x{:04X}]",
-            s_runtime->acclaim_bank_registers[0], s_runtime->acclaim_bank_registers[1]);
     return;
   }
 
@@ -9045,7 +8918,6 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
     {
       s_runtime->bank = new_bank;
       CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, ATLUS_EXP1_SIZE);
-      DEV_LOG("SonyZN Atlus ROM bank <- 0x{:02X} (write width={})", s_runtime->bank, width);
     }
     return;
   }
@@ -9063,7 +8935,6 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
                                                        VIDEO_SYSTEM_BANK_SIZE);
     }
 
-    DEV_LOG("SonyZN Video System ROM bank <- 0x{:02X}", s_runtime->bank);
     return;
   }
 
@@ -9077,7 +8948,6 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
     {
       s_runtime->bank = new_bank;
       CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, TECMO_EXP1_SIZE);
-      DEV_LOG("SonyZN Tecmo TPS ROM bank <- 0x{:02X} (write width={})", s_runtime->bank, width);
     }
     return;
   }
@@ -9092,13 +8962,12 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
     {
       s_runtime->bank = new_bank;
       CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE, TAITO_EXP1_SIZE);
-      DEV_LOG("SonyZN Taito ROM bank <- 0x{:02X}", s_runtime->bank);
     }
 
     if (s_runtime->bank >= 2 && !s_runtime->taito_unpopulated_bank_logged)
     {
       DEV_LOG(
-        "SonyZN Taito FX-1 selected ROM bank {} but the validated set contains only 16MiB (banks 0-1); "
+        "SonyZN Taito FX-1 selected ROM bank {} but the loaded set contains only 16MiB (banks 0-1); "
         "reads from this bank will remain open-bus until the decode is resolved.",
         s_runtime->bank);
       s_runtime->taito_unpopulated_bank_logged = true;
@@ -9129,7 +8998,6 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
       CPU::CodeCache::InvalidateBlocksInPhysicalRange(Bus::EXP1_BASE + CAPCOM_FIXED_ROM_SIZE, CAPCOM_BANK_SIZE);
     }
 
-    DEV_LOG("SonyZN Capcom ROM bank <- 0x{:02X}", s_runtime->bank);
     return;
   }
 

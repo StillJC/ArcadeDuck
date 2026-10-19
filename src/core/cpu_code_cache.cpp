@@ -40,6 +40,7 @@ Log_SetChannel(CPU::CodeCache);
 #include "cpu_newrec_compiler.h"
 #endif
 
+#include <bitset>
 #include <map>
 #include <unordered_set>
 #include <zlib.h>
@@ -59,6 +60,8 @@ static constexpr u32 RECOMPILE_COUNT_FOR_INTERPRETER_FALLBACK = 3;
 static constexpr u32 RECOMPILE_FRAMES_FOR_INTERPRETER_FALLBACK = 15;
 static constexpr u32 INVALIDATE_COUNT_FOR_MANUAL_PROTECTION = 4;
 static constexpr u32 INVALIDATE_FRAMES_FOR_MANUAL_PROTECTION = 60;
+static constexpr u32 COMPILED_PHYSICAL_CHUNK_SHIFT = 16;
+static constexpr u32 COMPILED_PHYSICAL_CHUNK_COUNT = 1u << (32 - COMPILED_PHYSICAL_CHUNK_SHIFT);
 
 static CodeLUT DecodeCodeLUTPointer(u32 slot, CodeLUT ptr);
 static CodeLUT EncodeCodeLUTPointer(u32 slot, CodeLUT ptr);
@@ -70,6 +73,8 @@ static void ResetCodeLUT();
 static void SetCodeLUT(u32 pc, const void* function);
 static void InvalidateBlock(Block* block, BlockState new_state);
 static void ClearBlocks();
+static void MarkBlockPhysicalChunks(const Block* block);
+static bool HasCompiledBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size);
 
 static Block* LookupBlock(u32 pc);
 static Block* CreateBlock(u32 pc, const BlockInstructionList& instructions, const BlockMetadata& metadata);
@@ -97,6 +102,7 @@ static std::unique_ptr<const void*[]> s_lut_code_pointers;
 static std::unique_ptr<Block*[]> s_lut_block_pointers;
 static PageProtectionArray s_page_protection = {};
 static std::vector<Block*> s_blocks;
+static std::bitset<COMPILED_PHYSICAL_CHUNK_COUNT> s_compiled_physical_chunks;
 
 // for compiling - reuse to avoid allocations
 static BlockInstructionList s_block_instructions;
@@ -139,6 +145,18 @@ static constexpr u32 RECOMPILER_CODE_CACHE_SIZE = 48 * 1024 * 1024;
 static constexpr u32 RECOMPILER_FAR_CODE_CACHE_SIZE = 16 * 1024 * 1024;
 #endif
 
+#if defined(CPU_ARCH_X64)
+// The legacy x64 recompiler emits substantially more far code than NewRec. Give legacy blocks
+// a 40 MiB near region and a 56 MiB far region while leaving NewRec's cache sizing unchanged.
+static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = 96 * 1024 * 1024;
+static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = 56 * 1024 * 1024;
+static constexpr u32 RECOMPILER_CODE_CACHE_ALLOCATION_SIZE = LEGACY_RECOMPILER_CODE_CACHE_SIZE;
+#else
+static constexpr u32 LEGACY_RECOMPILER_CODE_CACHE_SIZE = RECOMPILER_CODE_CACHE_SIZE;
+static constexpr u32 LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE = RECOMPILER_FAR_CODE_CACHE_SIZE;
+static constexpr u32 RECOMPILER_CODE_CACHE_ALLOCATION_SIZE = RECOMPILER_CODE_CACHE_SIZE;
+#endif
+
 // On Linux ARM32/ARM64, we use a dedicated section in the ELF for storing code.
 // This is because without ASLR, or on certain ASLR offsets, the sbrk() heap ends up immediately following the text/data
 // sections, which means there isn't a large enough gap to fit within range on ARM32.
@@ -146,7 +164,7 @@ static constexpr u32 RECOMPILER_FAR_CODE_CACHE_SIZE = 16 * 1024 * 1024;
 #define USE_CODE_BUFFER_SECTION 1
 #ifdef __clang__
 #pragma clang section bss = ".jitstorage"
-__attribute__((aligned(HOST_PAGE_SIZE))) static u8 s_code_buffer_ptr[RECOMPILER_CODE_CACHE_SIZE];
+__attribute__((aligned(HOST_PAGE_SIZE))) static u8 s_code_buffer_ptr[RECOMPILER_CODE_CACHE_ALLOCATION_SIZE];
 #pragma clang section bss = ""
 #endif
 #else
@@ -188,9 +206,9 @@ bool CPU::CodeCache::ProcessStartup(Error* error)
            static_cast<void*>(s_code_buffer_ptr), std::abs(static_cast<ptrdiff_t>(s_code_buffer_ptr - module_base)),
            (std::abs(static_cast<ptrdiff_t>(s_code_buffer_ptr - module_base)) + (1024 * 1024 - 1)) / (1024 * 1024));
   const bool code_buffer_allocated =
-    MemMap::MemProtect(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_SIZE, PageProtect::ReadWriteExecute);
+    MemMap::MemProtect(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_ALLOCATION_SIZE, PageProtect::ReadWriteExecute);
 #else
-  s_code_buffer_ptr = static_cast<u8*>(MemMap::AllocateJITMemory(RECOMPILER_CODE_CACHE_SIZE));
+  s_code_buffer_ptr = static_cast<u8*>(MemMap::AllocateJITMemory(RECOMPILER_CODE_CACHE_ALLOCATION_SIZE));
   const bool code_buffer_allocated = (s_code_buffer_ptr != nullptr);
 #endif
   if (!code_buffer_allocated) [[unlikely]]
@@ -213,7 +231,7 @@ void CPU::CodeCache::ProcessShutdown()
   DeallocateLUTs();
 
 #ifndef USE_CODE_BUFFER_SECTION
-  MemMap::ReleaseJITMemory(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_SIZE);
+  MemMap::ReleaseJITMemory(s_code_buffer_ptr, RECOMPILER_CODE_CACHE_ALLOCATION_SIZE);
 #endif
 }
 
@@ -479,6 +497,7 @@ CPU::CodeCache::Block* CPU::CodeCache::CreateBlock(u32 pc, const BlockInstructio
 
   block->pc = pc;
   block->size = size;
+  MarkBlockPhysicalChunks(block);
   block->host_code = nullptr;
   block->next_block_in_page = nullptr;
   block->num_exit_links = 0;
@@ -723,9 +742,35 @@ void CPU::CodeCache::InvalidateAllRAMBlocks()
   Bus::ClearRAMCodePageFlags();
 }
 
+void CPU::CodeCache::MarkBlockPhysicalChunks(const Block* block)
+{
+  const PhysicalMemoryAddress block_start = VirtualAddressToPhysical(block->pc);
+  const PhysicalMemoryAddress block_end = block_start + (block->size * sizeof(Instruction)) - 1;
+  const u32 first_chunk = block_start >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+  const u32 last_chunk = block_end >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+
+  for (u32 chunk = first_chunk; chunk <= last_chunk; chunk++)
+    s_compiled_physical_chunks.set(chunk);
+}
+
+bool CPU::CodeCache::HasCompiledBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size)
+{
+  const PhysicalMemoryAddress end_address = start_address + size - 1;
+  const u32 first_chunk = start_address >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+  const u32 last_chunk = end_address >> COMPILED_PHYSICAL_CHUNK_SHIFT;
+
+  for (u32 chunk = first_chunk; chunk <= last_chunk; chunk++)
+  {
+    if (s_compiled_physical_chunks.test(chunk))
+      return true;
+  }
+
+  return false;
+}
+
 void CPU::CodeCache::InvalidateBlocksInPhysicalRange(PhysicalMemoryAddress start_address, u32 size)
 {
-  if (size == 0)
+  if (size == 0 || !HasCompiledBlocksInPhysicalRange(start_address, size))
     return;
 
   const PhysicalMemoryAddress end_address = start_address + size;
@@ -769,6 +814,7 @@ void CPU::CodeCache::ClearBlocks()
     Common::AlignedFree(block);
   }
   s_blocks.clear();
+  s_compiled_physical_chunks.reset();
 
   std::memset(s_lut_block_pointers.get(), 0, sizeof(Block*) * GetLUTSlotCount(false));
 }
@@ -1487,14 +1533,19 @@ void CPU::CodeCache::ResetCodeBuffer()
 {
   s_code_ptr = static_cast<u8*>(s_code_buffer_ptr);
   s_free_code_ptr = s_code_ptr;
-  s_code_size = RECOMPILER_CODE_CACHE_SIZE - RECOMPILER_FAR_CODE_CACHE_SIZE;
+
+  const bool legacy_recompiler = (g_settings.cpu_execution_mode == CPUExecutionMode::Recompiler);
+  const u32 code_capacity = legacy_recompiler ? LEGACY_RECOMPILER_CODE_CACHE_SIZE : RECOMPILER_CODE_CACHE_SIZE;
+  const u32 far_code_capacity =
+    legacy_recompiler ? LEGACY_RECOMPILER_FAR_CODE_CACHE_SIZE : RECOMPILER_FAR_CODE_CACHE_SIZE;
+  s_code_size = code_capacity - far_code_capacity;
   s_code_used = 0;
 
   // Use half the far code size when using newrec and memory exceptions aren't enabled. It's only used for backpatching.
   const u32 far_code_size =
     (g_settings.cpu_execution_mode == CPUExecutionMode::NewRec && !g_settings.cpu_recompiler_memory_exceptions) ?
-      (RECOMPILER_FAR_CODE_CACHE_SIZE / 2) :
-      RECOMPILER_FAR_CODE_CACHE_SIZE;
+      (far_code_capacity / 2) :
+      far_code_capacity;
   s_far_code_size = far_code_size;
   s_far_code_ptr = (far_code_size > 0) ? (static_cast<u8*>(s_code_ptr) + s_code_size) : nullptr;
   s_free_far_code_ptr = s_far_code_ptr;
@@ -1502,8 +1553,8 @@ void CPU::CodeCache::ResetCodeBuffer()
 
   MemMap::BeginCodeWrite();
 
-  std::memset(s_code_ptr, 0, RECOMPILER_CODE_CACHE_SIZE);
-  MemMap::FlushInstructionCache(s_code_ptr, RECOMPILER_CODE_CACHE_SIZE);
+  std::memset(s_code_ptr, 0, code_capacity);
+  MemMap::FlushInstructionCache(s_code_ptr, code_capacity);
 
   MemMap::EndCodeWrite();
 }

@@ -68,7 +68,7 @@ public:
   /// Applies board-specific configuration which must precede shared GPU/system construction.
   virtual void PrepareSharedHardware() const = 0;
 
-  /// Installs validated firmware/content and initializes board devices after shared initialization.
+  /// Installs board firmware/content and initializes board devices after shared initialization.
   virtual bool Initialize(const BootContext& context, Error* error) = 0;
 
   /// Returns an installed BIOS whose identity should be published by System, when applicable.
@@ -81,5 +81,9 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id);
 /// Queries a registered handler's save-state capability without starting the machine.
 /// Unknown handlers are unsupported.
 bool MachineHandlerSupportsSaveStates(std::string_view id);
+
+/// Returns whether the ID names a registered handler. All registered handlers must resolve non-merged, split, and
+/// merged game archives through the logical game definition.
+bool MachineHandlerSupportsSplitMergedSets(std::string_view id);
 
 } // namespace Arcade

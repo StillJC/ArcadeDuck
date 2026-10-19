@@ -34,7 +34,7 @@ if(APPLE)
       MACOSX_BUNDLE true
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
       OUTPUT_NAME Updater
-      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DuckStation.app/Contents/Resources
+      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ArcadeDuck.app/Contents/Resources
     )
 
     # Copy icon into the bundle

@@ -400,10 +400,10 @@
         <item>
          <widget class="QSlider" name="arcadeCabinetGain">
           <property name="minimum">
-           <number>-6</number>
+           <number>-30</number>
           </property>
           <property name="maximum">
-           <number>6</number>
+           <number>12</number>
           </property>
           <property name="singleStep">
            <number>1</number>
@@ -429,6 +429,16 @@
          <widget class="QLabel" name="arcadeCabinetGainLabel">
           <property name="text">
            <string>0 dB</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="resetArcadeCabinetGain">
+          <property name="toolTip">
+           <string>Reset Arcade Gain</string>
+          </property>
+          <property name="icon">
+           <iconset theme="refresh-line"/>
           </property>
          </widget>
         </item>

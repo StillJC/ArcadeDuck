@@ -33,12 +33,8 @@ enum class InputSourceType : u32
   DInput,
   XInput,
 #endif
-#ifndef __ANDROID__
   SDL,
   RawInput,
-#else
-  Android,
-#endif
   Count,
 };
 
@@ -149,14 +145,17 @@ struct HotkeyInfo
   const char* name;
   const char* category;
   const char* display_name;
+  bool visible_in_ui;
   void (*handler)(s32 pressed);
 };
 #define DECLARE_HOTKEY_LIST(name) extern const HotkeyInfo name[]
 #define BEGIN_HOTKEY_LIST(name) const HotkeyInfo name[] = {
-#define DEFINE_HOTKEY(name, category, display_name, handler) {(name), (category), (display_name), (handler)},
+#define DEFINE_HOTKEY(name, category, display_name, handler) {(name), (category), (display_name), true, (handler)},
+#define DEFINE_HIDDEN_HOTKEY(name, category, display_name, handler)                                                    \
+  {(name), (category), (display_name), false, (handler)},
 #define END_HOTKEY_LIST()                                                                                              \
   {                                                                                                                    \
-    nullptr, nullptr, nullptr, nullptr                                                                                 \
+    nullptr, nullptr, nullptr, false, nullptr                                                                          \
   }                                                                                                                    \
   }                                                                                                                    \
   ;
@@ -302,6 +301,7 @@ void SetPointerAbsoluteDisplayRect(float left, float top, float right, float bot
 bool SetPointerAbsolutePosition(std::string_view device, float x, float y);
 void ResetRawPointerVirtualPosition(u32 index);
 void SetRawPointerVirtualPosition(u32 index, float x, float y);
+void SetRawPointerVirtualScale(float scale);
 std::pair<float, float> UpdateRawPointerVirtualPosition(u32 index, float delta_x, float delta_y);
 
 /// Updates internal state for any binds for this key, and fires callbacks as needed.

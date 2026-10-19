@@ -1,5 +1,10 @@
 <RCC>
 	<qresource>
+		<file>aboutfx/seq.mp3</file>
+		<file>aboutfx/seq0.png</file>
+		<file>aboutfx/seq1.png</file>
+		<file>aboutfx/seq2.png</file>
+		<file>aboutfx/seq3.png</file>
 		<file>controllers/arcade_controller.png</file>
 		<file>controllers/ArcadeDuck_Bust_A_Move_controls.png</file>
 		<file>controllers/lightgun.png</file>

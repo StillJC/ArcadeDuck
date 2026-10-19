@@ -5,10 +5,11 @@
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_output.h"
 #include "core/bus.h"
 #include "core/cpu_core.h"
-#include "core/m37710/m37710.h"
+#include "core/arcade/third_party/m37710/m37710.h"
 #include "core/settings.h"
 #include "core/system.h"
 #include "core/timing_event.h"
@@ -16,10 +17,7 @@
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
-#include "common/minizip_helpers.h"
 #include "common/path.h"
-#include "common/sha1_digest.h"
-#include "common/string_util.h"
 
 #include <algorithm>
 #include <array>
@@ -116,7 +114,6 @@ struct RuntimeState
   std::array<C352Voice, 32> c352_voices{};
   u16 c352_control = 0;
   u16 c352_random = 0x1234;
-  bool c352_first_keyon_logged = false;
   std::unique_ptr<m37710_cpu_device> c76_cpu;
   std::unique_ptr<TimingEvent> c76_timing_event;
   u64 c76_cycle_fraction = 0;
@@ -124,8 +121,6 @@ struct RuntimeState
   s64 c76_cycle_balance = 0;
   u64 c76_total_cycles = 0;
   u64 c76_scheduler_callbacks = 0;
-  u32 c76_slice_logs = 0;
-  bool c76_first_c352_access_logged = false;
   bool c76_first_unmapped_access_logged = false;
 
   // Cabinet outputs are written repeatedly by the game. Keep the physical
@@ -152,7 +147,7 @@ struct RuntimeState
 
   // A0 enables one M139 measurement cycle. Trackball motion is accumulated
   // until the roll settles, converted to virtual SENS1..SENS4 timestamps, and
-  // encoded through the recovered M139 C3 equations.
+  // encoded through the M139 C3 equations.
   s64 family_bowl_c3_pending_x = 0;
   s64 family_bowl_c3_pending_y = 0;
   u32 family_bowl_c3_generation = 0;
@@ -198,110 +193,10 @@ std::mutex s_family_bowl_trackball_mutex;
 bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
                    Error* error)
 {
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Namco System 11 set archive '{}'.", archive_path);
-    return false;
-  }
+  if (const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path))
+    return Arcade::LoadGameROM(archive_path, *game, rom, data, error);
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Namco System 11 set archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Namco System 11 set archive '{}'.",
-                          archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 11 ROM '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 11 ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress System 11 ROM '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      data->resize(rom.size);
-      size_t read_offset = 0;
-      while (read_offset < data->size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, data->data() + read_offset,
-                                                  static_cast<unsigned>(data->size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading System 11 ROM '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for System 11 ROM '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "System 11 ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Namco System 11 set archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Namco System 11 set archive '{}' does not contain required ROM '{}'.", archive_path,
-                      rom.name);
-  return false;
+  return Arcade::LoadROMFromArchive(archive_path, rom, data, error);
 }
 
 bool PlaceROM(const Arcade::Database::ROMDefinition& rom, std::span<const u8> source, std::span<u8> destination,
@@ -420,8 +315,7 @@ std::optional<LoadedContent> LoadSystem11Content(const char* archive_path,
   LoadedContent content;
   content.set_name = game.id;
 
-  // C76 input routing follows each game's MAME input profile rather than inheriting
-  // the wiring of whichever System 11 title was implemented first.
+  // C76 input routing is selected from each game's hardware profile.
   if (game.hardware_profile == "tekken" || game.hardware_profile == "tekken2" ||
       game.hardware_profile == "tekken2o" || game.hardware_profile == "primglex")
   {
@@ -444,8 +338,8 @@ std::optional<LoadedContent> LoadSystem11Content(const char* archive_path,
     content.input_profile = C76InputProfile::PointBlank2;
   }
 
-  // System 11 KEYCUS selection follows MAME's device assignments and the independently
-  // implemented SYSTEM11_MiSTer keycus_id table. Tekken 1 and Family Bowl have no physical KEYCUS.
+  // System 11 KEYCUS selection is determined by hardware profile. Tekken 1 and
+  // Family Bowl have no physical KEYCUS.
   if (game.hardware_profile == "tekken2" || game.hardware_profile == "tekken2o")
     content.keycus_type = KeycusType::C406;
   else if (game.hardware_profile == "souledge")
@@ -571,15 +465,14 @@ static constexpr u32 C76_SHARED_RAM_BASE = 0x04000;
 static constexpr u32 C76_SHARED_RAM_END = 0x0ffff;
 static std::array<u8, (C76_SHARED_RAM_END - C76_SHARED_RAM_BASE) + 1> s_c76_shared_ram{};
 
-// SYSTEM11_MiSTer uses a 2^18-C76-cycle period, with IRQ2 half a period after IRQ0.
-// MAME still labels its 60 Hz IRQ0/IRQ2 generation as TODO, so keep the independently verified phase relationship here.
+// The C76 IRQ cadence uses a 2^18-cycle period, with IRQ2 half a period after IRQ0.
+// Preserve that phase relationship when generating the 60 Hz IRQ0/IRQ2 pair.
 static constexpr u32 C76_IRQ_PERIOD_CYCLES = UINT32_C(1) << 18;
 static constexpr u32 C76_IRQ_HALF_PERIOD_CYCLES = C76_IRQ_PERIOD_CYCLES / 2;
 static u32 s_c76_irq_cycles_until_next = 0;
 static bool s_c76_next_irq_is_irq0 = true;
 static u32 s_c76_irq0_count = 0;
 static u32 s_c76_irq2_count = 0;
-static u32 s_c76_irq_logs = 0;
 
 static constexpr u32 C76_MCU_SHARED_RAM_BASE = 0x004000;
 static constexpr u32 C76_MCU_SHARED_RAM_END = 0x00bfff;
@@ -685,8 +578,7 @@ static void C352GenerateNativeFrame(s32* left, s32* right)
 
       voice.counter = next_counter & 0xffff;
 
-      // MiSTer's System 11 implementation gates a voice which became idle while
-      // fetching its final sample. MAME otherwise uses the same interpolation.
+      // Do not mix a voice that became idle while fetching its final sample.
       if (voice.flags & C352_FLAG_BUSY)
       {
         sample = voice.sample;
@@ -705,8 +597,8 @@ static void C352GenerateNativeFrame(s32* left, s32* right)
     output_right += (right_sample * voice.curr_vol[1]) >> 8;
   }
 
-  // System 11 only wires the C352 front DAC pair. MAME and MiSTer both scale
-  // the final C352 mix by eight before presenting the signed 16-bit output.
+  // System 11 only wires the C352 front DAC pair. Scale the final C352 mix by
+  // eight before presenting the signed 16-bit output.
   *left = static_cast<s16>(output_left >> 3);
   *right = static_cast<s16>(output_right >> 3);
 }
@@ -755,12 +647,6 @@ static void C352ExecuteKeyOns()
       voice.flags &= static_cast<u16>(~(C352_FLAG_KEYON | C352_FLAG_LOOPHIST));
       voice.curr_vol.fill(0);
 
-      if (!s_runtime->c352_first_keyon_logged)
-      {
-        s_runtime->c352_first_keyon_logged = true;
-        DEV_LOG("System 11 C352 first key-on voice={} pos=0x{:06X} freq=0x{:04X} flags=0x{:04X}.",
-                 i, voice.pos, voice.freq, voice.flags);
-      }
     }
 
     if (voice.flags & C352_FLAG_KEYOFF)
@@ -799,8 +685,7 @@ static void C352WriteRegister(u32 offset, u16 value)
     return;
   }
 
-  // MAME's C352 implementation treats this as the 16-bit command which commits
-  // pending key-on/key-off flags for all 32 voices.
+  // This 16-bit command commits pending key-on/key-off flags for all 32 voices.
   if (offset == 0x202)
     C352ExecuteKeyOns();
 }
@@ -817,8 +702,8 @@ static void C352WriteByte(u32 address, u8 value)
   const u32 byte_offset = address - C76_MCU_C352_BASE;
   const u32 offset = byte_offset >> 1;
 
-  // The C76 reaches the C352 over an 8-bit bus. MiSTer commits pending
-  // key-on/key-off state on the high byte at C352 offset 0x405.
+  // The C76 reaches the C352 over an 8-bit bus. The high byte at offset 0x405
+  // commits pending key-on/key-off state.
   if (byte_offset == 0x405)
   {
     C352ExecuteKeyOns();
@@ -1047,11 +932,6 @@ static u8 C76ReadByte(u32 address)
 
   if (address >= C76_MCU_C352_BASE && address <= C76_MCU_C352_END)
   {
-    if (!s_runtime->c76_first_c352_access_logged)
-    {
-      s_runtime->c76_first_c352_access_logged = true;
-      DEV_LOG("System 11 C76 reached C352 register space at 0x{:06X}.", address);
-    }
     return C352ReadByte(address);
   }
 
@@ -1097,11 +977,6 @@ static void C76WriteByte(u32 address, u8 value)
 
   if (address >= C76_MCU_C352_BASE && address <= C76_MCU_C352_END)
   {
-    if (!s_runtime->c76_first_c352_access_logged)
-    {
-      s_runtime->c76_first_c352_access_logged = true;
-      DEV_LOG("System 11 C76 reached C352 register space at 0x{:06X}.", address);
-    }
     C352WriteByte(address, value);
     return;
   }
@@ -1154,8 +1029,6 @@ static void DeliverC76IRQ()
 
   const bool irq0 = s_c76_next_irq_is_irq0;
   const int line = irq0 ? M37710_LINE_IRQ0 : M37710_LINE_IRQ2;
-  const u32 pc = s_runtime->c76_cpu->program_counter();
-
   // The imported core latches ASSERT_LINE and clears the pending line when the interrupt is serviced.
   s_runtime->c76_cpu->set_input(line, true);
 
@@ -1163,13 +1036,6 @@ static void DeliverC76IRQ()
     s_c76_irq0_count++;
   else
     s_c76_irq2_count++;
-
-  if (s_c76_irq_logs < 8)
-  {
-    s_c76_irq_logs++;
-    DEV_LOG("System 11 C76 {} asserted count={} pc=0x{:06X}.", irq0 ? "IRQ0" : "IRQ2",
-             irq0 ? s_c76_irq0_count : s_c76_irq2_count, pc);
-  }
 
   s_c76_next_irq_is_irq0 = !s_c76_next_irq_is_irq0;
   s_c76_irq_cycles_until_next = C76_IRQ_HALF_PERIOD_CYCLES;
@@ -1189,16 +1055,7 @@ static void RunPendingC76Cycles()
     const s64 requested =
       std::min<s64>(std::min<s64>(s_runtime->c76_cycle_balance, C76_MAX_EXECUTE_CYCLES), cycles_to_irq);
     const int requested_cycles = static_cast<int>(requested);
-    const u32 pc_before = s_runtime->c76_cpu->program_counter();
     const int executed_cycles = s_runtime->c76_cpu->execute(requested_cycles);
-
-    if (s_runtime->c76_slice_logs < 16)
-    {
-      s_runtime->c76_slice_logs++;
-      DEV_LOG("System 11 C76 slice {} requested={} executed={} pc=0x{:06X}->0x{:06X}.",
-               s_runtime->c76_slice_logs, requested_cycles, executed_cycles, pc_before,
-               s_runtime->c76_cpu->program_counter());
-    }
 
     if (executed_cycles <= 0)
       break;
@@ -1297,7 +1154,7 @@ static bool CalculateFamilyBowlM139C3(u32 sens1_time, u32 sens2_time, u32 sens3_
     e6 = static_cast<u16>(static_cast<s32>(e6) - cal_right);
   }
 
-  // fb1_spr0.ic5 0x0024A8. Select one of the two measured sides, then derive
+  // fb1_spr0.ic5 0x0024A8. Select one of the two sensor sides, then derive
   // the four big-endian words transmitted after C3.
   u16 left_x;
   u16 left_y;
@@ -1422,12 +1279,9 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
     const bool state_valid = ReadFamilyBowlPSXState(&psx_state);
 
 
-    // End-of-game physical-ball storage state captured from a complete game:
-    //   gate=3 result=0 c3=0 c5=0 game=0102 c9_1=0 c9_2=1 c5_branch=0
-    //
-    // The screen simultaneously displays "ボールを中に戻してください"
-    // ("Please return the ball inside."). This is distinct from the normal
-    // gate=2/game=0080 ready cycle below.
+    // Detect the end-of-game ball-return wait state. The screen simultaneously
+    // asks the player to return the ball inside; this is distinct from the
+    // normal ready cycle below.
     const bool end_game_ball_return_wait =
       state_valid &&
       psx_state[0] == UINT32_C(0x0003) &&
@@ -1527,7 +1381,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
   }
 
   // After a trackball roll settles, synthesize a coherent four-sensor traversal
-  // and run it through the recovered fb1_spr0.ic5 M139 trajectory equations.
+  // and run it through the fb1_spr0.ic5 M139 trajectory equations.
   // Normal throws report C0/C1/C2 + C3 + four data words + 00. C5 is a
   // separately gated M139 event; emitting it unconditionally selects the game's
   // fixed gutter fallback instead of the native C3 trajectory.
@@ -1552,18 +1406,10 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
       s64 throw_dy = 0;
       bool commit_throw = false;
 
-      // Keep the completed physical roll buffered until the PSX is in a
-      // mechanism-primed ready state. For the first ball, the live game=0080
-      // state must first consume the C9/C9 pair above:
-      //
-      // First ball after C9/C9 priming:
-      //   gate=2 result=0 c3=0 c5=0 game=0080 c9_1=0 c9_2=1 c5_branch=1
-      //
-      // Later ball:
-      //   gate=2 result=0 c3=0 c5=0 game=0105 c9_1=0 c9_2=1 c5_branch=1
-      //
-      // This gate only decides when to release an already-completed trackball
-      // roll; it does not write or force any PSX state.
+      // Keep the completed physical roll buffered until the PSX reaches a
+      // mechanism-primed ready state. The first ball must also consume the
+      // C9/C9 pair above. This gate only controls when the buffered roll is
+      // released; it does not write or force any PSX state.
       std::array<u32, 8> psx_state{};
       const bool psx_state_valid = ReadFamilyBowlPSXState(&psx_state);
 
@@ -1638,9 +1484,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
       if (commit_throw)
       {
         // Convert the trackball roll into one coherent virtual SENS1..SENS4
-        // traversal, then let the recovered M139 firmware arithmetic derive
-        // the C3 words. This replaces the earlier approximation where horizontal
-        // motion selected one of three unrelated speed profiles.
+        // traversal, then let the M139 firmware arithmetic derive the C3 words.
         //
         // The H8 validity checks require SENS1/SENS2 to occur no earlier than
         // SENS3/SENS4. A straight roll therefore uses two symmetric sensor
@@ -1649,8 +1493,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
         // relationship between travel time and speed.
         //
         // For steering, the two sensor pairs are skewed in opposite left/right
-        // directions. The recovered M139 equations show that a 1:3 skew ratio
-        // keeps W1 (initial lateral position) essentially centered while W3
+        // directions. A 1:3 skew ratio keeps W1 (initial lateral position)
+        // essentially centered while W3
         // becomes signed lateral velocity. This lets the cabinet's existing
         // left/right controls remain responsible for pre-shot positioning while
         // the trackball roll controls throw angle and speed.
@@ -1695,7 +1539,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
         const u32 sensor_3_time = static_cast<u32>(sensor_3_time_s);
         const u32 sensor_4_time = static_cast<u32>(sensor_4_time_s);
 
-        // Feed the recovered M139 SENS1-SENS4 calculation into the C3 payload
+        // Feed the M139 SENS1-SENS4 calculation into the C3 payload
         // so trackball direction and speed reach the native PSX trajectory path.
         //
         // SENS5 classification remains coupled to the same throw vector:
@@ -1718,7 +1562,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
                                        s_runtime->family_bowl_m139_params[0],
                                        s_runtime->family_bowl_m139_params[1], &words))
         {
-          ERROR_LOG("Family Bowl trackball sensor model: recovered trajectory calculation rejected "
+          ERROR_LOG("Family Bowl trackball sensor model: trajectory calculation rejected "
                     "dx={} dy={} transit_ticks={} skew={} timestamps=[{}, {}, {}, {}].",
                     throw_dx, throw_dy, transit_ticks, pair_skew,
                     sensor_1_time, sensor_2_time, sensor_3_time, sensor_4_time);
@@ -1761,7 +1605,9 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
 static constexpr u32 EEPROM_BASE = 0x30000;
 static constexpr u32 EEPROM_END = 0x30fff;
 static constexpr size_t EEPROM_SIZE = 0x800;
-static std::array<u8, EEPROM_SIZE> s_eeprom{};
+static constexpr size_t EEPROM_ID_SIZE = 0x20;
+static constexpr size_t EEPROM_PERSIST_SIZE = EEPROM_SIZE + EEPROM_ID_SIZE;
+static std::array<u8, EEPROM_PERSIST_SIZE> s_eeprom{};
 
 static u64 GetEEPROMNow()
 {
@@ -1770,8 +1616,8 @@ static u64 GetEEPROMNow()
 
 static u64 GetEEPROMWriteCycleTicks()
 {
-  // MAME's AT28C16 model and the fast-write device specification use a
-  // 200 microsecond self-timed byte-programming cycle.
+  // The AT28C16 fast-write device uses a 200 microsecond self-timed
+  // byte-programming cycle.
   const u64 ticks_per_second = static_cast<u64>(System::GetTicksPerSecond());
   return std::max<u64>((ticks_per_second + 4999) / 5000, 1);
 }
@@ -1826,17 +1672,19 @@ static bool LoadEEPROM(RuntimeState& runtime, Error* error)
   if (persistence_exists)
   {
     std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.eeprom_path.c_str(), error);
-    if (!data || data->size() != EEPROM_SIZE)
+    if (!data || (data->size() != EEPROM_SIZE && data->size() != EEPROM_PERSIST_SIZE))
     {
       const size_t actual_size = data ? data->size() : 0;
-      Error::SetStringFmt(error, "Namco System 11 AT28C16 '{}' has invalid size {}; expected {} bytes.",
-                          runtime.eeprom_path, actual_size, EEPROM_SIZE);
-      ERROR_LOG("System 11 AT28C16 malformed persistence path='{}' actual_size={} expected_size={}.",
-                runtime.eeprom_path, actual_size, EEPROM_SIZE);
+      Error::SetStringFmt(error, "Namco System 11 AT28C16 '{}' has invalid size {}; expected {} or {} bytes.",
+                          runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
+      ERROR_LOG("System 11 AT28C16 malformed persistence path='{}' actual_size={} expected_size={} or {}.",
+                runtime.eeprom_path, actual_size, EEPROM_SIZE, EEPROM_PERSIST_SIZE);
       return false;
     }
 
-    std::memcpy(s_eeprom.data(), data->data(), s_eeprom.size());
+    std::memcpy(s_eeprom.data(), data->data(), data->size());
+    if (data->size() == EEPROM_SIZE)
+      runtime.eeprom_dirty = true;
   }
   else
   {
@@ -1936,7 +1784,6 @@ bool Initialize(LoadedContent content, Error* error)
   s_c76_next_irq_is_irq0 = true;
   s_c76_irq0_count = 0;
   s_c76_irq2_count = 0;
-  s_c76_irq_logs = 0;
 
   s_runtime->c76_cpu = std::make_unique<m37710_cpu_device>();
   if (!s_runtime->c76_cpu->load_internal_rom(s_runtime->content.c76_internal.data(),
@@ -1960,8 +1807,8 @@ bool Initialize(LoadedContent content, Error* error)
         {
           const u8 tx = static_cast<u8>(value);
 
-          // fb1_spr0.ic5 uses B3 as a two-parameter command. Keep the parameters
-          // visible so the real startup configuration can be reproduced later.
+          // fb1_spr0.ic5 uses B3 as a two-parameter command. Retain both
+          // parameters as part of the M139 command state.
           if (s_runtime->family_bowl_m139_param_bytes_remaining != 0)
           {
             const u32 param_index =
@@ -2001,11 +1848,11 @@ bool Initialize(LoadedContent content, Error* error)
 
               case 0xb1:
               {
-                // INPUT TEST polls B1 at about 30 Hz. Confirmed mapping is active-low:
+                // INPUT TEST polls B1 at about 30 Hz. The mapping is active-low:
                 // bit 0..6 = SENS 1..7, and 0x7F means all sensors OFF.
                 //
-                // For the first trackball-driven test, emulate a ball crossing the
-                // center near sensor (SENS 2), then one of SENS 4/5/6 at the far end.
+                // Model a ball crossing the center near sensor (SENS 2), then
+                // one of SENS 4/5/6 at the far end.
                 // Horizontal roll component selects the far sensor; vertical magnitude
                 // controls the delay between the two crossings.
                 constexpr u8 SENSOR_IDLE = UINT8_C(0x7f);
@@ -2173,8 +2020,7 @@ bool Initialize(LoadedContent content, Error* error)
 
   // The C76 drives the System 11 main-board reset through P8.1. The real
   // firmware parks the PSX side, then generates a driven high -> low edge.
-  // Observe the physical GPIO edge for every System 11 title rather than
-  // special-casing Pocket Racer or a shared-RAM address.
+  // Observe the physical GPIO edge for every System 11 title.
   s_runtime->c76_cpu->set_port_callbacks(
     8, {},
     [](u8 value) {
@@ -2260,7 +2106,6 @@ void Reset()
   s_runtime->c352_voices = {};
   s_runtime->c352_control = 0;
   s_runtime->c352_random = 0x1234;
-  s_runtime->c352_first_keyon_logged = false;
   s_runtime->family_bowl_m139_pending_command = 0;
   s_runtime->family_bowl_m139_param_bytes_remaining = 0;
   s_runtime->family_bowl_m139_params.fill(0);
@@ -2298,15 +2143,12 @@ void Reset()
   s_runtime->c76_cycle_balance = 0;
   s_runtime->c76_total_cycles = 0;
   s_runtime->c76_scheduler_callbacks = 0;
-  s_runtime->c76_slice_logs = 0;
-  s_runtime->c76_first_c352_access_logged = false;
   s_runtime->c76_first_unmapped_access_logged = false;
   s_runtime->mainboard_reset_pending = false;
   s_c76_irq_cycles_until_next = 0;
   s_c76_next_irq_is_irq0 = true;
   s_c76_irq0_count = 0;
   s_c76_irq2_count = 0;
-  s_c76_irq_logs = 0;
 
   if (s_runtime->c76_cpu)
   {
@@ -2458,7 +2300,7 @@ u32 ReadEEPROM(u32 width, u32 offset)
   const u32 relative_offset = offset - EEPROM_BASE;
   u32 value = UINT32_C(0xFFFFFFFF);
 
-  // MAME maps the 8-bit AT28C16 on byte lanes 0 and 2 of the 32-bit PSX bus.
+  // The 8-bit AT28C16 occupies byte lanes 0 and 2 of the 32-bit PSX bus.
   for (u32 i = 0; i < width && (relative_offset + i) <= (EEPROM_END - EEPROM_BASE); i++)
   {
     const u32 bus_offset = relative_offset + i;
@@ -2506,8 +2348,8 @@ static u16 ReadKEYCUSRegister(u32 reg)
   const u16 p2 = s_runtime->keycus_p2;
   const u16 p3 = s_runtime->keycus_p3;
 
-  // MAME documents the KEYCUS challenge/response algorithms. SYSTEM11_MiSTer independently
-  // implements the same logic and returns zero for unexpected reads instead of random data.
+  // KEYCUS challenge/response behavior is selected by device type. Unexpected
+  // reads return zero rather than random data.
   switch (s_runtime->content.keycus_type)
   {
     case KeycusType::C406:
@@ -2762,8 +2604,8 @@ static u32 ReadGunInterface(u32 width, u32 offset)
   const u16 p2_x = ScaleGunAxis(state.ports[1].x, GUN_X_MIN, GUN_X_MAX);
   const u16 p2_y = ScaleGunAxis(state.ports[1].y, GUN_Y_MIN, GUN_Y_MAX);
 
-  // MAME's GUN I/F register order is P1 X, unused, P1 Y, P1 Y+1,
-  // P2 X, unused, P2 Y, P2 Y+1. MiSTer independently implements the same layout.
+  // GUN I/F register order: P1 X, unused, P1 Y, P1 Y+1,
+  // P2 X, unused, P2 Y, P2 Y+1.
   const std::array<u16, 8> registers = {p1_x, 0, p1_y, static_cast<u16>(p1_y + 1),
                                          p2_x, 0, p2_y, static_cast<u16>(p2_y + 1)};
 
@@ -2818,8 +2660,8 @@ void WriteBankRegister(u32 width, u32 offset, u32 value)
 
   if (s_runtime->content.keycus_type == KeycusType::C443)
   {
-    // ROM8(64) extends the page number to five bits. MAME marks the exact decode
-    // as needing verification; SYSTEM11_MiSTer independently uses the same write-time XOR.
+    // ROM8(64) extends the page number to five bits. The exact decode is not
+    // fully known; use the write-time XOR applied below.
     s_runtime->bank_entries[bank] =
       static_cast<u8>((((data & 0xc0) >> 3) + (data & 0x07)) ^ s_runtime->rom8_64_bank_offset);
   }
@@ -2843,10 +2685,10 @@ void WriteGunOutput(u32 width, u32 offset, u32 value)
   if (offset != 0x788000)
     return;
 
-  // MAME's System 11 driver identifies the low nibble as active-low:
+  // The low nibble is active-low:
   // bit 3 = P1 Start lamp (led0), bit 2 = P2 Start lamp (led1),
   // bit 1 = P1 recoil (recoil0), bit 0 = P2 recoil (recoil1).
-  // Preserve MAME's output names so later external transports can be drop-in compatible.
+  // Keep the established led0/led1/recoil0/recoil1 names for external-output compatibility.
   const u8 data = static_cast<u8>(value);
   const u8 changed =
     s_runtime->gun_output_latch_valid ? static_cast<u8>((s_runtime->gun_output_latch ^ data) & 0x0f) : UINT8_C(0x0f);
@@ -2892,7 +2734,7 @@ void WriteBankUpperRegister(u32 width, u32 offset, u32 value)
       return;
     }
 
-    // A full-word store covers both halfwords. MAME invokes offset 0 then 1, so the upper half wins.
+    // A full-word store covers both halfwords; the upper half determines the resulting offset.
     s_runtime->rom8_64_bank_offset = 16;
     return;
   }

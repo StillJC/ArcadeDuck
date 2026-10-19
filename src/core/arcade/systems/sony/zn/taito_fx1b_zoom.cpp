@@ -122,7 +122,7 @@ u8 ReadMemory8(u32 address)
 
   if (address >= ZSG2_BASE && address <= ZSG2_END)
   {
-    // MAME's ZSG-2 device only accepts full 16-bit accesses.
+    // ZSG-2 register accesses are 16-bit.
     return 0;
   }
 
@@ -160,8 +160,8 @@ void WriteMemory8(u32 address, u8 value)
 
   if (address >= ZSG2_BASE && address <= ZSG2_END)
   {
-    // The physical ZSG-2 window is a 16-bit register bus. MAME rejects
-    // partial-byte accesses as well, so do not synthesize an RMW here.
+    // The physical ZSG-2 window is a 16-bit register bus. Ignore partial-byte
+    // accesses rather than synthesizing a read-modify-write transaction.
     return;
   }
 
@@ -204,8 +204,8 @@ void WritePort(u32 port, u8 value)
   if (port != 1)
     return;
 
-  // MAME's Taito ZOOM device leaves the TMS reset line released during
-  // transfers and drives only CLOAD (bit 1) and PLOAD (bit 0).
+  // The ZOOM board leaves the TMS reset line released during transfers and
+  // drives only CLOAD (bit 1) and PLOAD (bit 0).
   s_state.tms_ctrl = value;
   s_state.tms57002.CLoadWrite((value & 0x02) != 0);
   s_state.tms57002.PLoadWrite((value & 0x01) != 0);
@@ -454,8 +454,8 @@ u16 StatusRead()
     return 0;
 
   SynchronizeToNow();
-  // Current MAME hardware model returns zero; bit 0 is only noted as a
-  // possible busy flag and is not implemented as asserted.
+  // Bit 0 may represent a busy flag, but its exact behavior is unknown.
+  // Return zero until that status behavior is established.
   return 0;
 }
 

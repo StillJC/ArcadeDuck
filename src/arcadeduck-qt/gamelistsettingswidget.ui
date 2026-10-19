@@ -28,7 +28,7 @@
      <item>
       <widget class="QLabel" name="label">
        <property name="text">
-        <string>Search Directories (will be scanned for games)</string>
+        <string>Content Directories (games and supporting media)</string>
        </property>
       </widget>
      </item>
@@ -89,7 +89,7 @@
     <widget class="QTableWidget" name="searchDirectoryList">
      <column>
       <property name="text">
-       <string>Search Directory</string>
+       <string>Content Directory</string>
       </property>
      </column>
      <column>

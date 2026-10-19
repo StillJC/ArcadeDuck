@@ -488,7 +488,7 @@ protected:
   } m_GPUSTAT = {};
 
   // CXD8538Q/type-1 GPUSTAT bits 0-12 retain the raw texture-page layout. Rendering continues to use
-  // m_draw_mode.mode_reg, whose fields are decoded into DuckStation's canonical internal layout.
+  // m_draw_mode.mode_reg, whose fields are decoded into ArcadeDuck's canonical internal layout.
   u16 m_gq_gpustat_low_bits = 0;
 
   struct DrawMode

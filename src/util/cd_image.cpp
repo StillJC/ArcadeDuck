@@ -52,17 +52,7 @@ void CDImage::DeinterleaveSubcode(const u8* subcode_in, u8* subcode_out)
 
 std::unique_ptr<CDImage> CDImage::Open(const char* filename, bool allow_patches, Error* error)
 {
-  const char* extension;
-
-#ifdef __ANDROID__
-  std::string filename_display_name(FileSystem::GetDisplayNameFromPath(filename));
-  if (filename_display_name.empty())
-    filename_display_name = filename;
-
-  extension = std::strrchr(filename_display_name.c_str(), '.');
-#else
-  extension = std::strrchr(filename, '.');
-#endif
+  const char* extension = std::strrchr(filename, '.');
 
   std::unique_ptr<CDImage> image;
   if (!extension)
@@ -119,13 +109,8 @@ std::unique_ptr<CDImage> CDImage::Open(const char* filename, bool allow_patches,
 
   if (allow_patches)
   {
-#ifdef __ANDROID__
-    const std::string ppf_filename(
-      Path::BuildRelativePath(filename, Path::ReplaceExtension(filename_display_name, "ppf")));
-#else
     const std::string ppf_filename(
       Path::BuildRelativePath(filename, Path::ReplaceExtension(Path::GetFileName(filename), "ppf")));
-#endif
     if (FileSystem::FileExists(ppf_filename.c_str()))
     {
       image = CDImage::OverlayPPFPatch(ppf_filename.c_str(), std::move(image));

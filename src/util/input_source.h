@@ -80,9 +80,5 @@ public:
   static std::unique_ptr<InputSource> CreateXInputSource();
   static std::unique_ptr<InputSource> CreateWin32RawInputSource();
 #endif
-#ifndef __ANDROID__
   static std::unique_ptr<InputSource> CreateSDLSource();
-#else
-  static std::unique_ptr<InputSource> CreateAndroidSource();
-#endif
 };

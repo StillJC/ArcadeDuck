@@ -133,9 +133,9 @@ void SettingsWindow::addPages()
     addWidget(
       m_game_list_settings = new GameListSettingsWidget(this, m_ui.settingsContainer), tr("Game List"),
       QStringLiteral("folder-open-line"),
-      tr("<strong>Game List Settings</strong><hr>The list above shows the directories which will be searched by "
-         "ArcadeDuck to populate the game list. Search directories can be added, removed, and switched to "
-         "recursive/non-recursive."));
+      tr("<strong>Game List Settings</strong><hr>The list above shows ArcadeDuck content directories. Recognized "
+         "game archives populate the game list, and the same directories are searched for supporting media. "
+         "Directories can be added, removed, and switched to recursive/non-recursive game scanning."));
     addWidget(
       m_folder_settings = new FolderSettingsWidget(this, m_ui.settingsContainer), tr("Folders"),
       QStringLiteral("folder-settings-line"),
@@ -201,19 +201,8 @@ void SettingsWindow::addAchievementsPage()
        "<strong>Achievements</strong> from the menu. Mouse over an option for additional information, and "
        "Shift+Wheel to scroll this panel."));
 
-  if (!Achievements::IsUsingRAIntegration())
-  {
-    addWidget(m_achievement_settings = new AchievementSettingsWidget(this, m_ui.settingsContainer), std::move(title),
-              std::move(icon_text), std::move(help_text));
-  }
-  else
-  {
-    QLabel* placeholder_label =
-      new QLabel(QStringLiteral("RAIntegration is being used, built-in RetroAchievements support is disabled."),
-                 m_ui.settingsContainer);
-    placeholder_label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    addWidget(placeholder_label, std::move(title), std::move(icon_text), std::move(help_text));
-  }
+  addWidget(m_achievement_settings = new AchievementSettingsWidget(this, m_ui.settingsContainer), std::move(title),
+            std::move(icon_text), std::move(help_text));
 }
 
 QWidget* SettingsWindow::createArcadeOperatorPage()

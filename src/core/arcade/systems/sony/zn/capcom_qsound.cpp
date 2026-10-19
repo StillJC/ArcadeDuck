@@ -35,8 +35,6 @@ constexpr u32 QSOUND_BANK_REGISTER = 0xd003;
 constexpr u32 QSOUND_STATUS_REGISTER = 0xd007;
 constexpr u32 Z80_RAM_BASE = 0xf000;
 constexpr u32 Z80_RAM_SIZE = 0x1000;
-constexpr u32 COMMAND_LOG_LIMIT = 32;
-constexpr u32 REGISTER_LOG_LIMIT = 64;
 
 struct State
 {
@@ -88,7 +86,6 @@ struct State
   u64 native_samples = 0;
   u64 overwritten_commands = 0;
 
-  u32 register_logs = 0;
   bool unmapped_read_logged = false;
   bool unmapped_write_logged = false;
 };
@@ -130,23 +127,12 @@ void WriteMemory(void*, u16 address, u8 value)
   {
     qsound_w(&s_state.qsound, static_cast<u8>(address - QSOUND_WRITE_BASE), value);
     s_state.qsound_writes++;
-    if (s_state.register_logs < REGISTER_LOG_LIMIT)
-    {
-      s_state.register_logs++;
-      DEV_LOG("SonyZN.QSound DSP write={} offset={} value=0x{:02X} pc=0x{:04X}", s_state.qsound_writes,
-              address - QSOUND_WRITE_BASE, value, s_state.cpu.pc);
-    }
     return;
   }
 
   if (address == QSOUND_BANK_REGISTER)
   {
     s_state.sound_bank = value & 0x0f;
-    if (s_state.register_logs < REGISTER_LOG_LIMIT)
-    {
-      s_state.register_logs++;
-      DEV_LOG("SonyZN.QSound ROM bank <- 0x{:02X} pc=0x{:04X}", s_state.sound_bank, s_state.cpu.pc);
-    }
     return;
   }
 
@@ -374,7 +360,6 @@ void Reset()
   s_state.native_samples = 0;
   s_state.overwritten_commands = 0;
 
-  s_state.register_logs = 0;
   s_state.unmapped_read_logged = false;
   s_state.unmapped_write_logged = false;
 
@@ -399,9 +384,6 @@ void Shutdown()
       s_state.total_cycles, s_state.cpu.pc, s_state.command_writes, s_state.latch_reads, s_state.nmi_edges,
       s_state.overwritten_commands, s_state.periodic_irqs, s_state.qsound_writes, s_state.qsound_status_reads,
       s_state.native_samples);
-
-    DEV_LOG("SonyZN.QSound command_sync commands={} latch_reads={} nmi_edges={} overwrites={}",
-             s_state.command_writes, s_state.latch_reads, s_state.nmi_edges, s_state.overwritten_commands);
 
   }
 
@@ -433,15 +415,9 @@ void WriteCommand(u8 value)
   // command gets the same opportunity to be consumed that it has on hardware.
   SynchronizeHostTime();
 
-  const u8 previous_value = s_state.sound_latch;
   if (s_state.sound_latch_pending)
   {
     s_state.overwritten_commands++;
-    if (s_state.overwritten_commands <= 8)
-    {
-      DEV_LOG("SonyZN.QSound latch overwrite={} old=0x{:02X} new=0x{:02X} z80_pc=0x{:04X}",
-              s_state.overwritten_commands, previous_value, value, s_state.cpu.pc);
-    }
   }
 
   s_state.sound_latch = value;
@@ -454,12 +430,6 @@ void WriteCommand(u8 value)
     s_state.nmi_edges++;
   }
 
-  if (s_state.command_writes <= COMMAND_LOG_LIMIT)
-  {
-    DEV_LOG("SonyZN.QSound command={} value=0x{:02X} nmi_pending={} overwrites={} z80_pc=0x{:04X}",
-            s_state.command_writes, value, s_state.sound_latch_pending, s_state.overwritten_commands,
-            s_state.cpu.pc);
-  }
 }
 
 void GenerateAudioFrame(s32* left, s32* right)

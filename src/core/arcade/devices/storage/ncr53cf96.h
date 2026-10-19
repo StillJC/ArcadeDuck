@@ -48,13 +48,13 @@ enum class Phase : u8
   MessageIn = 7,
 };
 
-enum class MigrationStopReason : u8
+enum class DeferredStopReason : u8
 {
-  None,
-  FirstCDB,
-  UnsupportedControllerCommand,
-  IncompleteCDB,
-  UnsupportedTargetCommand,
+  None = 0,
+  // Value 1 was used by the old FirstCDB stop and is retained for serialized-state compatibility.
+  UnsupportedControllerCommand = 2,
+  IncompleteCDB = 3,
+  UnsupportedTargetCommand = 4,
 };
 
 enum class AdapterLogEvent : u8
@@ -190,7 +190,7 @@ struct SerializedStateValues
 {
   bool saved_active = false;
   u8 phase = static_cast<u8>(Phase::BusFree);
-  u8 boundary_reason = static_cast<u8>(MigrationStopReason::None);
+  u8 deferred_stop_reason = static_cast<u8>(DeferredStopReason::None);
 };
 
 using EventCallback = void (*)(void* param, TickCount ticks, TickCount ticks_late);
@@ -253,8 +253,8 @@ inline constexpr u32 NCR_CLOCK_HZ = 16'000'000;
 inline constexpr u32 RESET_BUS_DELAY_CYCLES = 130;
 inline constexpr u32 DISCONNECT_DELAY_CYCLES = 1;
 
-// MAME's NCR53C90 state machine models Select-with-ATN as asynchronous bus
-// arbitration/selection. The fixed portion before target handshaking is:
+// Select-with-ATN uses asynchronous bus arbitration/selection. The fixed
+// portion before target handshaking is:
 // delay(11), delay(6), delay_cycles(4), delay(2), delay_cycles(2).
 inline constexpr u32 SELECT_SCALED_DELAY_CYCLES = 19;
 inline constexpr u32 SELECT_UNSCALED_DELAY_CYCLES = 6;
@@ -320,9 +320,9 @@ struct ControllerState : ControllerCoreState
   u32 read_sector_offset = 0;
   bool read_active = false;
   bool sector_valid = false;
-  bool boundary_requested = false;
-  bool boundary_consumed = false;
-  MigrationStopReason boundary_reason = MigrationStopReason::None;
+  bool deferred_stop_requested = false;
+  bool deferred_stop_consumed = false;
+  DeferredStopReason deferred_stop_reason = DeferredStopReason::None;
   bool access_logged = false;
   bool overflow_logged = false;
   bool underflow_logged = false;
@@ -528,13 +528,13 @@ bool ReadMediaDMA(State& state, void* data, u32 byte_count, LoadSector load_sect
 }
 
 template<typename State>
-MigrationStopReason ConsumeMigrationStopRequestState(State& state)
+DeferredStopReason ConsumeDeferredStopRequestState(State& state)
 {
-  if (!state.boundary_requested || state.boundary_consumed)
-    return MigrationStopReason::None;
+  if (!state.deferred_stop_requested || state.deferred_stop_consumed)
+    return DeferredStopReason::None;
 
-  state.boundary_consumed = true;
-  return state.boundary_reason;
+  state.deferred_stop_consumed = true;
+  return state.deferred_stop_reason;
 }
 
 inline u8 GetActiveCommand(const ControllerCoreState& state)
@@ -696,7 +696,7 @@ void WriteResponseControllerDMA(State& state, const u32* data, u32 word_count,
 }
 
 template<typename State, typename LogCallback>
-void RequestDeferredStopState(State& state, MigrationStopReason boundary_reason, LogCallback log_first_request)
+void RequestDeferredStopState(State& state, DeferredStopReason deferred_stop_reason, LogCallback log_first_request)
 {
   if (!state.deferred_command_logged)
   {
@@ -704,8 +704,8 @@ void RequestDeferredStopState(State& state, MigrationStopReason boundary_reason,
     state.deferred_command_logged = true;
   }
 
-  state.boundary_reason = boundary_reason;
-  state.boundary_requested = true;
+  state.deferred_stop_reason = deferred_stop_reason;
+  state.deferred_stop_requested = true;
 }
 
 template<typename State, typename SetPhaseCallback>
@@ -822,10 +822,10 @@ template<typename Wrapper, typename State>
 void DoStateControllerSuffix(Wrapper& sw, State& state, SerializedStateValues& values)
 {
   sw.Do(&state.sector_valid);
-  sw.Do(&state.boundary_requested);
-  sw.Do(&state.boundary_consumed);
-  values.boundary_reason = static_cast<u8>(state.boundary_reason);
-  sw.Do(&values.boundary_reason);
+  sw.Do(&state.deferred_stop_requested);
+  sw.Do(&state.deferred_stop_consumed);
+  values.deferred_stop_reason = static_cast<u8>(state.deferred_stop_reason);
+  sw.Do(&values.deferred_stop_reason);
   sw.Do(&state.access_logged);
   sw.Do(&state.overflow_logged);
   sw.Do(&state.underflow_logged);
@@ -848,22 +848,22 @@ bool IsControllerStateValid(const State& state, const SerializedStateValues& val
     values.phase == static_cast<u8>(Phase::Command) ||
     values.phase == static_cast<u8>(Phase::MessageOut) ||
     values.phase == static_cast<u8>(Phase::MessageIn);
-  const bool valid_boundary_reason =
-    values.boundary_reason <= static_cast<u8>(MigrationStopReason::UnsupportedTargetCommand);
+  const bool valid_deferred_stop_reason =
+    values.deferred_stop_reason <= static_cast<u8>(DeferredStopReason::UnsupportedTargetCommand);
 
   return values.saved_active && state.fifo_read < FIFO_CAPACITY && state.fifo_write < FIFO_CAPACITY &&
          state.fifo_count <= FIFO_CAPACITY && state.command_queue_count <= state.command_queue.size() &&
          state.cdb_length <= state.cdb.size() && state.response_length <= state.response.size() &&
          state.response_position <= state.response_length && state.target_transfer_length <= state.response.size() &&
          state.read_sector_offset <= state.sector_buffer.size() &&
-         state.read_transferred_bytes <= state.read_total_bytes && valid_phase && valid_boundary_reason;
+         state.read_transferred_bytes <= state.read_total_bytes && valid_phase && valid_deferred_stop_reason;
 }
 
 template<typename State>
 void RestoreControllerStateEnums(State& state, const SerializedStateValues& values)
 {
   state.phase = static_cast<Phase>(values.phase);
-  state.boundary_reason = static_cast<MigrationStopReason>(values.boundary_reason);
+  state.deferred_stop_reason = static_cast<DeferredStopReason>(values.deferred_stop_reason);
 }
 
 template<typename State>
@@ -888,8 +888,8 @@ void ResetControllerState(State& state, bool retain_destination, bool preserve_d
   const bool overflow_logged = state.overflow_logged;
   const bool underflow_logged = state.underflow_logged;
   const bool deferred_command_logged = state.deferred_command_logged;
-  const bool boundary_requested = state.boundary_requested;
-  const bool boundary_consumed = state.boundary_consumed;
+  const bool deferred_stop_requested = state.deferred_stop_requested;
+  const bool deferred_stop_consumed = state.deferred_stop_consumed;
 
   state = {};
   state.transfer_counter_mask = 0x0000ffff;
@@ -907,8 +907,8 @@ void ResetControllerState(State& state, bool retain_destination, bool preserve_d
     state.overflow_logged = overflow_logged;
     state.underflow_logged = underflow_logged;
     state.deferred_command_logged = deferred_command_logged;
-    state.boundary_requested = boundary_requested;
-    state.boundary_consumed = boundary_consumed;
+    state.deferred_stop_requested = deferred_stop_requested;
+    state.deferred_stop_consumed = deferred_stop_consumed;
   }
 }
 
@@ -1212,9 +1212,9 @@ public:
       [](bool delivered_request) { Policy::DeliverDMARequest(delivered_request); });
   }
 
-  void RequestDeferredStop(MigrationStopReason boundary_reason, const char* reason, u32 pc)
+  void RequestDeferredStop(DeferredStopReason deferred_stop_reason, const char* reason, u32 pc)
   {
-    NCR53CF96::RequestDeferredStopState(m_state, boundary_reason, [this, reason, pc]() {
+    NCR53CF96::RequestDeferredStopState(m_state, deferred_stop_reason, [this, reason, pc]() {
       ControllerAdapterLogger<State, Policy>::Log(AdapterLogEvent::DeferredCommand, m_state, pc, 0, 0, reason);
     });
   }
@@ -1394,7 +1394,7 @@ public:
             break;
 
           case ControllerCommandExecutionAction::Unsupported:
-            RequestDeferredStop(MigrationStopReason::UnsupportedControllerCommand,
+            RequestDeferredStop(DeferredStopReason::UnsupportedControllerCommand,
                                 "unimplemented_controller_command", pc);
             break;
         }
@@ -1405,10 +1405,10 @@ public:
     }
   }
 
-  MigrationStopReason ConsumeMigrationStopRequest()
+  DeferredStopReason ConsumeDeferredStopRequest()
   {
-    const MigrationStopReason reason = NCR53CF96::ConsumeMigrationStopRequestState(m_state);
-    if (reason != MigrationStopReason::None)
+    const DeferredStopReason reason = NCR53CF96::ConsumeDeferredStopRequestState(m_state);
+    if (reason != DeferredStopReason::None)
       ControllerAdapterLogger<State, Policy>::Log(AdapterLogEvent::ControlledStop, m_state, static_cast<u64>(reason));
     return reason;
   }
