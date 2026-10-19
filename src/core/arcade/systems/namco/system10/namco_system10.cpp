@@ -11,6 +11,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 
 #include "core/arcade/systems/namco/system10/namco_system10_exio.h"
+#include "core/arcade/systems/namco/system10/namco_system10_medal.h"
 #include "core/arcade/systems/namco/system10/namco_system10_mgexio.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
@@ -244,6 +245,7 @@ struct RuntimeState
   const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
   std::unique_ptr<MGEXIOBoard> mgexio;
+  MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
 
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
@@ -932,9 +934,29 @@ bool HasCyberLeadCabinet(std::string_view set_name)
   });
 }
 
+u8 MGEXIOPortRead(void*, MGEXIOBoard::Port port)
+{
+  return s_runtime->medal_cabinet.ReadPort(port);
+}
+
+void MGEXIOPortWrite(void*, MGEXIOBoard::Port port, u8 value)
+{
+  s_runtime->medal_cabinet.WritePort(port, value);
+}
+
+void MGEXIOOutputWrite(void*, u32 index, u16 value)
+{
+  s_runtime->medal_cabinet.WriteOutput(index, value);
+}
+
 void CreateMGEXIOBoard(RuntimeState& runtime)
 {
-  runtime.mgexio = std::make_unique<MGEXIOBoard>(MGEXIOBoard::Cabinet());
+  MGEXIOBoard::Cabinet cabinet;
+  cabinet.port_read = &MGEXIOPortRead;
+  cabinet.port_write = &MGEXIOPortWrite;
+  cabinet.output_write = &MGEXIOOutputWrite;
+  runtime.mgexio = std::make_unique<MGEXIOBoard>(cabinet);
+  runtime.medal_cabinet.Reset();
 
   // The battery-backed first 32 KiB of the board RAM are kept with the set's NVRAM.
   runtime.mgexio_backup_path =
@@ -2725,7 +2747,10 @@ void Reset()
   if (runtime.exio)
     runtime.exio->Reset();
   if (runtime.mgexio)
+  {
     runtime.mgexio->Reset();
+    runtime.medal_cabinet.Reset();
+  }
   runtime.jvs_bus.Reset();
   runtime.cyberlead.Reset();
   runtime.cyberlead.ResetLED();

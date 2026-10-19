@@ -195,6 +195,7 @@
     <ClCompile Include="arcade\systems\konami\gv\konami_gv_scsi.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_exio.cpp" />
+    <ClCompile Include="arcade\systems\namco\system10\namco_system10_medal.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_mgexio.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_memn.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_protection.cpp" />
@@ -434,6 +435,7 @@
     <ClInclude Include="arcade\systems\konami\gv\konami_gv_scsi.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_exio.h" />
+    <ClInclude Include="arcade\systems\namco\system10\namco_system10_medal.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_mgexio.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_memn.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_protection.h" />
