@@ -8,6 +8,9 @@
 
 #include <array>
 #include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace Arcade::JVS {
 
@@ -34,6 +37,24 @@ public:
 
   const NamcoCyberLeadLEDDevice& GetLEDDevice() const { return m_led_device; }
   NamcoCyberLeadLEDDevice& GetLEDDevice() { return m_led_device; }
+
+  // Factory image of the LED PCB AT29C020 (cl1-leda.ic5) from the BIOS folder, either loose or
+  // in namco_cyberlead_led.zip. Empty when it is missing or does not match the known dump.
+  static std::vector<u8> LoadFactoryLEDFirmware();
+
+  // Starts the LED PCB from the image a game previously programmed (saved at flash_path),
+  // falling back to the factory image. Returns false when the LED cannot run.
+  bool InitializeLEDFlash(std::span<const u8> factory_firmware, std::string flash_path);
+
+  // Saves the LED flash to the path given to InitializeLEDFlash when it was reprogrammed.
+  void SaveLEDFlash();
+
+  // The Cyber Lead board attached to the running machine, used for LED presentation.
+  static NamcoCyberLead* GetActive();
+  static void SetActive(NamcoCyberLead* device);
+
+  // True for database games whose cabinet uses the Cyber Lead I/O board.
+  static bool IsCyberLeadGame(std::string_view serial);
 
 private:
   // CL1-I/OB Ver1.03 LED-board link. The I/O C77 main loop calls the state
@@ -106,6 +127,7 @@ private:
   Link m_link{};
   NamcoCyberLeadLEDLink m_led_link{};
   NamcoCyberLeadLEDDevice m_led_device{};
+  std::string m_led_flash_path;
 };
 
 } // namespace Arcade::JVS

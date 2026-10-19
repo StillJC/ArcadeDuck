@@ -3,9 +3,18 @@
 
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
 
+#include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
-#include "common/log.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
+#include "core/settings.h"
+
+#include "common/error.h"
+#include "common/file_system.h"
+#include "common/log.h"
+#include "common/minizip_helpers.h"
+#include "common/path.h"
+#include "common/sha1_digest.h"
+#include "common/string_util.h"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +34,16 @@ static constexpr u64 LINK_BYTE_CLOCKS = 15360;
 // C39C reload values: after 0xF1 and after a 71/02 or 71/06 transaction.
 static constexpr u16 LINK_ADDRESS_COUNTDOWN = UINT16_C(0x0708);
 static constexpr u16 LINK_TRANSACTION_COUNTDOWN = UINT16_C(0xFFFF);
+
+static constexpr size_t LED_FIRMWARE_SIZE = 0x40000;
+static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> LED_FIRMWARE_SHA1 = {
+  UINT8_C(0x61), UINT8_C(0xD6), UINT8_C(0x13), UINT8_C(0x38), UINT8_C(0xE1),
+  UINT8_C(0xBB), UINT8_C(0x41), UINT8_C(0x4A), UINT8_C(0xF3), UINT8_C(0x2D),
+  UINT8_C(0xBD), UINT8_C(0xC1), UINT8_C(0xE2), UINT8_C(0x4D), UINT8_C(0x54),
+  UINT8_C(0xC0), UINT8_C(0x2F), UINT8_C(0xB9), UINT8_C(0x19), UINT8_C(0x6E)
+};
+
+NamcoCyberLead* s_active = nullptr;
 
 // JVS 70/02 program date, from ROM offset 186A.
 static constexpr std::array<u8, 8> PROGRAM_DATE = {
@@ -51,7 +70,144 @@ bool AppendResponseData(std::array<u8, 256>& response, u32& length, const char* 
   return AppendResponseByte(response, length, UINT8_C(0x00));
 }
 
+std::vector<u8> ReadZipMember(const std::string& archive_path, const char* member)
+{
+  std::vector<u8> data;
+  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path.c_str());
+  if (!zf)
+    return data;
+
+  if (unzLocateFile(zf, member, 2) == UNZ_OK && unzOpenCurrentFile(zf) == UNZ_OK)
+  {
+    unz_file_info64 file_info = {};
+    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK)
+    {
+      data.resize(static_cast<size_t>(file_info.uncompressed_size));
+      size_t read_offset = 0;
+      while (read_offset < data.size())
+      {
+        const int bytes_read =
+          unzReadCurrentFile(zf, data.data() + read_offset, static_cast<unsigned>(data.size() - read_offset));
+        if (bytes_read <= 0)
+          break;
+        read_offset += static_cast<size_t>(bytes_read);
+      }
+      if (unzCloseCurrentFile(zf) != UNZ_OK || read_offset != data.size())
+        data.clear();
+    }
+  }
+
+  unzClose(zf);
+  return data;
+}
+
 } // namespace
+
+std::vector<u8> NamcoCyberLead::LoadFactoryLEDFirmware()
+{
+  std::string path = Path::Combine(EmuFolders::Bios, "namco_cyberlead_led.zip");
+  std::vector<u8> firmware = ReadZipMember(path, "cl1-leda.ic5");
+  if (firmware.empty())
+  {
+    path = Path::Combine(EmuFolders::Bios, "cl1-leda.ic5");
+    if (const std::optional<DynamicHeapArray<u8>> loose = FileSystem::ReadBinaryFile(path.c_str()))
+      firmware.assign(loose->cspan().begin(), loose->cspan().end());
+  }
+
+  if (firmware.empty())
+  {
+    INFO_LOG("CyberLead LED firmware not found. Cabinet LED emulation will remain disabled; "
+             "the game itself will continue normally.");
+    return firmware;
+  }
+
+  if (firmware.size() != LED_FIRMWARE_SIZE)
+  {
+    WARNING_LOG("CyberLead LED firmware wrong size path='{}' expected={} actual={}; LED disabled", path,
+                LED_FIRMWARE_SIZE, firmware.size());
+    firmware.clear();
+    return firmware;
+  }
+
+  auto sha1 = SHA1Digest::GetDigest(std::span<const u8>(firmware));
+  if (sha1 != LED_FIRMWARE_SHA1)
+  {
+    WARNING_LOG("CyberLead LED firmware SHA1 mismatch path='{}' expected={} actual={}; LED disabled", path,
+                "61d61338e1bb414af32dbdc1e24d54c02fb9196e", SHA1Digest::DigestToString(sha1));
+    firmware.clear();
+    return firmware;
+  }
+
+  INFO_LOG("CyberLead LED firmware loaded path='{}' size={}", path, firmware.size());
+  return firmware;
+}
+
+// The LED PCB's AT29C020 holds data games program into it, so it is kept with
+// the set's other non-volatile memory once written.
+bool NamcoCyberLead::InitializeLEDFlash(std::span<const u8> factory_firmware, std::string flash_path)
+{
+  m_led_flash_path = std::move(flash_path);
+  if (factory_firmware.empty())
+    return false;
+
+  if (!m_led_flash_path.empty() && FileSystem::FileExists(m_led_flash_path.c_str()))
+  {
+    const std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(m_led_flash_path.c_str());
+    if (data && data->size() == LED_FIRMWARE_SIZE && SetLEDFirmware(data->cspan()))
+    {
+      INFO_LOG("CyberLead LED flash loaded path='{}'", m_led_flash_path);
+      return true;
+    }
+
+    WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", m_led_flash_path);
+  }
+
+  if (!SetLEDFirmware(factory_firmware))
+  {
+    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
+    return false;
+  }
+
+  return true;
+}
+
+void NamcoCyberLead::SaveLEDFlash()
+{
+  if (m_led_flash_path.empty() || !m_led_device.IsFlashModified())
+    return;
+
+  const std::span<const u8> flash = m_led_device.GetFlash();
+  if (!FileSystem::CreateDirectory(std::string(Path::GetDirectory(m_led_flash_path)).c_str(), false) ||
+      !FileSystem::WriteBinaryFile(m_led_flash_path.c_str(), flash.data(), flash.size()))
+  {
+    ERROR_LOG("CyberLead LED flash save failed path='{}'", m_led_flash_path);
+    return;
+  }
+
+  m_led_device.ClearFlashModified();
+  INFO_LOG("CyberLead LED flash saved path='{}'", m_led_flash_path);
+}
+
+NamcoCyberLead* NamcoCyberLead::GetActive()
+{
+  return s_active;
+}
+
+void NamcoCyberLead::SetActive(NamcoCyberLead* device)
+{
+  s_active = device;
+}
+
+bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
+  if (!game)
+    return false;
+
+  return std::any_of(game->properties.begin(), game->properties.end(), [](const Arcade::Database::Property& property) {
+    return property.name == "ioBoard" && property.value == "cyberlead";
+  });
+}
 
 void NamcoCyberLead::Reset()
 {

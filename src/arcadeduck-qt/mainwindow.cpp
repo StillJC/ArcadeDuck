@@ -25,6 +25,7 @@
 
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_rom_loader.h"
 #include "core/game_list.h"
@@ -372,17 +373,7 @@ static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameL
 
 static bool IsCyberLeadGame(std::string_view serial)
 {
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
-  if (!game || game->system_id != "namco_system12")
-    return false;
-
-  for (const Arcade::Database::Property& property : game->properties)
-  {
-    if (property.name == "ioBoard" && property.value == "cyberlead")
-      return true;
-  }
-
-  return false;
+  return Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(serial);
 }
 
 static QString s_current_game_serial;

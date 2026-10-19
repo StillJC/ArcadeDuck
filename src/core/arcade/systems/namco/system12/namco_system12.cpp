@@ -164,13 +164,6 @@ static constexpr u8 H8_SCI_SSR_MPBT = 0x01;
 
 static constexpr u32 CYBERLEAD_JVS_BAUD = 115200;
 static constexpr u32 CYBERLEAD_SCHEDULER_HZ = CYBERLEAD_JVS_BAUD * 2;
-static constexpr size_t CYBERLEAD_LED_FIRMWARE_SIZE = 0x40000;
-static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> CYBERLEAD_LED_FIRMWARE_SHA1 = {
-  UINT8_C(0x61), UINT8_C(0xD6), UINT8_C(0x13), UINT8_C(0x38), UINT8_C(0xE1),
-  UINT8_C(0xBB), UINT8_C(0x41), UINT8_C(0x4A), UINT8_C(0xF3), UINT8_C(0x2D),
-  UINT8_C(0xBD), UINT8_C(0xC1), UINT8_C(0xE2), UINT8_C(0x4D), UINT8_C(0x54),
-  UINT8_C(0xC0), UINT8_C(0x2F), UINT8_C(0xB9), UINT8_C(0x19), UINT8_C(0x6E)
-};
 
 
 enum class JVSProfile : u8
@@ -287,7 +280,6 @@ struct RuntimeState
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
-  std::string cyberlead_flash_path;
   bool eeprom_dirty = false;
 
   Arcade::H8::H83002Timer16 h8_timer16;
@@ -481,51 +473,6 @@ void SaveEEPROM(RuntimeState& runtime)
   runtime.eeprom_dirty = false;
   INFO_LOG("System12 AT28C16 saved set='{}' path='{}'",
            runtime.content.set_name, runtime.eeprom_path);
-}
-
-// The LED PCB's AT29C020 holds data games program into it, so it is kept with
-// the set's other non-volatile memory once written.
-void LoadCyberLeadFlash(RuntimeState& runtime)
-{
-  runtime.cyberlead_flash_path = Path::Combine(runtime.persistence_directory, "cl1-leda.ic5");
-  if (FileSystem::FileExists(runtime.cyberlead_flash_path.c_str()))
-  {
-    Error error;
-    const std::optional<DynamicHeapArray<u8>> data =
-      FileSystem::ReadBinaryFile(runtime.cyberlead_flash_path.c_str(), &error);
-    if (data && data->size() == CYBERLEAD_LED_FIRMWARE_SIZE &&
-        runtime.h8_cyberlead.SetLEDFirmware(data->cspan()))
-    {
-      INFO_LOG("CyberLead LED flash loaded path='{}'", runtime.cyberlead_flash_path);
-      return;
-    }
-
-    WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", runtime.cyberlead_flash_path);
-  }
-
-  if (!runtime.h8_cyberlead.SetLEDFirmware(std::span<const u8>(runtime.content.cyberlead_led_firmware)))
-  {
-    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
-    runtime.content.cyberlead_led_firmware.clear();
-  }
-}
-
-void SaveCyberLeadFlash(RuntimeState& runtime)
-{
-  Arcade::JVS::NamcoCyberLeadLEDDevice& led = runtime.h8_cyberlead.GetLEDDevice();
-  if (runtime.cyberlead_flash_path.empty() || !led.IsFlashModified())
-    return;
-
-  const std::span<const u8> flash = led.GetFlash();
-  if (!FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
-      !FileSystem::WriteBinaryFile(runtime.cyberlead_flash_path.c_str(), flash.data(), flash.size()))
-  {
-    ERROR_LOG("CyberLead LED flash save failed path='{}'", runtime.cyberlead_flash_path);
-    return;
-  }
-
-  led.ClearFlashModified();
-  INFO_LOG("CyberLead LED flash saved path='{}'", runtime.cyberlead_flash_path);
 }
 
 u32 ReadEEPROM(RuntimeState& runtime, u32 width, u32 offset)
@@ -3122,99 +3069,7 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
   }
 
   if (content.io_board == "cyberlead")
-  {
-    std::vector<u8> led_firmware;
-    std::string led_firmware_path(Path::Combine(EmuFolders::Bios, "namco_cyberlead_led.zip"));
-
-    if (unzFile zf = MinizipHelpers::OpenUnzFile(led_firmware_path.c_str()))
-    {
-      if (unzGoToFirstFile(zf) == UNZ_OK)
-      {
-        for (;;)
-        {
-          unz_file_info64 file_info = {};
-          char member_name[512] = {};
-          if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-            break;
-
-          member_name[sizeof(member_name) - 1] = '\0';
-          if (StringUtil::EqualNoCase(member_name, "cl1-leda.ic5"))
-          {
-            if (unzOpenCurrentFile(zf) == UNZ_OK)
-            {
-              led_firmware.resize(static_cast<size_t>(file_info.uncompressed_size));
-              size_t read_offset = 0;
-              bool read_ok = true;
-              while (read_offset < led_firmware.size())
-              {
-                const int bytes_read =
-                  unzReadCurrentFile(zf, led_firmware.data() + read_offset,
-                                     static_cast<unsigned>(led_firmware.size() - read_offset));
-                if (bytes_read <= 0)
-                {
-                  read_ok = false;
-                  break;
-                }
-                read_offset += static_cast<size_t>(bytes_read);
-              }
-
-              if (unzCloseCurrentFile(zf) != UNZ_OK)
-                read_ok = false;
-              if (!read_ok)
-                led_firmware.clear();
-            }
-            break;
-          }
-
-          const int next_result = unzGoToNextFile(zf);
-          if (next_result != UNZ_OK)
-            break;
-        }
-      }
-      unzClose(zf);
-    }
-
-    if (led_firmware.empty())
-    {
-      led_firmware_path = Path::Combine(EmuFolders::Bios, "cl1-leda.ic5");
-      const std::optional<DynamicHeapArray<u8>> loose_firmware =
-        FileSystem::ReadBinaryFile(led_firmware_path.c_str());
-      if (loose_firmware)
-      {
-        const std::span<const u8> loose_span = loose_firmware->cspan();
-        led_firmware.assign(loose_span.begin(), loose_span.end());
-      }
-    }
-
-    if (led_firmware.empty())
-    {
-      INFO_LOG(
-        "CyberLead LED firmware not found. Cabinet LED emulation will remain disabled; "
-        "The game itself will continue normally.");
-    }
-    else if (led_firmware.size() != CYBERLEAD_LED_FIRMWARE_SIZE)
-    {
-      WARNING_LOG("CyberLead LED firmware wrong size path='{}' expected={} actual={}; LED disabled",
-                  led_firmware_path, CYBERLEAD_LED_FIRMWARE_SIZE, led_firmware.size());
-    }
-    else
-    {
-      const std::span<const u8> firmware_span(led_firmware.data(), led_firmware.size());
-      auto sha1 = SHA1Digest::GetDigest(firmware_span);
-      const std::string sha1_string = SHA1Digest::DigestToString(sha1);
-      if (sha1 != CYBERLEAD_LED_FIRMWARE_SHA1)
-      {
-        WARNING_LOG("CyberLead LED firmware SHA1 mismatch path='{}' expected={} actual={}; LED disabled",
-                    led_firmware_path, "61d61338e1bb414af32dbdc1e24d54c02fb9196e", sha1_string);
-      }
-      else
-      {
-        content.cyberlead_led_firmware.assign(firmware_span.begin(), firmware_span.end());
-        INFO_LOG("CyberLead LED firmware loaded path='{}' size={} sha1={}", led_firmware_path,
-                 content.cyberlead_led_firmware.size(), sha1_string);
-      }
-    }
-  }
+    content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
 
   INFO_LOG("Loaded System 12 set '{}' profile='{}': program={} banked={} sub={} c352={} alternate_bank={}",
            game.id, game.hardware_profile, content.program_rom.size(), content.banked_rom.size(),
@@ -3364,10 +3219,16 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
 
   runtime.h8_cpu = std::make_unique<h8_system_t>();
-  if (!runtime.content.cyberlead_led_firmware.empty())
-    LoadCyberLeadFlash(runtime);
+  if (!runtime.content.cyberlead_led_firmware.empty() &&
+      !runtime.h8_cyberlead.InitializeLEDFlash(std::span<const u8>(runtime.content.cyberlead_led_firmware),
+                                              Path::Combine(runtime.persistence_directory, "cl1-leda.ic5")))
+  {
+    runtime.content.cyberlead_led_firmware.clear();
+  }
 
   s_runtime = std::move(runtime);
+  if (s_runtime->content.io_board == "cyberlead")
+    Arcade::JVS::NamcoCyberLead::SetActive(&s_runtime->h8_cyberlead);
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
 
@@ -3445,8 +3306,10 @@ void Shutdown()
   {
     SaveEEPROM(*s_runtime);
     FlushCyberLeadLED(*s_runtime);
-    SaveCyberLeadFlash(*s_runtime);
+    s_runtime->h8_cyberlead.SaveLEDFlash();
   }
+
+  Arcade::JVS::NamcoCyberLead::SetActive(nullptr);
 
   ArcadeInput::SetOperatorServiceMinimumHold(0);
   s_runtime.reset();
@@ -3959,27 +3822,6 @@ u32 ReadBankedROM(u32 width, u32 offset)
     return UINT32_C(0xFFFFFFFF);
 
   return ReadBytes(std::span<const u8>(s_runtime->content.banked_rom), width, static_cast<u32>(source));
-}
-
-bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intensity_counts,
-                                u16* start_address, u32* scroll_x,
-                                u32* scroll_y, u64* generation)
-{
-  if (!s_runtime)
-    return false;
-
-  return s_runtime->h8_cyberlead.CopyLEDFrame(pixels, intensity_counts, start_address,
-                                              scroll_x, scroll_y, generation);
-}
-
-bool DebugGetCyberLeadLEDGeneration(u64* generation)
-{
-  if (!s_runtime)
-    return false;
-
-  const Arcade::JVS::NamcoCyberLeadLEDDevice::FrameState& frame = s_runtime->h8_cyberlead.GetLEDDevice().GetFrameState();
-  *generation = frame.generation;
-  return frame.valid;
 }
 
 void DMARead(u32* destination, u32 word_count)
