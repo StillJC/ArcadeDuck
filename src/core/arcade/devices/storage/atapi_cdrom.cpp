@@ -37,6 +37,7 @@ constexpr u8 CONTROL_SRST = 0x04;
 constexpr u8 FEATURE_DMA = 0x01;
 
 constexpr u8 SENSE_NOT_READY = 0x02;
+constexpr u8 SENSE_MEDIUM_ERROR = 0x03;
 constexpr u8 SENSE_ILLEGAL_REQUEST = 0x05;
 constexpr u8 SENSE_UNIT_ATTENTION = 0x06;
 
@@ -618,6 +619,64 @@ void ATAPICDROM::CommandReadCapacity()
   BeginDataIn(std::move(data), SIZE_MAX);
 }
 
+// Reads sectors as complete 2352-byte CD sectors. Images store cooked tracks
+// (Mode 1 or Mode 2 without sync/header) with the stored data first, so the
+// sync and header are rebuilt from the track mode; EDC/ECC stay zero.
+bool ATAPICDROM::ReadRawSectors(u32 lba, u32 count, std::vector<u8>* raw)
+{
+  const CDImage::LBA start = static_cast<CDImage::LBA>(lba) + LBA_OFFSET;
+  if (start + count > m_media->GetLBACount() || !m_media->Seek(start))
+    return false;
+
+  raw->assign(static_cast<size_t>(count) * CDImage::RAW_SECTOR_SIZE, 0);
+  for (u32 i = 0; i < count; i++)
+  {
+    u8* sector = raw->data() + static_cast<size_t>(i) * CDImage::RAW_SECTOR_SIZE;
+    const CDImage::TrackMode mode = m_media->GetTrackMode(static_cast<u8>(m_media->GetTrackNumber()));
+    u8 stored[CDImage::RAW_SECTOR_SIZE];
+    if (m_media->Read(CDImage::ReadMode::RawSector, 1, stored) != 1)
+      return false;
+
+    size_t data_offset;
+    u8 sector_mode;
+    switch (mode)
+    {
+      case CDImage::TrackMode::Audio:
+      case CDImage::TrackMode::Mode1Raw:
+      case CDImage::TrackMode::Mode2Raw:
+        std::memcpy(sector, stored, CDImage::RAW_SECTOR_SIZE);
+        continue;
+
+      case CDImage::TrackMode::Mode1:
+        data_offset = 16;
+        sector_mode = 1;
+        break;
+
+      case CDImage::TrackMode::Mode2Form1:
+        // Subheader stays zero: form 1.
+        data_offset = 24;
+        sector_mode = 2;
+        break;
+
+      default:
+        // Mode 2 images stored from the subheader on.
+        data_offset = 16;
+        sector_mode = 2;
+        break;
+    }
+
+    std::memcpy(sector + data_offset, stored, CDImage::RAW_SECTOR_SIZE - data_offset);
+    std::memset(sector + 1, 0xFF, 10);
+    const CDImage::LBA absolute = start + static_cast<CDImage::LBA>(i);
+    const auto bcd = [](u32 v) { return static_cast<u8>(((v / 10) << 4) | (v % 10)); };
+    sector[12] = bcd(absolute / (60 * 75));
+    sector[13] = bcd((absolute / 75) % 60);
+    sector[14] = bcd(absolute % 75);
+    sector[15] = sector_mode;
+  }
+  return true;
+}
+
 void ATAPICDROM::CommandRead(u32 lba, u32 count)
 {
   if (count == 0)
@@ -626,18 +685,26 @@ void ATAPICDROM::CommandRead(u32 lba, u32 count)
     return;
   }
 
-  const CDImage::LBA start = static_cast<CDImage::LBA>(lba) + LBA_OFFSET;
-  if (start + count > m_media->GetLBACount())
+  if (static_cast<CDImage::LBA>(lba) + LBA_OFFSET + count > m_media->GetLBACount())
   {
     Fail(SENSE_ILLEGAL_REQUEST, 0x21);
     return;
   }
 
-  std::vector<u8> data(static_cast<size_t>(count) * CDImage::DATA_SECTOR_SIZE);
-  if (!m_media->Seek(start) || m_media->Read(CDImage::ReadMode::DataOnly, count, data.data()) != count)
+  std::vector<u8> raw;
+  if (!ReadRawSectors(lba, count, &raw))
   {
-    Fail(0x03, 0x11); // MEDIUM ERROR, unrecovered read error
+    Fail(SENSE_MEDIUM_ERROR, 0x11); // unrecovered read error
     return;
+  }
+
+  std::vector<u8> data(static_cast<size_t>(count) * CDImage::DATA_SECTOR_SIZE);
+  for (u32 i = 0; i < count; i++)
+  {
+    const u8* sector = raw.data() + static_cast<size_t>(i) * CDImage::RAW_SECTOR_SIZE;
+    const size_t offset = (sector[15] == 2) ? 24 : 16;
+    std::memcpy(data.data() + static_cast<size_t>(i) * CDImage::DATA_SECTOR_SIZE, sector + offset,
+                CDImage::DATA_SECTOR_SIZE);
   }
 
   BeginDataIn(std::move(data), SIZE_MAX);
@@ -654,12 +721,16 @@ void ATAPICDROM::CommandReadCD()
     return;
   }
 
-  const CDImage::LBA start = static_cast<CDImage::LBA>(lba) + LBA_OFFSET;
-  std::vector<u8> raw(static_cast<size_t>(count) * CDImage::RAW_SECTOR_SIZE);
-  if (start + count > m_media->GetLBACount() || m_packet[10] != 0 || !m_media->Seek(start) ||
-      m_media->Read(CDImage::ReadMode::RawSector, count, raw.data()) != count)
+  if (static_cast<CDImage::LBA>(lba) + LBA_OFFSET + count > m_media->GetLBACount() || m_packet[10] != 0)
   {
     Fail(SENSE_ILLEGAL_REQUEST, 0x21);
+    return;
+  }
+
+  std::vector<u8> raw;
+  if (!ReadRawSectors(lba, count, &raw))
+  {
+    Fail(SENSE_MEDIUM_ERROR, 0x11); // unrecovered read error
     return;
   }
 

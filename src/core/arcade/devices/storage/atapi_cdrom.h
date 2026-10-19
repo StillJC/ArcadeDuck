@@ -85,6 +85,7 @@ private:
   void CommandInquiry();
   void CommandModeSense(bool ten_byte);
   void CommandReadCapacity();
+  bool ReadRawSectors(u32 lba, u32 count, std::vector<u8>* raw);
   void CommandRead(u32 lba, u32 count);
   void CommandReadCD();
   void CommandReadTOC();
