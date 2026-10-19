@@ -1796,7 +1796,24 @@ H8_OP(op01)
     }
     break;
   case 0xF0:
-    H8_ERROR(H8_DEBUG_UNIMPLEMENTED_OPCODE)
+    h8_fetch(system);
+    switch (system->dbus.a.u)
+    {
+    case 0x64:
+      /** OR.L ERs, ERd */
+      rs_rd_l(system, *rd_l(system, system->dbus.bh), rd_l(system, system->dbus.bl), or_l);
+      break;
+    case 0x65:
+      /** XOR.L ERs, ERd */
+      rs_rd_l(system, *rd_l(system, system->dbus.bh), rd_l(system, system->dbus.bl), xor_l);
+      break;
+    case 0x66:
+      /** AND.L ERs, ERd */
+      rs_rd_l(system, *rd_l(system, system->dbus.bh), rd_l(system, system->dbus.bl), and_l);
+      break;
+    default:
+      H8_ERROR(H8_DEBUG_MALFORMED_OPCODE)
+    }
     break;
   default:
     H8_ERROR(H8_DEBUG_MALFORMED_OPCODE)

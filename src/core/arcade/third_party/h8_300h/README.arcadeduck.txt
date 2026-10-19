@@ -16,6 +16,7 @@ ArcadeDuck adaptations:
 - 32-bit reset-vector fetch for the 24-bit program counter
 - System 12 external-ROM PC range
 - read/modify/write operations routed through the host bus
+- H8/300H OR.L/XOR.L/AND.L ERs, ERd (01F0 64-66)
 - frontend/network/logger dependencies replaced with local no-op stubs
 
 Purpose:
