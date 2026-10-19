@@ -390,6 +390,11 @@ void DMA::WriteRegister(u32 offset, u32 value)
         if (static_cast<Channel>(channel_index) == Channel::OTC)
           SetRequest(static_cast<Channel>(channel_index), state.channel_control.start_trigger);
 
+        // System 10 games start PIO transfers without the start trigger: the MEM(N) data port and the CD-ROM
+        // DMA port keep the channel request asserted, so the transfer runs as soon as it is enabled.
+        if (static_cast<Channel>(channel_index) == Channel::PIO && NamcoSystem10::IsActive())
+          SetRequest(Channel::PIO, true);
+
         if (CanTransferChannel(static_cast<Channel>(channel_index), ignore_halt))
         {
           if (static_cast<Channel>(channel_index) != Channel::OTC &&
