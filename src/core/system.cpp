@@ -2323,6 +2323,12 @@ void System::FrameDone()
     return;
   }
 
+  if (NamcoSystem10::IsActive() && NamcoSystem10::ProcessFrame())
+  {
+    ResetSystem();
+    return;
+  }
+
 #ifdef ENABLE_DISCORD_PRESENCE
   PollDiscordPresence();
 #endif

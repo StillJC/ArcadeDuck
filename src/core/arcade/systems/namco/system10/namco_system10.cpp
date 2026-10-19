@@ -144,6 +144,13 @@ static constexpr u32 EXP3_INTERRUPT_ACK_BASE = 0x1a0012;
 static constexpr u32 EXP3_INTERRUPT_ACK_END = 0x1a001a;
 static constexpr u32 EXP3_INTERRUPT_STATUS_BASE = 0x1a001a;
 
+static constexpr u32 EXP3_WATCHDOG_BASE = 0x160000;
+
+// The BIOS and every program kick the watchdog at least every 0.4 s (once per frame in game). Games
+// restart by no longer kicking it ("SLIDE TEST ON AND OFF TO RESTART"). The hardware timeout is not
+// documented; this one is well above the longest kick interval measured.
+static constexpr u32 WATCHDOG_TIMEOUT_FRAMES = 120;
+
 static constexpr u32 I2C_TRACE_EVENT_LIMIT = 64;
 
 // S10-04A base-board interrupt block.
@@ -241,6 +248,9 @@ struct RuntimeState
   // on its rising edge.
   bool test_switch_was_pressed = false;
   bool test_switch_latched = false;
+
+  // Frames left before the board watchdog resets the system; 0 while not armed.
+  u32 watchdog_frames_remaining = 0;
 
   const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
@@ -2651,6 +2661,7 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
 
   runtime.lookup_ram.resize(LOOKUP_RAM_SIZE, 0);
 
+
   ResetI2CState(runtime);
   ResetBaseboardInputState(runtime);
 
@@ -2717,6 +2728,7 @@ void Reset()
     return;
 
   RuntimeState& runtime = *s_runtime;
+  runtime.watchdog_frames_remaining = 0;
   if (runtime.media_type == MediaType::MemN)
   {
     for (MemNRawNAND& nand : runtime.nands)
@@ -2796,6 +2808,17 @@ bool IsActive()
   return s_runtime.has_value();
 }
 
+bool ProcessFrame()
+{
+  if (!s_runtime.has_value() || s_runtime->watchdog_frames_remaining == 0)
+    return false;
+
+  if (--s_runtime->watchdog_frames_remaining != 0)
+    return false;
+
+  INFO_LOG("System 10 watchdog expired; resetting.");
+  return true;
+}
 
 u32 ReadProgramROM(u32 width, u32 offset)
 {
@@ -3076,6 +3099,7 @@ bool DMARead(u32* words, u32 word_count)
   if (!words || !s_runtime.has_value() || s_runtime->media_type != MediaType::MemN)
     return false;
 
+
   for (u32 index = 0; index < word_count; index++)
   {
     u32 low = 0;
@@ -3108,6 +3132,7 @@ bool ReadEXP3(u32 width, u32 offset, u32* value)
   {
     return ReadU16Register(ReadBaseboardSystemSwitches(runtime), offset - EXP3_SYSTEM_SWITCH_BASE, width, value);
   }
+
 
   if (offset == EXP3_EXIO_IDENT_BASE && width == 2)
   {
@@ -3164,6 +3189,12 @@ bool WriteEXP3(u32 width, u32 offset, u32 value)
 
   if (HandleBaseboardInterruptAck(runtime, width, offset))
     return true;
+
+  if (offset == EXP3_WATCHDOG_BASE)
+  {
+    runtime.watchdog_frames_remaining = WATCHDOG_TIMEOUT_FRAMES;
+    return true;
+  }
 
   if (offset == EXP3_EXIO_IDENT_BASE && width == 2)
   {
