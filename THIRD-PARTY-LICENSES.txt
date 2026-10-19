@@ -613,3 +613,15 @@ the terms of the GNU General Public License as published by the Free Software
 Foundation; either version 2 of the License, or (at your option) any later
 version. ArcadeDuck distributes it under the terms of the GNU General Public
 License version 3 (see LICENSE).
+
+minimp3 MP3 decoder
+-------------------
+Upstream: https://github.com/lieff/minimp3 (copy distributed in MAME 3rdparty/minimp3,
+          MAME commit 655bb2ebf60caa4aec56c52a6cc7b46111d118e1)
+License: CC0-1.0
+Local notice: header of src/core/arcade/third_party/minimp3/minimp3.h
+
+To the extent possible under law, the author(s) have dedicated all copyright
+and related and neighboring rights to this software to the public domain
+worldwide. This software is distributed without any warranty.
+See <http://creativecommons.org/publicdomain/zero/1.0/>.
