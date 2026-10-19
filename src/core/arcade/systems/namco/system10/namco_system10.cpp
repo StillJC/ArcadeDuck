@@ -193,6 +193,8 @@ struct I2CState
   u32 trace_events = 0;
 };
 
+struct CabinetInputs;
+
 struct RuntimeState
 {
   std::string set_name;
@@ -237,6 +239,7 @@ struct RuntimeState
   bool test_switch_was_pressed = false;
   bool test_switch_latched = false;
 
+  const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
 
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
@@ -543,40 +546,153 @@ void ResetEXIOIdentifier(RuntimeState& runtime)
 
 bool ReadU32Register(u32 reg, u32 byte_offset, u32 width, u32* value);
 
-u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
+// Cabinet input wiring per MAME input profile (database "inputProfile"). IN1 and EXIO_IN1 are
+// active low unless a bit is marked active high.
+struct InputBit
+{
+  u8 bit;
+  u8 port;
+  std::string_view key;
+  bool active_high = false;
+};
+
+enum class CabinetAnalog : u8
+{
+  None,
+  Sticks, // two players, two analog sticks each
+  Drums,  // piezo drum sensors, full scale while struck
+};
+
+struct CabinetInputs
+{
+  std::string_view input_profile;
+  std::span<const InputBit> in1;
+  std::span<const InputBit> exio_in1;
+  CabinetAnalog analog;
+};
+
+constexpr std::array<InputBit, 22> DEFAULT_IN1 = {{
+  {0, 0, "Right"}, {1, 0, "Left"}, {2, 0, "Down"}, {3, 0, "Up"}, {4, 0, "Button1"}, {5, 0, "Button2"},
+  {6, 0, "Button3"}, {7, 0, "Start"}, {17, 0, "Button4"}, {18, 0, "Button5"}, {19, 0, "Button6"},
+  {8, 1, "Right"}, {9, 1, "Left"}, {10, 1, "Down"}, {11, 1, "Up"}, {12, 1, "Button1"}, {13, 1, "Button2"},
+  {14, 1, "Button3"}, {15, 1, "Start"}, {21, 1, "Button4"}, {22, 1, "Button5"}, {23, 1, "Button6"},
+}};
+
+constexpr std::array<InputBit, 16> THREE_BUTTON_IN1 = {{
+  {0, 0, "Right"}, {1, 0, "Left"}, {2, 0, "Down"}, {3, 0, "Up"}, {4, 0, "Button1"}, {5, 0, "Button2"},
+  {6, 0, "Button3"}, {7, 0, "Start"},
+  {8, 1, "Right"}, {9, 1, "Left"}, {10, 1, "Down"}, {11, 1, "Up"}, {12, 1, "Button1"}, {13, 1, "Button2"},
+  {14, 1, "Button3"}, {15, 1, "Start"},
+}};
+
+constexpr std::array<InputBit, 2> STARTRGN_IN1 = {{{4, 0, "Button1"}, {7, 0, "Start"}}};
+
+constexpr std::array<InputBit, 14> KONOTAKO_IN1 = {{
+  {0, 0, "Right"}, {1, 0, "Left"}, {2, 0, "Down"}, {3, 0, "Up"}, {4, 0, "Button1"}, {5, 0, "Button2"},
+  {7, 0, "Start"},
+  {8, 1, "Right"}, {9, 1, "Left"}, {10, 1, "Down"}, {11, 1, "Up"}, {12, 1, "Button1"}, {13, 1, "Button2"},
+  {15, 1, "Start"},
+}};
+
+// Four-player panel: shared left (1P/2P) and right (3P/4P) side selection keys.
+constexpr std::array<InputBit, 13> NFLCLSFB_IN1 = {{
+  {0, 2, "SelectLeft"}, {1, 0, "SelectLeft"}, {2, 0, "SelectDown"}, {3, 0, "SelectUp"}, {4, 0, "Enter"},
+  {5, 0, "Start"}, {6, 1, "Start"}, {7, 0, "Button3"}, {8, 2, "SelectRight"}, {9, 0, "SelectRight"},
+  {13, 2, "Start"}, {14, 3, "Start"}, {15, 2, "Button3"},
+}};
+
+constexpr std::array<InputBit, 8> NFLCLSFB_EXIO_IN1 = {{
+  {0, 0, "Button1"}, {2, 1, "Button1"}, {1, 2, "Button1"}, {3, 3, "Button1"},
+  {4, 0, "Button2"}, {6, 1, "Button2"}, {5, 2, "Button2"}, {7, 3, "Button2"},
+}};
+
+constexpr std::array<InputBit, 9> GAHAHA_IN1 = {{
+  {0, 0, "Button2"}, {1, 0, "Button1"}, {8, 1, "Button2"}, {9, 1, "Button1"}, {2, 0, "SelectDown"},
+  {3, 0, "SelectUp"}, {4, 0, "Enter"}, {7, 0, "Start"}, {15, 1, "Start"},
+}};
+
+// The scope sensor is on while the player looks through the scope.
+constexpr std::array<InputBit, 14> G13JNR_IN1 = {{
+  {2, 0, "SelectDown"}, {3, 0, "SelectUp"}, {4, 0, "Enter"}, {5, 0, "Trigger"}, {7, 0, "Start"},
+  {27, 0, "Sensor", true},
+  {8, 1, "Right"}, {9, 1, "Left"}, {10, 1, "Down"}, {11, 1, "Up"}, {12, 1, "Button1"}, {13, 1, "Button2"},
+  {14, 1, "Button3"}, {15, 1, "Start"},
+}};
+
+constexpr std::array<InputBit, 3> OPERATOR_PANEL_IN1 = {{{2, 0, "SelectDown"}, {3, 0, "SelectUp"}, {4, 0, "Enter"}}};
+
+constexpr std::array<InputBit, 10> NICETSUK_IN1 = {{
+  {0, 0, "Up"}, {1, 0, "Down"}, {2, 0, "SelectDown"}, {3, 0, "SelectUp"}, {4, 0, "Enter"}, {5, 0, "Button4"},
+  {7, 0, "Start"}, {17, 0, "Button1"}, {18, 0, "Button3"}, {12, 0, "Button2"},
+}};
+
+constexpr std::array<InputBit, 10> SQUIZCHS_IN1 = {{
+  {0, 0, "Button4"}, {1, 0, "Button3"}, {2, 0, "Button2"}, {3, 0, "Button1"}, {7, 0, "Start"},
+  {8, 1, "Button4"}, {9, 1, "Button3"}, {10, 1, "Button2"}, {11, 1, "Button1"}, {15, 1, "Start"},
+}};
+
+constexpr std::array<InputBit, 4> PTBLANK3_IN1 = {{{4, 0, "Trigger"}, {7, 0, "Start"}, {12, 1, "Trigger"}, {15, 1, "Start"}}};
+
+constexpr std::array<InputBit, 9> IPPO2_IN1 = {{
+  {1, 0, "Button1"}, {2, 0, "Button2", true}, {3, 0, "Button3", true}, {4, 0, "Button7", true},
+  {12, 0, "Button4", true}, {13, 0, "Button5", true}, {14, 0, "Button6", true}, {15, 0, "Select"},
+  {27, 0, "Sensor"},
+}};
+
+constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
+  {"namcos10", DEFAULT_IN1, {}, CabinetAnalog::None},
+  {"mrdrilr2", DEFAULT_IN1, {}, CabinetAnalog::None},
+  {"gamshara", THREE_BUTTON_IN1, {}, CabinetAnalog::None},
+  {"gjspace", THREE_BUTTON_IN1, {}, CabinetAnalog::None},
+  {"startrgn", STARTRGN_IN1, {}, CabinetAnalog::None},
+  {"konotako", KONOTAKO_IN1, {}, CabinetAnalog::None},
+  {"nflclsfb", NFLCLSFB_IN1, NFLCLSFB_EXIO_IN1, CabinetAnalog::None},
+  {"gahaha", GAHAHA_IN1, {}, CabinetAnalog::Sticks},
+  {"g13jnr", G13JNR_IN1, {}, CabinetAnalog::None},
+  {"mgexio_medal", OPERATOR_PANEL_IN1, {}, CabinetAnalog::None},
+  {"taiko", OPERATOR_PANEL_IN1, {}, CabinetAnalog::Drums},
+  {"nicetsuk", NICETSUK_IN1, {}, CabinetAnalog::None},
+  {"squizchs", SQUIZCHS_IN1, {}, CabinetAnalog::None},
+  {"ptblank3", PTBLANK3_IN1, {}, CabinetAnalog::None},
+  {"ippo2", IPPO2_IN1, {}, CabinetAnalog::None},
+}};
+
+const CabinetInputs& FindCabinetInputs(std::string_view set_name)
+{
+  std::string_view input_profile = "namcos10";
+  if (const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(set_name))
+  {
+    for (const Arcade::Database::Property& property : game->properties)
+    {
+      if (property.name == "inputProfile")
+        input_profile = property.value;
+    }
+  }
+
+  const auto it = std::find_if(CABINET_INPUTS.begin(), CABINET_INPUTS.end(),
+                               [input_profile](const CabinetInputs& c) { return c.input_profile == input_profile; });
+  return (it != CABINET_INPUTS.end()) ? *it : CABINET_INPUTS[0];
+}
+
+u32 ReadInputBits(std::span<const InputBit> bits)
 {
   u32 value = UINT32_MAX;
+  for (const InputBit& input : bits)
+  {
+    if (ArcadeInput::IsDigitalPressed(input.port, input.key) != input.active_high)
+      value &= ~(UINT32_C(1) << input.bit);
+  }
+  return value;
+}
+
+u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
+{
+  u32 value = ReadInputBits(runtime.cabinet_inputs->in1);
 
   const auto clear_if_pressed = [&value](bool pressed, u32 bit) {
     if (pressed)
       value &= ~(UINT32_C(1) << bit);
   };
-
-  // Main-board IN1 is active-low. Player 1 occupies bits 0-7 plus 17-19.
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Right"), 0);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Left"), 1);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Down"), 2);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Up"), 3);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button1"), 4);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button2"), 5);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button3"), 6);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Start"), 7);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button4"), 17);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button5"), 18);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Button6"), 19);
-
-  // Player 2 occupies bits 8-15 plus 21-23.
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Right"), 8);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Left"), 9);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Down"), 10);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Up"), 11);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button1"), 12);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button2"), 13);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button3"), 14);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Start"), 15);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button4"), 21);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button5"), 22);
-  clear_if_pressed(ArcadeInput::IsDigitalPressed(1, "Button6"), 23);
 
   // Two physical coin inputs occupy bits 29/28 respectively.
   clear_if_pressed(ArcadeInput::IsDigitalPressed(0, "Coin"), 29);
@@ -646,10 +762,35 @@ void BaseboardIOEventCallback(void*, TickCount, TickCount)
   }
 }
 
-u16 ReadEXIOAnalog(void*, u32)
+u16 ReadEXIOAnalog(void*, u32 index)
 {
-  // Centered sticks.
-  return 0x200;
+  if (!s_runtime.has_value())
+    return 0;
+
+  const u32 player = index / 4;
+  switch (s_runtime->cabinet_inputs->analog)
+  {
+    case CabinetAnalog::Sticks:
+    {
+      // Per player: left stick X/Y, right stick X/Y. Left Y and right X are wired reversed.
+      static constexpr std::array<std::string_view, 4> AXES = {"LeftStickX", "LeftStickY", "RightStickX",
+                                                               "RightStickY"};
+      float value = std::clamp(ArcadeInput::GetAnalogValue(player, AXES[index % 4]), 0.0f, 1.0f);
+      if ((index % 4) == 1 || (index % 4) == 2)
+        value = 1.0f - value;
+      return static_cast<u16>(value * 1023.0f + 0.5f);
+    }
+
+    case CabinetAnalog::Drums:
+    {
+      // Per player: right rim, right surface, left surface, left rim.
+      static constexpr std::array<std::string_view, 4> PADS = {"Button1", "Button2", "Button3", "Button4"};
+      return ArcadeInput::IsDigitalPressed(player, PADS[index % 4]) ? 0x3ff : 0x000;
+    }
+
+    default:
+      return 0x200;
+  }
 }
 
 u32 ReadEXIOLightgun(void*, u32 index)
@@ -667,9 +808,11 @@ u32 ReadEXIOLightgun(void*, u32 index)
   return static_cast<u32>(position * maximum + 0.5f);
 }
 
-u32 ReadEXIOInput(void*, u32)
+u32 ReadEXIOInput(void*, u32 index)
 {
-  return UINT32_C(0xffffffff);
+  if (!s_runtime.has_value() || index != 0)
+    return UINT32_C(0xffffffff);
+  return ReadInputBits(s_runtime->cabinet_inputs->exio_in1);
 }
 
 void EXIOSerialTransmit(void*, u32 channel, u8 value)
@@ -726,6 +869,7 @@ bool HasCyberLeadCabinet(std::string_view set_name)
 void CreateExpansionBoard(RuntimeState& runtime)
 {
   runtime.exio.reset();
+  runtime.cabinet_inputs = &FindCabinetInputs(runtime.set_name);
   runtime.cyberlead_cabinet = HasCyberLeadCabinet(runtime.set_name);
 
   // A Cyber Lead cabinet connects its JVS I/O through a full EXIO board.
