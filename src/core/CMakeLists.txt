@@ -121,7 +121,9 @@ add_library(core
   arcade/devices/namco/namco_system12_hsc.h
   arcade/devices/security/cat702.cpp
   arcade/devices/storage/chd_hard_disk.cpp
+  arcade/devices/storage/atapi_cdrom.cpp
   arcade/devices/storage/chd_hard_disk.h
+  arcade/devices/storage/atapi_cdrom.h
   arcade/devices/storage/ncr53cf96.cpp
   arcade/devices/security/cat702.h
   arcade/third_party/qsound_hle/qsound.cpp

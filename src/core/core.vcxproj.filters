@@ -15,6 +15,7 @@
     <ClCompile Include="arcade\devices\security\cat702.cpp" />
     <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
     <ClCompile Include="arcade\devices\storage\chd_hard_disk.cpp" />
+    <ClCompile Include="arcade\devices\storage\atapi_cdrom.cpp" />
     <ClCompile Include="arcade\third_party\qsound_hle\qsound.cpp" />
     <ClCompile Include="arcade\third_party\ymfm\ymfm_adpcm.cpp" />
     <ClCompile Include="arcade\third_party\ymfm\ymfm_opn.cpp" />
@@ -148,6 +149,7 @@
     <ClInclude Include="arcade\arcade_rom_loader.h" />
     <ClInclude Include="arcade\devices\security\cat702.h" />
     <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />
+    <ClInclude Include="arcade\devices\storage\atapi_cdrom.h" />
     <ClInclude Include="arcade\third_party\qsound_hle\qsound.h" />
     <ClInclude Include="arcade\devices\audio\ymf271.h" />
     <ClInclude Include="arcade\devices\cpu\sh7014.h" />
