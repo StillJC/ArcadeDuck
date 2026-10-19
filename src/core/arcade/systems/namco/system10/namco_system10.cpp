@@ -56,6 +56,8 @@ static constexpr u32 MEMN_ROW_HIGH_BASE = 0x440000;
 static constexpr u32 MEMN_DATA_BASE = 0x450000;
 static constexpr u32 MEMN_DEVICE_BASE = 0x460000;
 static constexpr u32 MEMN_CONTROL_BASE = 0x470000;
+// MEM(IO): the static-transform data XOR is written by the program, byte-swapped.
+static constexpr u32 MEMIO_DATA_XOR_BASE = 0x468000;
 static constexpr u32 LOOKUP_RAM_BASE = 0x500000;
 static constexpr u32 LOOKUP_RAM_SIZE = 0x100000;
 
@@ -2802,6 +2804,7 @@ void Reset()
       nand.ResetInterface();
     runtime.control_latch = 0;
     runtime.nand_device = 0;
+    runtime.data_xor = runtime.memn_profile ? runtime.memn_profile->data_xor : UINT16_C(0xaaaa);
     runtime.type2_enabled = false;
     runtime.type2_transform_supported = false;
     runtime.type2_iv = 0;
@@ -3121,6 +3124,12 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
       nand->DataWrite(static_cast<u8>(value >> 8));
       nand->DataWrite(static_cast<u8>(value));
     }
+    return true;
+  }
+
+  if (offset == MEMIO_DATA_XOR_BASE && runtime.memn_profile && runtime.memn_profile->board == MemNBoard::MemIO)
+  {
+    runtime.data_xor = static_cast<u16>(((value & 0xff) << 8) | ((value >> 8) & 0xff));
     return true;
   }
 
