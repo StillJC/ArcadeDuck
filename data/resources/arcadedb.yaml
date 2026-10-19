@@ -15548,7 +15548,7 @@ games:
     boardCode: "TK41"
     hardwareProfile: "ns10_taiko4"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15588,7 +15588,7 @@ games:
     boardCode: "TK51"
     hardwareProfile: "ns10_taiko5"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15628,7 +15628,7 @@ games:
     boardCode: "TK61"
     hardwareProfile: "ns10_taiko6"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
