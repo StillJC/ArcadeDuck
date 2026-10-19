@@ -41,6 +41,10 @@ float GetAnalogValue(u32 port, std::string_view key);
 bool HasAnalogControl(u32 port, std::string_view key);
 bool IsOperatorPressed(std::string_view key);
 
+// Accumulated relative trackball motion for a port, from raw pointers, analog axes or the
+// TrackballLeft/Right/Up/Down controls. Counters wrap with the s32 range.
+void GetTrackballPosition(u32 port, s32* x, s32* y);
+
 // Keeps Service asserted for at least this long in emulated time after a press (0 disables).
 void SetOperatorServiceMinimumHold(u32 milliseconds);
 LightgunPresentationState GetLightgunPresentationState();

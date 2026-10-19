@@ -32,7 +32,17 @@ enum class Control : u8
   SelectUp, SelectDown, SelectLeft, SelectRight, Enter, Sensor,
   MahjongA, MahjongB, MahjongC, MahjongD, MahjongE, MahjongF, MahjongG, MahjongH,
   MahjongI, MahjongJ, MahjongK, MahjongL, MahjongM, MahjongN, MahjongKan, MahjongPon,
-  MahjongChi, MahjongReach, MahjongRon, Button7, Button8, Count
+  MahjongChi, MahjongReach, MahjongRon, Button7, Button8, TrackballLeft, TrackballRight, TrackballUp,
+  TrackballDown, Count
+};
+
+enum class StickAxis : u8
+{
+  LeftX,
+  LeftY,
+  RightX,
+  RightY,
+  Count
 };
 
 enum class DrivingAxis : u8
@@ -76,6 +86,9 @@ struct PortState
   bool lightgun_offscreen = false;
   float axis_x = 0.0f;
   float axis_y = 0.0f;
+  s32 trackball_x = 0;
+  s32 trackball_y = 0;
+  std::array<float, static_cast<size_t>(StickAxis::Count)> stick_axes = {0.5f, 0.5f, 0.5f, 0.5f};
   float steering = 0.5f;
   float steering_axis = 0.5f;
   std::array<u32, 2> steering_button_counts = {};
@@ -117,7 +130,7 @@ float s_lightgun_viewport_border_y = 0.0f;
 
 std::optional<Control> GetControl(std::string_view key)
 {
-  static constexpr std::array<std::pair<std::string_view, Control>, 51> controls = {{
+  static constexpr std::array<std::pair<std::string_view, Control>, 55> controls = {{
     {"Left", Control::Left}, {"Right", Control::Right}, {"Up", Control::Up}, {"Down", Control::Down},
     {"Button1", Control::Button1}, {"Button2", Control::Button2}, {"Button3", Control::Button3},
     {"Button4", Control::Button4}, {"Button5", Control::Button5}, {"Button6", Control::Button6},
@@ -136,7 +149,9 @@ std::optional<Control> GetControl(std::string_view key)
     {"MahjongPon", Control::MahjongPon}, {"MahjongChi", Control::MahjongChi},
     {"MahjongReach", Control::MahjongReach}, {"MahjongRon", Control::MahjongRon},
     {"Button7", Control::Button7}, {"Button8", Control::Button8},
-  }};
+      {"TrackballLeft", Control::TrackballLeft}, {"TrackballRight", Control::TrackballRight},
+    {"TrackballUp", Control::TrackballUp}, {"TrackballDown", Control::TrackballDown},
+}};
   for (const auto& [name, control] : controls)
   {
     if (name == key)
@@ -454,14 +469,19 @@ void OnPointerMove(u32 port_index, InputBindingKey key, float delta)
     return;
   const bool x_axis = key.data == static_cast<u32>(InputPointerAxis::X);
   const float scale = (x_axis ? port.x_sensitivity : port.y_sensitivity) * (x_axis ? (port.invert_x ? -1.0f : 1.0f) : (port.invert_y ? -1.0f : 1.0f));
-  if (port.type == Arcade::ArcadeControllerType::Trackball && port_index < 2)
+  if (port.type == Arcade::ArcadeControllerType::Trackball)
   {
     const s32 delta_x = x_axis ? static_cast<s32>(delta * scale) : 0;
     const s32 delta_y = x_axis ? 0 : static_cast<s32>(delta * scale);
-    if (NamcoSystem11::IsFamilyBowlActive())
-      NamcoSystem11::AddFamilyBowlTrackballDelta(port_index, delta_x, delta_y);
-    else
-      Konami::AddGVTrackballDelta(port_index, delta_x, delta_y);
+    port.trackball_x += delta_x;
+    port.trackball_y += delta_y;
+    if (port_index < 2)
+    {
+      if (NamcoSystem11::IsFamilyBowlActive())
+        NamcoSystem11::AddFamilyBowlTrackballDelta(port_index, delta_x, delta_y);
+      else
+        Konami::AddGVTrackballDelta(port_index, delta_x, delta_y);
+    }
   }
   else if (port.type == Arcade::ArcadeControllerType::Lightgun &&
            port_index < (Konami::IsGQActive() ? 3U : 2U))
@@ -594,6 +614,22 @@ void AddDrivingSteeringButtonBindings(SettingsInterface& si, const std::string& 
   }
 }
 
+void OnStickAxis(u32 port_index, StickAxis axis, float value)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  s_ports[port_index].stick_axes[static_cast<size_t>(axis)] = std::clamp(value, 0.0f, 1.0f);
+}
+
+void AddStickAxisBindings(SettingsInterface& si, const std::string& section, u32 port, std::string_view key,
+                          StickAxis axis)
+{
+  for (const std::string& binding : si.GetStringList(section.c_str(), key.data()))
+  {
+    InputManager::AddBinding(NormalizeCenteredControllerAxisBinding(binding),
+                             InputAxisEventHandler{[port, axis](float value) { OnStickAxis(port, axis, value); }});
+  }
+}
+
 } // namespace
 
 void SetLightgunViewport(float left, float top, float right, float bottom, float border_x, float border_y)
@@ -706,9 +742,17 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
                             "Enter", "Sensor", "MahjongA", "MahjongB", "MahjongC", "MahjongD",
                             "Button7", "Button8", "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
                             "MahjongK", "MahjongL", "MahjongM", "MahjongN", "MahjongKan", "MahjongPon",
-                            "MahjongChi", "MahjongReach", "MahjongRon"})
+                            "MahjongChi", "MahjongReach", "MahjongRon", "TrackballLeft", "TrackballRight",
+                            "TrackballUp", "TrackballDown"})
     {
       AddDigitalBindings(si, section, port, key);
+    }
+    if (state.type == Arcade::ArcadeControllerType::Arcade)
+    {
+      AddStickAxisBindings(si, section, port, "LeftStickX", StickAxis::LeftX);
+      AddStickAxisBindings(si, section, port, "LeftStickY", StickAxis::LeftY);
+      AddStickAxisBindings(si, section, port, "RightStickX", StickAxis::RightX);
+      AddStickAxisBindings(si, section, port, "RightStickY", StickAxis::RightY);
     }
     if (state.type == Arcade::ArcadeControllerType::Trackball)
     {
@@ -792,6 +836,14 @@ float GetAnalogValue(u32 port, std::string_view key)
     return 0.0f;
 
   const PortState& state = s_ports[port];
+  if (key == "LeftStickX")
+    return state.stick_axes[static_cast<size_t>(StickAxis::LeftX)];
+  if (key == "LeftStickY")
+    return state.stick_axes[static_cast<size_t>(StickAxis::LeftY)];
+  if (key == "RightStickX")
+    return state.stick_axes[static_cast<size_t>(StickAxis::RightX)];
+  if (key == "RightStickY")
+    return state.stick_axes[static_cast<size_t>(StickAxis::RightY)];
   if (key == "Steering")
     return state.steering;
   if (key == "Accelerator")
@@ -859,18 +911,35 @@ void Update()
   for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
   {
     PortState& state = s_ports[port];
-    if (state.type == Arcade::ArcadeControllerType::Trackball && state.input_mode != "NativeRawInputDevice" && port < 2)
+    if (state.type == Arcade::ArcadeControllerType::Trackball && state.input_mode != "NativeRawInputDevice")
     {
-      const s32 delta_x =
-        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
-      const s32 delta_y =
-        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
-      if (NamcoSystem11::IsFamilyBowlActive())
-        NamcoSystem11::AddFamilyBowlTrackballDelta(port, delta_x, delta_y);
-      else
-        Konami::AddGVTrackballDelta(port, delta_x, delta_y);
+      // Analog axes and the digital trackball directions both become relative motion.
+      const float digital_x = static_cast<float>((IsPressed(state, Control::TrackballRight) ? 1 : 0) -
+                                                 (IsPressed(state, Control::TrackballLeft) ? 1 : 0));
+      const float digital_y = static_cast<float>((IsPressed(state, Control::TrackballDown) ? 1 : 0) -
+                                                 (IsPressed(state, Control::TrackballUp) ? 1 : 0));
+      const float x = std::clamp(state.axis_x + digital_x, -1.0f, 1.0f);
+      const float y = std::clamp(state.axis_y + digital_y, -1.0f, 1.0f);
+      const s32 delta_x = static_cast<s32>(x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
+      const s32 delta_y = static_cast<s32>(y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
+      state.trackball_x += delta_x;
+      state.trackball_y += delta_y;
+      if (port < 2)
+      {
+        if (NamcoSystem11::IsFamilyBowlActive())
+          NamcoSystem11::AddFamilyBowlTrackballDelta(port, delta_x, delta_y);
+        else
+          Konami::AddGVTrackballDelta(port, delta_x, delta_y);
+      }
     }
   }
+}
+
+void GetTrackballPosition(u32 port, s32* x, s32* y)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  *x = (port < s_ports.size()) ? s_ports[port].trackball_x : 0;
+  *y = (port < s_ports.size()) ? s_ports[port].trackball_y : 0;
 }
 
 LightgunPresentationState GetLightgunPresentationState()
