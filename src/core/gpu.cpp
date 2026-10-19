@@ -1030,6 +1030,10 @@ void GPU::UpdateCRTCDisplayParameters()
     s32 raw_vertical_lines = std::max(vertical_range_end - vertical_range_start, 0);
     s32 horizontal_source_width_clipped = horizontal_source_width;
 
+    // System 12 can phase-shift a full-width active raster without reducing its width.
+    if (NamcoSystem12::IsActive() && horizontal_origin > 0 && horizontal_source_width >= logical_width)
+      horizontal_origin = 0;
+
     if (horizontal_origin < 0)
     {
       const s32 crop = std::min(horizontal_source_width_clipped, -horizontal_origin);
