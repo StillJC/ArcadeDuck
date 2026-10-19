@@ -11,6 +11,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 
 #include "core/arcade/systems/namco/system10/namco_system10_exio.h"
+#include "core/arcade/systems/namco/system10/namco_system10_mgexio.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
@@ -141,6 +142,7 @@ static constexpr u32 EXP3_I2C_DATA_BASE = 0x1a000a;
 static constexpr u32 EXP3_INTERRUPT_ACK_BASE = 0x1a0012;
 static constexpr u32 EXP3_INTERRUPT_ACK_END = 0x1a001a;
 static constexpr u32 EXP3_INTERRUPT_STATUS_BASE = 0x1a001a;
+
 static constexpr u32 I2C_TRACE_EVENT_LIMIT = 64;
 
 // S10-04A base-board interrupt block.
@@ -241,6 +243,8 @@ struct RuntimeState
 
   const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
+  std::unique_ptr<MGEXIOBoard> mgexio;
+  std::string mgexio_backup_path;
 
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
   // NFL trackball controller: command frame collected from EXIO serial channel 0.
@@ -511,7 +515,9 @@ u16 ReadEXIOIdentifier(RuntimeState& runtime)
   // The base board shifts one expansion-board ID bit onto both low return bits.
   // A board-less cabinet reports 0xff, so every serialized bit is high. After
   // 0x20 response bytes the line remains in the high/high idle state.
-  const u8 response = runtime.exio ? runtime.exio->GetIdentifier() : UINT8_C(0xff);
+  const u8 response = runtime.exio   ? runtime.exio->GetIdentifier() :
+                      runtime.mgexio ? MGEXIOBoard::GetIdentifier() :
+                                       UINT8_C(0xff);
 
   u16 result;
   if (runtime.exio_ident_byte >= 0x20)
@@ -926,9 +932,40 @@ bool HasCyberLeadCabinet(std::string_view set_name)
   });
 }
 
+void CreateMGEXIOBoard(RuntimeState& runtime)
+{
+  runtime.mgexio = std::make_unique<MGEXIOBoard>(MGEXIOBoard::Cabinet());
+
+  // The battery-backed first 32 KiB of the board RAM are kept with the set's NVRAM.
+  runtime.mgexio_backup_path =
+    Path::Combine(Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name), "mgexio_ram");
+  const std::span<u8> backup = runtime.mgexio->GetBackupRAM();
+  if (std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.mgexio_backup_path.c_str()))
+  {
+    if (data->size() == backup.size())
+      std::copy(data->begin(), data->end(), backup.begin());
+    else
+      WARNING_LOG("System 10 MGEXIO backup RAM '{}' has size {}, expected {}.", runtime.mgexio_backup_path,
+                  data->size(), backup.size());
+  }
+  runtime.mgexio->Reset();
+}
+
+void SaveMGEXIOBackup(RuntimeState& runtime)
+{
+  const std::span<u8> backup = runtime.mgexio->GetBackupRAM();
+  const std::string directory(Path::GetDirectory(runtime.mgexio_backup_path));
+  if (!FileSystem::EnsureDirectoryExists(directory.c_str(), true) ||
+      !FileSystem::WriteBinaryFile(runtime.mgexio_backup_path.c_str(), backup.data(), backup.size()))
+  {
+    ERROR_LOG("System 10 MGEXIO backup RAM save failed path='{}'.", runtime.mgexio_backup_path);
+  }
+}
+
 void CreateExpansionBoard(RuntimeState& runtime)
 {
   runtime.exio.reset();
+  runtime.mgexio.reset();
   runtime.cabinet_inputs = &FindCabinetInputs(runtime.set_name);
   runtime.cyberlead_cabinet = HasCyberLeadCabinet(runtime.set_name);
 
@@ -936,6 +973,12 @@ void CreateExpansionBoard(RuntimeState& runtime)
   ExpansionBoard type = runtime.memn_profile ? runtime.memn_profile->expansion : ExpansionBoard::None;
   if (runtime.cyberlead_cabinet && type == ExpansionBoard::None)
     type = ExpansionBoard::EXIO;
+  if (type == ExpansionBoard::MGEXIO)
+  {
+    runtime.cyberlead_cabinet = false;
+    CreateMGEXIOBoard(runtime);
+    return;
+  }
   if (type != ExpansionBoard::EXIO && type != ExpansionBoard::EXIOG)
   {
     runtime.cyberlead_cabinet = false;
@@ -2681,6 +2724,8 @@ void Reset()
 
   if (runtime.exio)
     runtime.exio->Reset();
+  if (runtime.mgexio)
+    runtime.mgexio->Reset();
   runtime.jvs_bus.Reset();
   runtime.cyberlead.Reset();
   runtime.cyberlead.ResetLED();
@@ -2701,6 +2746,11 @@ void Shutdown()
       SaveMemNPersistence(*s_runtime);
     ResetBaseboardInterruptState(*s_runtime, false);
     s_runtime->exio.reset();
+    if (s_runtime->mgexio)
+    {
+      SaveMGEXIOBackup(*s_runtime);
+      s_runtime->mgexio.reset();
+    }
     if (s_runtime->cyberlead_cabinet)
     {
       s_runtime->cyberlead.SaveLEDFlash();
@@ -2721,6 +2771,7 @@ bool IsActive()
   return s_runtime.has_value();
 }
 
+
 u32 ReadProgramROM(u32 width, u32 offset)
 {
   if (!s_runtime.has_value() || (width != 1 && width != 2 && width != 4) ||
@@ -2740,10 +2791,12 @@ u32 ReadProgramROM(u32 width, u32 offset)
 u32 ReadBIOSWindow(u32 width, u32 offset)
 {
   // An expansion board decodes the upper 2 MiB of the 4 MiB BIOS window.
-  if (s_runtime.has_value() && s_runtime->exio && offset >= EXIO_WINDOW_OFFSET)
+  if (s_runtime.has_value() && (s_runtime->exio || s_runtime->mgexio) && offset >= EXIO_WINDOW_OFFSET)
   {
     u32 value = 0;
-    if (s_runtime->exio->Read(width, offset - EXIO_WINDOW_OFFSET, &value))
+    const bool handled = s_runtime->exio ? s_runtime->exio->Read(width, offset - EXIO_WINDOW_OFFSET, &value) :
+                                           s_runtime->mgexio->Read(width, offset - EXIO_WINDOW_OFFSET, &value);
+    if (handled)
       return value;
     return (width == 4) ? UINT32_MAX : ((1u << (width * 8)) - 1);
   }
@@ -2753,8 +2806,12 @@ u32 ReadBIOSWindow(u32 width, u32 offset)
 
 void WriteBIOSWindow(u32 width, u32 offset, u32 value)
 {
-  if (s_runtime.has_value() && s_runtime->exio && offset >= EXIO_WINDOW_OFFSET)
+  if (!s_runtime.has_value() || offset < EXIO_WINDOW_OFFSET)
+    return;
+  if (s_runtime->exio)
     s_runtime->exio->Write(width, offset - EXIO_WINDOW_OFFSET, value);
+  else if (s_runtime->mgexio)
+    s_runtime->mgexio->Write(width, offset - EXIO_WINDOW_OFFSET, value);
 }
 
 bool ReadEXP1(u32 width, u32 offset, u32* value)

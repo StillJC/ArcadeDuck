@@ -4,17 +4,21 @@ ArcadeDuck Third-Party Software Notices
 MAME - Namco System 10 reference-derived portions
 --------------------------------------------------
 Upstream: MAME (src/mame/namco/namcos10.cpp, src/mame/namco/ns10crypt.cpp,
+          src/mame/namco/namcos10_exio.cpp, src/devices/cpu/h8/h83006.cpp
           and the PSX RAM-window configuration table)
 License: BSD-3-Clause
 
 Copyright smf
 Copyright windyfairy
 Copyright Andreas Naive
+Copyright Olivier Galibert
 
 ArcadeDuck's Namco System 10 implementation contains protection datasets,
 static transform/IV data, and documented board/register behavior adapted from
 or derived from the corresponding MAME implementations. The System 10 ROM
 database metadata is also sourced from MAME ROM_START/GAME information.
+The EXIO/MGEXIO expansion-board register maps, medal cabinet wiring and the
+H8/3007 internal register map follow the corresponding MAME devices.
 ArcadeDuck's PSX RAM-window case grouping is adapted from MAME's PSX core.
 
 Redistribution and use in source and binary forms, with or without
