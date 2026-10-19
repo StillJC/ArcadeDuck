@@ -243,6 +243,10 @@ struct RuntimeState
   std::unique_ptr<EXIOBoard> exio;
 
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
+  // NFL trackball controller: command frame collected from EXIO serial channel 0.
+  std::array<u8, 10> trackball_command{};
+  u32 trackball_command_length = 0;
+
   bool cyberlead_cabinet = false;
   bool jvs_addressed = false;
   Arcade::JVS::Bus jvs_bus;
@@ -556,6 +560,12 @@ struct InputBit
   bool active_high = false;
 };
 
+enum class CabinetSerial : u8
+{
+  None,
+  Trackballs, // NFL Classic Football trackball controller on EXIO serial channel 0
+};
+
 enum class CabinetAnalog : u8
 {
   None,
@@ -569,6 +579,7 @@ struct CabinetInputs
   std::span<const InputBit> in1;
   std::span<const InputBit> exio_in1;
   CabinetAnalog analog;
+  CabinetSerial serial0 = CabinetSerial::None;
 };
 
 constexpr std::array<InputBit, 22> DEFAULT_IN1 = {{
@@ -646,7 +657,7 @@ constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"gjspace", THREE_BUTTON_IN1, {}, CabinetAnalog::None},
   {"startrgn", STARTRGN_IN1, {}, CabinetAnalog::None},
   {"konotako", KONOTAKO_IN1, {}, CabinetAnalog::None},
-  {"nflclsfb", NFLCLSFB_IN1, NFLCLSFB_EXIO_IN1, CabinetAnalog::None},
+  {"nflclsfb", NFLCLSFB_IN1, NFLCLSFB_EXIO_IN1, CabinetAnalog::None, CabinetSerial::Trackballs},
   {"gahaha", GAHAHA_IN1, {}, CabinetAnalog::Sticks},
   {"g13jnr", G13JNR_IN1, {}, CabinetAnalog::None},
   {"mgexio_medal", OPERATOR_PANEL_IN1, {}, CabinetAnalog::None},
@@ -815,12 +826,61 @@ u32 ReadEXIOInput(void*, u32 index)
   return ReadInputBits(s_runtime->cabinet_inputs->exio_in1);
 }
 
+// The NFL controller answers every 10-byte command frame (byte 9 is the additive checksum of
+// bytes 0-8) with A0, an 8-bit horizontal and vertical counter for each of the four trackballs,
+// and the checksum.
+void TrackballControllerReceive(RuntimeState& runtime, u8 value)
+{
+  runtime.trackball_command[runtime.trackball_command_length++] = value;
+  if (runtime.trackball_command_length < runtime.trackball_command.size())
+    return;
+
+  u8 checksum = 0;
+  for (u32 i = 0; i < 9; i++)
+    checksum = static_cast<u8>(checksum + runtime.trackball_command[i]);
+  if (checksum != runtime.trackball_command[9])
+  {
+    // Resynchronize on the next byte.
+    std::copy(runtime.trackball_command.begin() + 1, runtime.trackball_command.end(), runtime.trackball_command.begin());
+    runtime.trackball_command_length--;
+    return;
+  }
+
+  runtime.trackball_command_length = 0;
+  std::array<u8, 10> reply{};
+  reply[0] = 0xa0;
+  for (u32 player = 0; player < 4; player++)
+  {
+    s32 x, y;
+    ArcadeInput::GetTrackballPosition(player, &x, &y);
+    reply[1 + player * 2] = static_cast<u8>(x);
+    // Host pointer motion is positive downwards; the controller counts a forward roll upwards
+    // (TRACKBALL TEST moves each marker away from its player's edge of the screen).
+    reply[2 + player * 2] = static_cast<u8>(-y);
+  }
+  for (u32 i = 0; i < 9; i++)
+    reply[9] = static_cast<u8>(reply[9] + reply[i]);
+
+  for (const u8 byte : reply)
+    runtime.exio->ReceiveSerial(0, byte);
+}
+
 void EXIOSerialTransmit(void*, u32 channel, u8 value)
 {
-  if (!s_runtime.has_value() || channel != 1 || !s_runtime->cyberlead_cabinet)
+  if (!s_runtime.has_value())
     return;
 
   RuntimeState& runtime = *s_runtime;
+  if (channel == 0)
+  {
+    if (runtime.cabinet_inputs->serial0 == CabinetSerial::Trackballs)
+      TrackballControllerReceive(runtime, value);
+    return;
+  }
+
+  if (channel != 1 || !runtime.cyberlead_cabinet)
+    return;
+
   if (!runtime.jvs_bus.FeedByte(value))
     return;
 
