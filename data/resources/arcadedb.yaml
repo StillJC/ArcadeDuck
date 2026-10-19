@@ -15029,7 +15029,7 @@ games:
     boardCode: "NCF3"
     hardwareProfile: "ns10_nflclsfb"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 4
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15460,7 +15460,7 @@ games:
     boardCode: "TK21"
     hardwareProfile: "ns10_taiko2"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15500,7 +15500,7 @@ games:
     boardCode: "TK31"
     hardwareProfile: "ns10_taiko3"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15660,7 +15660,7 @@ games:
     boardCode: "TKN1"
     hardwareProfile: "ns10_taikort"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15700,7 +15700,7 @@ games:
     boardCode: "GLT1"
     hardwareProfile: "ns10_g13jnr"
     setFormat: "non_merged"
-    status: "working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15740,7 +15740,7 @@ games:
     boardCode: "NTK1"
     hardwareProfile: "ns10_nicetsuk"
     setFormat: "non_merged"
-    status: "working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15784,7 +15784,7 @@ games:
     boardCode: "CHS1"
     hardwareProfile: "ns10_squizchs"
     setFormat: "non_merged"
-    status: "working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15840,7 +15840,7 @@ games:
     boardCode: "VER.2.02J"
     hardwareProfile: "ns10_ippo"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
@@ -15883,7 +15883,7 @@ games:
     boardCode: "VER.2.00J"
     hardwareProfile: "ns10_ippo2"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
