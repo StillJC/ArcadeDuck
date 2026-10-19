@@ -32,6 +32,7 @@ struct MemNLoadedContent
   const MemNProfile* profile = nullptr;
   std::vector<std::vector<u8>> nands;
   std::vector<u8> nonlinear_table;
+  std::string cdrom_path;
 };
 
 enum class MemMBoardProfile : u8

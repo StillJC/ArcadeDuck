@@ -17,6 +17,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/storage/atapi_cdrom.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_input.h"
@@ -31,6 +32,7 @@
 #include "common/minizip_helpers.h"
 #include "common/path.h"
 #include "common/sha1_digest.h"
+#include "util/cd_image.h"
 #include "common/string_util.h"
 
 #include <algorithm>
@@ -146,6 +148,14 @@ static constexpr u32 EXP3_INTERRUPT_STATUS_BASE = 0x1a001a;
 
 static constexpr u32 EXP3_WATCHDOG_BASE = 0x160000;
 
+// ATAPI CD-ROM (Matsushita CR-589) on the base board ATA port: command block
+// registers at 16-bit spacing, and a presence register MAME reads as 1.
+static constexpr u32 EXP3_ATA_CS0_BASE = 0x1c0000;
+static constexpr u32 EXP3_ATA_CS0_END = 0x1c0010;
+static constexpr u32 EXP3_CDROM_PRESENT_BASE = 0x1f0000;
+static constexpr u32 EXP3_CDROM_PRESENT_END = 0x1f0010;
+static constexpr u16 BASEBOARD_CDROM_INTERRUPT_BIT = UINT16_C(0x0004);
+
 // The BIOS and every program kick the watchdog at least every 0.4 s (once per frame in game). Games
 // restart by no longer kicking it ("SLIDE TEST ON AND OFF TO RESTART"). The hardware timeout is not
 // documented; this one is well above the longest kick interval measured.
@@ -254,6 +264,8 @@ struct RuntimeState
 
   const CabinetInputs* cabinet_inputs = nullptr;
   std::unique_ptr<EXIOBoard> exio;
+  std::unique_ptr<Arcade::ATAPICDROM> cdrom;
+  bool cdrom_dma = false;
   std::unique_ptr<MGEXIOBoard> mgexio;
   MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
@@ -2561,6 +2573,26 @@ std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const
       return std::nullopt;
   }
 
+  if (const Arcade::Database::MediaDefinition* cdrom = Arcade::Database::GetMediaByRole(game, "ata_0_cdrom"))
+  {
+    content.cdrom_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *cdrom);
+    if (!FileSystem::FileExists(content.cdrom_path.c_str()))
+    {
+      Error::SetStringFmt(error, "Namco System 10 CD-ROM CHD for '{}' was not found:\n{}", game.id,
+                          content.cdrom_path);
+      return std::nullopt;
+    }
+
+    std::array<u8, SHA1Digest::DIGEST_SIZE> chd_sha1;
+    if (!CDImage::GetCHDImageSHA1(content.cdrom_path.c_str(), &chd_sha1, error))
+      return std::nullopt;
+    if (!StringUtil::EqualNoCase(SHA1Digest::DigestToString(chd_sha1), cdrom->sha1))
+    {
+      Error::SetStringFmt(error, "Namco System 10 CD-ROM CHD '{}' SHA-1 mismatch.", content.cdrom_path);
+      return std::nullopt;
+    }
+  }
+
   VERBOSE_LOG("Loaded Namco System 10 MEM(N) profile='{}' raw NANDs from '{}': count={}.",
               game.hardware_profile, archive_path, content.nands.size());
   return content;
@@ -2622,6 +2654,30 @@ std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
   return content;
 }
 
+void CDROMInterrupt(void*, bool asserted)
+{
+  RuntimeState& runtime = *s_runtime;
+  const bool was_set = (runtime.baseboard_interrupt_status & BASEBOARD_CDROM_INTERRUPT_BIT) != 0;
+  if (asserted)
+    runtime.baseboard_interrupt_status |= BASEBOARD_CDROM_INTERRUPT_BIT;
+  else
+    runtime.baseboard_interrupt_status &= static_cast<u16>(~BASEBOARD_CDROM_INTERRUPT_BIT);
+
+  // IRQ10 is edge-triggered in ArcadeDuck's interrupt controller.
+  if (asserted && !was_set)
+  {
+    InterruptController::SetLineState(InterruptController::IRQ::IRQ10, true);
+    InterruptController::SetLineState(InterruptController::IRQ::IRQ10, false);
+  }
+}
+
+void CDROMDMARequest(void*, bool asserted)
+{
+  // While DMARQ is asserted the PIO channel reads the drive instead of the
+  // MEM(N) data register.
+  s_runtime->cdrom_dma = asserted;
+}
+
 bool InitializeMemN(MemNLoadedContent content, Error* error)
 {
   if (s_runtime.has_value())
@@ -2661,6 +2717,17 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
 
   runtime.lookup_ram.resize(LOOKUP_RAM_SIZE, 0);
 
+  if (!content.cdrom_path.empty())
+  {
+    static constexpr Arcade::ATAPICDROM::Identity CR589 = {"MATSHITA", "CD-ROM CR-589", "GS0N"};
+    runtime.cdrom = std::make_unique<Arcade::ATAPICDROM>(CR589);
+    if (!runtime.cdrom->OpenMedia(content.cdrom_path.c_str(), error))
+      return false;
+    Arcade::ATAPICDROM::Callbacks callbacks;
+    callbacks.irq = &CDROMInterrupt;
+    callbacks.dma_request = &CDROMDMARequest;
+    runtime.cdrom->SetCallbacks(callbacks);
+  }
 
   ResetI2CState(runtime);
   ResetBaseboardInputState(runtime);
@@ -2758,6 +2825,9 @@ void Reset()
 
   if (runtime.exio)
     runtime.exio->Reset();
+  if (runtime.cdrom)
+    runtime.cdrom->Reset();
+  runtime.cdrom_dma = false;
   if (runtime.mgexio)
   {
     runtime.mgexio->Reset();
@@ -3099,6 +3169,16 @@ bool DMARead(u32* words, u32 word_count)
   if (!words || !s_runtime.has_value() || s_runtime->media_type != MediaType::MemN)
     return false;
 
+  if (s_runtime->cdrom && s_runtime->cdrom_dma)
+  {
+    for (u32 index = 0; index < word_count; index++)
+    {
+      const u32 low = s_runtime->cdrom->ReadDMA();
+      const u32 high = s_runtime->cdrom->ReadDMA();
+      words[index] = low | (high << 16);
+    }
+    return true;
+  }
 
   for (u32 index = 0; index < word_count; index++)
   {
@@ -3133,6 +3213,17 @@ bool ReadEXP3(u32 width, u32 offset, u32* value)
     return ReadU16Register(ReadBaseboardSystemSwitches(runtime), offset - EXP3_SYSTEM_SWITCH_BASE, width, value);
   }
 
+  if (offset >= EXP3_ATA_CS0_BASE && offset < EXP3_ATA_CS0_END)
+  {
+    *value = runtime.cdrom ? runtime.cdrom->ReadCommandBlock((offset - EXP3_ATA_CS0_BASE) / 2) : UINT32_C(0xffff);
+    return true;
+  }
+
+  if (offset >= EXP3_CDROM_PRESENT_BASE && offset < EXP3_CDROM_PRESENT_END)
+  {
+    *value = 1;
+    return true;
+  }
 
   if (offset == EXP3_EXIO_IDENT_BASE && width == 2)
   {
@@ -3189,6 +3280,13 @@ bool WriteEXP3(u32 width, u32 offset, u32 value)
 
   if (HandleBaseboardInterruptAck(runtime, width, offset))
     return true;
+
+  if (offset >= EXP3_ATA_CS0_BASE && offset < EXP3_ATA_CS0_END)
+  {
+    if (runtime.cdrom)
+      runtime.cdrom->WriteCommandBlock((offset - EXP3_ATA_CS0_BASE) / 2, static_cast<u16>(value));
+    return true;
+  }
 
   if (offset == EXP3_WATCHDOG_BASE)
   {
