@@ -1483,6 +1483,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
                    parent_game->id);
 
         QMenu* clone_menu = nullptr;
+        QMenu* clone_properties_menu = nullptr;
         for (const Arcade::Database::GameDefinition* const clone : clones)
         {
           std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
@@ -1497,7 +1498,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           }
 
           if (!clone_menu)
+          {
             clone_menu = menu.addMenu(tr("Start Clone"));
+            clone_properties_menu = menu.addMenu(tr("Clone Properties"));
+          }
 
           QString label = QString::fromStdString(clone->title);
           if (!clone->region.empty())
@@ -1505,6 +1509,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           if (!clone->revision.empty())
             label += tr(" - %1").arg(QString::fromStdString(clone->revision));
           label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_properties_action = clone_properties_menu->addAction(label);
+          connect(clone_properties_action, &QAction::triggered,
+                  [clone_path, clone_id = clone->id]() { SettingsWindow::openGamePropertiesDialog(clone_path, clone_id); });
 
           QAction* const clone_action = clone_menu->addAction(label);
           connect(clone_action, &QAction::triggered,
@@ -2160,10 +2168,14 @@ void MainWindow::connectSignals()
   connect(m_ui.actionConsoleSettings, &QAction::triggered, [this]() { doSettings("Machine"); });
   connect(m_ui.actionEmulationSettings, &QAction::triggered, [this]() { doSettings("Emulation"); });
   connect(m_ui.actionGameListSettings, &QAction::triggered, [this]() { doSettings("Game List"); });
-  connect(m_ui.actionHotkeySettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::HotkeySettings); });
-  connect(m_ui.actionControllerSettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::GlobalSettings); });
+  connect(m_ui.actionHotkeySettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::HotkeySettings);
+  });
+  connect(m_ui.actionControllerSettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::GlobalSettings);
+  });
   connect(m_ui.actionGraphicsSettings, &QAction::triggered, [this]() { doSettings("Graphics"); });
   connect(m_ui.actionPostProcessingSettings, &QAction::triggered, [this]() { doSettings("Post-Processing"); });
   connect(m_ui.actionAudioSettings, &QAction::triggered, [this]() { doSettings("Audio"); });

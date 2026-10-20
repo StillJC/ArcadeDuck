@@ -19,14 +19,10 @@
 #include <QtCore/QPointer>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
-#include <QtCore/QHash>
-#include <QtGui/QPixmap>
-#include <QtGui/QResizeEvent>
 #include <QtWidgets/QAbstractItemView>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFormLayout>
-#include <QtWidgets/QFrame>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QGroupBox>
 #include <QtWidgets/QHBoxLayout>
@@ -35,7 +31,6 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QPushButton>
-#include <QtWidgets/QSizePolicy>
 #include <QtWidgets/QSlider>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QTabWidget>
@@ -54,16 +49,6 @@ void ConfigureComboBoxPopup(QComboBox* combo, int max_visible_items = 18)
 
   combo->setMaxVisibleItems(max_visible_items);
   combo->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-}
-
-const QPixmap& GetCachedArtworkPixmap(const QString& resource_path)
-{
-  static QHash<QString, QPixmap> cache;
-  const auto iterator = cache.constFind(resource_path);
-  if (iterator != cache.cend())
-    return iterator.value();
-
-  return cache.insert(resource_path, QPixmap(resource_path)).value();
 }
 
 bool IsLegacyPointerDeviceSetting(const QString& identifier)
@@ -166,48 +151,19 @@ bool IsGenericPointerName(const QString& name)
   return StripDisplayDuplicateSuffix(name).startsWith(QStringLiteral("Windows Raw Mouse"), Qt::CaseInsensitive);
 }
 
-class ScaledArtworkLabel final : public QLabel
-{
-public:
-  explicit ScaledArtworkLabel(QWidget* parent) : QLabel(parent) {}
-
-  void setSourcePixmap(const QPixmap& pixmap)
-  {
-    m_source_pixmap = pixmap;
-    updateScaledPixmap();
-  }
-
-  QSize sizeHint() const override { return QSize(320, 230); }
-  QSize minimumSizeHint() const override { return QSize(0, 0); }
-
-protected:
-  void resizeEvent(QResizeEvent* event) override
-  {
-    QLabel::resizeEvent(event);
-    updateScaledPixmap();
-  }
-
-private:
-  void updateScaledPixmap()
-  {
-    if (!m_source_pixmap.isNull() && !size().isEmpty())
-      QLabel::setPixmap(m_source_pixmap.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-  }
-
-  QPixmap m_source_pixmap;
-};
-
 constexpr const char* ARCADE_BINDING_KEYS[] = {
   "Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4", "Button5", "Button6",
   "Coin", "Start", "TrackballX", "TrackballY", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
-  "GSRDecrease", "Steering", "Accelerator", "Brake", "Clutch", "GearUp", "GearDown", "Handbrake",
+  "GSRDecrease", "Steering", "SteeringLeft", "SteeringRight", "Accelerator", "Brake", "Clutch",
+  "GearUp", "GearDown", "Handbrake",
   "View", "Horn", "MusicNext", "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft",
   "SelectRight", "Enter", "Sensor"};
 constexpr const char* ARCADE_CONTROLLER_VALUE_KEYS[] = {
   "InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity", "YSensitivity", "InvertX",
   "InvertY", "OffscreenReload", "CrosshairEnabled", "CrosshairImagePath", "CrosshairSize", "CrosshairScale",
-  "SindenBorder", "SindenBorderWidth", "SteeringDeadzone", "SteeringSensitivity", "AcceleratorDeadzone",
-  "AcceleratorSensitivity", "BrakeDeadzone", "BrakeSensitivity", "ClutchDeadzone", "ClutchSensitivity"};
+  "SindenBorder", "SindenBorderWidth", "UseButtonsAsAxis", "SteeringDeadzone", "SteeringSensitivity",
+  "AcceleratorDeadzone", "AcceleratorSensitivity", "BrakeDeadzone", "BrakeSensitivity", "ClutchDeadzone",
+  "ClutchSensitivity"};
 
 } // namespace
 
@@ -230,6 +186,9 @@ std::string ArcadeControllerBindingWidget::getConfigSection() const
 
 Arcade::ArcadeControllerType ArcadeControllerBindingWidget::getType() const
 {
+  if (const Arcade::ArcadePortProfile* const port_profile = m_dialog->getGamePortProfile(m_port_number))
+    return port_profile->controller_type;
+
   const std::string section = getConfigSection();
   const std::string type_name = m_dialog->getStringValue(section.c_str(), "Type", "none");
   for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
@@ -238,6 +197,22 @@ Arcade::ArcadeControllerType ArcadeControllerBindingWidget::getType() const
       return info.type;
   }
   return Arcade::ArcadeControllerType::None;
+}
+
+const Arcade::ArcadeControlLayoutInfo* ArcadeControllerBindingWidget::getLayoutInfo() const
+{
+  if (const Arcade::ArcadePortProfile* const port_profile = m_dialog->getGamePortProfile(m_port_number))
+    return Arcade::GetArcadeControlLayoutInfo(port_profile->game_layout_key);
+
+  const std::string section = getConfigSection();
+  return Arcade::GetArcadeControlLayoutInfo(m_dialog->getStringValue(section.c_str(), "Layout", ""));
+}
+
+bool ArcadeControllerBindingWidget::hasAdditionalSettings() const
+{
+  const Arcade::ArcadeControllerType type = getType();
+  return type == Arcade::ArcadeControllerType::Trackball || type == Arcade::ArcadeControllerType::Lightgun ||
+         type == Arcade::ArcadeControllerType::Driving;
 }
 
 bool ArcadeControllerBindingWidget::usesNativeDevice() const
@@ -346,14 +321,17 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
     return;
   }
 
+  const Arcade::ArcadeControlLayoutInfo* layout_info = getLayoutInfo();
   const std::string section = getConfigSection();
-  const std::string layout_key = m_dialog->getStringValue(section.c_str(), "Layout", "");
-  const Arcade::ArcadeControlLayoutInfo* layout_info = Arcade::GetArcadeControlLayoutInfo(layout_key);
+  const bool use_buttons_as_axis =
+    type == Arcade::ArcadeControllerType::Driving &&
+    m_dialog->getBoolValue(section.c_str(), "UseButtonsAsAxis", false);
 
-  QGroupBox* group = new QGroupBox(tr("Bindings"), this);
-  QFormLayout* form = new QFormLayout(group);
+  QFormLayout* form = new QFormLayout();
   bool has_coin_binding = false;
   bool has_start_binding = false;
+  QString driving_coin_label;
+  QString driving_start_label;
 
   const auto add_layout_bindings = [&]() {
     if (!layout_info || layout_info->controller_type != type)
@@ -363,6 +341,19 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
     {
       has_coin_binding |= (binding.binding_key == "Coin");
       has_start_binding |= (binding.binding_key == "Start");
+
+      const QString binding_name =
+        QString::fromUtf8(binding.display_name.data(), static_cast<int>(binding.display_name.size()));
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Coin")
+      {
+        driving_coin_label = binding_name;
+        continue;
+      }
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Start")
+      {
+        driving_start_label = binding_name;
+        continue;
+      }
 
       const bool native_pointer_axis =
         usesNativeDevice() &&
@@ -376,9 +367,19 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
       const InputBindingInfo::Type binding_type =
         binding.kind == Arcade::ArcadeControlBindingKind::Axis ? InputBindingInfo::Type::Axis :
                                                                  InputBindingInfo::Type::Button;
-      addBinding(form, binding.binding_key.data(),
-                 QString::fromUtf8(binding.display_name.data(), static_cast<int>(binding.display_name.size())),
-                 binding_type);
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Steering")
+      {
+        addBinding(form, binding.binding_key.data(), binding_name, binding_type);
+        if (use_buttons_as_axis)
+        {
+          addBinding(form, "SteeringLeft", tr("Steering Left"), InputBindingInfo::Type::Button);
+          addBinding(form, "SteeringRight", tr("Steering Right"), InputBindingInfo::Type::Button);
+        }
+      }
+      else
+      {
+        addBinding(form, binding.binding_key.data(), binding_name, binding_type);
+      }
     }
     return true;
   };
@@ -418,89 +419,42 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
     }
     else
     {
-      form->addRow(new QLabel(tr("No compatible control layout is selected."), group));
+      form->addRow(new QLabel(tr("No compatible control layout is selected."), this));
     }
   }
 
-  if (!has_coin_binding)
-    addBinding(form, "Coin", tr("Coin"), InputBindingInfo::Type::Button);
-  if (!has_start_binding)
-    addBinding(form, "Start", tr("Start"), InputBindingInfo::Type::Button);
-
-  QHBoxLayout* content = new QHBoxLayout();
-  content->addWidget(group, 3);
-  content->addWidget(createArtworkWidget(), 2, Qt::AlignCenter);
-  layout->addLayout(content);
-  layout->addStretch(1);
-}
-
-QWidget* ArcadeControllerBindingWidget::createArtworkWidget()
-{
-  QFrame* frame = new QFrame(this);
-  frame->setFrameShape(QFrame::StyledPanel);
-  frame->setMinimumSize(220, 170);
-  frame->setMaximumWidth(400);
-  frame->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
-  QVBoxLayout* frame_layout = new QVBoxLayout(frame);
-  frame_layout->setContentsMargins(10, 10, 10, 10);
-  ScaledArtworkLabel* artwork = new ScaledArtworkLabel(frame);
-  artwork->setAlignment(Qt::AlignCenter);
-  artwork->setWordWrap(true);
-
-  const Arcade::ArcadeControllerType type = getType();
-  const std::string section = getConfigSection();
-  const std::string layout_key = m_dialog->getStringValue(section.c_str(), "Layout", "");
-  const Arcade::ArcadeControlLayoutInfo* const layout_info = Arcade::GetArcadeControlLayoutInfo(layout_key);
-
-  const char* resource = nullptr;
-  if (layout_info && layout_info->layout_key == "bam2")
-    resource = ":/controllers/ArcadeDuck_Bust_A_Move_controls.png";
-  else if (type == Arcade::ArcadeControllerType::Arcade)
-    resource = ":/controllers/arcade_controller.png";
-  else if (type == Arcade::ArcadeControllerType::Trackball)
-    resource = ":/controllers/trackball.png";
-  else if (type == Arcade::ArcadeControllerType::Lightgun)
-    resource = ":/controllers/lightgun.png";
-  else if (type == Arcade::ArcadeControllerType::Driving)
-    resource = ":/controllers/racing.png";
-  else if (type == Arcade::ArcadeControllerType::Tokimeki)
-    resource = ":/controllers/tokimeki.png";
-
-  const QString resource_path = QString::fromUtf8(resource ? resource : "");
-  const bool resource_exists = QFile::exists(resource_path);
-  const QPixmap& pixmap = GetCachedArtworkPixmap(resource_path);
-  if (!resource_exists || pixmap.isNull())
+  if (type == Arcade::ArcadeControllerType::Driving)
   {
-    artwork->setText(tr("Failed to load controller artwork: %1\nQFile::exists: %2")
-                       .arg(resource_path, resource_exists ? tr("true") : tr("false")));
+    addBinding(form, "Coin", driving_coin_label.isEmpty() ? tr("Coin") : driving_coin_label,
+               InputBindingInfo::Type::Button);
+    addBinding(form, "Start", driving_start_label.isEmpty() ? tr("Start") : driving_start_label,
+               InputBindingInfo::Type::Button);
   }
   else
   {
-    artwork->setSourcePixmap(pixmap);
+    if (!has_coin_binding)
+      addBinding(form, "Coin", tr("Coin"), InputBindingInfo::Type::Button);
+    if (!has_start_binding)
+      addBinding(form, "Start", tr("Start"), InputBindingInfo::Type::Button);
   }
 
-  frame_layout->addWidget(artwork, 1, Qt::AlignCenter);
-  return frame;
+  layout->addLayout(form);
+  if (!m_dialog->isGameControlsEditor())
+    layout->addStretch(1);
 }
 
 void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
 {
   const Arcade::ArcadeControllerType type = getType();
-  if (type != Arcade::ArcadeControllerType::Trackball && type != Arcade::ArcadeControllerType::Lightgun &&
-      type != Arcade::ArcadeControllerType::Driving)
-  {
-    layout->addWidget(new QLabel(tr("This controller type has no additional settings."), this));
-    layout->addStretch(1);
+  if (!hasAdditionalSettings())
     return;
-  }
   const std::string section = getConfigSection();
   QGroupBox* group = new QGroupBox(tr("Controller Settings"), this);
   QFormLayout* form = new QFormLayout(group);
 
   if (type == Arcade::ArcadeControllerType::Driving)
   {
-    const std::string layout_key = m_dialog->getStringValue(section.c_str(), "Layout", "");
-    const Arcade::ArcadeControlLayoutInfo* layout_info = Arcade::GetArcadeControlLayoutInfo(layout_key);
+    const Arcade::ArcadeControlLayoutInfo* layout_info = getLayoutInfo();
     const auto has_axis = [layout_info](const char* key) {
       if (!layout_info)
         return true;
@@ -542,91 +496,112 @@ void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
     if (has_axis("Clutch"))
       add_axis_adjustments(tr("Clutch"), "ClutchDeadzone", "ClutchSensitivity");
 
+    if (has_axis("Steering"))
+    {
+      QCheckBox* use_buttons_as_axis = new QCheckBox(group);
+      use_buttons_as_axis->setChecked(m_dialog->getBoolValue(section.c_str(), "UseButtonsAsAxis", false));
+      use_buttons_as_axis->setToolTip(
+        tr("Adds Steering Left and Steering Right button bindings for keyboard or digital controller input."));
+      connect(use_buttons_as_axis, &QCheckBox::toggled, this, [this](bool enabled) {
+        setBoolValue("UseButtonsAsAxis", enabled);
+        queueRebuild();
+      });
+      form->addRow(tr("Use Buttons as Axis"), use_buttons_as_axis);
+    }
+
     layout->addWidget(group);
-    layout->addStretch(1);
+    if (!m_dialog->isGameControlsEditor())
+      layout->addStretch(1);
     return;
   }
     QComboBox* mode = new QComboBox(group);
     ConfigureComboBoxPopup(mode);
-    mode->addItem(tr("Native Raw Input Device"), "NativeRawInputDevice"); mode->addItem(tr("Bound Axis"), "BoundAxis");
-    mode->addItem(tr("Analog Cursor"), "AnalogCursor"); mode->addItem(tr("Analog Velocity"), "AnalogVelocity");
-    mode->setCurrentIndex(mode->findData(QString::fromStdString(m_dialog->getStringValue(section.c_str(), "InputMode", "BoundAxis"))));
+    mode->addItem(tr("Native Raw Input Device"), "NativeRawInputDevice");
+    mode->addItem(tr("Mapped Axis"), "BoundAxis");
+    const bool native_input = usesNativeDevice();
+    mode->setCurrentIndex(mode->findData(native_input ? QStringLiteral("NativeRawInputDevice") :
+                                                        QStringLiteral("BoundAxis")));
     connect(mode, &QComboBox::currentIndexChanged, this, [this, mode](int) {
       setStringValue("InputMode", mode->currentData().toString().toUtf8().constData());
       queueRebuild();
     });
     form->addRow(tr("Input Mode"), mode);
-    QComboBox* device = new QComboBox(group);
-    ConfigureComboBoxPopup(device);
-    device->addItem(tr("No device"), "");
-    for (const PointerDeviceInfo& info : m_dialog->getPointerDeviceList())
+
+    if (native_input)
     {
-      if (info.identifier.starts_with("RawInput:"))
-        device->addItem(QString::fromStdString(info.display_name), QString::fromStdString(info.identifier));
-    }
-    QString selected_device = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDevice", ""));
-    if (IsLegacyPointerDeviceSetting(selected_device))
-    {
-      selected_device.clear();
-      setStringValue("PhysicalDevice", "");
-    }
-    int selected_index = device->findData(selected_device);
-    if (selected_index < 0 && selected_device.startsWith(QStringLiteral("RawInput:")))
-    {
-      const QString saved_name = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDeviceName", ""));
-      const QString saved_serial = ExtractSerial(saved_name);
-      const QString saved_vid_pid = ExtractVidPid(selected_device).isEmpty() ? ExtractVidPid(saved_name) :
-                                                                              ExtractVidPid(selected_device);
-      const QString saved_display_name = StripDisplayDuplicateSuffix(saved_name);
-      int matching_index = -1;
-      for (int index = 1; index < device->count(); index++)
+      QComboBox* device = new QComboBox(group);
+      ConfigureComboBoxPopup(device);
+      device->addItem(tr("No device"), "");
+      for (const PointerDeviceInfo& info : m_dialog->getPointerDeviceList())
       {
-        const QString connected_name = device->itemText(index);
-        const QString connected_identifier = device->itemData(index).toString();
-        const QString connected_serial = ExtractSerial(connected_name);
-        const QString connected_vid_pid = ExtractVidPid(connected_identifier).isEmpty() ? ExtractVidPid(connected_name) :
-                                                                                           ExtractVidPid(connected_identifier);
-        const bool serial_match = !saved_serial.isEmpty() && saved_serial == connected_serial;
-        const bool vid_pid_match = !saved_vid_pid.isEmpty() && saved_vid_pid == connected_vid_pid;
-        const bool name_match = !saved_display_name.isEmpty() && !IsGenericPointerName(saved_display_name) &&
-                                saved_display_name == StripDisplayDuplicateSuffix(connected_name);
-        if (!serial_match && !vid_pid_match && !name_match)
-          continue;
+        if (info.identifier.starts_with("RawInput:"))
+          device->addItem(QString::fromStdString(info.display_name), QString::fromStdString(info.identifier));
+      }
+      QString selected_device = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDevice", ""));
+      if (IsLegacyPointerDeviceSetting(selected_device))
+      {
+        selected_device.clear();
+        setStringValue("PhysicalDevice", "");
+      }
+      int selected_index = device->findData(selected_device);
+      if (selected_index < 0 && selected_device.startsWith(QStringLiteral("RawInput:")))
+      {
+        const QString saved_name = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDeviceName", ""));
+        const QString saved_serial = ExtractSerial(saved_name);
+        const QString saved_vid_pid = ExtractVidPid(selected_device).isEmpty() ? ExtractVidPid(saved_name) :
+                                                                                ExtractVidPid(selected_device);
+        const QString saved_display_name = StripDisplayDuplicateSuffix(saved_name);
+        int matching_index = -1;
+        for (int index = 1; index < device->count(); index++)
+        {
+          const QString connected_name = device->itemText(index);
+          const QString connected_identifier = device->itemData(index).toString();
+          const QString connected_serial = ExtractSerial(connected_name);
+          const QString connected_vid_pid = ExtractVidPid(connected_identifier).isEmpty() ? ExtractVidPid(connected_name) :
+                                                                                             ExtractVidPid(connected_identifier);
+          const bool serial_match = !saved_serial.isEmpty() && saved_serial == connected_serial;
+          const bool vid_pid_match = !saved_vid_pid.isEmpty() && saved_vid_pid == connected_vid_pid;
+          const bool name_match = !saved_display_name.isEmpty() && !IsGenericPointerName(saved_display_name) &&
+                                  saved_display_name == StripDisplayDuplicateSuffix(connected_name);
+          if (!serial_match && !vid_pid_match && !name_match)
+            continue;
+          if (matching_index >= 0)
+          {
+            matching_index = -2;
+            break;
+          }
+          matching_index = index;
+        }
         if (matching_index >= 0)
         {
-          matching_index = -2;
-          break;
+          selected_index = matching_index;
+          selected_device = device->itemData(selected_index).toString();
+          setStringValue("PhysicalDevice", selected_device.toUtf8().constData());
+          setStringValue("PhysicalDeviceName", device->itemText(selected_index).toUtf8().constData());
         }
-        matching_index = index;
       }
-      if (matching_index >= 0)
-      {
-        selected_index = matching_index;
-        selected_device = device->itemData(selected_index).toString();
-        setStringValue("PhysicalDevice", selected_device.toUtf8().constData());
+      if (selected_index >= 0 && !selected_device.isEmpty())
         setStringValue("PhysicalDeviceName", device->itemText(selected_index).toUtf8().constData());
+      else if (selected_device.startsWith(QStringLiteral("RawInput:")))
+      {
+        const QString last_known_name = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDeviceName", ""));
+        device->addItem(last_known_name.isEmpty() ? tr("Assigned Raw Input device - Disconnected") :
+                                                  tr("%1 - Disconnected").arg(last_known_name), selected_device);
       }
+      device->setCurrentIndex(device->findData(selected_device));
+      connect(device, &QComboBox::currentIndexChanged, this, [this, device](int) {
+        const QString identifier = device->currentData().toString();
+        setStringValue("PhysicalDevice", identifier.toUtf8().constData());
+        if (identifier.startsWith(QStringLiteral("RawInput:")))
+          setStringValue("PhysicalDeviceName", device->currentText().toUtf8().constData());
+      });
+      QWidget* device_row = new QWidget(group);
+      QHBoxLayout* device_layout = new QHBoxLayout(device_row);
+      device_layout->setContentsMargins(0, 0, 0, 0);
+      device_layout->addWidget(device, 1);
+      form->addRow(tr("Physical device"), device_row);
     }
-    if (selected_index >= 0 && !selected_device.isEmpty())
-      setStringValue("PhysicalDeviceName", device->itemText(selected_index).toUtf8().constData());
-    else if (selected_device.startsWith(QStringLiteral("RawInput:")))
-    {
-      const QString last_known_name = QString::fromStdString(m_dialog->getStringValue(section.c_str(), "PhysicalDeviceName", ""));
-      device->addItem(last_known_name.isEmpty() ? tr("Assigned Raw Input device - Disconnected") :
-                                                tr("%1 - Disconnected").arg(last_known_name), selected_device);
-    }
-    device->setCurrentIndex(device->findData(selected_device));
-    connect(device, &QComboBox::currentIndexChanged, this, [this, device](int) {
-      const QString identifier = device->currentData().toString();
-      setStringValue("PhysicalDevice", identifier.toUtf8().constData());
-      if (identifier.startsWith(QStringLiteral("RawInput:")))
-        setStringValue("PhysicalDeviceName", device->currentText().toUtf8().constData());
-    });
-    QWidget* device_row = new QWidget(group);
-    QHBoxLayout* device_layout = new QHBoxLayout(device_row);
-    device_layout->setContentsMargins(0, 0, 0, 0);
-    device_layout->addWidget(device, 1);
-    form->addRow(tr("Physical device"), device_row);
+
     for (const auto& [label, key] : {std::pair<QString, const char*>{tr("X sensitivity"), "XSensitivity"}, {tr("Y sensitivity"), "YSensitivity"}})
     {
       QSpinBox* spin = new QSpinBox(group); spin->setRange(1, 500); spin->setSuffix("%"); spin->setValue(m_dialog->getIntValue(section.c_str(), key, 100));
@@ -637,7 +612,6 @@ void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
       QCheckBox* check = new QCheckBox(group); check->setChecked(m_dialog->getBoolValue(section.c_str(), key, false));
       connect(check, &QCheckBox::toggled, this, [this, key](bool v) { setBoolValue(key, v); }); form->addRow(label, check);
     }
-    form->addRow(tr("Routing"), new QLabel(tr("This port: %1").arg(m_port_number + 1), group));
     if (type == Arcade::ArcadeControllerType::Lightgun)
     {
       QCheckBox* reload = new QCheckBox(group); reload->setChecked(m_dialog->getBoolValue(section.c_str(), "OffscreenReload", true));
@@ -722,9 +696,10 @@ void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
       connect(image_path, &QLineEdit::textChanged, this, [crosshair, set_crosshair_controls_enabled](const QString&) {
         set_crosshair_controls_enabled(crosshair->isChecked());
       });
-      form->addRow(tr("Screen / routing"), new QLabel(tr("Display 1 (placeholder)"), group));
     }
-  layout->addWidget(group); layout->addStretch(1);
+  layout->addWidget(group);
+  if (!m_dialog->isGameControlsEditor())
+    layout->addStretch(1);
 }
 
 void ArcadeControllerBindingWidget::clearBindings()
@@ -750,65 +725,101 @@ void ArcadeControllerBindingWidget::rebuildPage()
     }
     delete old_layout;
   }
+
+  m_type_combo = nullptr;
+  m_layout_combo = nullptr;
+  m_tabs = nullptr;
+
   QVBoxLayout* main = new QVBoxLayout(this);
-  QGroupBox* header = new QGroupBox(tr("Arcade Controller Port %1").arg(m_port_number + 1), this);
-  QHBoxLayout* header_layout = new QHBoxLayout(header);
-  m_type_combo = new QComboBox(header); m_layout_combo = new QComboBox(header);
-  ConfigureComboBoxPopup(m_type_combo, 10);
-  ConfigureComboBoxPopup(m_layout_combo);
-  for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
-    m_type_combo->addItem(QString::fromUtf8(info.display_name.data(), static_cast<int>(info.display_name.size())), static_cast<int>(info.type));
-  m_type_combo->setCurrentIndex(m_type_combo->findData(static_cast<int>(getType())));
-  header_layout->addWidget(new QLabel(tr("Controller Type"), header)); header_layout->addWidget(m_type_combo);
-  header_layout->addWidget(new QLabel(tr("Game / Layout"), header)); header_layout->addWidget(m_layout_combo);
-  QPushButton* clear = new QPushButton(tr("Clear Mapping"), header);
-  header_layout->addWidget(clear);
-  main->addWidget(header);
-  rebuildLayoutList();
-  connect(m_type_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-    const auto* info = Arcade::GetArcadeControllerTypeInfo(
-      static_cast<Arcade::ArcadeControllerType>(m_type_combo->currentData().toInt()));
-    if (!info)
-      return;
+  if (m_dialog->isGameControlsEditor())
+  {
+    main->setAlignment(Qt::AlignTop);
+  }
+  else
+  {
+    QGroupBox* header = new QGroupBox(tr("Arcade Controller Port %1").arg(m_port_number + 1), this);
+    QHBoxLayout* header_layout = new QHBoxLayout(header);
 
-    const Arcade::ArcadeControlLayoutInfo* default_layout = nullptr;
-    for (const Arcade::ArcadeControlLayoutInfo& candidate : Arcade::GetArcadeControlLayoutInfos())
+    m_type_combo = new QComboBox(header);
+    m_layout_combo = new QComboBox(header);
+    ConfigureComboBoxPopup(m_type_combo, 10);
+    ConfigureComboBoxPopup(m_layout_combo);
+    for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
     {
-      if (candidate.controller_type == info->type)
-      {
-        default_layout = &candidate;
-        break;
-      }
+      m_type_combo->addItem(
+        QString::fromUtf8(info.display_name.data(), static_cast<int>(info.display_name.size())),
+        static_cast<int>(info.type));
     }
+    m_type_combo->setCurrentIndex(m_type_combo->findData(static_cast<int>(getType())));
+    header_layout->addWidget(new QLabel(tr("Controller Type"), header));
+    header_layout->addWidget(m_type_combo);
+    header_layout->addWidget(new QLabel(tr("Game / Layout"), header));
+    header_layout->addWidget(m_layout_combo);
+    rebuildLayoutList();
 
-    m_dialog->beginSettingsBatch();
-    clearAllBindingValues();
-    clearControllerSpecificValues();
-    setStringValue("Type", info->name.data());
-    setStringValue("Layout", default_layout ? default_layout->layout_key.data() : "");
-    m_dialog->endSettingsBatch();
-    queueRebuild();
-  });
-  connect(m_layout_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-    const QString layout = m_layout_combo->currentData().toString();
-    const QByteArray layout_utf8 = layout.toUtf8();
-    const std::string section = getConfigSection();
-    const Arcade::ArcadeControlLayoutInfo* const current_info =
-      Arcade::GetArcadeControlLayoutInfo(m_dialog->getStringValue(section.c_str(), "Layout", ""));
-    if (current_info && current_info->layout_key == layout_utf8.constData())
-      return;
+    connect(m_type_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+      const auto* info = Arcade::GetArcadeControllerTypeInfo(
+        static_cast<Arcade::ArcadeControllerType>(m_type_combo->currentData().toInt()));
+      if (!info)
+        return;
 
-    m_dialog->beginSettingsBatch();
-    clearAllBindingValues();
-    setStringValue("Layout", layout_utf8.constData());
-    m_dialog->endSettingsBatch();
-    queueRebuild();
-  });
-  connect(clear, &QPushButton::clicked, this, &ArcadeControllerBindingWidget::clearBindings);
-  m_tabs = new QTabWidget(this); QWidget* bindings = new QWidget(m_tabs); QWidget* settings = new QWidget(m_tabs);
-  QVBoxLayout* bindings_layout = new QVBoxLayout(bindings); QVBoxLayout* settings_layout = new QVBoxLayout(settings);
-  addBindingsPage(bindings_layout); addSettingsPage(settings_layout);
-  m_tabs->addTab(bindings, tr("Bindings")); m_tabs->addTab(settings, tr("Settings")); main->addWidget(m_tabs);
+      const Arcade::ArcadeControlLayoutInfo* default_layout = nullptr;
+      for (const Arcade::ArcadeControlLayoutInfo& candidate : Arcade::GetArcadeControlLayoutInfos())
+      {
+        if (candidate.controller_type == info->type)
+        {
+          default_layout = &candidate;
+          break;
+        }
+      }
+
+      m_dialog->beginSettingsBatch();
+      clearAllBindingValues();
+      clearControllerSpecificValues();
+      setStringValue("Type", info->name.data());
+      setStringValue("Layout", default_layout ? default_layout->layout_key.data() : "");
+      m_dialog->endSettingsBatch();
+      queueRebuild();
+    });
+    connect(m_layout_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+      const QString layout = m_layout_combo->currentData().toString();
+      const QByteArray layout_utf8 = layout.toUtf8();
+      const std::string section = getConfigSection();
+      const Arcade::ArcadeControlLayoutInfo* const current_info =
+        Arcade::GetArcadeControlLayoutInfo(m_dialog->getStringValue(section.c_str(), "Layout", ""));
+      if (current_info && current_info->layout_key == layout_utf8.constData())
+        return;
+
+      m_dialog->beginSettingsBatch();
+      clearAllBindingValues();
+      setStringValue("Layout", layout_utf8.constData());
+      m_dialog->endSettingsBatch();
+      queueRebuild();
+    });
+
+    QPushButton* clear = new QPushButton(tr("Clear Mapping"), header);
+    header_layout->addWidget(clear);
+    connect(clear, &QPushButton::clicked, this, &ArcadeControllerBindingWidget::clearBindings);
+    main->addWidget(header);
+  }
+
+  m_tabs = new QTabWidget(this);
+  if (m_dialog->isGameControlsEditor())
+    m_tabs->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+  QWidget* bindings = new QWidget(m_tabs);
+  QVBoxLayout* bindings_layout = new QVBoxLayout(bindings);
+  addBindingsPage(bindings_layout);
+  m_tabs->addTab(bindings, tr("Bindings"));
+
+  if (hasAdditionalSettings())
+  {
+    QWidget* settings = new QWidget(m_tabs);
+    QVBoxLayout* settings_layout = new QVBoxLayout(settings);
+    addSettingsPage(settings_layout);
+    m_tabs->addTab(settings, tr("Settings"));
+  }
+
+  main->addWidget(m_tabs);
 }
 
 void ArcadeControllerBindingWidget::queueRebuild()

@@ -1253,11 +1253,11 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate or perform the current mini-game's pedal action"
-        kind: "axis"
       - key: "Steering"
-        displayName: "Steering — Steer or perform the current mini-game's wheel action"
+        displayName: "Steering"
+        kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
         kind: "axis"
 
   hyperbbc:
@@ -1409,15 +1409,15 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Steering"
+        displayName: "Steering"
+        kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
       - key: "View"
         displayName: "View — Toggle View"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer the pocket-size racing car"
-        kind: "axis"
 
   primglex:
     displayName: "J-League Soccer Prime Goal EX"
@@ -1577,15 +1577,15 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Accelerator"
+        displayName: "Speed Lever — Control train speed"
+        kind: "axis"
       - key: "Button1"
         displayName: "Button 1 — Left"
         kind: "button"
       - key: "Button2"
         displayName: "Button 2 — Right"
         kind: "button"
-      - key: "Accelerator"
-        displayName: "Speed Lever — Control train speed"
-        kind: "axis"
       - key: "Start"
         displayName: "Start / OK / Horn — Confirm / sound horn"
         kind: "button"
@@ -1682,23 +1682,23 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "SelectUp"
+        displayName: "Select Up — Move menu selection up"
+        kind: "button"
       - key: "SelectDown"
         displayName: "Select Down — Move menu selection down"
         kind: "button"
       - key: "Enter"
         displayName: "Enter / Confirm — Confirm"
-        kind: "button"
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
-        kind: "axis"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "SelectUp"
-        displayName: "Select Up — Move menu selection up"
         kind: "button"
 
   lbgrande:
@@ -1808,18 +1808,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
         kind: "axis"
       - key: "Select"
         displayName: "Select / Confirm — Select/confirm the current test"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer or perform the current driving test"
-        kind: "axis"
 
   tenkomor:
     displayName: "Tenkomori Shooting"
@@ -1883,15 +1883,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
-      - key: "Enter"
-        displayName: "Enter / Confirm — Confirm"
-        kind: "button"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "View"
+        displayName: "View Change — Change camera view"
+        kind: "button"
       - key: "Horn"
         displayName: "Horn — Sound horn"
         kind: "button"
@@ -1901,17 +1904,14 @@ controlLayouts:
       - key: "MusicNext"
         displayName: "Next Music — Next music track"
         kind: "button"
-      - key: "SelectDown"
-        displayName: "Select Down — Move menu selection down"
-        kind: "button"
       - key: "SelectUp"
         displayName: "Select Up — Move menu selection up"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "View"
-        displayName: "View Change — Change camera view"
+      - key: "SelectDown"
+        displayName: "Select Down — Move menu selection down"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / Confirm — Confirm"
         kind: "button"
 
   ftimpact:
@@ -7188,6 +7188,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -7228,6 +7229,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -11703,6 +11705,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:

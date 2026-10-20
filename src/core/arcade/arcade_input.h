@@ -33,7 +33,7 @@ struct LightgunPresentationState
   u32 sinden_border_width = 4;
 };
 
-void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si);
+void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std::string_view game_id = {});
 bool IsDigitalPressed(u32 port, std::string_view key);
 float GetAnalogValue(u32 port, std::string_view key);
 bool IsOperatorPressed(std::string_view key);

@@ -8,6 +8,7 @@
 #include "advancedsettingswidget.h"
 #include "audiosettingswidget.h"
 #include "consolesettingswidget.h"
+#include "controllersettingswindow.h"
 #include "systemlinksettingswidget.h"
 
 #include "achievementsettingswidget.h"
@@ -26,6 +27,7 @@
 #include "core/arcade/arcade_database.h"
 #include "core/game_database.h"
 #include "core/host.h"
+#include "core/system.h"
 
 #include "util/ini_settings_interface.h"
 
@@ -33,15 +35,22 @@
 #include "common/file_system.h"
 #include "common/log.h"
 
+#include <QtGui/QGuiApplication>
+#include <QtGui/QIcon>
+#include <QtGui/QScreen>
 #include <QtGui/QWheelEvent>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QFormLayout>
 #include <QtWidgets/QGroupBox>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QTextEdit>
+#include <QtCore/QTimer>
 #include <QtWidgets/QVBoxLayout>
+
+#include <algorithm>
 
 Log_SetChannel(SettingsWindow);
 
@@ -53,6 +62,7 @@ SettingsWindow::SettingsWindow() : QWidget()
   setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
   addPages();
   connectUi();
+  scheduleResizeToContents();
 }
 
 SettingsWindow::SettingsWindow(const std::string& path, const std::string& serial, const GameDatabase::Entry* entry,
@@ -72,12 +82,16 @@ SettingsWindow::SettingsWindow(const std::string& path, const std::string& seria
   setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
 
   addWidget(new GameSummaryWidget(path, m_game_serial, this, m_ui.settingsContainer), tr("Summary"),
-            QStringLiteral("file-list-line"),
+            QStringLiteral(":/icons/arcadeduck/summary.png"),
             tr("<strong>Summary</strong><hr>This page shows information and per-game settings for the selected arcade "
                "set."));
   addPages();
   connectUi();
 
+  if (m_is_arcade_game)
+    setWindowTitle(tr("%1 - Game Properties").arg(windowTitle()));
+
+  scheduleResizeToContents();
   s_open_game_properties_dialogs.push_back(this);
 }
 
@@ -94,35 +108,54 @@ void SettingsWindow::closeEvent(QCloseEvent* event)
     deleteLater();
 }
 
+void SettingsWindow::showEvent(QShowEvent* event)
+{
+  QWidget::showEvent(event);
+  scheduleResizeToContents();
+}
+
 void SettingsWindow::addPages()
 {
   addWidget(
     m_interface_settings = new InterfaceSettingsWidget(this, m_ui.settingsContainer), tr("Interface"),
-    QStringLiteral("settings-3-line"),
+    QStringLiteral(":/icons/arcadeduck/interface.png"),
     tr("<strong>Interface Settings</strong><hr>These options control how the emulator looks and "
        "behaves.<br><br>Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
 
   if (isArcadeGameSettings())
   {
     addWidget(m_console_settings = new ConsoleSettingsWidget(this, m_ui.settingsContainer), tr("Machine"),
-              QStringLiteral("chip-2-line"),
+              QStringLiteral(":/icons/arcadeduck/machine.png"),
               tr("<strong>Machine Settings</strong><hr>These options determine the configuration of the simulated "
                  "arcade machine."));
-    addWidget(createArcadeOperatorPage(), tr("Operator"), QStringLiteral("chip-line"),
+    addWidget(createArcadeOperatorPage(), tr("Operator"), QStringLiteral(":/icons/arcadeduck/operator.png"),
               tr("<strong>Operator Settings</strong><hr>Configure game-specific physical DIP switches and cabinet "
                  "options where supported."));
-    addWidget(createArcadeControlsPage(), tr("Controls"), QStringLiteral(":/icons/arcade-cabinet-100.png"),
-              tr("<strong>Controls</strong><hr>Shows the recommended four-port arcade layout for this game."));
+    m_arcade_controls_category_index = m_ui.settingsCategory->count();
+    addWidget(createArcadeControlsPage(), tr("Controls"), QStringLiteral(":/icons/arcadeduck/controls.png"),
+              tr("<strong>Controls</strong><hr>Configure input mappings for this game."));
+
+    const Arcade::Database::GameDefinition* const arcade_game = Arcade::Database::GetGame(m_game_serial);
+    if (arcade_game && arcade_game->supports_system_link)
+    {
+      addWidget(
+        new SystemLinkSettingsWidget(this, m_ui.settingsContainer), tr("System Link"),
+        QStringLiteral(":/icons/arcadeduck/systemlink.png"),
+        tr("<strong>System Link Settings</strong><hr>Configure network transport for this game's linked cabinet "
+           "hardware. Cabinet identity and other hardware-specific link options remain controlled by the game's "
+           "service/operator settings."));
+    }
+
     addWidget(m_graphics_settings = new GraphicsSettingsWidget(this, m_ui.settingsContainer), tr("Graphics"),
-              QStringLiteral("image-fill"),
+              QStringLiteral(":/icons/arcadeduck/graphics.png"),
               tr("<strong>Graphics Settings</strong><hr>ArcadeDuck defaults prioritize accurate arcade display "
                  "geometry, stable physical aspect ratio, original rendering behavior, and broad compatibility. "
                  "Visual enhancements can be enabled globally or overridden for individual games."));
     addWidget(m_post_processing_settings = new PostProcessingSettingsWidget(this, m_ui.settingsContainer),
-              tr("Post-Processing"), QStringLiteral("sun-fill"),
+              tr("Post-Processing"), QStringLiteral(":/icons/arcadeduck/postprocessing.png"),
               tr("<strong>Post-Processing Settings</strong><hr>Post processing alters the displayed image with filters."));
     addWidget(m_audio_settings = new AudioSettingsWidget(this, m_ui.settingsContainer), tr("Audio"),
-              QStringLiteral("volume-up-line"),
+              QStringLiteral(":/icons/arcadeduck/audio.png"),
               tr("<strong>Audio Settings</strong><hr>These options control per-game audio output."));
 
     return;
@@ -132,19 +165,19 @@ void SettingsWindow::addPages()
   {
     addWidget(
       m_game_list_settings = new GameListSettingsWidget(this, m_ui.settingsContainer), tr("Game List"),
-      QStringLiteral("folder-open-line"),
+      QStringLiteral(":/icons/arcadeduck/gamelist.png"),
       tr("<strong>Game List Settings</strong><hr>The list above shows ArcadeDuck content directories. Recognized "
          "game archives populate the game list, and the same directories are searched for supporting media. "
          "Directories can be added, removed, and switched to recursive/non-recursive game scanning."));
     addWidget(
       m_folder_settings = new FolderSettingsWidget(this, m_ui.settingsContainer), tr("Folders"),
-      QStringLiteral("folder-settings-line"),
+      QStringLiteral(":/icons/arcadeduck/addgamedirectory.png"),
       tr("<strong>Folder Settings</strong><hr>These options control where ArcadeDuck will save runtime data files."));
   }
 
   addWidget(
     m_console_settings = new ConsoleSettingsWidget(this, m_ui.settingsContainer), tr("Machine"),
-    QStringLiteral("chip-2-line"),
+    QStringLiteral(":/icons/arcadeduck/machine.png"),
     tr("<strong>Machine Settings</strong><hr>These options determine the configuration of the emulated "
        "machine.<br><br>Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
 
@@ -152,36 +185,34 @@ void SettingsWindow::addPages()
   {
     addWidget(
       m_operator_settings = new OperatorSettingsWidget(this, m_ui.settingsContainer), tr("Operator"),
-      QStringLiteral("chip-line"),
+      QStringLiteral(":/icons/arcadeduck/operator.png"),
       tr("<strong>Operator Settings</strong><hr>Configure cabinet operator controls, BIOS file storage, and future "
          "machine-switch options.<br><br>Test and Service bindings are global and are not stored in game profiles."));
-    addWidget(
-      new SystemLinkSettingsWidget(this, m_ui.settingsContainer), tr("System Link"),
-      QStringLiteral("global-line"),
-      tr("<strong>System Link Settings</strong><hr>Configure network transport for supported linked arcade "
-         "hardware. Cabinet count and cabinet identity remain controlled by each game's own service/operator settings."));
+    addWidget(m_controller_settings = new ControllerSettingsWindow(nullptr, m_ui.settingsContainer, false, nullptr, true),
+              tr("Controls"), QStringLiteral(":/icons/arcadeduck/controls.png"),
+              tr("<strong>Controls</strong><hr>Configure global input sources and hotkeys."));
   }
 
   addWidget(m_graphics_settings = new GraphicsSettingsWidget(this, m_ui.settingsContainer), tr("Graphics"),
-            QStringLiteral("image-fill"),
+            QStringLiteral(":/icons/arcadeduck/graphics.png"),
             tr("<strong>Graphics Settings</strong><hr>ArcadeDuck defaults prioritize accurate arcade display geometry, "
                "stable physical aspect ratio, original rendering behavior, and broad compatibility. Visual "
                "enhancements can be enabled globally or overridden for individual games."));
   addWidget(
     m_post_processing_settings = new PostProcessingSettingsWidget(this, m_ui.settingsContainer), tr("Post-Processing"),
-    QStringLiteral("sun-fill"),
+    QStringLiteral(":/icons/arcadeduck/postprocessing.png"),
     tr("<strong>Post-Processing Settings</strong><hr>Post processing allows you to alter the appearance of the image "
        "displayed on the screen with various filters. Shaders will be executed in sequence."));
   addWidget(
     m_audio_settings = new AudioSettingsWidget(this, m_ui.settingsContainer), tr("Audio"),
-    QStringLiteral("volume-up-line"),
+    QStringLiteral(":/icons/arcadeduck/audio.png"),
     tr("<strong>Audio Settings</strong><hr>These options control the audio output of the machine. Mouse over an option "
        "for additional information."));
 
   if (!isPerGameSettings())
   {
     addWidget(m_advanced_settings = new AdvancedSettingsWidget(this, m_ui.settingsContainer), tr("Advanced"),
-              QStringLiteral("alert-line"),
+              QStringLiteral(":/icons/arcadeduck/advanced.png"),
               tr("<strong>Advanced Settings</strong><hr>These options control logging and internal behavior of the "
                  "emulator. Mouse over an option for additional information, and Shift+Wheel to scroll this panel."));
 
@@ -374,46 +405,72 @@ QWidget* SettingsWindow::createArcadeControlsPage()
 {
   QWidget* page = new QWidget(m_ui.settingsContainer);
   QVBoxLayout* layout = new QVBoxLayout(page);
-  QLabel* description = new QLabel(tr("These are ArcadeDuck's recommended controls for this game. The active input profile "
-                                      "is selected and edited on the Summary page."), page);
-  description->setWordWrap(true);
-  layout->addWidget(description);
 
-  QGroupBox* group = new QGroupBox(tr("Recommended Layout"), page);
-  QFormLayout* form = new QFormLayout(group);
-  const Arcade::ArcadeGameControlProfile* profile = Arcade::GetArcadeGameControlProfile(m_game_serial);
-  if (!profile)
+  const Arcade::ArcadeGameControlProfile* const profile = Arcade::GetArcadeGameControlProfile(m_game_serial);
+  const bool use_game_settings = m_sif->GetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", false);
+  const std::string legacy_profile_name = m_sif->GetStringValue("ArcadeProfiles", "InputProfileName", "");
+
+  bool has_controller_settings = false;
+  for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
   {
-    form->addRow(new QLabel(tr("No recommended arcade control profile is available."), group));
-  }
-  else
-  {
-    for (u32 i = 0; i < Arcade::NUM_ARCADE_CONTROLLER_PORTS; i++)
+    const std::string section = std::string("ArcadeControllerPort") + std::to_string(port + 1);
+    if (m_sif->ContainsValue(section.c_str(), "Type") || m_sif->ContainsValue(section.c_str(), "Layout"))
     {
-      const Arcade::ArcadePortProfile& port = profile->ports[i];
-      QString value = tr("None");
-      if (port.controller_type != Arcade::ArcadeControllerType::None)
-      {
-        const Arcade::ArcadeControllerTypeInfo* type = Arcade::GetArcadeControllerTypeInfo(port.controller_type);
-        const Arcade::ArcadeControlLayoutInfo* layout_info = Arcade::GetArcadeControlLayoutInfo(port.game_layout_key);
-        value = type ? QString::fromUtf8(type->display_name.data(), static_cast<int>(type->display_name.size())) : tr("Unknown");
-        if (layout_info)
-          value += QStringLiteral(" — ") + QString::fromUtf8(layout_info->display_name.data(), static_cast<int>(layout_info->display_name.size()));
-        if (port.joystick_mode == Arcade::ArcadeJoystickMode::FourWay)
-          value += tr(" (4-way)");
-        else if (port.joystick_mode == Arcade::ArcadeJoystickMode::EightWay)
-          value += tr(" (8-way)");
-      }
-      form->addRow(tr("Port %1:").arg(i + 1), new QLabel(value, group));
+      has_controller_settings = true;
+      break;
     }
   }
-  layout->addWidget(group);
-  layout->addStretch(1);
+
+  if (!use_game_settings || !has_controller_settings)
+  {
+    bool copied_legacy_profile = false;
+    if (!use_game_settings && !legacy_profile_name.empty())
+    {
+      INISettingsInterface profile_settings(System::GetInputProfilePath(legacy_profile_name));
+      if (FileSystem::FileExists(profile_settings.GetFileName().c_str()) && profile_settings.Load())
+      {
+        ControllerSettingsWindow::copyArcadeControllerConfiguration(m_sif.get(), profile_settings, profile);
+        copied_legacy_profile = true;
+      }
+    }
+
+    if (!copied_legacy_profile)
+    {
+      const auto lock = Host::GetSettingsLock();
+      ControllerSettingsWindow::copyArcadeControllerConfiguration(
+        m_sif.get(), *Host::Internal::GetBaseSettingsLayer(), profile);
+    }
+  }
+  else if (profile)
+  {
+    for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
+    {
+      const Arcade::ArcadePortProfile& port_profile = profile->ports[port];
+      const Arcade::ArcadeControllerTypeInfo* const type_info =
+        Arcade::GetArcadeControllerTypeInfo(port_profile.controller_type);
+      const std::string section = std::string("ArcadeControllerPort") + std::to_string(port + 1);
+      m_sif->SetStringValue(section.c_str(), "Type", type_info ? type_info->name.data() : "none");
+      m_sif->SetStringValue(section.c_str(), "Layout", port_profile.game_layout_key.data());
+    }
+  }
+
+  m_sif->DeleteValue("ArcadeProfiles", "InputProfileName");
+  m_sif->SetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", true);
+  m_sif->SetBoolValue("ArcadeProfiles", "GameSettingsInitialized", true);
+  saveAndReloadGameSettings();
+
+  m_arcade_game_controls = new ControllerSettingsWindow(m_sif.get(), page, true, profile);
+  layout->addWidget(m_arcade_game_controls);
   return page;
 }
 
 void SettingsWindow::reloadPages()
 {
+  m_arcade_game_controls = nullptr;
+  m_arcade_controls_category_index = -1;
+  if (m_ui.clearControlMapping)
+    m_ui.clearControlMapping->hide();
+
   const int min_count = isPerGameSettings() ? 1 : 0;
   while (m_ui.settingsContainer->count() > min_count)
   {
@@ -427,6 +484,7 @@ void SettingsWindow::reloadPages()
   }
 
   addPages();
+  scheduleResizeToContents();
 }
 
 void SettingsWindow::connectUi()
@@ -459,6 +517,11 @@ void SettingsWindow::connectUi()
     connect(m_ui.copyGlobalSettings, &QPushButton::clicked, this, &SettingsWindow::onCopyGlobalSettingsClicked);
   if (m_ui.clearGameSettings)
     connect(m_ui.clearGameSettings, &QPushButton::clicked, this, &SettingsWindow::onClearSettingsClicked);
+  if (m_ui.clearControlMapping)
+  {
+    m_ui.clearControlMapping->hide();
+    connect(m_ui.clearControlMapping, &QPushButton::clicked, this, &SettingsWindow::onClearControlMappingClicked);
+  }
 }
 
 void SettingsWindow::addWidget(QWidget* widget, QString title, QString icon, QString help_text)
@@ -470,7 +533,14 @@ void SettingsWindow::addWidget(QWidget* widget, QString title, QString icon, QSt
   if (!icon.isEmpty())
     item->setIcon(icon.startsWith(QStringLiteral(":/")) ? QIcon(icon) : QIcon::fromTheme(icon));
 
-  m_ui.settingsContainer->addWidget(widget);
+  QScrollArea* scroll_area = new QScrollArea(m_ui.settingsContainer);
+  scroll_area->setFrameShape(QFrame::NoFrame);
+  scroll_area->setWidgetResizable(true);
+  scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll_area->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+  scroll_area->setWidget(widget);
+  m_ui.settingsContainer->addWidget(scroll_area);
 
   m_category_help_text[index] = std::move(help_text);
 }
@@ -501,11 +571,86 @@ void SettingsWindow::setCategoryRow(int index)
   m_ui.settingsCategory->setCurrentRow(index);
 }
 
+void SettingsWindow::setControlsCategory(ControllerSettingsWindow::Category category)
+{
+  if (m_controller_settings)
+    m_controller_settings->setCategory(category);
+}
+
+void SettingsWindow::scheduleResizeToContents()
+{
+  QTimer::singleShot(0, this, &SettingsWindow::resizeToContents);
+}
+
+void SettingsWindow::resizeToContents()
+{
+  if (!layout())
+    return;
+
+  layout()->activate();
+
+  QSize page_hint;
+  for (int i = 0; i < m_ui.settingsContainer->count(); i++)
+  {
+    QScrollArea* const scroll_area = qobject_cast<QScrollArea*>(m_ui.settingsContainer->widget(i));
+    QWidget* const page = scroll_area ? scroll_area->widget() : m_ui.settingsContainer->widget(i);
+    if (!page)
+      continue;
+
+    if (page->layout())
+      page->layout()->activate();
+    page_hint = page_hint.expandedTo(page->sizeHint()).expandedTo(page->minimumSizeHint());
+  }
+
+  const QMargins margins = m_ui.gridLayout->contentsMargins();
+  const int spacing = m_ui.gridLayout->spacing();
+  const int body_height = std::max(page_hint.height(), m_ui.settingsCategory->sizeHint().height());
+  const int footer_height = m_ui.footerLayout->sizeHint().height();
+  const int desired_height = margins.top() + body_height + m_ui.helpText->height() + footer_height +
+                             (spacing * 2) + margins.bottom();
+  const int desired_width = margins.left() + m_ui.settingsCategory->width() + page_hint.width() + spacing +
+                            margins.right();
+
+  QScreen* target_screen = QGuiApplication::screenAt(frameGeometry().center());
+  if (!target_screen)
+    target_screen = screen() ? screen() : QGuiApplication::primaryScreen();
+  if (!target_screen)
+  {
+    resize(std::max(780, desired_width), desired_height);
+    return;
+  }
+
+  const QRect available = target_screen->availableGeometry().adjusted(8, 8, -8, -8);
+  const QRect current_frame = frameGeometry();
+  const int frame_width = std::max(0, current_frame.width() - width());
+  const int frame_height = std::max(0, current_frame.height() - height());
+  const int maximum_width = std::max(1, std::min(920, available.width() - frame_width));
+  const int minimum_width = std::min(780, maximum_width);
+  const int maximum_height = std::max(1, available.height() - frame_height);
+  resize(std::clamp(desired_width, minimum_width, maximum_width), std::min(desired_height, maximum_height));
+
+  const QRect resized_frame = frameGeometry();
+  QPoint target_position = pos();
+  if (resized_frame.left() < available.left())
+    target_position.rx() += available.left() - resized_frame.left();
+  else if (resized_frame.right() > available.right())
+    target_position.rx() -= resized_frame.right() - available.right();
+  if (resized_frame.top() < available.top())
+    target_position.ry() += available.top() - resized_frame.top();
+  else if (resized_frame.bottom() > available.bottom())
+    target_position.ry() -= resized_frame.bottom() - available.bottom();
+  if (target_position != pos())
+    move(target_position);
+}
+
 void SettingsWindow::onCategoryCurrentRowChanged(int row)
 {
   DebugAssert(row < static_cast<int>(MAX_SETTINGS_WIDGETS));
   m_ui.settingsContainer->setCurrentIndex(row);
   m_ui.helpText->setText(m_category_help_text[row]);
+  if (m_ui.clearControlMapping)
+    m_ui.clearControlMapping->setVisible(m_arcade_game_controls && row == m_arcade_controls_category_index);
+  scheduleResizeToContents();
 }
 
 void SettingsWindow::onRestoreDefaultsClicked()
@@ -566,6 +711,12 @@ void SettingsWindow::onClearSettingsClicked()
   reloadPages();
 
   QMessageBox::information(this, tr("ArcadeDuck Settings"), tr("Per-game configuration cleared."));
+}
+
+void SettingsWindow::onClearControlMappingClicked()
+{
+  if (m_arcade_game_controls)
+    m_arcade_game_controls->clearCurrentArcadeMapping();
 }
 
 void SettingsWindow::registerWidgetHelp(QObject* object, QString title, QString recommended_value, QString text)
@@ -870,9 +1021,9 @@ bool SettingsWindow::hasGameTrait(GameDatabase::Trait trait)
 
 void SettingsWindow::openGamePropertiesDialog(const std::string& path, const std::string& serial)
 {
-  const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::IdentifyArchive(path);
+  const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::GetGame(serial);
   if (!arcade_game)
-    arcade_game = Arcade::Database::GetGame(serial);
+    arcade_game = Arcade::Database::IdentifyArchive(path);
 
   const std::string real_serial = arcade_game ? arcade_game->id : serial;
   std::string ini_filename = System::GetGameSettingsPath(real_serial);

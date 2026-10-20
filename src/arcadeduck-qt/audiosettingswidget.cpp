@@ -68,7 +68,6 @@ AudioSettingsWidget::AudioSettingsWidget(SettingsWindow* dialog, QWidget* parent
   m_ui.label_wasapiRawOutput->setVisible(false);
   m_ui.wasapiRawOutput->setVisible(false);
 #endif
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.muteCDAudio, "CDROM", "MuteCDAudio", false);
   connect(m_ui.audioBackend, &QComboBox::currentIndexChanged, this, &AudioSettingsWidget::updateDriverNames);
   connect(m_ui.expansionMode, &QComboBox::currentIndexChanged, this, &AudioSettingsWidget::onExpansionModeChanged);
   connect(m_ui.expansionSettings, &QToolButton::clicked, this, &AudioSettingsWidget::onExpansionSettingsClicked);
@@ -147,9 +146,6 @@ AudioSettingsWidget::AudioSettingsWidget(SettingsWindow* dialog, QWidget* parent
                              tr("Resets arcade gain adjustment back to 0 dB."));
   dialog->registerWidgetHelp(m_ui.muted, tr("Mute All Sound"), tr("Unchecked"),
                              tr("Prevents the emulator from producing any audible sound."));
-  dialog->registerWidgetHelp(m_ui.muteCDAudio, tr("Mute CD Audio"), tr("Unchecked"),
-                             tr("Forcibly mutes both CD-DA and XA audio from the CD-ROM. Can be used to disable "
-                                "background music in some games."));
   dialog->registerWidgetHelp(m_ui.expansionMode, tr("Expansion Mode"), tr("Disabled (Stereo)"),
                              tr("Determines how audio is expanded from stereo to surround for supported games. This "
                                 "includes games that support Dolby Pro Logic/Pro Logic II."));

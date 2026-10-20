@@ -2507,7 +2507,6 @@ void FullscreenUI::DrawSettingsWindow()
       {SettingsPage::Folders, "fullscreenui/settings/folder-settings-line.png", FSUI_NSTR("Folders")},
       {SettingsPage::Machine, "fullscreenui/settings/chip-2-line.png", FSUI_NSTR("Machine")},
       {SettingsPage::Operator, "fullscreenui/settings/chip-line.png", FSUI_NSTR("Operator")},
-      {SettingsPage::SystemLink, "fullscreenui/settings/global-line.png", FSUI_NSTR("System Link")},
       {SettingsPage::Controls, "fullscreenui/settings/arcade-cabinet-100.png", FSUI_NSTR("Controls")},
       {SettingsPage::Hotkey, "fullscreenui/settings/keyboard-line.png", FSUI_NSTR("Hotkeys")},
       {SettingsPage::Graphics, "fullscreenui/settings/image-fill.png", FSUI_NSTR("Graphics")},
@@ -2524,21 +2523,46 @@ void FullscreenUI::DrawSettingsWindow()
       {SettingsPage::PostProcessing, "fullscreenui/settings/sun-fill.png", FSUI_NSTR("Post-Processing")},
       {SettingsPage::Audio, "fullscreenui/settings/volume-up-line.png", FSUI_NSTR("Audio")},
     };
+    static constexpr SettingsPageEntry per_game_link_pages[] = {
+      {SettingsPage::Interface, "fullscreenui/settings/settings-3-line.png", FSUI_NSTR("Interface")},
+      {SettingsPage::Machine, "fullscreenui/settings/chip-2-line.png", FSUI_NSTR("Machine")},
+      {SettingsPage::Operator, "fullscreenui/settings/chip-line.png", FSUI_NSTR("Operator")},
+      {SettingsPage::Controls, "fullscreenui/settings/arcade-cabinet-100.png", FSUI_NSTR("Controls")},
+      {SettingsPage::SystemLink, "fullscreenui/settings/global-line.png", FSUI_NSTR("System Link")},
+      {SettingsPage::Graphics, "fullscreenui/settings/image-fill.png", FSUI_NSTR("Graphics")},
+      {SettingsPage::PostProcessing, "fullscreenui/settings/sun-fill.png", FSUI_NSTR("Post-Processing")},
+      {SettingsPage::Audio, "fullscreenui/settings/volume-up-line.png", FSUI_NSTR("Audio")},
+    };
 
     const bool game_settings = IsEditingGameSettings(GetEditingSettingsInterface());
-    const u32 count =
-      game_settings ? static_cast<u32>(std::size(per_game_pages)) : static_cast<u32>(std::size(global_pages));
+    const Arcade::Database::GameDefinition* arcade_game = nullptr;
+    if (game_settings && s_game_settings_entry)
+    {
+      arcade_game = Arcade::Database::GetGame(s_game_settings_entry->serial);
+      if (!arcade_game)
+        arcade_game = Arcade::Database::IdentifyArchive(s_game_settings_entry->path);
+    }
+    const bool supports_system_link = arcade_game && arcade_game->supports_system_link;
 
-    const SettingsPageEntry* pages = game_settings ? per_game_pages : global_pages;
+    const SettingsPageEntry* pages =
+      game_settings ? (supports_system_link ? per_game_link_pages : per_game_pages) : global_pages;
+    const u32 count = game_settings ?
+                        (supports_system_link ? static_cast<u32>(std::size(per_game_link_pages)) :
+                                                static_cast<u32>(std::size(per_game_pages))) :
+                        static_cast<u32>(std::size(global_pages));
     u32 index = 0;
+    bool page_found = false;
     for (u32 i = 0; i < count; i++)
     {
       if (pages[i].page == s_settings_page)
       {
         index = i;
+        page_found = true;
         break;
       }
     }
+    if (!page_found)
+      s_settings_page = pages[0].page;
 
     BeginNavBar();
 
@@ -2895,13 +2919,12 @@ void FullscreenUI::DrawInterfaceSettingsPage()
     FSUI_CSTR("Determines whether a prompt will be displayed to confirm shutting down the emulator/game "
               "when the hotkey is pressed."),
     "Main", "ConfirmPowerOff", true);
-  DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_SAVE, "Save State On Exit"),
-                    FSUI_CSTR("Automatically saves the emulator state when powering down or exiting. You can then "
-                              "resume directly from where you left off next time."),
-                    "Main", "SaveStateOnExit", true);
-  DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_WINDOW_MAXIMIZE, "Start Fullscreen"),
-                    FSUI_CSTR("Automatically switches to fullscreen mode when the program is started."), "Main",
-                    "StartFullscreen", false);
+  if (!IsEditingGameSettings(bsi))
+  {
+    DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_WINDOW_MAXIMIZE, "Start Fullscreen"),
+                      FSUI_CSTR("Automatically switches to fullscreen mode when the program is started."), "Main",
+                      "StartFullscreen", false);
+  }
   DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_MOUSE, "Double-Click Toggles Fullscreen"),
                     FSUI_CSTR("Switches between full screen and windowed when the window is double-clicked."), "Main",
                     "DoubleClickTogglesFullscreen", true);
@@ -3014,7 +3037,7 @@ void FullscreenUI::DrawFoldersSettingsPage()
 
 void FullscreenUI::DrawSystemLinkSettingsPage()
 {
-  SettingsInterface* bsi = GetEditingSettingsInterface(false);
+  SettingsInterface* bsi = GetEditingSettingsInterface();
   const bool enabled = bsi->GetBoolValue("SystemLink", "Enabled", false);
   const std::string server_address = bsi->GetStringValue("SystemLink", "ServerAddress", "127.0.0.1");
 
@@ -3037,7 +3060,7 @@ void FullscreenUI::DrawSystemLinkSettingsPage()
           return;
 
         auto lock = Host::GetSettingsLock();
-        SettingsInterface* bsi = GetEditingSettingsInterface(false);
+        SettingsInterface* bsi = GetEditingSettingsInterface();
         bsi->SetStringValue("SystemLink", "ServerAddress", value.c_str());
         SetSettingsChanged(bsi);
       });
@@ -3402,8 +3425,13 @@ static void DrawArcadePortBindings(SettingsInterface* bsi, u32 port, Arcade::Arc
                                    const Arcade::ArcadeControlLayoutInfo* layout)
 {
   const TinyString section = TinyString::from_format("ArcadeControllerPort{}", port + 1);
+  const bool use_buttons_as_axis =
+    type == Arcade::ArcadeControllerType::Driving &&
+    FullscreenUI::GetEffectiveBoolSetting(bsi, section, "UseButtonsAsAxis", false);
   bool has_coin = false;
   bool has_start = false;
+  const char* driving_coin_label = nullptr;
+  const char* driving_start_label = nullptr;
 
   if (layout && layout->controller_type == type)
   {
@@ -3411,11 +3439,37 @@ static void DrawArcadePortBindings(SettingsInterface* bsi, u32 port, Arcade::Arc
     {
       has_coin |= (binding.binding_key == "Coin");
       has_start |= (binding.binding_key == "Start");
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Coin")
+      {
+        driving_coin_label = binding.display_name.data();
+        continue;
+      }
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Start")
+      {
+        driving_start_label = binding.display_name.data();
+        continue;
+      }
+
       const InputBindingInfo::Type binding_type =
         binding.kind == Arcade::ArcadeControlBindingKind::Axis ? InputBindingInfo::Type::Axis :
                                                                  InputBindingInfo::Type::Button;
-      FullscreenUI::DrawInputBindingButton(bsi, binding_type, section, binding.binding_key.data(),
-                                           binding.display_name.data(), nullptr, true);
+      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Steering")
+      {
+        FullscreenUI::DrawInputBindingButton(bsi, binding_type, section, binding.binding_key.data(),
+                                             binding.display_name.data(), nullptr, true);
+        if (use_buttons_as_axis)
+        {
+          FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "SteeringLeft",
+                                               "Steering Left", nullptr);
+          FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "SteeringRight",
+                                               "Steering Right", nullptr);
+        }
+      }
+      else
+      {
+        FullscreenUI::DrawInputBindingButton(bsi, binding_type, section, binding.binding_key.data(),
+                                             binding.display_name.data(), nullptr, true);
+      }
     }
   }
   else if (type == Arcade::ArcadeControllerType::Trackball)
@@ -3439,10 +3493,20 @@ static void DrawArcadePortBindings(SettingsInterface* bsi, u32 port, Arcade::Arc
     FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Reload", "Reload", nullptr);
   }
 
-  if (!has_coin)
-    FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Coin", "Coin", nullptr);
-  if (!has_start)
-    FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Start", "Start", nullptr);
+  if (type == Arcade::ArcadeControllerType::Driving)
+  {
+    FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Coin",
+                                         driving_coin_label ? driving_coin_label : "Coin", nullptr);
+    FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Start",
+                                         driving_start_label ? driving_start_label : "Start", nullptr);
+  }
+  else
+  {
+    if (!has_coin)
+      FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Coin", "Coin", nullptr);
+    if (!has_start)
+      FullscreenUI::DrawInputBindingButton(bsi, InputBindingInfo::Type::Button, section, "Start", "Start", nullptr);
+  }
 }
 
 void FullscreenUI::DrawControlsSettingsPage()
@@ -3622,24 +3686,35 @@ void FullscreenUI::DrawControlsSettingsPage()
                        });
     }
 
+    if (type == Arcade::ArcadeControllerType::Driving && layout)
+    {
+      const bool has_steering = std::any_of(
+        layout->bindings.begin(), layout->bindings.end(), [](const Arcade::ArcadeControlLayoutBindingInfo& binding) {
+          return binding.kind == Arcade::ArcadeControlBindingKind::Axis && binding.binding_key == "Steering";
+        });
+      if (has_steering)
+      {
+        DrawToggleSetting(bsi, FSUI_ICONSTR(ICON_FA_KEYBOARD, "Use Buttons as Axis"),
+                          FSUI_CSTR("Adds Steering Left and Steering Right bindings for keyboard or digital controller input."),
+                          section, "UseButtonsAsAxis", false, true, false);
+      }
+    }
+
     if (type == Arcade::ArcadeControllerType::Trackball || type == Arcade::ArcadeControllerType::Lightgun)
     {
-      static constexpr std::array<std::pair<const char*, const char*>, 4> input_modes = {{
+      static constexpr std::array<std::pair<const char*, const char*>, 2> input_modes = {{
         {"NativeRawInputDevice", "Native Raw Input Device"},
-        {"BoundAxis", "Bound Axis"},
-        {"AnalogCursor", "Analog Cursor"},
-        {"AnalogVelocity", "Analog Velocity"},
+        {"BoundAxis", "Mapped Axis"},
       }};
       const TinyString input_mode = GetEffectiveTinyStringSetting(bsi, section, "InputMode", "BoundAxis");
-      const auto mode_it = std::find_if(input_modes.begin(), input_modes.end(),
-                                        [&input_mode](const auto& mode) { return mode.first == input_mode; });
-      const char* mode_name = mode_it != input_modes.end() ? mode_it->second : FSUI_CSTR("Bound Axis");
+      const bool native_input = input_mode == "NativeRawInputDevice";
+      const char* mode_name = native_input ? FSUI_CSTR("Native Raw Input Device") : FSUI_CSTR("Mapped Axis");
       if (MenuButtonWithValue(FSUI_ICONSTR(ICON_FA_MOUSE, "Pointer Input Mode"),
-                              FSUI_CSTR("Selects absolute, relative, or bound-axis pointer input."), mode_name))
+                              FSUI_CSTR("Selects a raw pointer device or mapped analog axes."), mode_name))
       {
         ImGuiFullscreen::ChoiceDialogOptions options;
         for (const auto& [value, name] : input_modes)
-          options.emplace_back(name, value == input_mode);
+          options.emplace_back(name, (value == std::string_view("NativeRawInputDevice")) == native_input);
 
         OpenChoiceDialog(TinyString::from_format(FSUI_FSTR("Arcade Port {} Pointer Mode"), port + 1), false,
                          std::move(options), [game_settings, port](s32 index, const std::string&, bool) {
@@ -3654,7 +3729,7 @@ void FullscreenUI::DrawControlsSettingsPage()
                          });
       }
 
-      if (input_mode == "NativeRawInputDevice")
+      if (native_input)
       {
         const TinyString current_device = GetEffectiveTinyStringSetting(bsi, section, "PhysicalDevice", "");
         const TinyString current_name = GetEffectiveTinyStringSetting(bsi, section, "PhysicalDeviceName", "");
@@ -4686,10 +4761,6 @@ void FullscreenUI::DrawAudioSettingsPage()
   DrawToggleSetting(bsi, FSUI_CSTR("Mute All Sound"),
                     FSUI_CSTR("Prevents the emulator from producing any audible sound."), "Audio", "OutputMuted",
                     false);
-  DrawToggleSetting(bsi, FSUI_CSTR("Mute CD Audio"),
-                    FSUI_CSTR("Forcibly mutes both CD-DA and XA audio from the CD-ROM. Can be used to "
-                              "disable background music in some games."),
-                    "CDROM", "MuteCDAudio", false);
 
   MenuHeading(FSUI_CSTR("Backend Settings"));
 
@@ -4907,10 +4978,6 @@ void FullscreenUI::DrawAdvancedSettingsPage()
                     FSUI_CSTR("Enables more precise frame pacing at the cost of battery life."), "Main",
                     "IncreaseTimerResolution", true);
 #endif
-
-  DrawToggleSetting(bsi, FSUI_CSTR("Create Save State Backups"),
-                    FSUI_CSTR("Renames existing save states when saving to a backup file."), "Main",
-                    "CreateSaveStateBackups", false);
 
   MenuHeading(FSUI_CSTR("Display Settings"));
   DrawToggleSetting(bsi, FSUI_CSTR("Show Status Indicators"),
@@ -6916,7 +6983,6 @@ TRANSLATE_NOOP("FullscreenUI", "Audio");
 TRANSLATE_NOOP("FullscreenUI", "Audio Backend");
 TRANSLATE_NOOP("FullscreenUI", "Audio Control");
 TRANSLATE_NOOP("FullscreenUI", "Automatic based on window size");
-TRANSLATE_NOOP("FullscreenUI", "Automatically saves the emulator state when powering down or exiting. You can then resume directly from where you left off next time.");
 TRANSLATE_NOOP("FullscreenUI", "Automatically switches to fullscreen mode when the program is started.");
 TRANSLATE_NOOP("FullscreenUI", "Avoids calls to C++ code, significantly speeding up the recompiler.");
 TRANSLATE_NOOP("FullscreenUI", "Back");
@@ -6926,7 +6992,7 @@ TRANSLATE_NOOP("FullscreenUI", "Behavior");
 TRANSLATE_NOOP("FullscreenUI", "Bezels Directory");
 TRANSLATE_NOOP("FullscreenUI", "Board configuration is selected by the arcade database.");
 TRANSLATE_NOOP("FullscreenUI", "Borderless Fullscreen");
-TRANSLATE_NOOP("FullscreenUI", "Bound Axis");
+TRANSLATE_NOOP("FullscreenUI", "Mapped Axis");
 TRANSLATE_NOOP("FullscreenUI", "Browse and launch recognized arcade sets from your library.");
 TRANSLATE_NOOP("FullscreenUI", "Buffer Size");
 TRANSLATE_NOOP("FullscreenUI", "Bypasses optional Windows audio signal processing when Cubeb is using WASAPI. RAW remains shared mode; it does not enable exclusive output or change ArcadeDuck's Low Latency target.");
@@ -6982,7 +7048,6 @@ TRANSLATE_NOOP("FullscreenUI", "Covers Directory");
 TRANSLATE_NOOP("FullscreenUI", "Create");
 TRANSLATE_NOOP("FullscreenUI", "Create Game Configuration");
 TRANSLATE_NOOP("FullscreenUI", "Create New...");
-TRANSLATE_NOOP("FullscreenUI", "Create Save State Backups");
 TRANSLATE_NOOP("FullscreenUI", "Crop Mode");
 TRANSLATE_NOOP("FullscreenUI", "Crosshairs Directory");
 TRANSLATE_NOOP("FullscreenUI", "Culling Correction");
@@ -7083,7 +7148,6 @@ TRANSLATE_NOOP("FullscreenUI", "Forces 24-bit video playback to 4:3. Leave disab
 TRANSLATE_NOOP("FullscreenUI", "Forces PAL software to use NTSC timing. This changes game speed and video timing and must remain disabled unless explicitly required.");
 TRANSLATE_NOOP("FullscreenUI", "Forces a full rescan of all games previously identified.");
 TRANSLATE_NOOP("FullscreenUI", "Forces compatible interlaced modes into progressive output. It can break games that rely on interlacing and is disabled by default.");
-TRANSLATE_NOOP("FullscreenUI", "Forcibly mutes both CD-DA and XA audio from the CD-ROM. Can be used to disable background music in some games.");
 TRANSLATE_NOOP("FullscreenUI", "Frame Time Buffer");
 TRANSLATE_NOOP("FullscreenUI", "Fullscreen Resolution");
 TRANSLATE_NOOP("FullscreenUI", "GPU Adapter");
@@ -7170,7 +7234,6 @@ TRANSLATE_NOOP("FullscreenUI", "Move Up");
 TRANSLATE_NOOP("FullscreenUI", "Moves this shader higher in the chain, applying it earlier.");
 TRANSLATE_NOOP("FullscreenUI", "Moves this shader lower in the chain, applying it later.");
 TRANSLATE_NOOP("FullscreenUI", "Mute All Sound");
-TRANSLATE_NOOP("FullscreenUI", "Mute CD Audio");
 TRANSLATE_NOOP("FullscreenUI", "Navigate");
 TRANSLATE_NOOP("FullscreenUI", "Network");
 TRANSLATE_NOOP("FullscreenUI", "No Binding");
@@ -7261,7 +7324,6 @@ TRANSLATE_NOOP("FullscreenUI", "Remove From Chain");
 TRANSLATE_NOOP("FullscreenUI", "Remove From List");
 TRANSLATE_NOOP("FullscreenUI", "Removed stage {} ({}).");
 TRANSLATE_NOOP("FullscreenUI", "Removes this shader from the chain.");
-TRANSLATE_NOOP("FullscreenUI", "Renames existing save states when saving to a backup file.");
 TRANSLATE_NOOP("FullscreenUI", "Rendering");
 TRANSLATE_NOOP("FullscreenUI", "Replaces the original 15-bit color and dithering with higher-precision color. Leave disabled for hardware-accurate arcade presentation.");
 TRANSLATE_NOOP("FullscreenUI", "Replaces these arcade controls with a saved input profile.");
@@ -7290,7 +7352,6 @@ TRANSLATE_NOOP("FullscreenUI", "Runahead/Rewind");
 TRANSLATE_NOOP("FullscreenUI", "Save Profile");
 TRANSLATE_NOOP("FullscreenUI", "Save Screenshot");
 TRANSLATE_NOOP("FullscreenUI", "Save State");
-TRANSLATE_NOOP("FullscreenUI", "Save State On Exit");
 TRANSLATE_NOOP("FullscreenUI", "Save States Directory");
 TRANSLATE_NOOP("FullscreenUI", "Saved {:%c}");
 TRANSLATE_NOOP("FullscreenUI", "Saves state periodically so you can rewind any mistakes while playing.");

@@ -221,12 +221,12 @@
    <addaction name="actionFullscreen"/>
    <addaction name="separator"/>
    <addaction name="actionSettings2"/>
-   <addaction name="actionControllerSettings"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionStartFile">
    <property name="icon">
-    <iconset theme="file-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/startarcadeset.png</normaloff>:/icons/arcadeduck/startarcadeset.png</iconset>
    </property>
    <property name="text">
     <string>Start Arcade &amp;Set...</string>
@@ -234,7 +234,8 @@
   </action>
   <action name="actionScanForNewGames">
    <property name="icon">
-    <iconset theme="file-search-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/scanfornewgames.png</normaloff>:/icons/arcadeduck/scanfornewgames.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Scan For New Games</string>
@@ -242,7 +243,8 @@
   </action>
   <action name="actionRescanAllGames">
    <property name="icon">
-    <iconset theme="refresh-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/rescanallgames.png</normaloff>:/icons/arcadeduck/rescanallgames.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Rescan All Games</string>
@@ -250,7 +252,8 @@
   </action>
   <action name="actionPowerOff">
    <property name="icon">
-    <iconset theme="shut-down-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/poweroff.png</normaloff>:/icons/arcadeduck/poweroff.png</iconset>
    </property>
    <property name="text">
     <string>Power &amp;Off</string>
@@ -258,10 +261,11 @@
   </action>
   <action name="actionReset">
    <property name="icon">
-    <iconset theme="restart-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/reset.png</normaloff>:/icons/arcadeduck/reset.png</iconset>
    </property>
    <property name="text">
-    <string>&amp;Reset</string>
+    <string>&amp;Reboot</string>
    </property>
   </action>
   <action name="actionPause">
@@ -269,7 +273,8 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset theme="pause-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/pause.png</normaloff>:/icons/arcadeduck/pause.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Pause</string>
@@ -277,7 +282,8 @@
   </action>
   <action name="actionLoadState">
    <property name="icon">
-    <iconset theme="folder-open-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/loadstate.png</normaloff>:/icons/arcadeduck/loadstate.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Load State</string>
@@ -285,7 +291,8 @@
   </action>
   <action name="actionSaveState">
    <property name="icon">
-    <iconset theme="save-3-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/savestate.png</normaloff>:/icons/arcadeduck/savestate.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Save State</string>
@@ -301,7 +308,8 @@
   </action>
   <action name="actionOperatorSettings">
    <property name="icon">
-    <iconset theme="chip-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/operator.png</normaloff>:/icons/arcadeduck/operator.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Operator</string>
@@ -309,7 +317,8 @@
   </action>
   <action name="actionSystemLinkSettings">
    <property name="icon">
-    <iconset theme="global-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/systemlink.png</normaloff>:/icons/arcadeduck/systemlink.png</iconset>
    </property>
    <property name="text">
     <string>System &amp;Link</string>
@@ -317,7 +326,8 @@
   </action>
   <action name="actionConsoleSettings">
    <property name="icon">
-    <iconset theme="chip-2-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/machine.png</normaloff>:/icons/arcadeduck/machine.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Machine</string>
@@ -334,7 +344,7 @@
   <action name="actionControllerSettings">
    <property name="icon">
     <iconset resource="resources/arcadeduck-qt.qrc">
-     <normaloff>:/icons/arcade-cabinet-100.png</normaloff>:/icons/arcade-cabinet-100.png</iconset>
+     <normaloff>:/icons/arcadeduck/controls.png</normaloff>:/icons/arcadeduck/controls.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Controls</string>
@@ -342,7 +352,8 @@
   </action>
   <action name="actionHotkeySettings">
    <property name="icon">
-    <iconset theme="keyboard-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/hotkeys.png</normaloff>:/icons/arcadeduck/hotkeys.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Hotkeys</string>
@@ -350,7 +361,8 @@
   </action>
   <action name="actionGraphicsSettings">
    <property name="icon">
-    <iconset theme="image-fill"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/graphics.png</normaloff>:/icons/arcadeduck/graphics.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Graphics</string>
@@ -358,7 +370,8 @@
   </action>
   <action name="actionPostProcessingSettings">
    <property name="icon">
-    <iconset theme="sun-fill"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/postprocessing.png</normaloff>:/icons/arcadeduck/postprocessing.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Post-Processing</string>
@@ -366,7 +379,8 @@
   </action>
   <action name="actionFullscreen">
    <property name="icon">
-    <iconset theme="fullscreen-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/fullscreen.png</normaloff>:/icons/arcadeduck/fullscreen.png</iconset>
    </property>
    <property name="text">
     <string>Fullscreen</string>
@@ -437,7 +451,8 @@
   </action>
   <action name="actionCheats">
    <property name="icon">
-    <iconset theme="cheats-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/cheats.png</normaloff>:/icons/arcadeduck/cheats.png</iconset>
    </property>
    <property name="text">
     <string>Cheats...</string>
@@ -445,7 +460,8 @@
   </action>
   <action name="actionCheatsToolbar">
    <property name="icon">
-    <iconset theme="cheats-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/cheats.png</normaloff>:/icons/arcadeduck/cheats.png</iconset>
    </property>
    <property name="text">
     <string>Cheats</string>
@@ -453,7 +469,8 @@
   </action>
   <action name="actionAudioSettings">
    <property name="icon">
-    <iconset theme="volume-up-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/audio.png</normaloff>:/icons/arcadeduck/audio.png</iconset>
    </property>
    <property name="text">
     <string>Audio</string>
@@ -469,7 +486,8 @@
   </action>
   <action name="actionFolderSettings">
    <property name="icon">
-    <iconset theme="folder-settings-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/addgamedirectory.png</normaloff>:/icons/arcadeduck/addgamedirectory.png</iconset>
    </property>
    <property name="text">
     <string>Folders</string>
@@ -477,7 +495,8 @@
   </action>
   <action name="actionGameListSettings">
    <property name="icon">
-    <iconset theme="folder-open-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/gamelist.png</normaloff>:/icons/arcadeduck/gamelist.png</iconset>
    </property>
    <property name="text">
     <string>Game List</string>
@@ -485,7 +504,8 @@
   </action>
   <action name="actionInterfaceSettings">
    <property name="icon">
-    <iconset theme="settings-3-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/interface.png</normaloff>:/icons/arcadeduck/interface.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Interface</string>
@@ -493,7 +513,8 @@
   </action>
   <action name="actionAdvancedSettings">
    <property name="icon">
-    <iconset theme="alert-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/advanced.png</normaloff>:/icons/arcadeduck/advanced.png</iconset>
    </property>
    <property name="text">
     <string>Advanced</string>
@@ -501,7 +522,8 @@
   </action>
   <action name="actionAddGameDirectory">
    <property name="icon">
-    <iconset theme="folder-add-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/folders.png</normaloff>:/icons/arcadeduck/folders.png</iconset>
    </property>
    <property name="text">
     <string>Add Game Directory...</string>
@@ -509,7 +531,8 @@
   </action>
   <action name="actionSettings">
    <property name="icon">
-    <iconset theme="settings-3-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/settings.png</normaloff>:/icons/arcadeduck/settings.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Settings</string>
@@ -520,7 +543,8 @@
   </action>
   <action name="actionSettings2">
    <property name="icon">
-    <iconset theme="settings-3-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/settings.png</normaloff>:/icons/arcadeduck/settings.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Settings</string>
@@ -644,7 +668,8 @@
   </action>
   <action name="actionScreenshot">
    <property name="icon">
-    <iconset theme="screenshot-2-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/screenshot.png</normaloff>:/icons/arcadeduck/screenshot.png</iconset>
    </property>
    <property name="text">
     <string>&amp;Screenshot</string>
@@ -652,7 +677,8 @@
   </action>
   <action name="actionResumeLastState">
    <property name="icon">
-    <iconset theme="play-circle-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/play.png</normaloff>:/icons/arcadeduck/play.png</iconset>
    </property>
    <property name="text">
     <string>Resume</string>
@@ -715,7 +741,8 @@
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset theme="file-settings-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/gameproperties.png</normaloff>:/icons/arcadeduck/gameproperties.png</iconset>
    </property>
    <property name="text">
     <string>Game &amp;Properties</string>

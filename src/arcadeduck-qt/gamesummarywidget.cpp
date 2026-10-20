@@ -6,7 +6,7 @@
 
 #include "gamesummarywidget.h"
 #include "mainwindow.h"
-#include "qthost.h"
+#include "qtutils.h"
 #include "settingswindow.h"
 
 #include "core/arcade/arcade_control_registry.h"
@@ -17,7 +17,6 @@
 #include <QtCore/QSignalBlocker>
 #include <QtCore/QStringList>
 #include <QtWidgets/QFileDialog>
-#include <QtWidgets/QMessageBox>
 
 #include <algorithm>
 #include <utility>
@@ -99,8 +98,6 @@ GameSummaryWidget::GameSummaryWidget(const std::string& path, const std::string&
   m_ui.setupUi(this);
   populateUi(path, set_name);
 
-  connect(m_ui.inputProfile, &QComboBox::currentIndexChanged, this, &GameSummaryWidget::onInputProfileChanged);
-  connect(m_ui.editInputProfile, &QAbstractButton::clicked, this, &GameSummaryWidget::onEditInputProfileClicked);
   connect(m_ui.bezelEnabled, &QCheckBox::toggled, this, &GameSummaryWidget::onBezelEnabledChanged);
   connect(m_ui.bezelBrowse, &QAbstractButton::clicked, this, &GameSummaryWidget::onBezelBrowseClicked);
   connect(m_ui.bezelClear, &QAbstractButton::clicked, this, &GameSummaryWidget::onBezelClearClicked);
@@ -128,7 +125,6 @@ void GameSummaryWidget::populateUi(const std::string& path, const std::string& s
     m_set_name = set_name;
 
   populateArcadeUi();
-  populateInputProfileUi();
   populateBezelUi();
   updateWindowTitle();
 }
@@ -188,32 +184,6 @@ void GameSummaryWidget::populateArcadeUi()
   populateCustomAttributes();
 }
 
-void GameSummaryWidget::populateInputProfileUi()
-{
-  m_ui.inputProfile->clear();
-  m_ui.inputProfile->addItem(QIcon::fromTheme(QStringLiteral("global-line")), tr("Use Global Settings"));
-  m_ui.inputProfile->addItem(QIcon::fromTheme(QStringLiteral("controller-digital-line")),
-                             tr("Game Specific Configuration"));
-  for (const std::string& name : InputManager::GetInputProfileNames())
-    m_ui.inputProfile->addItem(QString::fromStdString(name));
-
-  if (m_dialog->getBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", std::nullopt).value_or(false))
-  {
-    m_ui.inputProfile->setCurrentIndex(1);
-  }
-  else if (const std::optional<std::string> profile_name =
-             m_dialog->getStringValue("ArcadeProfiles", "InputProfileName", std::nullopt);
-           profile_name.has_value() && !profile_name->empty())
-  {
-    m_ui.inputProfile->setCurrentIndex(m_ui.inputProfile->findText(QString::fromStdString(profile_name.value())));
-  }
-  else
-  {
-    m_ui.inputProfile->setCurrentIndex(0);
-  }
-  m_ui.editInputProfile->setEnabled(m_ui.inputProfile->currentIndex() >= 1);
-}
-
 void GameSummaryWidget::populateBezelUi()
 {
   const bool enabled = m_dialog->getBoolValue("Display", "BezelEnabled", std::nullopt).value_or(false);
@@ -256,57 +226,6 @@ void GameSummaryWidget::setCustomTitle(const std::string& text)
   g_main_window->refreshGameListModel();
 }
 
-void GameSummaryWidget::onInputProfileChanged(int index)
-{
-  SettingsInterface* sif = m_dialog->getSettingsInterface();
-  if (index == 0)
-  {
-    sif->DeleteValue("ArcadeProfiles", "InputProfileName");
-    sif->DeleteValue("ArcadeProfiles", "UseGameSettingsForArcadeInput");
-  }
-  else if (index == 1)
-  {
-    sif->DeleteValue("ArcadeProfiles", "InputProfileName");
-    sif->SetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", true);
-
-    if (!sif->GetBoolValue("ArcadeProfiles", "GameSettingsInitialized", false))
-    {
-      sif->SetBoolValue("ArcadeProfiles", "GameSettingsInitialized", true);
-      {
-        const auto lock = Host::GetSettingsLock();
-        SettingsInterface* base_sif = Host::Internal::GetBaseSettingsLayer();
-        InputManager::CopyConfiguration(sif, *base_sif, true, true, false);
-
-        QWidget* dlg_parent = QtUtils::GetRootWidget(this);
-        QMessageBox::information(dlg_parent, dlg_parent->windowTitle(),
-                                 tr("Per-game controller configuration initialized with global settings."));
-      }
-    }
-  }
-  else
-  {
-    sif->SetStringValue("ArcadeProfiles", "InputProfileName", m_ui.inputProfile->itemText(index).toUtf8());
-    sif->DeleteValue("ArcadeProfiles", "UseGameSettingsForArcadeInput");
-  }
-
-  m_dialog->saveAndReloadGameSettings();
-  m_ui.editInputProfile->setEnabled(index > 0);
-}
-
-void GameSummaryWidget::onEditInputProfileClicked()
-{
-  if (m_dialog->getBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", std::nullopt).value_or(false))
-  {
-    ControllerSettingsWindow::editControllerSettingsForGame(QtUtils::GetRootWidget(this),
-                                                            m_dialog->getSettingsInterface());
-  }
-  else if (const std::optional<std::string> profile_name =
-             m_dialog->getStringValue("ArcadeProfiles", "InputProfileName", std::nullopt);
-           profile_name.has_value() && !profile_name->empty())
-  {
-    g_main_window->openInputProfileEditor(profile_name.value());
-  }
-}
 void GameSummaryWidget::onBezelEnabledChanged(bool checked)
 {
   SettingsInterface* sif = m_dialog->getSettingsInterface();

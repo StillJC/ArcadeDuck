@@ -1974,7 +1974,7 @@ void Host::AddFixedInputBindings(SettingsInterface& si)
 {
   INISettingsInterface* base_si = QtHost::GetBaseSettingsInterface();
   DebugAssert(base_si);
-  ArcadeInput::RegisterBindings(si, *base_si);
+  ArcadeInput::RegisterBindings(si, *base_si, System::GetGameSerial());
 }
 
 void Host::OnInputDeviceConnected(std::string_view identifier, std::string_view device_name)

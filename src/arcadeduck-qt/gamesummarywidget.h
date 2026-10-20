@@ -25,8 +25,6 @@ public:
   ~GameSummaryWidget();
 
 private Q_SLOTS:
-  void onInputProfileChanged(int index);
-  void onEditInputProfileClicked();
   void onBezelEnabledChanged(bool checked);
   void onBezelBrowseClicked();
   void onBezelClearClicked();
@@ -35,7 +33,6 @@ private Q_SLOTS:
 private:
   void populateUi(const std::string& path, const std::string& set_name);
   void populateArcadeUi();
-  void populateInputProfileUi();
   void populateBezelUi();
   void populateCustomAttributes();
   void updateWindowTitle();

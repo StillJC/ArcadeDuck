@@ -927,7 +927,8 @@ bool ParseGame(const ryml::ConstNodeRef& node)
       !GetString(node, "setFormat", &game.set_format, true) || !GetString(node, "status", &status, true) ||
       !GetUnsigned(node, "year", &game.year, true) ||
       !GetUnsigned(node, "cpuClockPercent", &game.cpu_clock_percent) ||
-      !GetUnsigned(node, "minPlayers", &game.min_players) || !GetUnsigned(node, "maxPlayers", &game.max_players))
+      !GetUnsigned(node, "minPlayers", &game.min_players) || !GetUnsigned(node, "maxPlayers", &game.max_players) ||
+      !GetBool(node, "supportsSystemLink", &game.supports_system_link))
   {
     ERROR_LOG("Failed parsing arcade game '{}'.", game.id);
     return false;
@@ -1113,6 +1114,12 @@ bool ValidateDatabase()
     {
       ERROR_LOG("Arcade game '{}' supports {} players, exceeding system '{}' maximum {}.", game.id,
                 game.max_players, system->id, system->max_players);
+      valid = false;
+    }
+    if (game.supports_system_link && !system->supports_network)
+    {
+      ERROR_LOG("Arcade game '{}' enables system link on system '{}' which does not support networking.", game.id,
+                system->id);
       valid = false;
     }
     if (!game.parent.empty() && !GetGame(game.parent))

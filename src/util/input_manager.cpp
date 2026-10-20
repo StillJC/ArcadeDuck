@@ -1547,6 +1547,19 @@ GenericInputBindingMapping InputManager::GetGenericBindingMapping(std::string_vi
 
 bool InputManager::IsInputSourceEnabled(SettingsInterface& si, InputSourceType type)
 {
+#ifdef _WIN32
+  if (type == InputSourceType::RawInput)
+  {
+    static constexpr const char* sections[] = {
+      "ArcadeControllerPort1", "ArcadeControllerPort2", "ArcadeControllerPort3", "ArcadeControllerPort4"};
+    for (const char* section : sections)
+    {
+      if (si.GetStringValue(section, "InputMode", "") == "NativeRawInputDevice")
+        return true;
+    }
+  }
+#endif
+
   return si.GetBoolValue("InputSources", InputManager::InputSourceToString(type), GetInputSourceDefaultEnabled(type));
 }
 

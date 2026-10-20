@@ -189,6 +189,7 @@ struct GameDefinition
   u16 cpu_clock_percent = 100;
   u8 min_players = 1;
   u8 max_players = 1;
+  bool supports_system_link = false;
   WorkingStatus status = WorkingStatus::Unknown;
   DisplayDefinition display;
   std::array<PortDefinition, NUM_ARCADE_CONTROLLER_PORTS> ports{};

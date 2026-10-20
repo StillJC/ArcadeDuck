@@ -41,7 +41,6 @@ ControllerGlobalSettingsWidget::ControllerGlobalSettingsWidget(QWidget* parent, 
 #ifdef _WIN32
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableDInputSource, "InputSources", "DInput", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableXInputSource, "InputSources", "XInput", false);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableRawInput, "InputSources", "RawInput", false);
 #else
   m_ui.mainLayout->removeWidget(m_ui.xinputGroup);
   delete m_ui.xinputGroup;
