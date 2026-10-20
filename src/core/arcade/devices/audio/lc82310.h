@@ -29,8 +29,11 @@ public:
   void SetDataIn(bool state) { m_di = state; }
   bool GetDataOut() const { return m_do; }
 
-  // DEMAND output: the decoder accepts more stream data.
+  // DEMAND output: the decoder accepts more stream data. It is also released
+  // once each time the decoder starts a frame; ReadDemand() is a host poll,
+  // which observes that release.
   bool GetDemand() const;
+  bool ReadDemand();
   void WriteData(u8 value);
 
   // Discards buffered stream data and decoded samples.
@@ -54,6 +57,7 @@ private:
   std::array<u8, BUFFER_SIZE> m_buffer{};
   u32 m_buffer_count = 0;
   bool m_stream_found = false;
+  bool m_frame_release = false;
 
   std::array<s16, MAX_FRAME_SAMPLES * 2> m_samples{};
   u32 m_sample_count = 0;

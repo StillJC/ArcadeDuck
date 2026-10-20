@@ -290,10 +290,10 @@ u8 MemP3Board::MCUPortRead(void* context, Arcade::TMP95C061::Port port)
       return self->m_porta;
 
     case Arcade::TMP95C061::Port::PB:
-      // Decoder DEMAND: the stream buffer has space. At the sub-CPU's rated speed
-      // (one state per two clocks) the program needs the line on every poll to
-      // sustain a 128 kbit/s stream.
-      return self->m_decoder.GetDemand() ? 1 : 0;
+      // Decoder DEMAND. The program streams while it reads high and does its
+      // decoder housekeeping, including moving to the next part of a track, on
+      // a pass where it reads low.
+      return self->m_decoder.ReadDemand() ? 1 : 0;
 
     default:
       return 0;

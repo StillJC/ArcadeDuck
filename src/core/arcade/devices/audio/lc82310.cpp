@@ -76,6 +76,7 @@ void LC82310::ResetPlayback()
   m_buffer.fill(0);
   m_buffer_count = 0;
   m_stream_found = false;
+  m_frame_release = false;
   m_samples.fill(0);
   m_sample_count = 0;
   m_sample_index = 0;
@@ -122,6 +123,19 @@ void LC82310::HandleCommand(u8 command, u8 parameter)
 bool LC82310::GetDemand() const
 {
   return m_buffer_count < BUFFER_SIZE;
+}
+
+bool LC82310::ReadDemand()
+{
+  // Hosts stream while DEMAND is high and service the decoder when it drops,
+  // so it must also drop while the buffer has room or a host that has sent
+  // all the data it holds would never get round to supplying more.
+  if (m_frame_release)
+  {
+    m_frame_release = false;
+    return false;
+  }
+  return GetDemand();
 }
 
 void LC82310::WriteData(u8 value)
@@ -200,6 +214,7 @@ bool LC82310::DecodeFrame()
     for (int i = samples - 1; i >= 0; i--)
       m_samples[i * 2] = m_samples[i * 2 + 1] = m_samples[i];
   }
+  m_frame_release = true;
   m_sample_count = static_cast<u32>(samples);
   m_sample_index = 0;
   m_frame_rate = (info.hz > 0) ? static_cast<u32>(info.hz) : OUTPUT_RATE;
