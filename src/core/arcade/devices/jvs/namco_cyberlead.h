@@ -94,7 +94,12 @@ private:
     u8 profile_result = 0;  // C398
     u8 transaction_id = 0;  // C399
     u8 transfer_result = 0; // C39A
-    u8 poll_count = 0;      // C39B
+    // C39B is only cleared when a transaction starts; Ver1.03 never initialises
+    // it, so after power-on it holds whatever the PCB's SRAM came up with. A
+    // zero there would hold back a first query that reuses ID 00 (as the
+    // System 10 LED library does) beyond the 13 polls the game waits, so the
+    // power-on value is taken to be at the forwarding threshold.
+    u8 poll_count = 0x10;   // C39B
     std::array<u8, 8> control_data{}; // C3A0
     std::array<u8, 8> profile_id{};   // C390
     std::array<u8, 70> block{};       // C500
