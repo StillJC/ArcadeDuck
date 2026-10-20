@@ -35,6 +35,8 @@ typedef struct ArcadeDuckTLCS900HCallbacks
 void ArcadeDuckTLCS900HSetCallbacks(const ArcadeDuckTLCS900HCallbacks* callbacks);
 void ArcadeDuckTLCS900HReset(uint32 pc, uint32 xsp);
 int32 ArcadeDuckTLCS900HStep(void);
+// First opcode byte of the instruction the last Step() executed.
+uint8 ArcadeDuckTLCS900HGetLastOpcode(void);
 bool ArcadeDuckTLCS900HIsHalted(void);
 uint32 ArcadeDuckTLCS900HGetPC(void);
 uint8 ArcadeDuckTLCS900HGetIFF(void);

@@ -61,6 +61,10 @@ public:
 
   void SetCallbacks(const Callbacks& callbacks);
 
+  // Plain memory the CPU reaches without going through the read/write
+  // callbacks: size bytes at base, which must lie above the internal I/O.
+  void SetDirectMemory(u32 base, u8* data, u32 size);
+
   u32 GetClock() const { return m_clock_hz; }
   u32 GetStatesPerSecond() const { return m_clock_hz / 2; }
 
@@ -129,6 +133,9 @@ private:
 
   u32 m_clock_hz;
   Callbacks m_callbacks;
+  u8* m_direct_data = nullptr;
+  u32 m_direct_base = 0;
+  u32 m_direct_size = 0;
   bool m_in_reset = true;
   bool m_irq_inhibit = false;
   s64 m_state_balance = 0;
@@ -170,6 +177,31 @@ private:
   std::array<bool, 3> m_int_line{};
 
   std::array<u8, 4> m_dma_vector{};
+
+  // Interrupt and micro-DMA state last found to have nothing to service.
+  // Both checks run before every instruction and only change outcome when
+  // a request flag, a DMA vector or the CPU's interrupt mask changes.
+  struct IdleState
+  {
+    std::array<u8, 11> int_reg{};
+    std::array<u8, 4> dma_vector{};
+    u8 iff = 0;
+    bool valid = false;
+
+    bool Matches(const std::array<u8, 11>& regs, const std::array<u8, 4>& vectors, u8 mask) const
+    {
+      return valid && iff == mask && int_reg == regs && dma_vector == vectors;
+    }
+    void Store(const std::array<u8, 11>& regs, const std::array<u8, 4>& vectors, u8 mask)
+    {
+      int_reg = regs;
+      dma_vector = vectors;
+      iff = mask;
+      valid = true;
+    }
+  };
+  IdleState m_irq_idle;
+  IdleState m_dma_idle;
   std::array<u32, 4> m_dma_source{};
   std::array<u32, 4> m_dma_dest{};
   std::array<u16, 4> m_dma_count{};

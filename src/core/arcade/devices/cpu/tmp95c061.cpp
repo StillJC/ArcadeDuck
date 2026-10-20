@@ -67,6 +67,18 @@ constexpr std::array<IrqSource, 22> IRQ_SOURCES = {{
   {INTE0AD, 0x08, 0x28},  // INT0
 }};
 
+// IRQ_SOURCES index for each vector / 4, or -1.
+constexpr std::array<s8, 64> MakeVectorSources()
+{
+  std::array<s8, 64> table{};
+  for (s8& entry : table)
+    entry = -1;
+  for (size_t i = 0; i < IRQ_SOURCES.size(); i++)
+    table[IRQ_SOURCES[i].vector >> 2] = static_cast<s8>(i);
+  return table;
+}
+constexpr std::array<s8, 64> VECTOR_SOURCES = MakeVectorSources();
+
 constexpr size_t PortIndex(TMP95C061::Port port)
 {
   return static_cast<size_t>(port);
@@ -229,19 +241,24 @@ void TMP95C061::Run(u32 states)
     else if (CheckInterrupts())
       elapsed += 18;
 
-    if (!ArcadeDuckTLCS900HIsHalted())
+    const bool halted = ArcadeDuckTLCS900HIsHalted();
+    elapsed += static_cast<u32>(std::max<s32>(ArcadeDuckTLCS900HStep(), 1));
+
+    // Acceptance is deferred for one instruction after EI and RETI.
+    if (!halted)
     {
-      // Acceptance is deferred for one instruction after EI and RETI.
-      const u8 opcode = Read8(ArcadeDuckTLCS900HGetPC());
+      const u8 opcode = ArcadeDuckTLCS900HGetLastOpcode();
       m_irq_inhibit = (opcode == 0x06 || opcode == 0x07);
     }
-
-    elapsed += static_cast<u32>(std::max<s32>(ArcadeDuckTLCS900HStep(), 1));
 
     UpdateAnalog(elapsed);
     UpdateTimers(elapsed * 2);
     for (u32 channel = 0; channel < NUM_SERIAL_CHANNELS; channel++)
-      UpdateSerial(channel, elapsed * 2);
+    {
+      const SerialChannel& ch = m_serial[channel];
+      if (ch.tx_busy || ch.rx_busy || !ch.rx_queue.empty())
+        UpdateSerial(channel, elapsed * 2);
+    }
     if (ProcessMicroDMA())
       elapsed += 8;
 
@@ -251,6 +268,19 @@ void TMP95C061::Run(u32 states)
 
 bool TMP95C061::CheckInterrupts()
 {
+  const u8 mask = ArcadeDuckTLCS900HGetIFF();
+  if (m_irq_idle.Matches(m_int_reg, m_dma_vector, mask))
+    return false;
+
+  u8 requests = 0;
+  for (const u8 reg : m_int_reg)
+    requests |= reg;
+  if ((requests & 0x88) == 0)
+  {
+    m_irq_idle.Store(m_int_reg, m_dma_vector, mask);
+    return false;
+  }
+
   std::array<s32, 8> by_priority;
   by_priority.fill(-1);
   for (size_t i = 0; i < IRQ_SOURCES.size(); i++)
@@ -265,7 +295,6 @@ bool TMP95C061::CheckInterrupts()
   }
 
   // Priority 0 disables a source and 7 is reserved for non-maskable requests.
-  const u32 mask = ArcadeDuckTLCS900HGetIFF();
   s32 selected = -1;
   u32 level = 0;
   for (u32 priority = std::max<u32>(1, mask); priority < 7; priority++)
@@ -278,7 +307,10 @@ bool TMP95C061::CheckInterrupts()
   }
 
   if (selected < 0)
+  {
+    m_irq_idle.Store(m_int_reg, m_dma_vector, mask);
     return false;
+  }
 
   const IrqSource& source = IRQ_SOURCES[static_cast<size_t>(selected)];
   m_int_reg[source.reg] &= static_cast<u8>(~source.flag);
@@ -289,7 +321,8 @@ bool TMP95C061::CheckInterrupts()
 bool TMP95C061::ProcessMicroDMA()
 {
   // Micro-DMA requests are serviced only while maskable interrupts are enabled.
-  if (ArcadeDuckTLCS900HGetIFF() == 7)
+  const u8 mask = ArcadeDuckTLCS900HGetIFF();
+  if (mask == 7 || m_dma_idle.Matches(m_int_reg, m_dma_vector, mask))
     return false;
 
   for (u32 channel = 0; channel < 4; channel++)
@@ -297,6 +330,7 @@ bool TMP95C061::ProcessMicroDMA()
     if (ProcessMicroDMAChannel(channel))
       return true;
   }
+  m_dma_idle.Store(m_int_reg, m_dma_vector, mask);
   return false;
 }
 
@@ -306,9 +340,11 @@ bool TMP95C061::ProcessMicroDMAChannel(u32 channel)
   if (vector < 0x28 || vector == 0x3c || vector >= 0x74)
     return false;
 
-  const auto it = std::find_if(IRQ_SOURCES.begin(), IRQ_SOURCES.end(),
-                               [vector](const IrqSource& source) { return source.vector == vector; });
-  if (it == IRQ_SOURCES.end() || (m_int_reg[it->reg] & it->flag) == 0)
+  const s8 source_index = VECTOR_SOURCES[vector >> 2];
+  if (source_index < 0)
+    return false;
+  const IrqSource* it = &IRQ_SOURCES[static_cast<size_t>(source_index)];
+  if ((m_int_reg[it->reg] & it->flag) == 0)
     return false;
 
   u32& src = m_dma_source[channel];
@@ -910,9 +946,18 @@ void TMP95C061::WriteInternal(u32 address, u8 value)
   }
 }
 
+void TMP95C061::SetDirectMemory(u32 base, u8* data, u32 size)
+{
+  m_direct_data = data;
+  m_direct_base = base;
+  m_direct_size = data ? size : 0;
+}
+
 u8 TMP95C061::Read8(u32 address)
 {
   address &= 0xffffff;
+  if ((address - m_direct_base) < m_direct_size)
+    return m_direct_data[address - m_direct_base];
   if (address < 0x80)
     return ReadInternal(address);
   return m_callbacks.read ? m_callbacks.read(m_callbacks.context, address) : 0xff;
@@ -921,6 +966,11 @@ u8 TMP95C061::Read8(u32 address)
 void TMP95C061::Write8(u32 address, u8 value)
 {
   address &= 0xffffff;
+  if ((address - m_direct_base) < m_direct_size)
+  {
+    m_direct_data[address - m_direct_base] = value;
+    return;
+  }
   if (address < 0x80)
   {
     WriteInternal(address, value);

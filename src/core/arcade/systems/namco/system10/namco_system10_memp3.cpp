@@ -61,6 +61,7 @@ MemP3Board::MemP3Board(const Cabinet& cabinet) : m_cabinet(cabinet), m_ram(RAM_S
   callbacks.port_write = &MemP3Board::MCUPortWrite;
   callbacks.analog_read = &MemP3Board::MCUAnalogRead;
   m_mcu->SetCallbacks(callbacks);
+  m_mcu->SetDirectMemory(MCU_RAM_BASE, m_ram.data(), RAM_SIZE);
 
   const TickCount interval = std::max<TickCount>(1, System::GetTicksPerSecond() / SCHEDULER_HZ);
   m_event = std::make_unique<TimingEvent>("Namco System 10 MEM(P3)", interval, interval, SchedulerCallback, this);

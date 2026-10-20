@@ -28,6 +28,11 @@ int32 ArcadeDuckTLCS900HStep(void)
   return TLCS900h_interpret();
 }
 
+uint8 ArcadeDuckTLCS900HGetLastOpcode(void)
+{
+  return first;
+}
+
 bool ArcadeDuckTLCS900HIsHalted(void)
 {
   return s_halted;
