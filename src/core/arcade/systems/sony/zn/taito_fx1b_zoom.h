@@ -10,7 +10,7 @@
 namespace TaitoFX1BZoom {
 
 bool Initialize(std::span<const u8> mn10200_rom, std::span<const u8> zsg2_rom, std::span<u8> shared_ram);
-void Reset();
+void Reset(bool synchronize_to_now = true);
 void Shutdown();
 bool IsActive();
 

@@ -11,13 +11,14 @@
 namespace Arcade {
 namespace {
 
-constexpr std::array<ArcadeControllerTypeInfo, 6> s_controller_type_infos = {{
+constexpr std::array<ArcadeControllerTypeInfo, 7> s_controller_type_infos = {{
   {ArcadeControllerType::None, "none", "None", "none"},
   {ArcadeControllerType::Arcade, "arcade", "Arcade Controls", "arcade"},
   {ArcadeControllerType::Trackball, "trackball", "Trackball", "trackball"},
   {ArcadeControllerType::Lightgun, "lightgun", "Lightgun", "lightgun"},
   {ArcadeControllerType::Driving, "driving", "Driving / Racing", "racing"},
   {ArcadeControllerType::Tokimeki, "tokimeki", "Tokimeki Controls", "tokimeki"},
+  {ArcadeControllerType::Mahjong, "mahjong", "Mahjong Panel", "mahjong"},
 }};
 
 constexpr std::array<std::pair<std::string_view, std::string_view>, 7> s_layout_aliases = {{

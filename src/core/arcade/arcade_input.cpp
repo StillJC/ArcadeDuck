@@ -73,6 +73,7 @@ struct PortState
   float steering = 0.5f;
   float steering_axis = 0.5f;
   std::array<u32, 2> steering_button_counts = {};
+  float throttle_brake = 0.5f;
   float accelerator = 0.0f;
   float brake = 0.0f;
   float clutch = 0.0f;
@@ -398,6 +399,9 @@ void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
         ApplyDrivingAxisAdjustment(value, true, port.steering_deadzone, port.steering_sensitivity);
       UpdateDrivingSteering(port);
       break;
+    case DrivingAxis::ThrottleBrake:
+      port.throttle_brake = ApplyDrivingAxisAdjustment(value, true, 0.0f, 1.0f);
+      break;
     case DrivingAxis::Accelerator:
       port.accelerator =
         ApplyDrivingAxisAdjustment(value, false, port.accelerator_deadzone, port.accelerator_sensitivity);
@@ -698,6 +702,7 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
         AddDrivingSteeringButtonBindings(si, section, port, "SteeringLeft", false);
         AddDrivingSteeringButtonBindings(si, section, port, "SteeringRight", true);
       }
+      AddDrivingAxisBindings(si, section, port, "ThrottleBrake", DrivingAxis::ThrottleBrake);
       AddDrivingAxisBindings(si, section, port, "Accelerator", DrivingAxis::Accelerator);
       AddDrivingAxisBindings(si, section, port, "Brake", DrivingAxis::Brake);
       AddDrivingAxisBindings(si, section, port, "Clutch", DrivingAxis::Clutch);
