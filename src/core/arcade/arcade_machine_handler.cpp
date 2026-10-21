@@ -368,10 +368,11 @@ public:
       return false;
     }
 
-    if (context.game_definition->hardware_profile != "coh3002t" &&
+    const bool use_zn1_motherboard = (context.game_definition->hardware_profile == "coh1002t");
+    if (!use_zn1_motherboard && context.game_definition->hardware_profile != "coh3002t" &&
         context.game_definition->hardware_profile != "coh3002t_comm")
     {
-      Error::SetStringFmt(error, "Taito G-Net handler requires COH-3002T; requested '{}' with profile '{}'.",
+      Error::SetStringFmt(error, "Taito G-Net handler does not support '{}' with profile '{}'.",
                           context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
     }
@@ -392,9 +393,9 @@ public:
 
   void PrepareSharedHardware() const override
   {
-    // COH-3002T is ZN-2 class hardware with the full 2 MiB VRAM population.
-    // The current ZN-2 path supplies the required 2 MiB aperture until a
-    // distinct CXD8654Q identity is warranted by demonstrated behavior.
+    // COH-1002T is ZN-1 class and COH-3002T is ZN-2 class, but both populate
+    // the full 2 MiB VRAM aperture. ArcadeDuck uses the shared type-2 GPU path
+    // for both while SonyZN keeps their motherboard-generation behavior distinct.
     GPU::SetCXD8561QMode(true);
   }
 

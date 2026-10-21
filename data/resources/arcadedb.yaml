@@ -189,6 +189,39 @@ systems:
         - { role: "cat702_2_001", region: "cat702_2", name: "tt16.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x6bb167b3", sha1: "9dcba08f10775a9adf2b1f382c947460edd3d239", groupSize: 1, skip: 0 }
       undumpedRoms:
         - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
+  taito_gnet_zn1:
+    name: "Taito G-Net"
+    manufacturer: "Taito"
+    hardwareFamily: "sony_zn1_arcade"
+    machineHandler: "taito_gnet"
+    biosProfile: "coh1002t"
+    releaseYear: 2000
+    maxPlayers: 2
+    supportsLightgun: false
+    supportsTrackball: true
+    supportsSpecialControls: true
+    supportsNetwork: true
+    properties:
+      sonyBoard: "COH-1002T"
+      archivePolicy: "complete_non_merged"
+    bios:
+      archive: "coh1002t.zip"
+      romRegions:
+        - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+        - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+        - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+        - { id: "firm", size: 0x200000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "eprom", size: 0x100000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+      roms:
+        - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-14.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe3f23b6e", sha1: "e18907cf8c6ba54d96edba0a9a00487a90219e0d", groupSize: 1, skip: 0 }
+        - { role: "cat702_1_001", region: "cat702_1", name: "tt01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xdaac13e7", sha1: "96d94f2b06fb7ecd91454969f4959a583ffb9d5a", groupSize: 1, skip: 0 }
+        - { role: "firm_001", region: "firm", name: "flash.u30", size: 0x200000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x9100dbf2", sha1: "9ce888bd2a7e575c8ca71d978cb85de22afb5660", groupSize: 1, skip: 0 }
+        - { role: "cat702_2_001", region: "cat702_2", name: "tt99.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x2989b6eb", sha1: "89981ec68d30729c27d31f820cbfd0c23ed14a03", groupSize: 1, skip: 0 }
+      undumpedRoms:
+        - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
   taito_fx1:
     name: "Taito FX-1"
     manufacturer: "Taito"
@@ -2529,6 +2562,21 @@ controlLayouts:
       - key: "Button2"
         displayName: "Button 2 — Bomb"
         kind: "button"
+
+  mawasunda:
+    displayName: "Mawasunda!! Handle"
+    controllerType: "trackball"
+    joystickMode: "none"
+    bindings:
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+      - key: "TrackballX"
+        displayName: "Handle"
+        kind: "axis"
 
   taitogn3b:
     displayName: "Taito G-Net (3 Button)"
@@ -10548,6 +10596,33 @@ games:
       stateClass: "ttgnmp_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
       mameDescription: "Mahjong Oh (V2.06J 1999/11/23 08:52:22)"
+
+  mawasunda:
+    archive: "mawasunda.zip"
+    title: "Mawasunda!!"
+    system: "taito_gnet_zn1"
+    manufacturer: "Taito"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh1002t"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "e83-01__", sha1: "ae5b14186905c93401ca65231dec43724df7957a", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "mawasunda"
+      inputProfile: "mawasunda"
+      stateClass: "mawasunda_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Mawasunda!! (V2.08J 2000/02/01 11:02:54)"
 
   rcdego:
     archive: "rcdego.zip"

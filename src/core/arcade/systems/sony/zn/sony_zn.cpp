@@ -212,6 +212,8 @@ static constexpr u32 GNET_WAVE_FLASH_SIZE = 0x200000;       // U56/U55/U29 TE28F
 static constexpr u32 GNET_WAVE_FLASH_BLOCK_SIZE = 0x10000; // 32 x 64 KiB blocks per chip
 static constexpr u32 GNET_WAVE_FLASH_COUNT = 3;
 static constexpr u8 GNET_WAVE_FC_MODE = 4;
+static constexpr u32 MAWASUNDA_WEIGHT_OUTPUT = 0x600000;
+static constexpr u32 MAWASUNDA_LAMP_OUTPUT = 0x600002;
 static constexpr u32 CAPCOM_BANK_REGISTER = 0x100000;
 static constexpr u32 VIDEO_SYSTEM_BANK_REGISTER = 0x100000;
 static constexpr u32 ATLUS_SOUND_LATCH = 0x100000;
@@ -523,6 +525,7 @@ struct RuntimeState
   std::vector<u8> gnet_pccard_cis;
   std::vector<u8> gnet_pccard_identify;
   std::array<u8, 5> gnet_pccard_key{};
+  bool gnet_pccard_has_key = false;
 
   // Protection family is selected from CISTPL_MANFID. Recovered U30 code
   // routes manufacturer 0x00A4 through the Type-2 ATA 0xFE/0xFC protocol.
@@ -589,6 +592,13 @@ struct RuntimeState
   u32 gnet_u30_flash_trace_count = 0;
   u32 gnet_u30_program_word_count = 0;
   u32 gnet_u30_erase_block_count = 0;
+
+  bool gnet_mawasunda = false;
+  std::array<u16, 4> gnet_mawasunda_trackball{};
+  std::array<u16, 4> gnet_mawasunda_trackball_last{};
+  std::array<u8, 6> gnet_mawasunda_trackball_response{};
+  u16 gnet_mawasunda_weight_latch = 0;
+  u16 gnet_mawasunda_lamp_latch = UINT16_C(0xffff);
 
   // G-Net A3c2: U27 is the 512 KiB Intel E28F400 Zoom/MN10200
   // program flash. Fresh machine state is erased; installed contents
@@ -2203,11 +2213,12 @@ u8 ExchangeZNMCUByte(RuntimeState& runtime, u8 tx)
 {
   (void)tx;
 
-  // ZN MCU analog transaction: security-select bit 4 switches the MCU
-  // from its ordinary one-byte response to eight 8-bit ADC channels.
-  // The response header contains the payload length in the high nibble
-  // and the S551 DIP value in the low nibble.
+  // Security-select bit 4 requests the eight ADC channels. Bit 5 requests
+  // the four packed 12-bit trackball counters used by Mawasunda. Analog has
+  // priority when both lines are asserted, matching the ZN MCU protocol.
   const bool analog_read = (runtime.security_select & UINT8_C(0x10)) != 0;
+  const bool trackball_read = !analog_read && runtime.gnet_mawasunda &&
+                              (runtime.security_select & UINT8_C(0x20)) != 0;
   const u8 index = runtime.mcu_byte_index;
 
   std::array<u8, 9> response;
@@ -2252,6 +2263,34 @@ u8 ExchangeZNMCUByte(RuntimeState& runtime, u8 tx)
       // MAME's ANALOG2 definition is reversed relative to host direction.
       response[2] = to_adc(1.0f - logical_trigger);
     }
+  }
+  else if (trackball_read)
+  {
+    response_size = 7;
+    response[0] = static_cast<u8>(UINT8_C(0x60) | GetZNMCUDSWValue(runtime));
+
+    if (index == 0)
+    {
+      std::array<u16, 4> delta{};
+      for (u32 i = 0; i < delta.size(); i++)
+      {
+        delta[i] = static_cast<u16>(runtime.gnet_mawasunda_trackball[i] -
+                                    runtime.gnet_mawasunda_trackball_last[i]);
+        runtime.gnet_mawasunda_trackball_last[i] = runtime.gnet_mawasunda_trackball[i];
+      }
+
+      runtime.gnet_mawasunda_trackball_response[0] = static_cast<u8>(delta[0]);
+      runtime.gnet_mawasunda_trackball_response[1] =
+        static_cast<u8>(((delta[0] & UINT16_C(0x0f00)) >> 8) | ((delta[1] & UINT16_C(0x0f00)) >> 4));
+      runtime.gnet_mawasunda_trackball_response[2] = static_cast<u8>(delta[1]);
+      runtime.gnet_mawasunda_trackball_response[3] = static_cast<u8>(delta[2]);
+      runtime.gnet_mawasunda_trackball_response[4] =
+        static_cast<u8>(((delta[2] & UINT16_C(0x0f00)) >> 8) | ((delta[3] & UINT16_C(0x0f00)) >> 4));
+      runtime.gnet_mawasunda_trackball_response[5] = static_cast<u8>(delta[3]);
+    }
+
+    for (u32 i = 0; i < runtime.gnet_mawasunda_trackball_response.size(); i++)
+      response[1 + i] = runtime.gnet_mawasunda_trackball_response[i];
   }
   else
   {
@@ -4554,7 +4593,8 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
                                                       Error* error)
 {
   const bool communication_board = (game.hardware_profile == "coh3002t_comm");
-  if (game.hardware_profile != "coh3002t" && !communication_board)
+  const bool zn1_motherboard = (game.hardware_profile == "coh1002t");
+  if (game.hardware_profile != "coh3002t" && !communication_board && !zn1_motherboard)
   {
     Error::SetStringFmt(error, "Unsupported Taito G-Net hardware profile '{}'.", game.hardware_profile);
     return std::nullopt;
@@ -4563,19 +4603,18 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
   TaitoGNetContent content;
   content.set_name = game.id;
   content.communication_board = communication_board;
+  content.zn1_motherboard = zn1_motherboard;
 
-  const Arcade::Database::ROMDefinition* const motherboard_key_rom =
-    FindFirmwareROM(firmware, "cat702_1", {});
+  const Arcade::Database::ROMDefinition* const motherboard_key_rom = FindFirmwareROM(firmware, "cat702_1", {});
   const Arcade::Database::ROMDefinition* const u30_rom = FindFirmwareROM(firmware, "firm", {});
   const Arcade::Database::ROMDefinition* const f35_rom = FindFirmwareROM(firmware, "eprom", {});
   const Arcade::Database::ROMDefinition* const fc_key_rom = FindFirmwareROM(firmware, "cat702_2", {});
   if (!motherboard_key_rom || motherboard_key_rom->size != content.motherboard_cat702_key.size() ||
       !u30_rom || u30_rom->size != GNET_U30_SIZE ||
-      !f35_rom || f35_rom->size != GNET_F35_EPROM_SIZE ||
+      (!zn1_motherboard && (!f35_rom || f35_rom->size != GNET_F35_EPROM_SIZE)) ||
       !fc_key_rom || fc_key_rom->size != content.fc_cat702_key.size())
   {
-    Error::SetStringView(
-      error, "Taito G-Net firmware definition is missing COH-3002T CAT702/U30/F35/FC security material.");
+    Error::SetStringView(error, "Taito G-Net firmware definition is missing required CAT702/U30/FC material.");
     return std::nullopt;
   }
 
@@ -4587,8 +4626,15 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
   if (!LoadROMMember(firmware_archive_path, *u30_rom, &content.u30_flash, error))
     return std::nullopt;
 
-  if (!LoadROMMember(firmware_archive_path, *f35_rom, &content.f35_eprom, error))
+  if (zn1_motherboard)
+  {
+    // COH-1002T leaves the F35 service EPROM socket unpopulated.
+    content.f35_eprom.assign(GNET_F35_EPROM_SIZE, UINT8_C(0xff));
+  }
+  else if (!LoadROMMember(firmware_archive_path, *f35_rom, &content.f35_eprom, error))
+  {
     return std::nullopt;
+  }
 
   member_data.clear();
   if (!LoadROMMember(firmware_archive_path, *fc_key_rom, &member_data, error))
@@ -4660,8 +4706,9 @@ bool InitializeTaitoGNet(const BIOS::Image& bios, TaitoGNetContent content, std:
   RuntimeState runtime;
   runtime.board_type = BoardType::TaitoGNet;
   runtime.content.set_name = std::move(content.set_name);
-  runtime.content.is_zn2 = true;
+  runtime.content.is_zn2 = !content.zn1_motherboard;
   runtime.content.use_2mb_vram = true;
+  runtime.gnet_mawasunda = (runtime.content.set_name == "mawasunda");
   runtime.content.qsound_enabled = false;
   runtime.content.motherboard_cat702_key = content.motherboard_cat702_key;
   runtime.content.game_cat702_key = content.fc_cat702_key;
@@ -4689,31 +4736,39 @@ bool InitializeTaitoGNet(const BIOS::Image& bios, TaitoGNetContent content, std:
   }
 
   std::vector<u8> gnet_key;
-  if (!runtime.gnet_pccard_disk.ReadMetadata(HARD_DISK_KEY_METADATA_TAG, 0, &gnet_key) || gnet_key.size() != 5)
+  const bool has_key_metadata = runtime.gnet_pccard_disk.ReadMetadata(HARD_DISK_KEY_METADATA_TAG, 0, &gnet_key);
+  if (has_key_metadata && gnet_key.size() != 5)
   {
-    Error::SetStringFmt(error, "Taito G-Net PC Card CHD '{}' does not contain the required five-byte card key metadata.",
-                        Path::GetFileName(runtime.gnet_pccard_path));
+    Error::SetStringFmt(error, "Taito G-Net PC Card CHD '{}' has invalid card key metadata size {}; expected 5 bytes.",
+                        Path::GetFileName(runtime.gnet_pccard_path), gnet_key.size());
     return false;
   }
-  std::copy(gnet_key.begin(), gnet_key.end(), runtime.gnet_pccard_key.begin());
+
+  runtime.gnet_pccard_key.fill(0);
+  runtime.gnet_pccard_has_key = has_key_metadata;
+  if (runtime.gnet_pccard_has_key)
+    std::copy(gnet_key.begin(), gnet_key.end(), runtime.gnet_pccard_key.begin());
 
   runtime.gnet_pccard_manufacturer_id = GetGNetPCCardManufacturerID(runtime.gnet_pccard_cis);
   runtime.gnet_pccard_type2 = (runtime.gnet_pccard_manufacturer_id == UINT16_C(0x00a4));
-  runtime.gnet_pccard_type2_locked = runtime.gnet_pccard_type2;
+  runtime.gnet_pccard_type2_locked = runtime.gnet_pccard_type2 && runtime.gnet_pccard_has_key;
   runtime.gnet_pccard_type2_unlock_attempt_count = 0;
   runtime.gnet_pccard_type3 = (runtime.gnet_pccard_manufacturer_id == UINT16_C(0x0045));
-  runtime.gnet_pccard_type3_locked = runtime.gnet_pccard_type3;
+  runtime.gnet_pccard_type3_locked = runtime.gnet_pccard_type3 && runtime.gnet_pccard_has_key;
   runtime.gnet_pccard_type3_unlock_attempt_count = 0;
 
-  // The preserved COH-3002T official-CF sets are installed/bootstrapped with
-  // JP1 (BIOS Flash) asserted, which selects the F35 EPROM bank at reset.
-  runtime.gnet_bios_flash_jp1 = runtime.gnet_pccard_type3;
+  // The preserved COH-3002T official-CF sets with lock metadata are
+  // installed/bootstrapped with JP1 asserted. Unlocked CompactFlash images
+  // such as Mawasunda boot with the ordinary bank selected.
+  runtime.gnet_bios_flash_jp1 = runtime.gnet_pccard_type3 && runtime.gnet_pccard_has_key;
 
-  INFO_LOG("SonyZN.GNet PC Card protection manfid=0x{:04X} type2={} type3={} jp1={}",
-           runtime.gnet_pccard_manufacturer_id, runtime.gnet_pccard_type2,
+  INFO_LOG("SonyZN.GNet PC Card protection manfid=0x{:04X} key={} type2={} type3={} jp1={}",
+           runtime.gnet_pccard_manufacturer_id, runtime.gnet_pccard_has_key, runtime.gnet_pccard_type2,
            runtime.gnet_pccard_type3, runtime.gnet_bios_flash_jp1);
 
-  runtime.gnet_pccard_type1_state = GNetType1LockState::Locked;
+  runtime.gnet_pccard_type1_state =
+    (runtime.gnet_pccard_has_key && !runtime.gnet_pccard_type2 && !runtime.gnet_pccard_type3) ?
+      GNetType1LockState::Locked : GNetType1LockState::Unlocked;
   runtime.gnet_pccard_unlock_bytes.fill(0);
   runtime.gnet_pccard_unlock_position = 0;
   runtime.gnet_pccard_unlock_match = true;
@@ -4787,7 +4842,7 @@ bool InitializeTaitoGNet(const BIOS::Image& bios, TaitoGNetContent content, std:
   if (!LoadGNetFCFlash(runtime, error))
     return false;
 
-  if (runtime.gnet_pccard_type3)
+  if (runtime.gnet_pccard_type3 && runtime.content.is_zn2)
   {
     const bool f35_v2_update_complete = IsGNetType3F35UpdateComplete(runtime);
 
@@ -4806,11 +4861,13 @@ bool InitializeTaitoGNet(const BIOS::Image& bios, TaitoGNetContent content, std:
   TaitoGNetComm::Initialize(communication_board);
 
   INFO_LOG(
-    "SonyZN initialized set='{}' board='COH-3002T' ram=4MiB vram=2MiB cpu='ZN2 148%' "
-    "security='TT10+TT16 CAT702' u30='mode0 0x1F000000-0x1F1FFFFF mapped' fc='1FB40000/60000/68000/70000 recovered state' "
-    "pccard='{}; RF5C296+CIS+Type1+ATA A3b2 active' cis={} identify={} blocks={} u30flash='erase+program A3c1 active; persistence active' u27flash='E28F400 A3c2.1 geometry-correct; persistence active' waveflash='mode4 U56/U55/U29 TE28F160 A3c3 active; persistence active' zoom='A4a lazy-installed host+audio active'",
-    s_runtime->content.set_name, s_runtime->gnet_pccard_path, s_runtime->gnet_pccard_cis.size(),
-    s_runtime->gnet_pccard_identify.size(), s_runtime->gnet_pccard_disk.GetBlockCount());
+    "SonyZN initialized set='{}' board='{}' ram=4MiB vram=2MiB cpu='{}' "
+    "security='dual CAT702' u30='mode0 0x1F000000-0x1F1FFFFF mapped' fc='1FB40000/60000/68000/70000 recovered state' "
+    "pccard='{}; RF5C296+CIS+ATA active' cis={} identify={} blocks={} u30flash='erase+program A3c1 active; persistence active' u27flash='E28F400 A3c2.1 geometry-correct; persistence active' waveflash='mode4 U56/U55/U29 TE28F160 A3c3 active; persistence active' zoom='A4a lazy-installed host+audio active'",
+    s_runtime->content.set_name, s_runtime->content.is_zn2 ? "COH-3002T" : "COH-1002T",
+    s_runtime->content.is_zn2 ? "ZN2 148%" : "ZN1 100%", s_runtime->gnet_pccard_path,
+    s_runtime->gnet_pccard_cis.size(), s_runtime->gnet_pccard_identify.size(),
+    s_runtime->gnet_pccard_disk.GetBlockCount());
   return true;
 }
 bool InitializeCapcomZN(const BIOS::Image& bios, CapcomZNContent content, std::string_view persistence_directory,
@@ -5664,6 +5721,20 @@ void Reset()
     s_runtime->time_warner_main_board_reset_pending = false;
   }
   s_runtime->coin = 0;
+  if (s_runtime->gnet_mawasunda)
+  {
+    s_runtime->gnet_mawasunda_trackball.fill(0);
+    s_runtime->gnet_mawasunda_trackball_last.fill(0);
+    s_runtime->gnet_mawasunda_trackball_response.fill(0);
+    s_runtime->gnet_mawasunda_weight_latch = 0;
+    s_runtime->gnet_mawasunda_lamp_latch = UINT16_C(0xffff);
+    Arcade::Output::SetValue("mawasunda_start_led_1", 0, "Mawasunda coin register");
+    Arcade::Output::SetValue("mawasunda_start_led_2", 0, "Mawasunda coin register");
+    Arcade::Output::SetValue("mawasunda_weight_1", 0, "Mawasunda FC output");
+    Arcade::Output::SetValue("mawasunda_weight_2", 0, "Mawasunda FC output");
+    for (u32 i = 0; i < 16; i++)
+      Arcade::Output::SetValue(("mawasunda_lamp_" + std::to_string(i + 1)).c_str(), 0, "Mawasunda FC output");
+  }
   s_runtime->motherboard_cat702.Reset();
   s_runtime->game_cat702.Reset();
   ApplySecuritySelect(*s_runtime, 0x0c);
@@ -5680,16 +5751,18 @@ void Reset()
     s_runtime->gnet_type3_auto_handoff_activity_count = 0;
     s_runtime->gnet_type3_auto_handoff_last_activity_tick = 0;
 
-    s_runtime->gnet_pccard_type1_state = GNetType1LockState::Locked;
+    s_runtime->gnet_pccard_type1_state =
+      (s_runtime->gnet_pccard_has_key && !s_runtime->gnet_pccard_type2 && !s_runtime->gnet_pccard_type3) ?
+        GNetType1LockState::Locked : GNetType1LockState::Unlocked;
     s_runtime->gnet_pccard_unlock_bytes.fill(0);
     s_runtime->gnet_pccard_unlock_position = 0;
     s_runtime->gnet_pccard_unlock_match = true;
     s_runtime->gnet_pccard_busy_reads_remaining = 0;
     s_runtime->gnet_pccard_unlock_attempt_count = 0;
     s_runtime->gnet_pccard_type1_trace_count = 0;
-    s_runtime->gnet_pccard_type2_locked = s_runtime->gnet_pccard_type2;
+    s_runtime->gnet_pccard_type2_locked = s_runtime->gnet_pccard_type2 && s_runtime->gnet_pccard_has_key;
     s_runtime->gnet_pccard_type2_unlock_attempt_count = 0;
-    s_runtime->gnet_pccard_type3_locked = s_runtime->gnet_pccard_type3;
+    s_runtime->gnet_pccard_type3_locked = s_runtime->gnet_pccard_type3 && s_runtime->gnet_pccard_has_key;
     s_runtime->gnet_pccard_type3_unlock_attempt_count = 0;
 
     s_runtime->gnet_ata_error = 0;
@@ -5838,6 +5911,23 @@ void Shutdown()
 bool IsActive()
 {
   return s_runtime.has_value();
+}
+
+bool IsMawasundaActive()
+{
+  return s_runtime && s_runtime->board_type == BoardType::TaitoGNet && s_runtime->gnet_mawasunda;
+}
+
+void AddMawasundaHandleDelta(u32 player, s32 delta)
+{
+  if (!IsMawasundaActive() || player >= 2 || delta == 0)
+    return;
+
+  // MAME models the two cabinet handles with different gearing/direction.
+  // Preserve that relationship while accepting ArcadeDuck relative-axis deltas.
+  const s64 scaled = (static_cast<s64>(delta) * (player == 0 ? 256 : -193)) / 256;
+  s_runtime->gnet_mawasunda_trackball[player] =
+    static_cast<u16>(s_runtime->gnet_mawasunda_trackball[player] + static_cast<s32>(scaled));
 }
 
 void ApplySPUOutputGain(s32* left, s32* right)
@@ -6310,7 +6400,9 @@ static bool GNetRF5C296MemoryWindow0AttributeEnabled(const RuntimeState& runtime
 
 static void ResetGNetType1Card(RuntimeState& runtime)
 {
-  runtime.gnet_pccard_type1_state = GNetType1LockState::Locked;
+  runtime.gnet_pccard_type1_state =
+    (runtime.gnet_pccard_has_key && !runtime.gnet_pccard_type2 && !runtime.gnet_pccard_type3) ?
+      GNetType1LockState::Locked : GNetType1LockState::Unlocked;
   runtime.gnet_pccard_unlock_bytes.fill(0);
   runtime.gnet_pccard_unlock_position = 0;
   runtime.gnet_pccard_unlock_match = true;
@@ -7114,9 +7206,9 @@ static void WriteGNetRF5C296HostByte(RuntimeState& runtime, u32 offset, u8 value
       if (reg == 0x03 && (value & UINT8_C(0x40)) == 0)
       {
         ResetGNetType1Card(runtime);
-        runtime.gnet_pccard_type2_locked = runtime.gnet_pccard_type2;
+        runtime.gnet_pccard_type2_locked = runtime.gnet_pccard_type2 && runtime.gnet_pccard_has_key;
         runtime.gnet_pccard_type2_unlock_attempt_count = 0;
-        runtime.gnet_pccard_type3_locked = runtime.gnet_pccard_type3;
+        runtime.gnet_pccard_type3_locked = runtime.gnet_pccard_type3 && runtime.gnet_pccard_has_key;
         runtime.gnet_pccard_type3_unlock_attempt_count = 0;
         ResetGNetATAState(runtime);
         runtime.gnet_pccard_configuration_option = 0;
@@ -8033,10 +8125,69 @@ u32 ReadEXP1(u32 width, u32 offset)
   return ReadBytes(s_runtime->content.banked_rom, width, source_offset);
 }
 
+bool WriteMawasundaOutputWindow(RuntimeState& runtime, u32 width, u32 offset, u32 value)
+{
+  if (!runtime.gnet_mawasunda || runtime.gnet_bios_flash_jp1 ||
+      (runtime.gnet_fc_control & UINT8_C(0x04)) != 0 || (width != 1 && width != 2 && width != 4) ||
+      offset < MAWASUNDA_WEIGHT_OUTPUT || (offset + width - 1) > (MAWASUNDA_LAMP_OUTPUT + 1))
+  {
+    return false;
+  }
+
+  bool weight_touched = false;
+  bool lamp_touched = false;
+  for (u32 i = 0; i < width; i++)
+  {
+    const u32 address = offset + i;
+    const u8 byte = static_cast<u8>(value >> (i * 8));
+    if (address < MAWASUNDA_LAMP_OUTPUT)
+    {
+      const u32 shift = (address - MAWASUNDA_WEIGHT_OUTPUT) * 8;
+      runtime.gnet_mawasunda_weight_latch = static_cast<u16>(
+        (runtime.gnet_mawasunda_weight_latch & ~(UINT16_C(0xff) << shift)) |
+        (static_cast<u16>(byte) << shift));
+      weight_touched = true;
+    }
+    else
+    {
+      const u32 shift = (address - MAWASUNDA_LAMP_OUTPUT) * 8;
+      runtime.gnet_mawasunda_lamp_latch = static_cast<u16>(
+        (runtime.gnet_mawasunda_lamp_latch & ~(UINT16_C(0xff) << shift)) |
+        (static_cast<u16>(byte) << shift));
+      lamp_touched = true;
+    }
+  }
+
+  if (weight_touched)
+  {
+    Arcade::Output::SetValue("mawasunda_weight_1", runtime.gnet_mawasunda_weight_latch & UINT16_C(0x001f),
+                             "Mawasunda FC output");
+    Arcade::Output::SetValue("mawasunda_weight_2",
+                             (runtime.gnet_mawasunda_weight_latch >> 8) & UINT16_C(0x001f),
+                             "Mawasunda FC output");
+  }
+
+  if (lamp_touched)
+  {
+    for (u32 i = 0; i < 16; i++)
+    {
+      const std::string name = "mawasunda_lamp_" + std::to_string(i + 1);
+      Arcade::Output::SetValue(name.c_str(),
+                               (runtime.gnet_mawasunda_lamp_latch & static_cast<u16>(UINT16_C(1) << i)) ? 0 : 1,
+                               "Mawasunda FC output");
+    }
+  }
+
+  return true;
+}
+
 bool WriteEXP1(u32 width, u32 offset, u32 value)
 {
   if (s_runtime && s_runtime->board_type == BoardType::TaitoGNet)
   {
+    if (WriteMawasundaOutputWindow(*s_runtime, width, offset, value))
+      return true;
+
     const u8 fc_mode = s_runtime->gnet_fc_control & UINT8_C(0x07);
 
     if (!s_runtime->gnet_bios_flash_jp1 && fc_mode == 0 &&
@@ -8366,7 +8517,8 @@ u32 ReadEXP3(u32 width, u32 offset)
 
   // COH-3002C software probes this region. Exact hardware semantics remain unknown;
   // a benign zero read is sufficient for the supported ZN2/G-Net software.
-  if ((s_runtime->board_type == BoardType::CapcomZN2 || s_runtime->board_type == BoardType::TaitoGNet) &&
+  if ((s_runtime->board_type == BoardType::CapcomZN2 ||
+       (s_runtime->board_type == BoardType::TaitoGNet && s_runtime->content.is_zn2)) &&
       offset >= ZN2_UNKNOWN_1FA51C00_BASE && offset <= ZN2_UNKNOWN_1FA51C00_END)
   {
     return 0;
@@ -8375,7 +8527,7 @@ u32 ReadEXP3(u32 width, u32 offset)
   // Holding it at a constant zero can stall ZN-2 software, so toggle it on each read.
   // G-Net inherits the ZN-2 motherboard map and uses the same status source.
   if ((s_runtime->board_type == BoardType::CapcomZN2 ||
-       s_runtime->board_type == BoardType::TaitoGNet) &&
+       (s_runtime->board_type == BoardType::TaitoGNet && s_runtime->content.is_zn2)) &&
       offset >= ZN2_UNKNOWN_1FA60000_BASE && offset <= ZN2_UNKNOWN_1FA60000_END)
   {
     s_runtime->zn2_spu_hack ^= UINT16_C(0x0008);
@@ -8668,6 +8820,13 @@ void WriteEXP3(u32 width, u32 offset, u32 value)
   if (offset == COIN_REGISTER)
   {
     s_runtime->coin = static_cast<u8>(value);
+    if (s_runtime->gnet_mawasunda)
+    {
+      Arcade::Output::SetValue("mawasunda_start_led_1", (s_runtime->coin >> 2) & 1,
+                               "Mawasunda coin register");
+      Arcade::Output::SetValue("mawasunda_start_led_2", (s_runtime->coin >> 3) & 1,
+                               "Mawasunda coin register");
+    }
     return;
   }
 

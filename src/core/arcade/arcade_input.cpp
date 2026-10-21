@@ -6,6 +6,7 @@
 #include "core/arcade/arcade_control_registry.h"
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "core/settings.h"
 
 #include "common/path.h"
@@ -423,6 +424,8 @@ void OnPointerMove(u32 port_index, InputBindingKey key, float delta)
     const s32 delta_y = x_axis ? 0 : static_cast<s32>(delta * scale);
     if (NamcoSystem11::IsFamilyBowlActive())
       NamcoSystem11::AddFamilyBowlTrackballDelta(port_index, delta_x, delta_y);
+    else if (SonyZN::IsMawasundaActive())
+      SonyZN::AddMawasundaHandleDelta(port_index, delta_x);
     else
       Konami::AddGVTrackballDelta(port_index, delta_x, delta_y);
   }
@@ -785,6 +788,8 @@ void Update()
         static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
       if (NamcoSystem11::IsFamilyBowlActive())
         NamcoSystem11::AddFamilyBowlTrackballDelta(port, delta_x, delta_y);
+      else if (SonyZN::IsMawasundaActive())
+        SonyZN::AddMawasundaHandleDelta(port, delta_x);
       else
         Konami::AddGVTrackballDelta(port, delta_x, delta_y);
     }
