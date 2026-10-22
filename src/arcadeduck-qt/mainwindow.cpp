@@ -2164,7 +2164,6 @@ void MainWindow::connectSignals()
   connect(m_ui.actionSettings2, &QAction::triggered, this, &MainWindow::onSettingsTriggeredFromToolbar);
   connect(m_ui.actionInterfaceSettings, &QAction::triggered, [this]() { doSettings("Interface"); });
   connect(m_ui.actionOperatorSettings, &QAction::triggered, [this]() { doSettings("Operator"); });
-  connect(m_ui.actionSystemLinkSettings, &QAction::triggered, [this]() { doSettings("System Link"); });
   connect(m_ui.actionConsoleSettings, &QAction::triggered, [this]() { doSettings("Machine"); });
   connect(m_ui.actionEmulationSettings, &QAction::triggered, [this]() { doSettings("Emulation"); });
   connect(m_ui.actionGameListSettings, &QAction::triggered, [this]() { doSettings("Game List"); });

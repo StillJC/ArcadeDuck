@@ -745,11 +745,8 @@ static bool EnsurePersistenceDirectories(const RuntimeState& runtime)
 
 static bool WriteAT28PersistenceAtomically(std::string_view final_path, Error* error)
 {
-  // The temporary file must be owned by this writer for its entire lifetime.
-  // A fixed "at28c16.tmp" allows another process to truncate or replace the file
-  // after validation but before rename. Use exclusive creation and
-  // numbered same-directory candidates instead. Existing candidates belong to
-  // another writer or are stale from a crashed process and are never touched.
+  // Use exclusive same-directory temp files so another writer cannot replace
+  // the validated file before the atomic rename.
   static constexpr u32 MAX_TEMP_ATTEMPTS = 1024;
 
   const std::string final_path_string(final_path);
@@ -2149,10 +2146,8 @@ void ScheduleZNMCUDSR(RuntimeState& runtime)
 
   runtime.mcu_dsr_active = false;
 
-  // This must be a scheduler event rather than a timestamp checked from
-  // JOY_STAT reads. The BIOS busy-loop can execute many MMIO polls in one CPU
-  // dispatcher slice; an event forces execution to stop exactly at the 50us
-  // hardware boundary so the 5us DSR-low pulse cannot be skipped.
+  // Schedule DSR assertion because BIOS polling can outpace CPU dispatcher
+  // slices; the event preserves the 50 us boundary and 5 us low pulse.
   if (s_mcu_dsr_assert_event)
     s_mcu_dsr_assert_event->Schedule(ZNMCUMicrosecondsToTicks(50));
 }
@@ -2241,24 +2236,18 @@ u8 ExchangeZNMCUByte(RuntimeState& runtime, u8 tx)
       response[1] = to_adc(ArcadeInput::GetAnalogValue(0, "Steering"));
 
     // ZN analog connector channel 1: RC de Go!/Go By RC uses one
-    // self-centering bidirectional trigger.  A direct centered axis is
-    // supported when the active control layout exposes ThrottleBrake.
-    if (ArcadeInput::HasAnalogControl(0, "ThrottleBrake"))
+    // self-centering bidirectional trigger. Synthesize it from ArcadeDuck's
+    // separate accelerator and brake axes.
+    if (ArcadeInput::HasAnalogControl(0, "Accelerator") ||
+        ArcadeInput::HasAnalogControl(0, "Brake"))
     {
-      response[2] = to_adc(1.0f - ArcadeInput::GetAnalogValue(0, "ThrottleBrake"));
-    }
-    else if (ArcadeInput::HasAnalogControl(0, "Accelerator") ||
-             ArcadeInput::HasAnalogControl(0, "Brake"))
-    {
-      // Practical host mapping for modern pads/wheels: synthesize the
-      // cabinet's centered trigger from independent 0..1 accelerator/brake
-      // axes.  Neither pressed = center; accelerator and brake move toward
+      // Neither pressed = center; accelerator and brake move toward
       // opposite ends.  If both are pressed equally they cancel to center.
       const float accelerator = ArcadeInput::HasAnalogControl(0, "Accelerator") ?
                                   ArcadeInput::GetAnalogValue(0, "Accelerator") : 0.0f;
       const float brake = ArcadeInput::HasAnalogControl(0, "Brake") ?
                             ArcadeInput::GetAnalogValue(0, "Brake") : 0.0f;
-      const float logical_trigger = std::clamp(0.5f + ((accelerator - brake) * 0.5f), 0.0f, 1.0f);
+      const float logical_trigger = std::clamp(0.5f + ((brake - accelerator) * 0.5f), 0.0f, 1.0f);
 
       // MAME's ANALOG2 definition is reversed relative to host direction.
       response[2] = to_adc(1.0f - logical_trigger);
@@ -5977,9 +5966,8 @@ static u64 GetGNetFCFlashActivityCount(const RuntimeState& runtime)
 
 static u64 GetGNetType3AutoHandoffIdleTicks()
 {
-  // The completion screen asks the operator to power off. One second with no
-  // FC flash program/erase activity is deliberately conservative while still
-  // making the handoff effectively automatic.
+  // Wait one second without FC flash activity before emulating the
+  // service power-cycle requested by the completion screen.
   return std::max<u64>(static_cast<u64>(System::GetTicksPerSecond()), UINT64_C(1));
 }
 
@@ -6015,10 +6003,8 @@ void ProcessFrame()
                (now - runtime.gnet_type3_auto_handoff_last_activity_tick) >=
                  GetGNetType3AutoHandoffIdleTicks())
       {
-        // BeginMainBoardReset() saves dirty U30/U27/U56/U55/U29 state. Keep
-        // this as a real main-board reset rather than jumping directly into
-        // U30 execution so all controller/security/reset state follows the
-        // same path as an operator power-cycle.
+        // Use the normal main-board reset path so persistence, controller,
+        // security, and reset state follow the operator power-cycle path.
         runtime.gnet_bios_flash_jp1 = false;
         runtime.taito_main_board_reset_pending = true;
 

@@ -168,12 +168,9 @@ constexpr u16 GQMulBHigh(u16 coefficient, u16 source)
   return static_cast<u16>((static_cast<u32>(coefficient) * static_cast<u32>(source)) >> 16);
 }
 
-// The SiliconRE HDL expresses MULB operands as raw 16-bit vectors,
-// but ROMB 0xA0-0xBF is plainly the two's-complement companion
-// pan table. Keep the unsigned interpretation intact and evaluate
-// a fully signed 16x16 high-word interpretation in a separate shadow domain.
-// Extracting bits 31:16 from the two's-complement product avoids relying on
-// implementation-defined right shift of a negative signed integer.
+// ROMB 0xA0-0xBF is the two's-complement companion pan table. Keep the
+// unsigned silicon interpretation and evaluate signed MULB separately.
+// Extract bits 31:16 to avoid implementation-defined signed right shift.
 constexpr u16 GQMulBHighSigned(u16 coefficient, u16 source)
 {
   const s32 product = static_cast<s32>(static_cast<s16>(coefficient)) *
@@ -200,8 +197,7 @@ static_assert(GQAccumulateREGE(0x0000u, 0xfffdu) == 0xffffu);
 static_assert(GQAccumulateREGE(0xffffu, 0x0001u) == 0x0000u);
 
 // Exact 31-bit effect/interpolation datapath primitives from SiliconRE.
-// Keep these separate from the audible path until the complete 32-cycle DLAT
-// sequence is exercised as a shadow pipeline.
+// They remain isolated from the audible path until the full DLAT sequence is modeled.
 constexpr u32 GQ_EFFECT_WORD_MASK = 0x7fffffffu;
 
 constexpr u32 GQMulA(u8 coefficient, u16 source)
@@ -264,13 +260,9 @@ static_assert(GQUnpackFeedback(GQPackFeedback(0x00000000u)) == 0x00000000u);
 static_assert(GQUnpackFeedback(GQPackFeedback(0x12345678u)) == 0x12345678u);
 static_assert(GQUnpackFeedback(GQPackFeedback(0x7fffffffu)) == 0x7fffffffu);
 
-// Reduced DLAT_A microsequence for the Crypt Killer target case: MULA
-// parameter bytes 0x06/0x07 are both zero and MUXF selects
-// DLAT_A. SiliconRE's 32-cycle sequence then deterministically flushes ADDE
-// to zero before DLAT_B opens, captures zero into DLAT_B at relative cycle 17,
-// captures sign-extended CH_SAMPLE + DLAT_B into DLAT_A at relative cycle 27,
-// and the subsequent MUXF latch exposes DLAT_A[30:15]. No feedback/P11/P13
-// term participates in this specific path.
+// With MULA bytes 0x06/0x07 zero and MUXF selecting DLAT_A, the 32-cycle
+// sequence clears DLAT_B and captures sign-extended CH_SAMPLE in DLAT_A;
+// no P11/P13 feedback contributes to this path.
 constexpr u32 GQRunZeroMulaDLATABMicrosequence()
 {
   const u32 mula_out = GQMulA(0x00u, 0x0000u);
@@ -285,22 +277,13 @@ constexpr u32 GQRunZeroMulaDLATAMicrosequence(s16 sample)
   return GQAddD(GQBuildSampleDInput(sample), dlat_b, false, false, false);
 }
 
-// With the even MULA byte (register 0x06 / MULA_A_LATB) at zero, the
-// channel's effect microsequence has an exact reduced recurrence even when the
-// odd MULA byte (register 0x07 / MULA_A_LATA) is nonzero:
-//
-//   DLAT_C  = sign-extended CH_SAMPLE
-//   P13'    = previous P11
-//   product = REG07 * DLAT_A[30:15] (unsigned 8x16)
-//   P11'    = DLAT_C + (product << 7), 31-bit wrap
-//   DLAT_B  = 0
-//   DLAT_A  = sign-extended CH_SAMPLE
-//
-// The product occurs while TRIGE selects MULA_A_LATA. By the TRIGB window,
-// L81 holds that product while the current multiplier output is zero, so ADDE
-// is the full 24-bit product and MULA_LAT is zero. This makes the D-input term
-// exactly product<<7. P13 is written earlier, during TRIGC, before that odd
-// MULA product reaches the ADDD path, so it is exactly the previous P11 word.
+// With MULA_A_LATB zero, the channel recurrence is:
+//   DLAT_C = sign-extended CH_SAMPLE
+//   P13'   = previous P11
+//   P11'   = DLAT_C + (REG07 * DLAT_A[30:15] << 7), 31-bit wrap
+//   DLAT_B = 0
+//   DLAT_A = sign-extended CH_SAMPLE
+// P13 captures the previous P11 before the odd-MULA product reaches ADDD.
 constexpr u32 GQRunZeroEvenMulaDLATCMicrosequence(s16 sample)
 {
   return GQBuildSampleDInput(sample);
@@ -326,13 +309,9 @@ constexpr s16 GQExtractMuxFWord(u32 dlat)
   return static_cast<s16>(static_cast<u16>((dlat >> 15) & 0xffffu));
 }
 
-// SiliconRE timing for channel/MUXF slots 2-9 resolves the two AXDT
-// accumulator contributions without reconstructing the still-unresolved A-D
-// output planes. REGEE (AXDT A) updates at slot-relative cycle 13 from the
-// multiplier result whose ROMB coefficient was sampled at phase 9. Due to the
-// same-edge AK50A latch timing, that lookup is RVVOL-high, not PAN. REGEF
-// (AXDT B) updates at cycle 15 from the phase-11 PAN lookup. At both events
-// MULB_B is MUXG_REG, which is the channel's MUXF_REG source in slots 2-9.
+// In channel slots 2-9, REGEE updates at cycle 13 from the phase-9
+// RVVOL-high lookup and REGEF at cycle 15 from the phase-11 PAN lookup.
+// Both multiply the channel MUXF_REG source.
 constexpr u8 GQGetChannelREGEECoefficientAddress(u8 reverb_volume)
 {
   // SiliconRE latches RVVOL from RAMB_DO[6:0]; bit 7 is not part of the
@@ -349,9 +328,8 @@ constexpr u8 GQGetChannelREGEFCoefficientAddress(u8 channel_control, u8 pan, u8 
   return static_cast<u8>(0x90u | (negative_table ? 0x20u : 0x00u) | (pan & 0x0fu));
 }
 
-// Diagnostic reconstruction of the four physical speaker-output accumulators
-// documented by SiliconRE. It does not feed the audible path and is used to
-// identify the downstream GQ fold.
+// Diagnostic reconstruction of the four physical speaker-output accumulators;
+// it does not feed the audible path.
 constexpr u8 GQGetChannelOutputPlaneCoefficientAddress(u32 plane, u8 channel_control, u8 pan)
 {
   const u8 high = static_cast<u8>((pan >> 4) & 0x0fu);
@@ -533,11 +511,8 @@ double Chip::GetGQMixerSlotGain(u32 slot) const
   if (m_pan_encoding != PanEncoding::KonamiGQ || slot >= GQ_MIXER_CONTROL_REGISTERS.size())
     return 0.0;
 
-  // Every one of the twelve silicon mixer source slots owns the same control
-  // shape: inverted bits 1:0 select one of 0x228-0x22B. This helper now uses
-  // the exact slot-to-control schedule instead of treating 0x210/0x211 as an
-  // isolated AUX convention. Bits 7:6 also feed the per-output ROMB/pan route
-  // logic; those become active when the six REGE accumulator schedule is ported.
+  // All twelve mixer slots use the same control shape: inverted bits 1:0
+  // select 0x228-0x22B; bits 7:6 participate in the output ROMB/pan route.
   const u32 control_register = GQ_MIXER_CONTROL_REGISTERS[slot];
   const u32 volume_select = (~m_registers[control_register]) & 0x03u;
   const u32 attenuation_index = m_registers[GQ_GLOBAL_VOLUME_REGISTER_BASE + volume_select] & 0x7fu;
@@ -575,18 +550,16 @@ void Chip::WriteRegister(u32 offset, u8 value)
   if (offset >= m_registers.size())
     return;
 
-  // K054539 internal-RAM CPU accesses use {A9,A7:0}; A8 is physically ignored.
-  // Preserve the existing register-file behavior while also keeping the exact
-  // alias-resolved RAM byte needed by the silicon special-slot shadow.
+  // Internal RAM ignores A8; retain the alias-resolved byte used by the
+  // GQ special-slot shadow.
   if (m_pan_encoding == PanEncoding::KonamiGQ && (offset & 0x200u) == 0)
     m_gq_internal_ram_cpu_shadow[offset & 0xffu] = value;
 
   if (m_pan_encoding == PanEncoding::KonamiGQ && offset == CONTROL_REGISTER &&
       ((m_registers[CONTROL_REGISTER] ^ value) & 0x01u) != 0)
   {
-    // The GQ frame path treats control-bit0 deassertion as a silent/reset
-    // interval. Keep the diagnostic REGEEB/REGEFB shadow aligned across the
-    // corresponding disable/re-enable boundary.
+    // Control bit 0 deassertion is a silent/reset interval; reset all
+    // diagnostic feedback domains at the same boundary.
     m_gq_axdt_full_feedback.fill(0);
     m_gq_axdt_full_feedback_valid = true;
     m_gq_axdt_closed_loop_feedback.fill(0);
@@ -681,22 +654,16 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
   double left_value = 0.0;
   double right_value = 0.0;
 
-  // GQ dry/output domain. Keep the stereo synthesis as the DSP/AXDT
-  // send while independently building the audible dry mix from the two 4-bit
-  // PAN fields documented by SiliconRE. The downstream REGEA-D -> 056602 fold
-  // remains separate from this reconstruction.
+  // Build the GQ dry PAN projection independently from the DSP/AXDT send;
+  // the downstream REGEA-D -> 056602 fold remains separate.
   double gq_independent_pan_left_value = 0.0;
   double gq_independent_pan_right_value = 0.0;
   std::array<u16, 2> gq_axdt_channel_accumulator = {};
   std::array<s16, 8> gq_muxf_slot_source = {};
   std::array<bool, 8> gq_muxf_slot_exact = {};
 
-  // Passive GQ A-D discriminator. SiliconRE's output-plane pipeline does not
-  // take the final MUXF_REG word directly at every REGEA-D update; an earlier
-  // MULB/MUXC stage supplies the second multiplier input. Current MUXF may be
-  // zero while audible PCM is active, so CH_SAMPLE/current PCM is retained
-  // independently as the first-stage source. This does not participate in the
-  // audible stereo or AXDT paths.
+  // REGEA-D receives an earlier MULB/MUXC source, not always final MUXF_REG.
+  // Retain CH_SAMPLE separately for this first-stage source.
   std::array<s16, 8> gq_output_plane_pcm_source = {};
 
   bool gq_axdt_channels_exact = true;
@@ -775,10 +742,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
     return;
   }
 
-  // The legacy software reverb model is retained only for the generic K054539
-  // path. SiliconRE shows that GQ register 0x04 is two independent mixer
-  // coefficients and registers 0x06/0x07 feed MULA; they are not the simple
-  // reverb-volume-plus-delay model used by the old emulator approximation.
+  // The generic path uses the legacy software reverb model. GQ instead uses
+  // register 0x04 as mixer coefficients and 0x06/0x07 as MULA inputs.
   const bool use_legacy_software_reverb = (m_pan_encoding != PanEncoding::KonamiGQ);
   if (use_legacy_software_reverb)
   {
@@ -793,11 +758,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
 
     if ((m_registers[ACTIVE_REGISTER] & (1u << channel_index)) == 0)
     {
-      // SiliconRE still walks every channel mixer slot while the PCM channel is
-      // inactive. For the exact zero-even-MULA subset CH_SAMPLE is zero, so
-      // DLAT_A/B/C are zero while P13 can retain one frame of feedback state.
-      // Preserve that P13 tail as a real MUXF source instead of treating every
-      // inactive channel slot as silent.
+      // Inactive GQ slots still advance the zero-even-MULA recurrence;
+      // P13 can retain one frame of feedback while CH_SAMPLE is zero.
       if (m_pan_encoding == PanEncoding::KonamiGQ && primary[0x06] == 0x00u)
       {
         const u8 odd_control = secondary[1];
@@ -1015,14 +977,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
       if (gq_muxf_paths)
         (*gq_muxf_paths)[channel_index] = muxf_path;
 
-      // Unresolved channels currently have the even MULA byte
-      // (register 0x06 / MULA_A_LATB) at zero. The exact SiliconRE
-      // recurrence above now covers DLAT_A, DLAT_B, DLAT_C,
-      // and the persistent P13 feedback source for that zero-even-MULA subset.
-      //
-      // P13 must be sampled before advancing the feedback RAM recurrence:
-      // hardware reads the stored P13 word in the channel slot, then writes
-      // the next P11/P13 words during the following slot.
+      // Zero-even-MULA channels use the exact DLAT_A/B/C and P13 recurrence.
+      // Sample P13 before advancing the per-channel feedback words.
       const bool zero_even_mula = (primary[0x06] == 0x00u);
       const u32 previous_p11 = m_gq_effect_feedback_p11[channel_index];
       const u32 previous_p13 = m_gq_effect_feedback_p13[channel_index];
@@ -1111,10 +1067,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
                                   static_cast<u16>(muxf_word))));
         }
 
-        // Channels 0-7 are silicon slots 2-9. Each REGE update adds the
-        // rounded multiplier term to the existing 16-bit register, so the
-        // contribution computed from a zero accumulator can be wrap-added in
-        // slot order without changing the recurrence.
+        // REGE accumulation wraps at 16 bits, so channel contributions can
+        // be accumulated in slot order from a zero initial value.
         gq_axdt_channel_accumulator[0] =
           static_cast<u16>(gq_axdt_channel_accumulator[0] + static_cast<u16>(regee_contribution));
         gq_axdt_channel_accumulator[1] =
@@ -1129,9 +1083,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
       }
       else
       {
-        // The aggregate is exact only while every active channel uses a MUXF
-        // source we have reconstructed. Nonzero-even-MULA paths remain
-        // invalid instead of being approximated.
+        // The aggregate is valid only when every active channel has a
+        // reconstructed MUXF source.
         gq_axdt_channels_exact = false;
       }
     }
@@ -1217,13 +1170,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
         s16 plane_source = source;
         if (slot >= GQ_MUXF_SLOT_BASE && slot < (GQ_MUXF_SLOT_BASE + 8u))
         {
-          // Regular slots 2-9 still use the v4 discriminator approximation.
-          // Their silicon MUXG source is MUXF_REG, whose earlier DLAT/MULB/MUXC
-          // history is not yet reproduced exactly by the emulator shadow.
-          //
-          // Current PCM -> CH_VOL provides the first-stage boundary for these slots:
-          //   CH_SAMPLE/current PCM -> CH_VOL ROMB -> MUXC/MUXF history ->
-          //   per-plane PAN/control ROMB -> REGE half-step.
+          // Slots 2-9 use CH_SAMPLE -> CH_VOL as the first-stage source;
+          // the earlier DLAT/MULB/MUXC history is not yet modeled exactly.
           const u32 channel_index = slot - GQ_MUXF_SLOT_BASE;
           const u8 channel_volume = m_registers[(channel_index * 0x20u) + 0x03u] & 0x7fu;
           plane_source = static_cast<s16>(
@@ -1236,16 +1184,9 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
         }
         else
         {
-          // SiliconRE static timing closes the special-slot first-stage
-          // question. Slots 0/1 select MUXH and slots 10/11 select AXWORD
-          // directly into MUXG, then MUXG_REG. During the REGEA-D update
-          // phases AS70=1 and AJ106=1, so MULB_B is MUXG_REG; neither MULA nor
-          // MUXC nor the CH_VOL/RVVOL attenuation path is inserted ahead of
-          // the per-plane ROMB multiply.
-          //
-          // The current model uses this boundary for A-D:
-          //   MUXH/AXDA source -> per-plane PAN/control ROMB ->
-          //   signed MULB -> REGE half-step.
+          // Slots 0/1 use MUXH and 10/11 use AXWORD directly through MUXG_REG.
+          // REGEA-D then applies the per-plane ROMB coefficient and signed MULB
+          // without an intervening MULA/MUXC or CH_VOL/RVVOL stage.
           plane_source = source;
         }
 
@@ -1304,8 +1245,7 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
         const u32 slot = GQ_MUXF_SLOT_BASE + channel_index;
         const u8* const primary = &m_registers[channel_index * 0x20u];
 
-        // AXDT/full-source diagnostics continue to use the independently
-        // reconstructed MUXF path and preserve their existing validity rules.
+        // AXDT diagnostics use the independently reconstructed MUXF path.
         if (gq_muxf_slot_exact[channel_index])
         {
           const s16 muxf_source = gq_muxf_slot_source[channel_index];
@@ -1362,9 +1302,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
 
     if (gq_axdt_closed_loop_mix || gq_axdt_closed_loop_mix_valid)
     {
-      // Independent closed-loop shadow. Slots 2-9 reuse the resolved channel
-      // MUXF words, while slots 0/1 and 10/11 use this shadow domain's own
-      // previous REGEE/F and AXDA return respectively.
+      // Closed-loop shadow: slots 2-9 use resolved MUXF words; special slots
+      // use this domain's previous REGEE/F and AXDA return.
       std::array<u16, 2> gq_axdt_closed_loop_accumulator = {};
       bool gq_axdt_closed_loop_exact = m_gq_axdt_closed_loop_feedback_valid;
 
@@ -1434,10 +1373,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
 
     if (gq_axdt_rvv_loop_mix || gq_axdt_rvv_loop_mix_valid)
     {
-      // Optional RVVOL-pair diagnostic. Silicon reconstruction exposes both
-      // RVVOL nibbles as distinct non-pan ROMB lookup cases, while the pan
-      // generator supplies later table phases. Keep this isolated from the
-      // audible path and evaluate it only when a diagnostic caller requests it.
+      // RVVOL diagnostic evaluates the two non-pan ROMB lookup cases
+      // independently from the audible path.
       std::array<u16, 2> gq_axdt_rvv_loop_accumulator = {};
       bool gq_axdt_rvv_loop_exact = m_gq_axdt_rvv_loop_feedback_valid;
 
@@ -1500,9 +1437,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
 
     if (gq_axdt_signed_mix || gq_axdt_signed_mix_valid)
     {
-      // Optional signed-MULB full-shadow diagnostic. The resolved timing model
-      // uses the same slot source and ROMB addresses as the twelve-slot shadow;
-      // the remaining arithmetic distinction here is multiplier signedness.
+      // Signed-MULB diagnostic uses the same slot sources and ROMB addresses;
+      // only multiplier signedness differs.
       std::array<u16, 2> gq_axdt_signed_accumulator = {};
       bool gq_axdt_signed_exact = m_gq_axdt_signed_feedback_valid;
 
@@ -1617,11 +1553,8 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
         (*gq_output_planes)[plane] = static_cast<s16>(m_gq_output_latches[plane]);
     }
 
-    // AXDA is not a post-mix analog return in the silicon. It is deserialized
-    // into source slots 10/11 and processed by the same MULB/six-accumulator
-    // output mixer as the other ten sources. The current audible path retains
-    // this placement while deriving attenuation from the corresponding slot
-    // controls.
+    // AXDA is deserialized into slots 10/11 and passes through the same
+    // mixer as the other sources; attenuation comes from those slot controls.
     left_value +=
       static_cast<double>(m_aux_input[0]) * GetGQMixerSlotGain(GQ_AXDA_SLOT_A) * gq_audible_aux_gain;
     right_value +=

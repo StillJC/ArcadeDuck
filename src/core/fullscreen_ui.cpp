@@ -3048,6 +3048,11 @@ void FullscreenUI::DrawSystemLinkSettingsPage()
     FSUI_CSTR("Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal single-cabinet operation."),
     "SystemLink", "Enabled", false);
 
+  DrawIntSpinBoxSetting(
+    bsi, FSUI_ICONSTR(ICON_FA_HASHTAG, "Cabinet ID"),
+    FSUI_CSTR("Cabinet/node ID used by linked arcade hardware with an external ID switch. Taito G-Net Communication PCB supports IDs 1 through 4; use a unique ID for every linked instance."),
+    "SystemLink", "CabinetID", 1, 1, 4, 1, "%d", enabled);
+
   if (MenuButtonWithValue(
         FSUI_ICONSTR(ICON_FA_DESKTOP, "Host IPv4 Address"),
         FSUI_CSTR("IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck instances are running on the same PC."),
@@ -3065,11 +3070,6 @@ void FullscreenUI::DrawSystemLinkSettingsPage()
         SetSettingsChanged(bsi);
       });
   }
-
-  DrawIntSpinBoxSetting(
-    bsi, FSUI_ICONSTR(ICON_FA_HASHTAG, "Cabinet ID"),
-    FSUI_CSTR("Physical cabinet/node ID for linked arcade hardware which uses an external ID switch. Taito G-Net Communication PCB supports IDs 1 through 4."),
-    "SystemLink", "CabinetID", 1, 1, 4, 1, "%d", enabled);
 
   DrawIntSpinBoxSetting(
     bsi, FSUI_ICONSTR(ICON_FA_PLUG, "Port"),

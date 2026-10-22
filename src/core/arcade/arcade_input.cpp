@@ -399,9 +399,6 @@ void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
         ApplyDrivingAxisAdjustment(value, true, port.steering_deadzone, port.steering_sensitivity);
       UpdateDrivingSteering(port);
       break;
-    case DrivingAxis::ThrottleBrake:
-      port.throttle_brake = ApplyDrivingAxisAdjustment(value, true, 0.0f, 1.0f);
-      break;
     case DrivingAxis::Accelerator:
       port.accelerator =
         ApplyDrivingAxisAdjustment(value, false, port.accelerator_deadzone, port.accelerator_sensitivity);
@@ -702,7 +699,6 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
         AddDrivingSteeringButtonBindings(si, section, port, "SteeringLeft", false);
         AddDrivingSteeringButtonBindings(si, section, port, "SteeringRight", true);
       }
-      AddDrivingAxisBindings(si, section, port, "ThrottleBrake", DrivingAxis::ThrottleBrake);
       AddDrivingAxisBindings(si, section, port, "Accelerator", DrivingAxis::Accelerator);
       AddDrivingAxisBindings(si, section, port, "Brake", DrivingAxis::Brake);
       AddDrivingAxisBindings(si, section, port, "Clutch", DrivingAxis::Clutch);
@@ -739,6 +735,27 @@ bool IsDigitalPressed(u32 port, std::string_view key)
   return IsPressed(s_ports[port], control.value());
 }
 
+bool HasDigitalControl(u32 port, std::string_view key)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  if (port >= s_ports.size())
+    return false;
+
+  const PortState& state = s_ports[port];
+  if (state.layout.empty())
+    return false;
+
+  const Arcade::ArcadeControlLayoutInfo* layout = Arcade::GetArcadeControlLayoutInfo(state.layout);
+  if (!layout)
+    return false;
+
+  return std::any_of(layout->bindings.begin(), layout->bindings.end(),
+                     [key](const Arcade::ArcadeControlLayoutBindingInfo& binding) {
+                       return binding.kind == Arcade::ArcadeControlBindingKind::Button &&
+                              binding.binding_key == key;
+                     });
+}
+
 float GetAnalogValue(u32 port, std::string_view key)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
@@ -756,6 +773,29 @@ float GetAnalogValue(u32 port, std::string_view key)
     return state.clutch;
 
   return 0.0f;
+}
+
+bool HasAnalogControl(u32 port, std::string_view key)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  if (port >= s_ports.size())
+    return false;
+
+  const PortState& state = s_ports[port];
+  if (state.type != Arcade::ArcadeControllerType::Driving || state.layout.empty())
+    return false;
+
+  const Arcade::ArcadeControlLayoutInfo* const layout = Arcade::GetArcadeControlLayoutInfo(state.layout);
+  if (!layout)
+    return false;
+
+  for (const Arcade::ArcadeControlLayoutBindingInfo& binding : layout->bindings)
+  {
+    if (binding.kind == Arcade::ArcadeControlBindingKind::Axis && binding.binding_key == key)
+      return true;
+  }
+
+  return false;
 }
 
 bool IsOperatorPressed(std::string_view key)

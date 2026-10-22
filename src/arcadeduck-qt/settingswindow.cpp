@@ -141,8 +141,8 @@ void SettingsWindow::addPages()
       addWidget(
         new SystemLinkSettingsWidget(this, m_ui.settingsContainer), tr("System Link"),
         QStringLiteral(":/icons/arcadeduck/systemlink.png"),
-        tr("<strong>System Link Settings</strong><hr>Configure network transport for this game's linked cabinet "
-           "hardware. Cabinet identity and other hardware-specific link options remain controlled by the game's "
+        tr("<strong>System Link Settings</strong><hr>Configure network transport and cabinet ID for this game's "
+           "linked cabinet hardware. Additional hardware-specific link options remain controlled by the game's "
            "service/operator settings."));
     }
 

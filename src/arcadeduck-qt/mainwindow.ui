@@ -84,7 +84,6 @@
     <addaction name="actionFolderSettings"/>
     <addaction name="actionConsoleSettings"/>
     <addaction name="actionOperatorSettings"/>
-    <addaction name="actionSystemLinkSettings"/>
     <addaction name="actionControllerSettings"/>
     <addaction name="actionHotkeySettings"/>
     <addaction name="actionGraphicsSettings"/>
@@ -300,7 +299,8 @@
   </action>
   <action name="actionExit">
    <property name="icon">
-    <iconset theme="door-open-line"/>
+    <iconset resource="resources/arcadeduck-qt.qrc">
+     <normaloff>:/icons/arcadeduck/exit.png</normaloff>:/icons/arcadeduck/exit.png</iconset>
    </property>
    <property name="text">
     <string>E&amp;xit</string>
@@ -313,15 +313,6 @@
    </property>
    <property name="text">
     <string>&amp;Operator</string>
-   </property>
-  </action>
-  <action name="actionSystemLinkSettings">
-   <property name="icon">
-    <iconset resource="resources/arcadeduck-qt.qrc">
-     <normaloff>:/icons/arcadeduck/systemlink.png</normaloff>:/icons/arcadeduck/systemlink.png</iconset>
-   </property>
-   <property name="text">
-    <string>System &amp;Link</string>
    </property>
   </action>
   <action name="actionConsoleSettings">

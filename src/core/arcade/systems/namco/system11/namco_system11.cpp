@@ -132,22 +132,17 @@ struct RuntimeState
   u8 family_bowl_m139_param_bytes_remaining = 0;
   std::array<u8, 2> family_bowl_m139_params{};
 
-  // A successful M139 SENS 7/Ball Detect event reports C9 C9. Startup uses
-  // one pair after configuration; gameplay uses another pair whenever the
-  // live ball-ready state returns to its unprimed signature.
+  // M139 SENS7/Ball Detect reports C9 C9 for startup and live ball-ready events.
   u32 family_bowl_startup_c9_stage = 0;
   u32 family_bowl_startup_c9_delay_ms = 0;
   u32 family_bowl_ready_c9_stage = 0;
 
-  // End-of-game cabinet ball-return state. The real cabinet asks the player
-  // to return the physical ball after a completed game. The PSX waits at
-  // gate=3/game=0102 for the M139 SENS7/Ball Detect completion.
+  // End-of-game ball return waits at gate=3/game=0102 for SENS7/Ball Detect.
   u32 family_bowl_end_game_c9_stage = 0;
   u32 family_bowl_end_game_c9_delay_ms = 0;
 
-  // A0 enables one M139 measurement cycle. Trackball motion is accumulated
-  // until the roll settles, converted to virtual SENS1..SENS4 timestamps, and
-  // encoded through the M139 C3 equations.
+  // A0 starts an M139 measurement cycle; settled trackball motion becomes
+  // virtual SENS1..SENS4 timestamps for the C3 calculation.
   s64 family_bowl_c3_pending_x = 0;
   s64 family_bowl_c3_pending_y = 0;
   u32 family_bowl_c3_generation = 0;
@@ -1242,10 +1237,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
   AccumulateC76Cycles(ticks);
   RunPendingC76Cycles();
 
-  // The successful M139 SENS 7/Ball Detect path queues C9 C9. Deliver the two
-  // bytes through the real C76 UART1 receive path, retrying automatically if
-  // the UART still has an unread byte. Do not append E0 E0: that is the
-  // separate M139 motor/mechanism timeout path.
+  // Deliver the successful SENS7/Ball Detect response (C9 C9) through UART1.
+  // E0 E0 belongs to the separate motor/mechanism timeout path.
   if (s_runtime->content.has_family_bowl_io && s_runtime->family_bowl_startup_c9_stage != 0 &&
       s_runtime->family_bowl_startup_c9_stage != 3)
   {
@@ -1269,9 +1262,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
     }
   }
 
-  // The startup C9/C9 pair is consumed before live gameplay state exists.
-  // Re-arm the firmware-derived Ball Detect event whenever the live ready state
-  // returns to its unprimed signature, then wait for the game to acknowledge it.
+  // Re-arm Ball Detect when live gameplay returns to the unprimed ready state.
   if (s_runtime->content.has_family_bowl_io &&
       s_runtime->family_bowl_startup_c9_stage == 3)
   {
@@ -1279,9 +1270,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
     const bool state_valid = ReadFamilyBowlPSXState(&psx_state);
 
 
-    // Detect the end-of-game ball-return wait state. The screen simultaneously
-    // asks the player to return the ball inside; this is distinct from the
-    // normal ready cycle below.
+    // End-of-game ball-return wait, distinct from the normal ready cycle.
     const bool end_game_ball_return_wait =
       state_valid &&
       psx_state[0] == UINT32_C(0x0003) &&
@@ -1343,10 +1332,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
       s_runtime->family_bowl_ready_c9_stage = 4;
     }
 
-    // The physical cabinet holds the ball after a completed game and asks the
-    // player to return it inside the machine. Once that terminal state is
-    // reached, wait briefly to model the mechanical return and report the
-    // firmware-derived SENS7/Ball Detect completion (C9 C9) through UART1.
+    // Model the cabinet ball-return delay, then report SENS7/Ball Detect
+    // completion (C9 C9) through UART1.
     if (s_runtime->family_bowl_end_game_c9_stage == 0 && end_game_ball_return_wait)
     {
       s_runtime->family_bowl_end_game_c9_stage = 1;
@@ -1373,18 +1360,14 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
     }
     else if (s_runtime->family_bowl_end_game_c9_stage == 3 && !end_game_ball_return_wait)
     {
-      // Re-arm only after the PSX has consumed this occurrence and left the
-      // terminal wait state, allowing subsequent complete games in one boot.
+      // Re-arm after the PSX leaves the terminal ball-return state.
       s_runtime->family_bowl_end_game_c9_stage = 0;
       s_runtime->family_bowl_end_game_c9_delay_ms = 0;
     }
   }
 
-  // After a trackball roll settles, synthesize a coherent four-sensor traversal
-  // and run it through the fb1_spr0.ic5 M139 trajectory equations.
-  // Normal throws report C0/C1/C2 + C3 + four data words + 00. C5 is a
-  // separately gated M139 event; emitting it unconditionally selects the game's
-  // fixed gutter fallback instead of the native C3 trajectory.
+  // Convert settled trackball motion to the M139 four-sensor trajectory.
+  // Normal throws emit C0/C1/C2 + C3 + four data words + 00; C5 is separate.
   if (s_runtime->content.has_family_bowl_io)
   {
     constexpr s64 MIN_C3_THROW_Y = 80;
@@ -1406,10 +1389,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
       s64 throw_dy = 0;
       bool commit_throw = false;
 
-      // Keep the completed physical roll buffered until the PSX reaches a
-      // mechanism-primed ready state. The first ball must also consume the
-      // C9/C9 pair above. This gate only controls when the buffered roll is
-      // released; it does not write or force any PSX state.
+      // Buffer the completed roll until the PSX reaches a mechanism-primed
+      // ready state; the first ball also consumes the startup C9/C9 pair.
       std::array<u32, 8> psx_state{};
       const bool psx_state_valid = ReadFamilyBowlPSXState(&psx_state);
 
@@ -1453,10 +1434,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
             throw_dx = s_runtime->family_bowl_c3_pending_x;
             throw_dy = s_runtime->family_bowl_c3_pending_y;
 
-            // Forward motion is negative Y for the current Family Bowl
-            // trackball presentation. Preserve a completed forward roll while
-            // waiting for the exact PSX ready signature instead of consuming
-            // it early.
+            // Negative Y is forward; retain a completed forward roll until
+            // the PSX reaches the required ready state.
             commit_throw = (throw_dy <= -MIN_C3_THROW_Y);
             if (commit_throw && psx_ready)
             {
@@ -1468,8 +1447,7 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
             else if (commit_throw)
             {
               commit_throw = false;
-              // Recheck the ready signature on the next 1 ms scheduler pass
-              // without discarding the completed physical roll.
+              // Retry the ready-state check without discarding the completed roll.
               s_runtime->family_bowl_c3_idle_ms = 1;
 
             }
@@ -1483,21 +1461,10 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
       }
       if (commit_throw)
       {
-        // Convert the trackball roll into one coherent virtual SENS1..SENS4
-        // traversal, then let the M139 firmware arithmetic derive the C3 words.
-        //
-        // The H8 validity checks require SENS1/SENS2 to occur no earlier than
-        // SENS3/SENS4. A straight roll therefore uses two symmetric sensor
-        // pairs separated by transit_ticks. Forward trackball magnitude sets
-        // that pair-to-pair transit time using the physical inverse
-        // relationship between travel time and speed.
-        //
-        // For steering, the two sensor pairs are skewed in opposite left/right
-        // directions. A 1:3 skew ratio keeps W1 (initial lateral position)
-        // essentially centered while W3
-        // becomes signed lateral velocity. This lets the cabinet's existing
-        // left/right controls remain responsible for pre-shot positioning while
-        // the trackball roll controls throw angle and speed.
+        // Convert the roll to SENS1..SENS4 timestamps. SENS1/SENS2 must not
+        // precede SENS3/SENS4; forward magnitude sets pair transit time.
+        // Opposite pair skew encodes lateral velocity while keeping initial
+        // lateral position near center.
         static constexpr u32 SENSOR_BASE_TIME = 1000;
         static constexpr u32 TRANSIT_NUMERATOR = 120000;
         static constexpr u32 MIN_TRANSIT_TICKS = 150;
@@ -1512,10 +1479,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
           std::clamp<u32>(static_cast<u32>(TRANSIT_NUMERATOR / speed_units),
                           MIN_TRANSIT_TICKS, MAX_TRANSIT_TICKS);
 
-        // Normalize lateral motion against forward motion so the same physical
-        // throw angle behaves consistently at different speeds. Keep enough
-        // timing margin that every generated traversal satisfies the M139's
-        // four timestamp-order checks.
+        // Normalize lateral motion by forward motion and clamp skew so all
+        // generated timestamps satisfy the M139 ordering checks.
         const s64 skew_denominator = std::max<s64>(forward_magnitude * 12, 1);
         const s64 unclamped_skew =
           (throw_dx * static_cast<s64>(transit_ticks)) / skew_denominator;
@@ -1539,13 +1504,8 @@ static void C76SchedulerCallback(void*, TickCount ticks, TickCount)
         const u32 sensor_3_time = static_cast<u32>(sensor_3_time_s);
         const u32 sensor_4_time = static_cast<u32>(sensor_4_time_s);
 
-        // Feed the M139 SENS1-SENS4 calculation into the C3 payload
-        // so trackball direction and speed reach the native PSX trajectory path.
-        //
-        // SENS5 classification remains coupled to the same throw vector:
-        //   strong left component  -> C0
-        //   mostly straight        -> C1
-        //   strong right component -> C2
+        // Feed SENS1..SENS4 into C3; classify SENS5 from the same throw vector:
+        // left -> C0, straight -> C1, right -> C2.
         u8 classification_event = UINT8_C(0xc1);
         if ((throw_dx * 4) < -forward_magnitude)
         {
@@ -1807,8 +1767,7 @@ bool Initialize(LoadedContent content, Error* error)
         {
           const u8 tx = static_cast<u8>(value);
 
-          // fb1_spr0.ic5 uses B3 as a two-parameter command. Retain both
-          // parameters as part of the M139 command state.
+          // B3 carries two M139 command parameters.
           if (s_runtime->family_bowl_m139_param_bytes_remaining != 0)
           {
             const u32 param_index =
@@ -1821,9 +1780,8 @@ bool Initialize(LoadedContent content, Error* error)
 
             if (s_runtime->family_bowl_m139_param_bytes_remaining == 0)
             {
-              // The startup stream sends B3 00 00 once after the initial A9
-              // commands. The firmware-derived successful Ball Detect event is
-              // C9 C9, so arm the startup event after setup completes.
+              // B3 00 00 completes startup configuration; arm the initial
+              // SENS7/Ball Detect response afterward.
               if (s_runtime->family_bowl_m139_pending_command == UINT8_C(0xb3) &&
                   s_runtime->family_bowl_startup_c9_stage == 0)
               {
@@ -1848,13 +1806,9 @@ bool Initialize(LoadedContent content, Error* error)
 
               case 0xb1:
               {
-                // INPUT TEST polls B1 at about 30 Hz. The mapping is active-low:
-                // bit 0..6 = SENS 1..7, and 0x7F means all sensors OFF.
-                //
-                // Model a ball crossing the center near sensor (SENS 2), then
-                // one of SENS 4/5/6 at the far end.
-                // Horizontal roll component selects the far sensor; vertical magnitude
-                // controls the delay between the two crossings.
+                // INPUT TEST polls active-low SENS1..SENS7 through B1 (~30 Hz).
+                // Model SENS2, a travel gap, then SENS4/5/6 selected by roll angle;
+                // forward magnitude controls the gap duration.
                 constexpr u8 SENSOR_IDLE = UINT8_C(0x7f);
                 constexpr u8 SENSOR_2 = UINT8_C(0x7d);
                 constexpr u8 SENSOR_4 = UINT8_C(0x77);
@@ -1935,9 +1889,8 @@ bool Initialize(LoadedContent content, Error* error)
 
                         if (abs_y >= MIN_THROW_Y)
                         {
-                          // A noticeable horizontal component selects left/right.
-                          // The existing per-game invert-X setting can reverse this
-                          // without changing the Family Bowl hardware model.
+                          // Horizontal motion selects the far sensor; per-game
+                          // invert-X can reverse the direction.
                           u8 far_sensor = SENSOR_5;
                           if ((dx * 4) < -abs_y)
                           {
@@ -1958,8 +1911,7 @@ bool Initialize(LoadedContent content, Error* error)
                           s_runtime->family_bowl_sensor_sequence_stage = 1;
                           s_runtime->family_bowl_sensor_sequence_polls_remaining = ACTIVE_POLLS;
 
-                          // Store the travel gap in settle_polls while the sequence
-                          // is active; stage 1 transfers it into polls_remaining.
+                          // Reuse settle_polls to carry the precomputed travel gap.
                           s_runtime->family_bowl_trackball_settle_polls = travel_polls;
                         }
 

@@ -57,8 +57,8 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
     new QLabel(Tr("System Link provides the network transport used by this game's linked arcade hardware. Use "
                   "127.0.0.1 when multiple ArcadeDuck instances run on the same PC. For separate PCs on a LAN, "
                   "enter the IPv4 address of the host machine. All cabinets in the same link group must use the "
-                  "same port. Configure cabinet count, cabinet ID, or other link options in the arcade game's "
-                  "service menu when required."),
+                  "same port. Configure any additional hardware-specific link options, such as cabinet count where "
+                  "applicable, in the arcade game's service menu."),
                this);
   automatic_note->setWordWrap(true);
   layout->addWidget(automatic_note);
@@ -76,8 +76,8 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
        "single-cabinet operation."));
   dialog->registerWidgetHelp(
     m_cabinet_id, Tr("Cabinet ID"), Tr("1"),
-    Tr("Physical cabinet/node ID for linked arcade hardware which uses an external ID switch. Taito G-Net "
-       "Communication PCB uses IDs 1 through 4. Use a unique ID for every linked instance."));
+    Tr("Cabinet/node ID used by linked arcade hardware with an external ID switch. Taito G-Net Communication "
+       "PCB uses IDs 1 through 4. Use a unique ID for every linked instance."));
   dialog->registerWidgetHelp(
     m_server_address, Tr("Host IPv4 Address"), Tr("127.0.0.1"),
     Tr("IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck "
