@@ -243,7 +243,12 @@ struct NamcoCyberLeadLEDDevice::Impl
     tx_head = 0;
     tx_count = 0;
     stats = {};
+
+    // The generation keeps counting across resets so presentation never
+    // mistakes a new frame for one it has already shown.
+    const u64 frame_generation = frame_state.generation;
     frame_state = {};
+    frame_state.generation = frame_generation;
     fault_logged = false;
     last_step_pc = 0;
     cycle_balance = 0;

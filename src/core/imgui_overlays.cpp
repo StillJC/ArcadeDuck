@@ -213,6 +213,7 @@ namespace NamcoSystem12 {
 bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intensity_counts,
                                 u16* start_address, u32* scroll_x,
                                 u32* scroll_y, u64* generation);
+bool DebugGetCyberLeadLEDGeneration(u64* generation);
 }
 
 static bool IsCyberLeadLEDGame()
@@ -256,12 +257,29 @@ struct CyberLeadLEDSnapshot
 static std::mutex s_cyber_lead_led_snapshot_mutex;
 static CyberLeadLEDSnapshot s_cyber_lead_led_snapshot;
 
+// CPU-thread copy of what the shared snapshot currently holds.
+static std::string s_cyber_lead_led_snapshot_serial;
+static u64 s_cyber_lead_led_snapshot_generation = 0;
+static bool s_cyber_lead_led_snapshot_valid = false;
+
 static void UpdateCyberLeadLEDSnapshot()
 {
-  if (!IsCyberLeadLEDGame())
+  // Only the attached panel and the separate LED window read the snapshot.
+  if (g_settings.arcade_namco_system12_cyber_lead_led_mode == 0 || !IsCyberLeadLEDGame())
   {
-    const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
-    s_cyber_lead_led_snapshot = {};
+    if (s_cyber_lead_led_snapshot_valid)
+    {
+      const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+      s_cyber_lead_led_snapshot = {};
+      s_cyber_lead_led_snapshot_valid = false;
+    }
+    return;
+  }
+
+  u64 generation = 0;
+  if (s_cyber_lead_led_snapshot_valid && NamcoSystem12::DebugGetCyberLeadLEDGeneration(&generation) &&
+      generation == s_cyber_lead_led_snapshot_generation && System::GetGameSerial() == s_cyber_lead_led_snapshot_serial)
+  {
     return;
   }
 
@@ -269,6 +287,9 @@ static void UpdateCyberLeadLEDSnapshot()
   snapshot.valid = NamcoSystem12::DebugCopyCyberLeadLEDFrame(
     std::span<u8>(snapshot.pixels.data(), snapshot.pixels.size()), &snapshot.levels,
     &snapshot.start_address, &snapshot.scroll_x, &snapshot.scroll_y, &snapshot.generation);
+  s_cyber_lead_led_snapshot_serial = System::GetGameSerial();
+  s_cyber_lead_led_snapshot_generation = snapshot.generation;
+  s_cyber_lead_led_snapshot_valid = snapshot.valid;
 
   const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
   s_cyber_lead_led_snapshot = snapshot;

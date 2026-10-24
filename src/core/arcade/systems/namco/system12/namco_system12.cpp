@@ -3960,6 +3960,16 @@ bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intens
                                               scroll_x, scroll_y, generation);
 }
 
+bool DebugGetCyberLeadLEDGeneration(u64* generation)
+{
+  if (!s_runtime)
+    return false;
+
+  const Arcade::JVS::NamcoCyberLeadLEDDevice::FrameState& frame = s_runtime->h8_cyberlead.GetLEDDevice().GetFrameState();
+  *generation = frame.generation;
+  return frame.valid;
+}
+
 void DMARead(u32* destination, u32 word_count)
 {
   if (!s_runtime || !destination || word_count == 0)
