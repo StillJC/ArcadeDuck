@@ -185,7 +185,15 @@ u8 NamcoCyberLead::ReadBoardMemory(u16 address) const
     case UINT16_C(0xC0D6):
       return UINT8_C(0x1F);
     case UINT16_C(0xC0D7):
-      return UINT8_C(0x8F);
+    {
+      // SW1 (Mode A) and SW2 (Mode B) are active-low bits 1 and 0 of port 7.
+      u8 value = UINT8_C(0x8F);
+      if (ArcadeInput::IsOperatorPressed("CyberLeadModeA"))
+        value &= static_cast<u8>(~UINT8_C(0x02));
+      if (ArcadeInput::IsOperatorPressed("CyberLeadModeB"))
+        value &= static_cast<u8>(~UINT8_C(0x01));
+      return value;
+    }
     case UINT16_C(0xC0D1):
     case UINT16_C(0xC0D2):
     case UINT16_C(0xC0D3):
@@ -255,12 +263,16 @@ void NamcoCyberLead::StartLinkState()
   {
     case LinkState::Idle:
     {
-      // 1494: test/DIP status, P1 low/high, P2 low/high, then the game's
-      // eight 71/01 bytes. C00F (DIP) reads 00 with all switches off.
+      // 1494: Test is bit 7. CL1-I/OB packs port 7 SW1/SW2 into C00F as
+      // active-high Mode A bit 3 and Mode B bit 2.
       std::array<u8, 15> command{};
       command[0] = UINT8_C(0x71);
       command[1] = UINT8_C(0x01);
       command[2] = ArcadeInput::IsOperatorPressed("Test") ? UINT8_C(0x80) : UINT8_C(0x00);
+      if (ArcadeInput::IsOperatorPressed("CyberLeadModeA"))
+        command[2] |= UINT8_C(0x08);
+      if (ArcadeInput::IsOperatorPressed("CyberLeadModeB"))
+        command[2] |= UINT8_C(0x04);
       const u32 p1 = ReadPlayerInputs(0);
       const u32 p2 = ReadPlayerInputs(1);
       command[3] = static_cast<u8>(p1);

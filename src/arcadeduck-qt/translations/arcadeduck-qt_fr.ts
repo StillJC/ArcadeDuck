@@ -13943,7 +13943,7 @@ Souhaitez-vous continuer ?</translation>
 
 {0}: {1}
 
-Your dump is incomplete, you must add the SBI file to run this game. 
+Your dump is incomplete, you must add the SBI file to run this game.
 
 The name of the SBI file must match the name of the disc image.</source>
         <translation type="unfinished"></translation>

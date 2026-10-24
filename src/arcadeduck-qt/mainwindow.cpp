@@ -199,12 +199,19 @@ protected:
     const int gap = static_cast<int>(
       std::clamp(std::round(nominal_cell * 0.12), 1.0, std::max(nominal_cell - 1.0, 1.0)));
 
-    static const std::array<QColor, 4> COLORS = {
-      QColor(20, 16, 8),
-      QColor(96, 64, 8),
-      QColor(208, 128, 8),
-      QColor(255, 210, 64),
-    };
+    static const std::array<std::array<QColor, 4>, 9> COLOR_PALETTES = {{
+      {{QColor(20, 16, 8), QColor(96, 64, 8), QColor(208, 128, 8), QColor(255, 210, 64)}},
+      {{QColor(20, 5, 5), QColor(96, 8, 8), QColor(208, 20, 12), QColor(255, 64, 48)}},
+      {{QColor(20, 10, 4), QColor(96, 40, 4), QColor(208, 88, 8), QColor(255, 160, 32)}},
+      {{QColor(20, 18, 4), QColor(96, 80, 4), QColor(208, 176, 8), QColor(255, 240, 64)}},
+      {{QColor(4, 18, 6), QColor(8, 80, 12), QColor(16, 176, 24), QColor(64, 255, 80)}},
+      {{QColor(4, 16, 18), QColor(8, 72, 80), QColor(16, 160, 176), QColor(64, 240, 255)}},
+      {{QColor(4, 6, 20), QColor(8, 20, 96), QColor(16, 48, 208), QColor(64, 112, 255)}},
+      {{QColor(12, 5, 20), QColor(52, 12, 96), QColor(120, 24, 208), QColor(200, 80, 255)}},
+      {{QColor(12, 12, 12), QColor(72, 72, 72), QColor(176, 176, 176), QColor(255, 255, 255)}},
+    }};
+    const auto& colors =
+      COLOR_PALETTES[std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8)];
 
     painter.setPen(Qt::NoPen);
     for (u32 y = 0; y < HEIGHT; y++)
@@ -220,7 +227,7 @@ protected:
         const qreal dot_size = static_cast<qreal>(std::min(dot_right - cell_left, dot_bottom - cell_top));
         const qreal radius = dot_size * 0.2;
 
-        painter.setBrush(COLORS[pixels[(y * WIDTH) + x] & 3]);
+        painter.setBrush(colors[pixels[(y * WIDTH) + x] & 3]);
         painter.drawRoundedRect(QRectF(static_cast<qreal>(cell_left), static_cast<qreal>(cell_top),
                                        static_cast<qreal>(dot_right - cell_left),
                                        static_cast<qreal>(dot_bottom - cell_top)),
@@ -1712,6 +1719,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
                    parent_game->id);
 
         QMenu* clone_menu = nullptr;
+        QMenu* clone_properties_menu = nullptr;
         for (const Arcade::Database::GameDefinition* const clone : clones)
         {
           std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
@@ -1726,7 +1734,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           }
 
           if (!clone_menu)
+          {
             clone_menu = menu.addMenu(tr("Start Clone"));
+            clone_properties_menu = menu.addMenu(tr("Clone Properties"));
+          }
 
           QString label = QString::fromStdString(clone->title);
           if (!clone->region.empty())
@@ -1734,6 +1745,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           if (!clone->revision.empty())
             label += tr(" - %1").arg(QString::fromStdString(clone->revision));
           label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_properties_action = clone_properties_menu->addAction(label);
+          connect(clone_properties_action, &QAction::triggered,
+                  [clone_path, clone_id = clone->id]() { SettingsWindow::openGamePropertiesDialog(clone_path, clone_id); });
 
           QAction* const clone_action = clone_menu->addAction(label);
           connect(clone_action, &QAction::triggered,
@@ -2385,14 +2400,17 @@ void MainWindow::connectSignals()
   connect(m_ui.actionSettings2, &QAction::triggered, this, &MainWindow::onSettingsTriggeredFromToolbar);
   connect(m_ui.actionInterfaceSettings, &QAction::triggered, [this]() { doSettings("Interface"); });
   connect(m_ui.actionOperatorSettings, &QAction::triggered, [this]() { doSettings("Operator"); });
-  connect(m_ui.actionSystemLinkSettings, &QAction::triggered, [this]() { doSettings("System Link"); });
   connect(m_ui.actionConsoleSettings, &QAction::triggered, [this]() { doSettings("Machine"); });
   connect(m_ui.actionEmulationSettings, &QAction::triggered, [this]() { doSettings("Emulation"); });
   connect(m_ui.actionGameListSettings, &QAction::triggered, [this]() { doSettings("Game List"); });
-  connect(m_ui.actionHotkeySettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::HotkeySettings); });
-  connect(m_ui.actionControllerSettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::GlobalSettings); });
+  connect(m_ui.actionHotkeySettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::HotkeySettings);
+  });
+  connect(m_ui.actionControllerSettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::GlobalSettings);
+  });
   connect(m_ui.actionGraphicsSettings, &QAction::triggered, [this]() { doSettings("Graphics"); });
   connect(m_ui.actionPostProcessingSettings, &QAction::triggered, [this]() { doSettings("Post-Processing"); });
   connect(m_ui.actionAudioSettings, &QAction::triggered, [this]() { doSettings("Audio"); });

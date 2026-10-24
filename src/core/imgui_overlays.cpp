@@ -324,12 +324,28 @@ static void DrawCyberLeadLEDAttached(float scale)
   dl->AddRectFilled(ImVec2(grid_x, grid_y), ImVec2(grid_x + grid_width, grid_y + grid_height),
                     IM_COL32(0, 0, 0, 255));
 
-  static constexpr std::array<ImU32, 4> COLORS = {
-    IM_COL32(20, 16, 8, 255),
-    IM_COL32(96, 64, 8, 255),
-    IM_COL32(208, 128, 8, 255),
-    IM_COL32(255, 210, 64, 255)
-  };
+  static constexpr std::array<std::array<ImU32, 4>, 9> COLOR_PALETTES = {{
+    {{IM_COL32(20, 16, 8, 255), IM_COL32(96, 64, 8, 255), IM_COL32(208, 128, 8, 255),
+      IM_COL32(255, 210, 64, 255)}},
+    {{IM_COL32(20, 5, 5, 255), IM_COL32(96, 8, 8, 255), IM_COL32(208, 20, 12, 255),
+      IM_COL32(255, 64, 48, 255)}},
+    {{IM_COL32(20, 10, 4, 255), IM_COL32(96, 40, 4, 255), IM_COL32(208, 88, 8, 255),
+      IM_COL32(255, 160, 32, 255)}},
+    {{IM_COL32(20, 18, 4, 255), IM_COL32(96, 80, 4, 255), IM_COL32(208, 176, 8, 255),
+      IM_COL32(255, 240, 64, 255)}},
+    {{IM_COL32(4, 18, 6, 255), IM_COL32(8, 80, 12, 255), IM_COL32(16, 176, 24, 255),
+      IM_COL32(64, 255, 80, 255)}},
+    {{IM_COL32(4, 16, 18, 255), IM_COL32(8, 72, 80, 255), IM_COL32(16, 160, 176, 255),
+      IM_COL32(64, 240, 255, 255)}},
+    {{IM_COL32(4, 6, 20, 255), IM_COL32(8, 20, 96, 255), IM_COL32(16, 48, 208, 255),
+      IM_COL32(64, 112, 255, 255)}},
+    {{IM_COL32(12, 5, 20, 255), IM_COL32(52, 12, 96, 255), IM_COL32(120, 24, 208, 255),
+      IM_COL32(200, 80, 255, 255)}},
+    {{IM_COL32(12, 12, 12, 255), IM_COL32(72, 72, 72, 255), IM_COL32(176, 176, 176, 255),
+      IM_COL32(255, 255, 255, 255)}},
+  }};
+  const auto& colors =
+    COLOR_PALETTES[std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8)];
 
   for (u32 y = 0; y < HEIGHT; y++)
   {
@@ -346,7 +362,7 @@ static void DrawCyberLeadLEDAttached(float scale)
       const float dot_size = static_cast<float>(std::min(dot_right - cell_left, dot_bottom - cell_top));
       const u8 level = snapshot.pixels[(y * WIDTH) + x] & 3;
       dl->AddRectFilled(ImVec2(static_cast<float>(cell_left), static_cast<float>(cell_top)),
-                        ImVec2(static_cast<float>(dot_right), static_cast<float>(dot_bottom)), COLORS[level],
+                        ImVec2(static_cast<float>(dot_right), static_cast<float>(dot_bottom)), colors[level],
                         std::min(1.0f, dot_size * 0.2f));
     }
   }

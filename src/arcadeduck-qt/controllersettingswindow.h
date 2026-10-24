@@ -50,7 +50,9 @@ public:
     MAX_PORTS = 8
   };
 
-  ControllerSettingsWindow(SettingsInterface* game_sif = nullptr, QWidget* parent = nullptr);
+  ControllerSettingsWindow(SettingsInterface* game_sif = nullptr, QWidget* parent = nullptr,
+                           bool controls_only = false, const Arcade::ArcadeGameControlProfile* game_profile = nullptr,
+                           bool embedded = false);
   ~ControllerSettingsWindow();
 
   static void editControllerSettingsForGame(QWidget* parent, SettingsInterface* sif);
@@ -71,10 +73,19 @@ public:
   }
   ALWAYS_INLINE bool isEditingProfile() const { return !m_profile_name.isEmpty(); }
   ALWAYS_INLINE SettingsInterface* getEditingSettingsInterface() { return m_editing_settings_interface; }
+  ALWAYS_INLINE bool isGameControlsEditor() const { return m_controls_only; }
+  ALWAYS_INLINE const Arcade::ArcadePortProfile* getGamePortProfile(u32 port) const
+  {
+    return (m_game_control_profile && port < m_game_control_profile->ports.size()) ? &m_game_control_profile->ports[port] :
+                                                                                   nullptr;
+  }
 
   Category getCurrentCategory() const;
 
   void updateArcadeListDescription(u32 port, const QString& display_name);
+  static void copyArcadeControllerConfiguration(
+    SettingsInterface* dest_si, const SettingsInterface& src_si,
+    const Arcade::ArcadeGameControlProfile* target_profile = nullptr);
 
   void switchProfile(const std::string_view name);
 
@@ -89,6 +100,7 @@ public:
   void beginSettingsBatch();
   void endSettingsBatch();
   void saveAndReloadGameSettings();
+  void clearCurrentArcadeMapping();
 
 Q_SIGNALS:
   void windowClosed();
@@ -119,12 +131,10 @@ protected:
   void closeEvent(QCloseEvent* event) override;
 
 private:
-  int getHotkeyCategoryIndex() const;
   void refreshProfileList();
   void refreshPointerDeviceList();
   void markSettingsChanged();
   void flushPendingSettingsChanges();
-  static void copyArcadeControllerConfiguration(SettingsInterface* dest_si, const SettingsInterface& src_si);
 
   Ui::ControllerSettingsWindow m_ui;
 
@@ -143,4 +153,10 @@ private:
 
   u32 m_settings_batch_depth = 0;
   bool m_settings_change_pending = false;
+  bool m_controls_only = false;
+  bool m_embedded = false;
+  const Arcade::ArcadeGameControlProfile* m_game_control_profile = nullptr;
+  int m_global_category_index = -1;
+  int m_first_controller_category_index = -1;
+  int m_hotkey_category_index = -1;
 };

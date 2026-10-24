@@ -2045,11 +2045,11 @@ u16 GetTruckADCValue(u32 channel)
 
 u16 GetAplaRailLeverValue()
 {
-  // ADC0 lever range from the cabinet input definition, reversed around the centered host axis.
+  // ADC0 lever range from the cabinet input definition, reversed around the host accelerator axis.
   constexpr u16 LEVER_MIN = UINT16_C(0x08B);
   constexpr u16 LEVER_MAX = UINT16_C(0x397);
 
-  const float position = 1.0f - std::clamp(ArcadeInput::GetAnalogValue(0, "ThrottleBrake"), 0.0f, 1.0f);
+  const float position = 1.0f - std::clamp(ArcadeInput::GetAnalogValue(0, "Accelerator"), 0.0f, 1.0f);
   return static_cast<u16>(LEVER_MIN + (position * static_cast<float>(LEVER_MAX - LEVER_MIN)) + 0.5f);
 }
 

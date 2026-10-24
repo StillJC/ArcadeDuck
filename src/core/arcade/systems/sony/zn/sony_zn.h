@@ -127,6 +127,7 @@ struct TaitoGNetContent
   std::vector<u8> f35_eprom;
   std::string pccard_path;
   bool communication_board = false;
+  bool zn1_motherboard = false;
   std::array<u8, 8> motherboard_cat702_key{};
   std::array<u8, 8> fc_cat702_key{};
 };
@@ -238,6 +239,8 @@ void PrepareForTimingEpochReset();
 void Reset();
 void Shutdown();
 bool IsActive();
+bool IsMawasundaActive();
+void AddMawasundaHandleDelta(u32 player, s32 delta);
 void ApplySPUOutputGain(s32* left, s32* right);
 void ProcessFrame();
 

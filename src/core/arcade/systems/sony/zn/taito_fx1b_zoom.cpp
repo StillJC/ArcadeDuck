@@ -374,12 +374,13 @@ bool Initialize(std::span<const u8> mn10200_rom, std::span<const u8> zsg2_rom, s
   return true;
 }
 
-void Reset()
+void Reset(bool synchronize_to_now)
 {
   if (!s_state.active)
     return;
 
-  SynchronizeToNow();
+  if (synchronize_to_now)
+    SynchronizeToNow();
 
   s_state.mn10200.Reset();
   s_state.zsg2.Reset();

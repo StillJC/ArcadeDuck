@@ -177,21 +177,24 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   arcade_namco_system11_dip_freeze =
     si.GetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze", false);
 
-  const int cyber_lead_led_mode =
-    si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode", -1);
-  if (cyber_lead_led_mode >= 0)
+  if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode"))
   {
-    arcade_namco_system12_cyber_lead_led_mode =
-      static_cast<u8>(std::clamp(cyber_lead_led_mode, 0, 3));
+    arcade_namco_system12_cyber_lead_led_mode = static_cast<u8>(
+      std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode", 0), 0, 3));
+  }
+  else if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition"))
+  {
+    const int legacy_position = si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition", 1);
+    arcade_namco_system12_cyber_lead_led_mode = (legacy_position == 0) ? 0 : 1;
   }
   else
   {
-    const int legacy_position =
-      si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition", 1);
-    arcade_namco_system12_cyber_lead_led_mode = (legacy_position == 0) ? 0 : 1;
+    arcade_namco_system12_cyber_lead_led_mode = 0;
   }
   arcade_namco_system12_cyber_lead_led_size = static_cast<u8>(
     std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", 2), 1, 3));
+  arcade_namco_system12_cyber_lead_led_color = static_cast<u8>(
+    std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDColor", 0), 0, 8));
   arcade_namco_system12_cyber_lead_led_monitor =
     si.GetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor", "");
   arcade_namco_system12_cyber_lead_led_borderless_fullscreen =
@@ -531,6 +534,7 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
                    arcade_namco_system12_cyber_lead_led_mode);
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", arcade_namco_system12_cyber_lead_led_size);
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDColor", arcade_namco_system12_cyber_lead_led_color);
     si.SetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor",
                       arcade_namco_system12_cyber_lead_led_monitor.c_str());
     si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen",

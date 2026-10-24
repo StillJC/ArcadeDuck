@@ -169,7 +169,7 @@ systems:
     supportsLightgun: false
     supportsTrackball: false
     supportsSpecialControls: true
-    supportsNetwork: false
+    supportsNetwork: true
     properties:
       sonyBoard: "COH-3002T"
       archivePolicy: "complete_non_merged"
@@ -190,6 +190,39 @@ systems:
         - { role: "cat702_2_001", region: "cat702_2", name: "tt16.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x6bb167b3", sha1: "9dcba08f10775a9adf2b1f382c947460edd3d239", groupSize: 1, skip: 0 }
       undumpedRoms:
         - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
+  taito_gnet_zn1:
+    name: "Taito G-Net"
+    manufacturer: "Taito"
+    hardwareFamily: "sony_zn1_arcade"
+    machineHandler: "taito_gnet"
+    biosProfile: "coh1002t"
+    releaseYear: 2000
+    maxPlayers: 2
+    supportsLightgun: false
+    supportsTrackball: true
+    supportsSpecialControls: true
+    supportsNetwork: true
+    properties:
+      sonyBoard: "COH-1002T"
+      archivePolicy: "complete_non_merged"
+    bios:
+      archive: "coh1002t.zip"
+      romRegions:
+        - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+        - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+        - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+        - { id: "firm", size: 0x200000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "eprom", size: 0x100000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+      roms:
+        - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-14.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe3f23b6e", sha1: "e18907cf8c6ba54d96edba0a9a00487a90219e0d", groupSize: 1, skip: 0 }
+        - { role: "cat702_1_001", region: "cat702_1", name: "tt01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xdaac13e7", sha1: "96d94f2b06fb7ecd91454969f4959a583ffb9d5a", groupSize: 1, skip: 0 }
+        - { role: "firm_001", region: "firm", name: "flash.u30", size: 0x200000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x9100dbf2", sha1: "9ce888bd2a7e575c8ca71d978cb85de22afb5660", groupSize: 1, skip: 0 }
+        - { role: "cat702_2_001", region: "cat702_2", name: "tt99.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x2989b6eb", sha1: "89981ec68d30729c27d31f820cbfd0c23ed14a03", groupSize: 1, skip: 0 }
+      undumpedRoms:
+        - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
   taito_fx1:
     name: "Taito FX-1"
     manufacturer: "Taito"
@@ -1054,13 +1087,13 @@ controlLayouts:
       - { key: "MahjongL", displayName: "L", kind: "button" }
       - { key: "MahjongM", displayName: "M", kind: "button" }
       - { key: "MahjongN", displayName: "N", kind: "button" }
-      - { key: "Start", displayName: "Start", kind: "button" }
       - { key: "MahjongKan", displayName: "Kan", kind: "button" }
       - { key: "MahjongPon", displayName: "Pon", kind: "button" }
       - { key: "MahjongChi", displayName: "Chi", kind: "button" }
       - { key: "MahjongReach", displayName: "Reach", kind: "button" }
       - { key: "MahjongRon", displayName: "Ron", kind: "button" }
       - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
 
   raycris:
     displayName: "RayCrisis"
@@ -1087,6 +1120,12 @@ controlLayouts:
         kind: "button"
       - key: "Button3"
         displayName: "Button 3 - Round Divider / Special Attack"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
         kind: "button"
   plsmaswd:
     displayName: "Plasma Sword / Star Gladiator 2"
@@ -1360,11 +1399,11 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate or perform the current mini-game's pedal action"
-        kind: "axis"
       - key: "Steering"
-        displayName: "Steering — Steer or perform the current mini-game's wheel action"
+        displayName: "Steering"
+        kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
         kind: "axis"
 
   hyperbbc:
@@ -1516,15 +1555,15 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Steering"
+        displayName: "Steering"
+        kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
       - key: "View"
         displayName: "View — Toggle View"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer the pocket-size racing car"
-        kind: "axis"
 
   primglex:
     displayName: "J-League Soccer Prime Goal EX"
@@ -1684,6 +1723,9 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Accelerator"
+        displayName: "Speed Lever — Control train speed"
+        kind: "axis"
       - key: "Button1"
         displayName: "Button 1 — Left"
         kind: "button"
@@ -1693,9 +1735,9 @@ controlLayouts:
       - key: "Button3"
         displayName: "Button 3 — Right"
         kind: "button"
-      - key: "ThrottleBrake"
-        displayName: "Speed Lever - Power (axis high) / Brake (axis low)"
-        kind: "axis"
+      - key: "Start"
+        displayName: "Start / OK / Horn — Confirm / sound horn"
+        kind: "button"
 
   aquarush:
     displayName: "Aqua Rush"
@@ -1801,23 +1843,23 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "SelectUp"
+        displayName: "Select Up — Move menu selection up"
+        kind: "button"
       - key: "SelectDown"
         displayName: "Select Down — Move menu selection down"
         kind: "button"
       - key: "Enter"
         displayName: "Enter / Confirm — Confirm"
-        kind: "button"
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
-        kind: "axis"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "SelectUp"
-        displayName: "Select Up — Move menu selection up"
         kind: "button"
 
   lbgrande:
@@ -1927,18 +1969,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
         kind: "axis"
       - key: "Select"
         displayName: "Select / Confirm — Select/confirm the current test"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer or perform the current driving test"
-        kind: "axis"
 
   tenkomor:
     displayName: "Tenkomori Shooting"
@@ -2074,15 +2116,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
-      - key: "Enter"
-        displayName: "Enter / Confirm — Confirm"
-        kind: "button"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "View"
+        displayName: "View Change — Change camera view"
+        kind: "button"
       - key: "Horn"
         displayName: "Horn — Sound horn"
         kind: "button"
@@ -2092,17 +2137,14 @@ controlLayouts:
       - key: "MusicNext"
         displayName: "Next Music — Next music track"
         kind: "button"
-      - key: "SelectDown"
-        displayName: "Select Down — Move menu selection down"
-        kind: "button"
       - key: "SelectUp"
         displayName: "Select Up — Move menu selection up"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "View"
-        displayName: "View Change — Change camera view"
+      - key: "SelectDown"
+        displayName: "Select Down — Move menu selection down"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / Confirm — Confirm"
         kind: "button"
       - key: "Coin"
         displayName: "Coin"
@@ -2618,6 +2660,21 @@ controlLayouts:
         displayName: "Button 2 — Bomb"
         kind: "button"
 
+  mawasunda:
+    displayName: "Mawasunda!! Handle"
+    controllerType: "trackball"
+    joystickMode: "none"
+    bindings:
+      - key: "TrackballX"
+        displayName: "Handle"
+        kind: "axis"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
   taitogn3b:
     displayName: "Taito G-Net (3 Button)"
     controllerType: "arcade"
@@ -2644,6 +2701,199 @@ controlLayouts:
       - key: "Button3"
         displayName: "Button 3"
         kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
+  chaoshea:
+    displayName: "Chaos Heat"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Attack", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - 2nd Weapon", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  shikigam:
+    displayName: "Shikigami no Shiro"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot / Shikigami Attack", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  psyvaria:
+    displayName: "Psyvariar"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  nightrai:
+    displayName: "Night Raid"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Wave", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  xiistag:
+    displayName: "XII Stag"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Full-Auto Shoot", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  spuzbobl:
+    displayName: "Super Puzzle Bobble"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  flipmaze:
+    displayName: "Flip Maze"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Flip Card", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Swap Card", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  kollon:
+    displayName: "Kollon"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Rotate Left", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Rotate Right", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Raise Blocks", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  otenamih:
+    displayName: "Otenami Haiken"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Item", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  zooo:
+    displayName: "Zooo"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Select / Move Tile", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel / Hint", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  shanghai_gnet:
+    displayName: "G-Net Shanghai"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Select / Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Help", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  soutenry:
+    displayName: "Soutenryu"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Help", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  otenki:
+    displayName: "Otenki Kororin"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Move Line Left", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Move Line Right", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Bomb / Activate", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
 
   arcade_generic:
     displayName: "Generic 6-Button Arcade"
@@ -7554,6 +7804,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -7594,6 +7845,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -10782,6 +11034,33 @@ games:
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
       mameDescription: "Mahjong Oh (V2.06J 1999/11/23 08:52:22)"
 
+  mawasunda:
+    archive: "mawasunda.zip"
+    title: "Mawasunda!!"
+    system: "taito_gnet_zn1"
+    manufacturer: "Taito"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh1002t"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "e83-01__", sha1: "ae5b14186905c93401ca65231dec43724df7957a", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "mawasunda"
+      inputProfile: "mawasunda"
+      stateClass: "mawasunda_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Mawasunda!! (V2.08J 2000/02/01 11:02:54)"
+
   rcdego:
     archive: "rcdego.zip"
     title: "RC de Go!"
@@ -10795,6 +11074,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -10852,8 +11132,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheat", sha1: "4ec3afdf2df487fabd20c330087c2387cb31eaec", required: true, readOnly: true, companion: true }
     properties:
@@ -10880,8 +11160,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheatj", sha1: "5d6d5c5da9000ebecf5955add344f891a6848064", required: true, readOnly: true, companion: true }
     properties:
@@ -10908,8 +11188,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycrisj", sha1: "83c4bd9a8096d1939a241b34a7e5f53403a58e15", required: true, readOnly: true, companion: true }
     properties:
@@ -10935,8 +11215,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
+        - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "flipmaze", sha1: "1a97b2614c29df0294fcb96e856f431ed92a9217", required: true, readOnly: true, companion: true }
     properties:
@@ -10962,8 +11242,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigam", sha1: "be7858990f0260a1666328033dc46a4ec36dd7c0", required: true, readOnly: true, companion: true }
     properties:
@@ -10990,8 +11270,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigama", sha1: "6aee63d4cacb210b011be3dfef54f88152da36c3", required: true, readOnly: true, companion: true }
     properties:
@@ -11044,8 +11324,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollon", sha1: "37efcd5333ca7dd10cde480bd31c6b3c21f06b9f", required: true, readOnly: true, companion: true }
     properties:
@@ -11072,8 +11352,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollonc", sha1: "ce62181659701cfb8f7c564870ab902be4d8e060", required: true, readOnly: true, companion: true }
     properties:
@@ -11127,8 +11407,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamih", sha1: "b50055c5d3cb338fa322f66396b2f2ca9eb2acda", required: true, readOnly: true, companion: true }
     properties:
@@ -11154,8 +11434,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvaria", sha1: "06998a0903e8575909ff4778c89d19ccd364f78f", required: true, readOnly: true, companion: true }
     properties:
@@ -11182,8 +11462,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarij", sha1: "238023e73d99cb76d6495352f9786bb8fb880c63", required: true, readOnly: true, companion: true }
     properties:
@@ -11209,8 +11489,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarrv", sha1: "da493715637011883d673046582cc2b2fe8e80c4", required: true, readOnly: true, companion: true }
     properties:
@@ -11263,8 +11543,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "zooo" }
+        - { type: "arcade", joystick: "eight_way", layout: "zooo" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zooo", sha1: "12945dc6fd1230d28aa15360838a9bf3f2b9890b", required: true, readOnly: true, companion: true }
     properties:
@@ -11290,8 +11570,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghss", sha1: "9140cd7e9dc509093065dacfb7b189812917aa6d", required: true, readOnly: true, companion: true }
     properties:
@@ -11317,8 +11597,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
+        - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "soutenry", sha1: "511732c56dcfd57518227247999d81271775aa9c", required: true, readOnly: true, companion: true }
     properties:
@@ -11344,8 +11624,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghaito", sha1: "50f25d20a2a2da87645cf4bd00088ad2c96ce10b", required: true, readOnly: true, companion: true }
     properties:
@@ -11371,8 +11651,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
+        - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "nightrai", sha1: "21452da5aefd701b666c495bd391ec9ab90b5a41", required: true, readOnly: true, companion: true }
     properties:
@@ -11398,8 +11678,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenki" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenki" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenki", sha1: "93a618be8056d56106dfdf254b686a41e783b34b", required: true, readOnly: true, companion: true }
     properties:
@@ -11425,8 +11705,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
+        - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "xiistag", sha1: "ca1b87a29e8d5ff8c67aee68cdb1c42fd237f92c", required: true, readOnly: true, companion: true }
     properties:
@@ -11452,8 +11732,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobl", sha1: "1b1c72fb7e5656021485fefaef8f2ba48e2b4ea8", required: true, readOnly: true, companion: true }
     properties:
@@ -11481,8 +11761,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobj", sha1: "dac433cf88543d2499bf797d7406b82ae4338726", required: true, readOnly: true, companion: true }
     properties:
@@ -11506,6 +11786,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -12888,6 +13169,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:

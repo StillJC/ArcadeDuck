@@ -229,9 +229,10 @@ struct Settings
   bool arcade_namco_system11_dip_freeze : 1 = false;
 
   // Namco System 12 Cyber Lead LED panel: mode 0 off, 1 above game, 2 below game,
-  // 3 separate window; size 1 small, 2 medium, 3 large.
-  u8 arcade_namco_system12_cyber_lead_led_mode = 1;
+  // 3 separate window; size 1 small, 2 medium, 3 large; color 0-8 selects the presentation tint.
+  u8 arcade_namco_system12_cyber_lead_led_mode = 0;
   u8 arcade_namco_system12_cyber_lead_led_size = 2;
+  u8 arcade_namco_system12_cyber_lead_led_color = 0;
   std::string arcade_namco_system12_cyber_lead_led_monitor;
   bool arcade_namco_system12_cyber_lead_led_borderless_fullscreen : 1 = false;
 
