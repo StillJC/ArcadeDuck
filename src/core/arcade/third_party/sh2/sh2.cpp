@@ -221,7 +221,7 @@ bool CPU::ServiceInterrupt()
 
 uint32_t CPU::Step()
 {
-  if (ServiceInterrupt())
+  if (m_irq_asserted && ServiceInterrupt())
     return 5;
   if (m_sleeping)
     return 1;
@@ -232,8 +232,15 @@ uint32_t CPU::Step()
   if (was_delay)
     m_delay_pending = false;
 
+  // Programs run almost entirely from the first fetch region; check it inline
+  // before the general region lookup.
   const uint32_t pc = m_state.pc;
-  const uint16_t op = FetchWord(pc);
+  const InstructionFetchRegion& r0 = m_instruction_fetch_regions[0];
+  const uint32_t r0_offset = pc - r0.base;
+  const uint16_t op =
+    (r0.data && pc >= r0.base && r0.size >= 2u && r0_offset <= r0.size - 2u) ?
+      static_cast<uint16_t>((static_cast<uint16_t>(r0.data[r0_offset]) << 8) | r0.data[r0_offset + 1u]) :
+      FetchWord(pc);
   m_last_pc = pc;
   m_last_opcode = op;
   m_state.pc = pc + 2;
