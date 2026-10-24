@@ -163,6 +163,11 @@ struct NamcoCyberLeadLEDDevice::Impl
   bool fault_logged = false;
   u32 last_step_pc = 0;
   s64 cycle_balance = 0;
+
+  // LED clocks the timer, SCI1 and vblank logic have not been advanced
+  // through yet, and how many may pass before one of them has work to do.
+  u64 peripheral_pending_clocks = 0;
+  u64 peripheral_next_event = 0;
   u64 source_clock_fraction = 0;
   u64 vblank_clock_accumulator = 0;
   u64 next_vblank_start_clock = 0;
@@ -252,6 +257,8 @@ struct NamcoCyberLeadLEDDevice::Impl
     fault_logged = false;
     last_step_pc = 0;
     cycle_balance = 0;
+    peripheral_pending_clocks = 0;
+    peripheral_next_event = 0;
     source_clock_fraction = 0;
     vblank_clock_accumulator = 0;
     next_vblank_start_clock = CLOCK_HZ / LED_VBLANK_HZ;
@@ -418,7 +425,7 @@ struct NamcoCyberLeadLEDDevice::Impl
       UpdateVBlankInterruptPending();
     }
 
-    AdvancePeripherals(static_cast<u32>(std::max(cpu.cycles, 0)));
+    AddPeripheralClocks(static_cast<u32>(std::max(cpu.cycles, 0)));
     cycle_balance -= static_cast<s64>(std::max(cpu.cycles, 0));
     return true;
   }
@@ -716,6 +723,61 @@ struct NamcoCyberLeadLEDDevice::Impl
     AdvanceVBlank(clocks);
   }
 
+  // Clocks until the timer, SCI1 or vblank logic next changes anything other
+  // than a count that is only visible through its registers.
+  u64 NextPeripheralEvent() const
+  {
+    u64 next = UINT64_MAX;
+
+    const u32 divider = TimerDivider();
+    if (divider != 0)
+    {
+      if (timer_clock_accumulator >= divider)
+        return 0;
+
+      // TCNT steps that reach compare A, compare B or overflow to zero.
+      const auto steps_to = [this](u8 value) {
+        const u32 steps = static_cast<u8>(value - timer_tcnt);
+        return (steps != 0) ? steps : UINT32_C(256);
+      };
+      const u32 steps = std::min(std::min(steps_to(static_cast<u8>(timer_tcor[0] + 1)),
+                                          steps_to(static_cast<u8>(timer_tcor[1] + 1))),
+                                 steps_to(UINT8_C(0)));
+      next = (divider - timer_clock_accumulator) + (static_cast<u64>(steps - 1) * divider);
+    }
+
+    if (sci1_rx_busy)
+      next = std::min<u64>(next, sci1_rx_clocks_remaining);
+    else if (rx_count != 0 && (sci1_scr & SCI_SCR_RE) != 0 && SCI1FrameClocks() != 0)
+      return 0;
+
+    if (sci1_tx_busy)
+      next = std::min<u64>(next, sci1_tx_clocks_remaining);
+
+    const bool end_is_next =
+      vblank_active && vblank_end_clock != 0 && vblank_end_clock < next_vblank_start_clock;
+    const u64 edge = end_is_next ? vblank_end_clock : next_vblank_start_clock;
+    next = std::min(next, (edge > vblank_clock_accumulator) ? (edge - vblank_clock_accumulator) : 0);
+    return next;
+  }
+
+  void SyncPeripherals()
+  {
+    if (peripheral_pending_clocks != 0)
+    {
+      AdvancePeripherals(static_cast<u32>(peripheral_pending_clocks));
+      peripheral_pending_clocks = 0;
+    }
+    peripheral_next_event = NextPeripheralEvent();
+  }
+
+  void AddPeripheralClocks(u32 clocks)
+  {
+    peripheral_pending_clocks += clocks;
+    if (peripheral_pending_clocks >= peripheral_next_event)
+      SyncPeripherals();
+  }
+
   void UpdateInstructionFetch()
   {
     // Opcode fetches from the fixed 0000-3FFF flash window bypass the bus
@@ -824,6 +886,9 @@ struct NamcoCyberLeadLEDDevice::Impl
 
   u8 Read(u16 address)
   {
+    if (address >= UINT16_C(0xFFC8) && address <= UINT16_C(0xFFE5))
+      SyncPeripherals();
+
     if (address <= UINT16_C(0x3FFF))
       return ReadFlash(address);
     if (address >= UINT16_C(0x4000) && address <= UINT16_C(0x5FFF))
@@ -929,6 +994,14 @@ struct NamcoCyberLeadLEDDevice::Impl
 
   void Write(u16 address, u8 value)
   {
+    // Peripheral registers see the state at the end of the previous
+    // instruction, and the peripherals step again at the end of this one.
+    if (address >= UINT16_C(0xFFC3) && address <= UINT16_C(0xFFE5))
+    {
+      SyncPeripherals();
+      peripheral_next_event = 0;
+    }
+
     if (address <= UINT16_C(0x3FFF))
     {
       WriteFlash(address, value);
@@ -1084,6 +1157,7 @@ struct NamcoCyberLeadLEDDevice::Impl
     if (wire.size() > (rx_queue.size() - rx_count))
       return false;
 
+    SyncPeripherals();
     for (const u8 value : wire)
     {
       rx_queue[rx_tail] = value;
@@ -1094,6 +1168,7 @@ struct NamcoCyberLeadLEDDevice::Impl
     stats.queued_frames++;
     stats.queued_wire_bytes += wire.size();
     TryStartSCI1Receive();
+    peripheral_next_event = 0;
     return true;
   }
 
@@ -1113,7 +1188,7 @@ struct NamcoCyberLeadLEDDevice::Impl
       stats.cpu_steps++;
 
       const u32 instruction_clocks = static_cast<u32>(std::max(cpu.cycles, 0));
-      AdvancePeripherals(instruction_clocks);
+      AddPeripheralClocks(instruction_clocks);
       cycle_balance -= static_cast<s64>(instruction_clocks);
     }
 
