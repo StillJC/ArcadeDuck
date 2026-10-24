@@ -5924,8 +5924,8 @@ void ApplySPUOutputGain(s32* left, s32* right)
   if (!s_runtime)
     return;
 
-  // Base ZN routes the onboard SPU at 0.35. Bust-A-Move 2, Atlus ZN-1,
-  // and Taito FX-1B use unity gain for their onboard SPU route.
+  // Base ZN routes the onboard SPU at 0.35, while G-Net uses 0.30.
+  // Bust-A-Move 2, Atlus ZN-1, and Taito FX-1B use unity gain.
   u32 gain_per_thousand = 350;
   if (s_runtime->board_type == BoardType::BustAMove2ZN1)
     gain_per_thousand = 1000;
@@ -5934,7 +5934,7 @@ void ApplySPUOutputGain(s32* left, s32* right)
   else if (s_runtime->board_type == BoardType::TaitoFX1B)
     gain_per_thousand = 1000;
   else if (s_runtime->board_type == BoardType::TaitoGNet)
-    gain_per_thousand = 1000;
+    gain_per_thousand = 300;
 
   *left = (*left * static_cast<s32>(gain_per_thousand)) / 1000;
   *right = (*right * static_cast<s32>(gain_per_thousand)) / 1000;
@@ -8319,14 +8319,7 @@ static bool EnsureGNetZoomInitialized(RuntimeState& runtime)
 
   const bool u27_programmed =
     std::any_of(runtime.gnet_u27_flash.begin(), runtime.gnet_u27_flash.end(), [](u8 value) { return value != 0xff; });
-  bool waves_programmed = true;
-  for (const auto& flash : runtime.gnet_wave_flash)
-  {
-    waves_programmed &=
-      std::any_of(flash.data.begin(), flash.data.end(), [](u8 value) { return value != 0xff; });
-  }
-
-  if (!u27_programmed || !waves_programmed)
+  if (!u27_programmed)
     return false;
 
   std::vector<u8> sample_rom;
