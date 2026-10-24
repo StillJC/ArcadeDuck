@@ -8,6 +8,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10_medal.h"
 
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_output.h"
 #include "core/system.h"
 
 namespace NamcoSystem10 {
@@ -22,6 +23,28 @@ u64 MillisecondsToTicks(u64 ms)
 {
   return static_cast<u64>(System::GetTicksPerSecond()) * ms / 1000;
 }
+
+// MAME's MGEXIO_OUTPUT0-15 numbering. Outputs 0, 1 and 4 are the hopper motors, which MAME
+// drives as hopper devices rather than as outputs.
+constexpr u32 OUTPUT_LOCKOUT_L = 2;
+constexpr u32 OUTPUT_LOCKOUT_R = 3;
+constexpr u32 OUTPUT_PAYOUT = 5;
+constexpr u32 OUTPUT_DIVIDER_L = 6;
+constexpr u32 OUTPUT_DIVIDER_R = 7;
+constexpr u32 OUTPUT_WIN_LAMP = 8;
+
+// Host output latch n drives these outputs (LED 2, 1, 4, 3, 6, 5, 7).
+constexpr std::array<u32, 7> LATCH_OUTPUTS = {10, 9, 12, 11, 14, 13, 15};
+
+void SetOutput(u32 index, bool value)
+{
+  static constexpr std::array<const char*, 16> NAMES = {
+    "MGEXIO_OUTPUT0",  "MGEXIO_OUTPUT1",  "MGEXIO_OUTPUT2",  "MGEXIO_OUTPUT3",
+    "MGEXIO_OUTPUT4",  "MGEXIO_OUTPUT5",  "MGEXIO_OUTPUT6",  "MGEXIO_OUTPUT7",
+    "MGEXIO_OUTPUT8",  "MGEXIO_OUTPUT9",  "MGEXIO_OUTPUT10", "MGEXIO_OUTPUT11",
+    "MGEXIO_OUTPUT12", "MGEXIO_OUTPUT13", "MGEXIO_OUTPUT14", "MGEXIO_OUTPUT15"};
+  Arcade::Output::SetValue(NAMES[index], value ? 1 : 0, "Namco System 10 MGEXIO");
+}
 } // namespace
 
 void MedalCabinet::Reset()
@@ -34,6 +57,14 @@ void MedalCabinet::Reset()
   m_payout = false;
   m_win_lamp = false;
   m_leds = 0;
+
+  for (const u32 index : {OUTPUT_LOCKOUT_L, OUTPUT_LOCKOUT_R, OUTPUT_PAYOUT, OUTPUT_DIVIDER_L, OUTPUT_DIVIDER_R,
+                          OUTPUT_WIN_LAMP})
+  {
+    SetOutput(index, false);
+  }
+  for (const u32 index : LATCH_OUTPUTS)
+    SetOutput(index, false);
 }
 
 u64 MedalCabinet::Now()
@@ -145,6 +176,7 @@ void MedalCabinet::WritePort(MGEXIOBoard::Port port, u8 value)
   {
     case MGEXIOBoard::Port::P4:
       m_win_lamp = (value & 0x40) != 0;
+      SetOutput(OUTPUT_WIN_LAMP, m_win_lamp);
       break;
 
     case MGEXIOBoard::Port::PB:
@@ -157,6 +189,11 @@ void MedalCabinet::WritePort(MGEXIOBoard::Port port, u8 value)
       m_payout = (value & 0x20) != 0;
       m_divider[0] = (value & 0x40) == 0;
       m_divider[1] = (value & 0x80) == 0;
+      SetOutput(OUTPUT_LOCKOUT_L, m_lockout[0]);
+      SetOutput(OUTPUT_LOCKOUT_R, m_lockout[1]);
+      SetOutput(OUTPUT_PAYOUT, m_payout);
+      SetOutput(OUTPUT_DIVIDER_L, m_divider[0]);
+      SetOutput(OUTPUT_DIVIDER_R, m_divider[1]);
       break;
 
     default:
@@ -171,6 +208,7 @@ void MedalCabinet::WriteOutput(u32 index, u16 value)
   {
     const u8 bit = static_cast<u8>(1u << index);
     m_leds = (value != 0) ? static_cast<u8>(m_leds | bit) : static_cast<u8>(m_leds & ~bit);
+    SetOutput(LATCH_OUTPUTS[index], value != 0);
   }
 }
 
