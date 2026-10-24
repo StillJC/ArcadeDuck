@@ -60,6 +60,9 @@ static constexpr u32 MEMN_DEVICE_BASE = 0x460000;
 static constexpr u32 MEMN_CONTROL_BASE = 0x470000;
 // MEM(IO): the static-transform data XOR is written by the program, byte-swapped.
 static constexpr u32 MEMIO_DATA_XOR_BASE = 0x468000;
+// MEM(IO) cabinet outputs: bit 0 raises the punch pad (PUNCH SYSTEM TEST "SOLENOID"), bits 1-3
+// are LAMP TEST lamps 1-3. Bits 5 and 6 are also driven but not named by any test.
+static constexpr u32 MEMIO_OUTPUT_BASE = 0x478000;
 static constexpr u32 LOOKUP_RAM_BASE = 0x500000;
 static constexpr u32 LOOKUP_RAM_SIZE = 0x100000;
 
@@ -3212,6 +3215,16 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   if (offset == MEMIO_DATA_XOR_BASE && runtime.memn_profile && runtime.memn_profile->board == MemNBoard::MemIO)
   {
     runtime.data_xor = static_cast<u16>(((value & 0xff) << 8) | ((value >> 8) & 0xff));
+    return true;
+  }
+
+  if (offset == MEMIO_OUTPUT_BASE && runtime.memn_profile && runtime.memn_profile->board == MemNBoard::MemIO)
+  {
+    static constexpr std::array<OutputBit, 4> MEMIO_OUTPUTS = {{
+      {0, "solenoid"}, {1, "lamp1"}, {2, "lamp2"}, {3, "lamp3"},
+    }};
+    for (const OutputBit& output : MEMIO_OUTPUTS)
+      Arcade::Output::SetValue(output.name, (value >> output.bit) & 1, "Namco System 10 MEM(IO)");
     return true;
   }
 
