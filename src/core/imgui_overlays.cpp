@@ -262,6 +262,9 @@ static std::string s_cyber_lead_led_snapshot_serial;
 static u64 s_cyber_lead_led_snapshot_generation = 0;
 static bool s_cyber_lead_led_snapshot_valid = false;
 
+// Bumped whenever the shared snapshot changes, so the LED window can skip repaints.
+static std::atomic<u64> s_cyber_lead_led_snapshot_version{0};
+
 static void UpdateCyberLeadLEDSnapshot()
 {
   // Only the attached panel and the separate LED window read the snapshot.
@@ -272,6 +275,7 @@ static void UpdateCyberLeadLEDSnapshot()
       const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
       s_cyber_lead_led_snapshot = {};
       s_cyber_lead_led_snapshot_valid = false;
+      s_cyber_lead_led_snapshot_version.fetch_add(1, std::memory_order_release);
     }
     return;
   }
@@ -293,6 +297,7 @@ static void UpdateCyberLeadLEDSnapshot()
 
   const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
   s_cyber_lead_led_snapshot = snapshot;
+  s_cyber_lead_led_snapshot_version.fetch_add(1, std::memory_order_release);
 }
 
 static bool CopyCyberLeadLEDSnapshot(CyberLeadLEDSnapshot* snapshot)
@@ -307,6 +312,12 @@ static bool CopyCyberLeadLEDSnapshot(CyberLeadLEDSnapshot* snapshot)
 
 namespace ImGuiManager {
 bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+u64 GetCyberLeadLEDSnapshotVersion();
+}
+
+u64 ImGuiManager::GetCyberLeadLEDSnapshotVersion()
+{
+  return s_cyber_lead_led_snapshot_version.load(std::memory_order_acquire);
 }
 
 bool ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels)

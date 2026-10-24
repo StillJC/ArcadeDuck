@@ -53,6 +53,7 @@
 #include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPainter>
+#include <QtGui/QPixmap>
 #include <QtGui/QScreen>
 #include <QtGui/QWindowStateChangeEvent>
 #include <QtWidgets/QFileDialog>
@@ -122,6 +123,7 @@ Log_SetChannel(MainWindow);
 
 namespace ImGuiManager {
 bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+u64 GetCyberLeadLEDSnapshotVersion();
 }
 
 class CyberLeadLEDWindow final : public QWidget
@@ -134,7 +136,10 @@ public:
     setMinimumSize(288, 48);
 
     m_refresh_timer.setInterval(16);
-    connect(&m_refresh_timer, &QTimer::timeout, this, [this]() { update(); });
+    connect(&m_refresh_timer, &QTimer::timeout, this, [this]() {
+      if (ImGuiManager::GetCyberLeadLEDSnapshotVersion() != m_panel_version)
+        update();
+    });
     m_refresh_timer.start();
   }
 
@@ -177,7 +182,30 @@ protected:
   {
     Q_UNUSED(event);
 
+    // The panel is only redrawn when the LED frame, window size or colour changes.
+    const u64 version = ImGuiManager::GetCyberLeadLEDSnapshotVersion();
+    const u8 color = std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8);
+    const qreal dpr = devicePixelRatioF();
+    if (m_panel.isNull() || version != m_panel_version || color != m_panel_color || size() != m_panel_size_px ||
+        dpr != m_panel.devicePixelRatio())
+    {
+      m_panel = QPixmap(size() * dpr);
+      m_panel.setDevicePixelRatio(dpr);
+      m_panel_version = version;
+      m_panel_color = color;
+      m_panel_size_px = size();
+
+      QPainter panel_painter(&m_panel);
+      drawPanel(panel_painter, color);
+    }
+
     QPainter painter(this);
+    painter.drawPixmap(0, 0, m_panel);
+  }
+
+private:
+  void drawPanel(QPainter& painter, u8 color)
+  {
     painter.fillRect(rect(), Qt::black);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -210,8 +238,7 @@ protected:
       {{QColor(12, 5, 20), QColor(52, 12, 96), QColor(120, 24, 208), QColor(200, 80, 255)}},
       {{QColor(12, 12, 12), QColor(72, 72, 72), QColor(176, 176, 176), QColor(255, 255, 255)}},
     }};
-    const auto& colors =
-      COLOR_PALETTES[std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8)];
+    const auto& colors = COLOR_PALETTES[color];
 
     painter.setPen(Qt::NoPen);
     for (u32 y = 0; y < HEIGHT; y++)
@@ -236,7 +263,6 @@ protected:
     }
   }
 
-private:
   QSize getNormalSize() const
   {
     static const std::array<QSize, 3> WINDOW_SIZES = {
@@ -281,6 +307,10 @@ private:
   }
 
   QTimer m_refresh_timer;
+  QPixmap m_panel;
+  QSize m_panel_size_px;
+  u64 m_panel_version = 0;
+  u8 m_panel_color = 0;
   QString m_target_screen_name;
   u8 m_panel_size = 0;
   bool m_screen_initialized = false;
@@ -847,6 +877,8 @@ void MainWindow::updateCyberLeadLEDWindow()
 
   if (created)
     m_cyber_lead_led_window->show();
+  else
+    m_cyber_lead_led_window->update();
 }
 
 void MainWindow::destroyCyberLeadLEDWindow()
