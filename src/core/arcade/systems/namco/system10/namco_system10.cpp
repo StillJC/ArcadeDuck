@@ -909,11 +909,23 @@ void TrackballControllerReceive(RuntimeState& runtime, u8 value)
   runtime.trackball_command_length = 0;
 
   // B1 frames carry the two 7-segment displays (1P-2P and 3P-4P sides) as segment bits a-g in
-  // bits 0-6, the same encoding as MAME's digitN outputs.
+  // bits 0-6, the same encoding as MAME's digitN outputs, then the lamps: bit n is player n+1's
+  // switch lamp and bit 4+n their trackball lamp.
   if (runtime.trackball_command[0] == 0xb1)
   {
-    Arcade::Output::SetValue("digit0", runtime.trackball_command[1], "NFL Classic Football I/O PCB");
-    Arcade::Output::SetValue("digit1", runtime.trackball_command[2], "NFL Classic Football I/O PCB");
+    static constexpr std::array<const char*, 4> SWITCH_LAMPS = {"P1_Switch_lamp", "P2_Switch_lamp", "P3_Switch_lamp",
+                                                                "P4_Switch_lamp"};
+    static constexpr std::array<const char*, 4> TRACKBALL_LAMPS = {"P1_Trackball_lamp", "P2_Trackball_lamp",
+                                                                   "P3_Trackball_lamp", "P4_Trackball_lamp"};
+    static constexpr std::string_view source = "NFL Classic Football I/O PCB";
+    const u8 lamps = runtime.trackball_command[3];
+    Arcade::Output::SetValue("digit0", runtime.trackball_command[1], source);
+    Arcade::Output::SetValue("digit1", runtime.trackball_command[2], source);
+    for (u32 player = 0; player < 4; player++)
+    {
+      Arcade::Output::SetValue(SWITCH_LAMPS[player], (lamps >> player) & 1, source);
+      Arcade::Output::SetValue(TRACKBALL_LAMPS[player], (lamps >> (4 + player)) & 1, source);
+    }
   }
 
   std::array<u8, 10> reply{};
