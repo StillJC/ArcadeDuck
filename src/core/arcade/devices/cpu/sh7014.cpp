@@ -819,14 +819,8 @@ void SH7014::AdvancePeripherals(uint32_t cycles)
   }
 }
 
-void SH7014::AddPeripheralCycles(uint32_t cycles)
+void SH7014::StepPeripherals(uint32_t cycles)
 {
-  if (m_peripheral_pending_cycles + cycles < m_peripheral_next_event)
-  {
-    m_peripheral_pending_cycles += cycles;
-    return;
-  }
-
   // Bring the peripherals up to the start of this instruction, which no event
   // falls inside, then step this instruction's cycles on their own: an SCI0
   // byte that ends here schedules a DMA request that the DMAC then counts down

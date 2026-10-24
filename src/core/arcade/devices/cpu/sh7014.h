@@ -181,7 +181,15 @@ private:
   uint16_t ReadMTURegister16(uint32_t address) const;
   void WriteMTURegister16(uint32_t address, uint16_t value);
   void AdvancePeripherals(uint32_t cycles);
-  void AddPeripheralCycles(uint32_t cycles);
+  void AddPeripheralCycles(uint32_t cycles)
+  {
+    // Runs after every SH-2 instruction; most add up cycles and return.
+    if (m_peripheral_pending_cycles + cycles < m_peripheral_next_event)
+      m_peripheral_pending_cycles += cycles;
+    else
+      StepPeripherals(cycles);
+  }
+  void StepPeripherals(uint32_t cycles);
   void SyncPeripherals();
   void BeginPeripheralAccess();
   void EndPeripheralWrite();
