@@ -2587,8 +2587,10 @@ ALWAYS_INLINE void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks,
 
   runtime.h8_timer16.Advance(h8_clocks);
   runtime.h8_peripherals.Advance(h8_clocks);
-  H8SCI0CyberLeadAdvance(runtime, h8_clocks);
-  H8SCI1Advance(runtime, h8_clocks);
+  if (runtime.h8_sci0_tx_busy || runtime.h8_sci0_rx_busy)
+    H8SCI0CyberLeadAdvance(runtime, h8_clocks);
+  if (runtime.h8_sci1_rx_busy)
+    H8SCI1Advance(runtime, h8_clocks);
   if (runtime.h8_jvs.profile == JVSProfile::CyberLead)
     runtime.h8_cyberlead_deferred_clocks += h8_clocks;
 
