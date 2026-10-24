@@ -679,10 +679,10 @@ constexpr std::array<InputBit, 10> SQUIZCHS_IN1 = {{
 
 constexpr std::array<InputBit, 4> PTBLANK3_IN1 = {{{4, 0, "Trigger"}, {7, 0, "Start"}, {12, 1, "Trigger"}, {15, 1, "Start"}}};
 
-constexpr std::array<InputBit, 9> IPPO2_IN1 = {{
+constexpr std::array<InputBit, 10> IPPO2_IN1 = {{
   {1, 0, "Button1"}, {2, 0, "Button2", true}, {3, 0, "Button3", true}, {4, 0, "Button7", true},
-  {12, 0, "Button4", true}, {13, 0, "Button5", true}, {14, 0, "Button6", true}, {15, 0, "Select"},
-  {27, 0, "Sensor"},
+  {7, 0, "Start"}, {12, 0, "Button4", true}, {13, 0, "Button5", true}, {14, 0, "Button6", true},
+  {15, 0, "Select"}, {27, 0, "Sensor"},
 }};
 
 constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
