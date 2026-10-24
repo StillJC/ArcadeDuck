@@ -2,6 +2,7 @@
 
 #include "common/types.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <optional>
@@ -30,6 +31,8 @@ public:
   void Reset()
   {
     m_total_clocks = 0;
+    m_next_update_clock = 0;
+    m_pending_channels = 0;
     m_tstr = UINT8_C(0xE0);
 
     for (size_t i = 0; i < m_channels.size(); i++)
@@ -121,6 +124,8 @@ public:
 
   void Write(u16 reg, u8 data)
   {
+    m_next_update_clock = 0;
+
     if (reg == UINT16_C(0xFF60))
     {
       for (size_t i = 0; i < m_channels.size(); i++)
@@ -231,14 +236,23 @@ public:
     // Disabled channels do not accumulate timer state. Write(TSTR) first
     // synchronizes every channel to m_total_clocks before changing enable
     // state, so they do not need per-instruction UpdateChannel() calls here.
+    //
+    // Enabled channels only need updating once a compare match, clear or
+    // overflow can occur. UpdateChannel() catches up over any number of
+    // counts, and register accesses update their channel before use.
     const u8 enabled_mask = static_cast<u8>(m_tstr & UINT8_C(0x1F));
-    if (enabled_mask != 0)
+    if (enabled_mask != 0 && new_time >= m_next_update_clock)
     {
+      u64 next_update = UINT64_MAX;
       for (size_t i = 0; i < m_channels.size(); i++)
       {
         if ((enabled_mask & static_cast<u8>(UINT8_C(1) << i)) != 0)
+        {
           UpdateChannel(i, new_time);
+          next_update = std::min(next_update, NextEventClock(m_channels[i], new_time));
+        }
       }
+      m_next_update_clock = next_update;
     }
 
     m_total_clocks = new_time;
@@ -246,6 +260,9 @@ public:
 
   std::optional<u32> TakePendingInterrupt()
   {
+    if (m_pending_channels == 0)
+      return std::nullopt;
+
     // MAME's H8H channel constructor maps:
     //   A=base, B=base+1, overflow=base+2.
     for (size_t i = 0; i < m_channels.size(); i++)
@@ -253,20 +270,28 @@ public:
       Channel& c = m_channels[i];
       const u32 base = IRQ_BASES[i];
 
+      std::optional<u32> vector;
       if ((c.pending & IRQ_A) != 0)
       {
         c.pending = static_cast<u8>(c.pending & static_cast<u8>(~IRQ_A));
-        return base;
+        vector = base;
       }
-      if ((c.pending & IRQ_B) != 0)
+      else if ((c.pending & IRQ_B) != 0)
       {
         c.pending = static_cast<u8>(c.pending & static_cast<u8>(~IRQ_B));
-        return base + 1;
+        vector = base + 1;
       }
-      if ((c.pending & IRQ_V) != 0)
+      else if ((c.pending & IRQ_V) != 0)
       {
         c.pending = static_cast<u8>(c.pending & static_cast<u8>(~IRQ_V));
-        return base + 2;
+        vector = base + 2;
+      }
+
+      if (vector.has_value())
+      {
+        if (c.pending == 0)
+          m_pending_channels = static_cast<u8>(m_pending_channels & static_cast<u8>(~(UINT8_C(1) << i)));
+        return vector;
       }
     }
 
@@ -385,11 +410,40 @@ private:
       c.counter_cycle = UINT32_C(0x10000);
   }
 
-  void RequestEvent(Channel& c, u8 source)
+  void RequestEvent(size_t index, u8 source)
   {
+    Channel& c = m_channels[index];
     c.isr = static_cast<u8>(c.isr | source);
     if ((c.ier & source) != 0)
+    {
       c.pending = static_cast<u8>(c.pending | source);
+      m_pending_channels = static_cast<u8>(m_pending_channels | (UINT8_C(1) << index));
+    }
+  }
+
+  // First clock at which UpdateChannel() could raise a compare match, counter
+  // clear or overflow for a channel that has just been updated to 'now'.
+  u64 NextEventClock(Channel& c, u64 now)
+  {
+    if (!c.enabled || !c.internal_clock || !c.incrementing)
+      return UINT64_MAX;
+
+    RecalculateCounterCycle(c);
+
+    const u32 tcnt = c.tcnt;
+    u32 counts = (tcnt < c.counter_cycle) ? (c.counter_cycle - tcnt) : (UINT32_C(0x10000) - tcnt);
+    for (size_t i = 0; i < c.tgr.size(); i++)
+    {
+      const u32 compare = static_cast<u16>(c.tgr[i] + 1);
+      if (compare > tcnt)
+        counts = std::min(counts, compare - tcnt);
+    }
+
+    if (!c.clock_divider)
+      return now + counts;
+
+    const u64 scaled_now = (now + c.phase) >> c.clock_divider;
+    return ((scaled_now + counts) << c.clock_divider) - c.phase;
   }
 
   void UpdateChannel(size_t index, u64 new_time)
@@ -464,18 +518,20 @@ private:
       }
 
       if (match)
-        RequestEvent(c, i == 0 ? IRQ_A : IRQ_B);
+        RequestEvent(index, i == 0 ? IRQ_A : IRQ_B);
     }
 
     if (total >= UINT64_C(0x10000) &&
         (c.counter_cycle == UINT32_C(0x10000) || previous >= c.counter_cycle))
     {
-      RequestEvent(c, IRQ_V);
+      RequestEvent(index, IRQ_V);
     }
   }
 
   std::array<Channel, 5> m_channels{};
   u64 m_total_clocks = 0;
+  u64 m_next_update_clock = 0;
+  u8 m_pending_channels = 0;
   u8 m_tstr = UINT8_C(0xE0);
 };
 
