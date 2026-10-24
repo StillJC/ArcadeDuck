@@ -73,17 +73,29 @@ static constexpr float BUILTIN_ARCADE_CROSSHAIR_SIZE_PIXELS = 32.0f;
 
 static bool IsCyberLeadLEDGame()
 {
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(System::GetGameSerial());
-  if (!game || game->system_id != "namco_system12")
-    return false;
+  // Asked every presented frame; the answer only changes with the game.
+  thread_local std::string s_serial;
+  thread_local bool s_result = false;
+  const std::string& serial = System::GetGameSerial();
+  if (serial == s_serial)
+    return s_result;
 
-  for (const Arcade::Database::Property& property : game->properties)
+  s_serial = serial;
+  s_result = false;
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
+  if (game && game->system_id == "namco_system12")
   {
-    if (property.name == "ioBoard" && property.value == "cyberlead")
-      return true;
+    for (const Arcade::Database::Property& property : game->properties)
+    {
+      if (property.name == "ioBoard" && property.value == "cyberlead")
+      {
+        s_result = true;
+        break;
+      }
+    }
   }
 
-  return false;
+  return s_result;
 }
 
 struct ArcadeCrosshairActivity
