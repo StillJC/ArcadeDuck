@@ -3,6 +3,7 @@
 #include "common/types.h"
 
 #include <array>
+#include <bit>
 #include <optional>
 
 namespace Arcade::H8 {
@@ -120,16 +121,18 @@ public:
 
   std::optional<u32> PeekNext(bool ccr_i, bool ccr_ui, u8 syscr) const
   {
+    // Called after every H8 instruction; nothing is usually pending.
+    if (m_pending == 0)
+      return std::nullopt;
+
     const int filter = InterruptFilter(ccr_i, ccr_ui, syscr);
 
     std::optional<u32> best;
     int best_level = -1;
 
-    for (u32 vector = 0; vector < 64; vector++)
+    for (u64 pending = m_pending; pending != 0; pending &= pending - 1)
     {
-      if ((m_pending & (UINT64_C(1) << vector)) == 0)
-        continue;
-
+      const u32 vector = static_cast<u32>(std::countr_zero(pending));
       const int level = Priority(vector);
       if (level < filter)
         continue;
