@@ -302,6 +302,7 @@ struct NamcoCyberLeadLEDDevice::Impl
     if (firmware_loaded)
     {
       h8_init(&cpu);
+      UpdateInstructionFetch();
       INFO_LOG("CyberLead LED C77 reset_pc={:04X} clock_hz={} firmware_size={}",
                static_cast<u32>(cpu.cpu.pc), CLOCK_HZ, firmware.size());
     }
@@ -710,6 +711,15 @@ struct NamcoCyberLeadLEDDevice::Impl
     AdvanceVBlank(clocks);
   }
 
+  void UpdateInstructionFetch()
+  {
+    // Opcode fetches from the fixed 0000-3FFF flash window bypass the bus
+    // callbacks, except in software ID mode where flash reads return the ID.
+    cpu.instruction_fetch_data = (flash_mode == FlashMode::ReadID) ? nullptr : firmware.data();
+    cpu.instruction_fetch_base = 0;
+    cpu.instruction_fetch_size = UINT32_C(0x4000);
+  }
+
   u8 ReadFlash(u32 offset) const
   {
     offset &= FIRMWARE_SIZE - 1;
@@ -719,6 +729,12 @@ struct NamcoCyberLeadLEDDevice::Impl
   }
 
   void WriteFlash(u32 offset, u8 value)
+  {
+    WriteFlashCommand(offset, value);
+    UpdateInstructionFetch();
+  }
+
+  void WriteFlashCommand(u32 offset, u8 value)
   {
     offset &= FIRMWARE_SIZE - 1;
     const u32 command_address = offset & 0xFFFF;
