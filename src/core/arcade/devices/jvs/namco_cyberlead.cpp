@@ -90,7 +90,7 @@ void NamcoCyberLead::AdvanceLED(u32 source_clocks, u32 source_clock_hz)
 
   while (remaining != 0)
   {
-    const u64 step = std::min<u64>({remaining, m_link.wake_clock - m_link.clock, UINT32_MAX});
+    const u64 step = std::min(std::min(remaining, m_link.wake_clock - m_link.clock), u64{UINT32_MAX});
     if (step != 0)
     {
       m_led_device.Advance(static_cast<u32>(step), NamcoCyberLeadLEDDevice::CLOCK_HZ);
