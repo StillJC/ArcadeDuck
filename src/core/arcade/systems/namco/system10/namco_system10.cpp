@@ -904,6 +904,15 @@ void TrackballControllerReceive(RuntimeState& runtime, u8 value)
   }
 
   runtime.trackball_command_length = 0;
+
+  // B1 frames carry the two 7-segment displays (1P-2P and 3P-4P sides) as segment bits a-g in
+  // bits 0-6, the same encoding as MAME's digitN outputs.
+  if (runtime.trackball_command[0] == 0xb1)
+  {
+    Arcade::Output::SetValue("digit0", runtime.trackball_command[1], "NFL Classic Football I/O PCB");
+    Arcade::Output::SetValue("digit1", runtime.trackball_command[2], "NFL Classic Football I/O PCB");
+  }
+
   std::array<u8, 10> reply{};
   reply[0] = 0xa0;
   for (u32 player = 0; player < 4; player++)
