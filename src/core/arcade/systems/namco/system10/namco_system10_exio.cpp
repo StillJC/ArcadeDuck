@@ -24,6 +24,7 @@ constexpr u32 SHARED_RAM_END = 0x10000;
 constexpr u32 CTRL = 0x10000;
 constexpr u32 BUS_REQ = 0x18000;
 constexpr u32 CPU_STATUS = 0x28000;
+constexpr u32 OUTPUT_LATCH = 0x48000;
 constexpr u32 INPUT1 = 0x50000;
 constexpr u32 INPUT2 = 0x58000;
 constexpr u32 LIGHTGUN_BASE = 0x80000;
@@ -275,10 +276,14 @@ bool EXIOBoard::WriteHalfword(u32 offset, u16 value)
       m_bus_req = value;
       return true;
 
+    case OUTPUT_LATCH:
+      if (m_cabinet.output)
+        m_cabinet.output(m_cabinet.context, value);
+      return true;
+
     // Strobes written by gun games before reading the gun registers.
     case 0x30000:
     case 0x40000:
-    case 0x48000:
     case 0xc0000:
     case 0xc8000:
       return true;

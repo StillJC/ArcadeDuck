@@ -22,6 +22,7 @@
 #include "core/arcade/devices/jvs/jvs_bus.h"
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_output.h"
 #include "core/cpu_core.h"
 #include "core/interrupt_controller.h"
 #include "core/system.h"
@@ -608,6 +609,13 @@ enum class CabinetAnalog : u8
   Scope,  // MEM(P3) sub-CPU AN0/AN1: sniper scope Y (reversed) and X
 };
 
+// One bit of a cabinet output latch and the output name it drives.
+struct OutputBit
+{
+  u8 bit;
+  std::string_view name;
+};
+
 struct CabinetInputs
 {
   std::string_view input_profile;
@@ -615,6 +623,7 @@ struct CabinetInputs
   std::span<const InputBit> exio_in1;
   CabinetAnalog analog;
   CabinetSerial serial0 = CabinetSerial::None;
+  std::span<const OutputBit> exio_outputs = {};
 };
 
 constexpr std::array<InputBit, 22> DEFAULT_IN1 = {{
@@ -685,6 +694,19 @@ constexpr std::array<InputBit, 10> IPPO2_IN1 = {{
   {15, 0, "Select"}, {27, 0, "Sensor"},
 }};
 
+// EXIO output latch wiring, from each game's lamp test. The names follow MAME's Namco
+// gun I/F (System 12) and its generic lampN convention.
+constexpr std::array<OutputBit, 4> GUN_OUTPUTS = {{
+  {0, "Player2_Gun_Recoil"}, {1, "Player1_Gun_Recoil"}, {3, "P2_Start_lamp"}, {4, "P1_Start_lamp"},
+}};
+
+constexpr std::array<OutputBit, 2> GAHAHA_OUTPUTS = {{{0, "P1_Start_lamp"}, {1, "P2_Start_lamp"}}};
+
+// LAMP TEST lamps 0-5; lamps 1 and 2 are on swapped latch bits.
+constexpr std::array<OutputBit, 6> TAIKO_OUTPUTS = {{
+  {0, "lamp0"}, {2, "lamp1"}, {1, "lamp2"}, {3, "lamp3"}, {4, "lamp4"}, {5, "lamp5"},
+}};
+
 constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"namcos10", DEFAULT_IN1, {}, CabinetAnalog::None},
   {"mrdrilr2", DEFAULT_IN1, {}, CabinetAnalog::None},
@@ -693,13 +715,13 @@ constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"startrgn", STARTRGN_IN1, {}, CabinetAnalog::None},
   {"konotako", KONOTAKO_IN1, {}, CabinetAnalog::None},
   {"nflclsfb", NFLCLSFB_IN1, NFLCLSFB_EXIO_IN1, CabinetAnalog::None, CabinetSerial::Trackballs},
-  {"gahaha", GAHAHA_IN1, {}, CabinetAnalog::Sticks},
+  {"gahaha", GAHAHA_IN1, {}, CabinetAnalog::Sticks, CabinetSerial::None, GAHAHA_OUTPUTS},
   {"g13jnr", G13JNR_IN1, {}, CabinetAnalog::Scope},
   {"mgexio_medal", OPERATOR_PANEL_IN1, {}, CabinetAnalog::None},
-  {"taiko", OPERATOR_PANEL_IN1, {}, CabinetAnalog::Drums},
+  {"taiko", OPERATOR_PANEL_IN1, {}, CabinetAnalog::Drums, CabinetSerial::None, TAIKO_OUTPUTS},
   {"nicetsuk", NICETSUK_IN1, {}, CabinetAnalog::None},
   {"squizchs", SQUIZCHS_IN1, {}, CabinetAnalog::None},
-  {"ptblank3", PTBLANK3_IN1, {}, CabinetAnalog::None},
+  {"ptblank3", PTBLANK3_IN1, {}, CabinetAnalog::None, CabinetSerial::None, GUN_OUTPUTS},
   {"ippo2", IPPO2_IN1, {}, CabinetAnalog::None},
 }};
 
@@ -936,6 +958,15 @@ void EXIOSerialTransmit(void*, u32 channel, u8 value)
     runtime.exio->ReceiveSerial(1, runtime.jvs_bus.ReadResponseByte());
 }
 
+void WriteEXIOOutputs(void*, u16 value)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  for (const OutputBit& output : s_runtime->cabinet_inputs->exio_outputs)
+    Arcade::Output::SetValue(output.name, (value >> output.bit) & 1, "Namco System 10 EXIO");
+}
+
 u16 ReadJVSSense(void*)
 {
   // A JVS device holds sense at 2.5 V until it has an address, then pulls it to 0 V.
@@ -1058,6 +1089,7 @@ void CreateExpansionBoard(RuntimeState& runtime)
   cabinet.input = &ReadEXIOInput;
   cabinet.serial_transmit = &EXIOSerialTransmit;
   cabinet.jvs_sense = &ReadJVSSense;
+  cabinet.output = &WriteEXIOOutputs;
   runtime.exio = std::make_unique<EXIOBoard>(type, cabinet);
   runtime.exio->Reset();
 }

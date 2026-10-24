@@ -33,6 +33,8 @@ public:
     void (*serial_transmit)(void* context, u32 channel, u8 value) = nullptr;
     // JVS sense level as a 10-bit conversion of the J2 sense line (AN2).
     u16 (*jvs_sense)(void* context) = nullptr;
+    // Cabinet output latch (lamps, gun blowback solenoids), active high.
+    void (*output)(void* context, u16 value) = nullptr;
   };
 
   static constexpr u32 SERIAL_CHANNELS = 2;
