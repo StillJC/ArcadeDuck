@@ -9,7 +9,7 @@ class StateWrapper;
 
 namespace KonamiGQScsi {
 
-using MigrationStopReason = NCR53CF96::MigrationStopReason;
+using DeferredStopReason = NCR53CF96::DeferredStopReason;
 
 void Initialize();
 void Reset();
@@ -20,8 +20,8 @@ bool DoState(StateWrapper& sw);
 u32 ReadRegister(u32 width, u32 offset);
 void WriteRegister(u32 width, u32 offset, u32 value, u32 pc);
 
-/// Returns the Stage 3A boundary reason once after it is requested.
-MigrationStopReason ConsumeMigrationStopRequest();
+/// Returns and clears the pending deferred-stop reason.
+DeferredStopReason ConsumeDeferredStopRequest();
 u8 GetActiveCommand();
 u8 GetTargetCommandOpcode();
 

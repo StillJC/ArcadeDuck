@@ -5,14 +5,10 @@
 // Modified for ArcadeDuck by StillJC, 2026.
 
 #include "consolesettingswidget.h"
-#include "qtutils.h"
 #include "settingswindow.h"
 #include "settingwidgetbinder.h"
 
 #include "core/game_database.h"
-
-#include "util/cd_image.h"
-
 
 ConsoleSettingsWidget::ConsoleSettingsWidget(SettingsWindow* dialog, QWidget* parent)
   : QWidget(parent), m_dialog(dialog)
@@ -22,28 +18,12 @@ ConsoleSettingsWidget::ConsoleSettingsWidget(SettingsWindow* dialog, QWidget* pa
   m_ui.setupUi(this);
 
   if (dialog->isArcadeGameSettings())
-  {
     m_ui.groupBox->setTitle(tr("Machine Overrides"));
-
-    m_ui.groupBox_4->setTitle(tr("Optical Media"));
-    m_ui.cdromLoadImagePatches->setVisible(false);
-  }
 
   for (u32 i = 0; i < static_cast<u32>(CPUExecutionMode::Count); i++)
   {
     m_ui.cpuExecutionMode->addItem(
       QString::fromUtf8(Settings::GetCPUExecutionModeDisplayName(static_cast<CPUExecutionMode>(i))));
-  }
-
-  static constexpr float TIME_PER_SECTOR_DOUBLE_SPEED = 1000.0f / 150.0f;
-  m_ui.cdromReadaheadSectors->addItem(tr("Disabled (Synchronous)"));
-  for (u32 i = 1; i <= 32; i++)
-  {
-    m_ui.cdromReadaheadSectors->addItem(tr("%1 sectors (%2 KB / %3 ms)")
-                                          .arg(i)
-
-                                          .arg(static_cast<float>(i) * TIME_PER_SECTOR_DOUBLE_SPEED, 0, 'f', 0)
-                                          .arg(static_cast<float>(i * CDImage::DATA_SECTOR_SIZE) / 1024.0f));
   }
 
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableAllEnhancements, "Main", "DisableAllEnhancements",
@@ -52,10 +32,6 @@ ConsoleSettingsWidget::ConsoleSettingsWidget(SettingsWindow* dialog, QWidget* pa
   SettingWidgetBinder::BindWidgetToEnumSetting(sif, m_ui.cpuExecutionMode, "CPU", "ExecutionMode",
                                                &Settings::ParseCPUExecutionMode, &Settings::GetCPUExecutionModeName,
                                                Settings::DEFAULT_CPU_EXECUTION_MODE);
-  SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.cdromReadaheadSectors, "CDROM", "ReadaheadSectors",
-                                              Settings::DEFAULT_CDROM_READAHEAD_SECTORS);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.cdromLoadImageToRAM, "CDROM", "LoadImageToRAM", false);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.cdromLoadImagePatches, "CDROM", "LoadImagePatches", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.vsync, "Display", "VSync", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.syncToHostRefreshRate, "Main", "SyncToHostRefreshRate", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.optimalFramePacing, "Display", "OptimalFramePacing", false);
@@ -65,38 +41,12 @@ ConsoleSettingsWidget::ConsoleSettingsWidget(SettingsWindow* dialog, QWidget* pa
   SettingWidgetBinder::BindWidgetToFloatSetting(sif, m_ui.preFrameSleepBuffer, "Display", "PreFrameSleepBuffer",
                                                 Settings::DEFAULT_DISPLAY_PRE_FRAME_SLEEP_BUFFER);
 
-  SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.cdromSeekSpeedup, "CDROM", "SeekSpeedup", 1);
-  SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.cdromReadSpeedup, "CDROM", "ReadSpeedup", 1, 1);
-
   dialog->registerWidgetHelp(m_ui.cpuExecutionMode, tr("Execution Mode"), tr("Recompiler (Fastest)"),
                              tr("Determines how the emulated CPU executes instructions."));
 
   dialog->registerWidgetHelp(m_ui.disableAllEnhancements, tr("Disable All Enhancements"), tr("Unchecked"),
                              tr("Disables all enhancement options, simulating the system as accurately as possible. "
                                 "Use to quickly determine whether an enhancement is responsible for game bugs."));
-  dialog->registerWidgetHelp(
-    m_ui.cdromLoadImageToRAM, tr("Preload Image to RAM"), tr("Unchecked"),
-    tr("Loads the game image into RAM. Useful for network paths that may become unreliable during gameplay. In some "
-       "cases also eliminates stutter when games initiate audio track playback."));
-  dialog->registerWidgetHelp(
-    m_ui.cdromReadSpeedup, tr("CD-ROM Read Speedup"), tr("None (Double Speed)"),
-    tr("Speeds up CD-ROM reads by the specified factor. Only applies to double-speed reads, and is ignored when audio "
-       "is playing. May improve loading speeds in some games, at the cost of breaking others."));
-  dialog->registerWidgetHelp(
-    m_ui.cdromSeekSpeedup, tr("CD-ROM Seek Speedup"), tr("None (Normal Speed)"),
-    tr("Reduces the simulated time for the CD-ROM sled to move to different areas of the disc. Can improve loading "
-       "times, but crash games which do not expect the CD-ROM to operate faster."));
-  dialog->registerWidgetHelp(m_ui.cdromReadaheadSectors, tr("Asynchronous Readahead"), tr("8 Sectors"),
-                             tr("Reduces hitches in emulation by reading/decompressing CD data asynchronously on a "
-                                "worker thread. Higher sector numbers can reduce spikes when streaming FMVs or audio "
-                                "on slower storage or when using compression formats such as CHD."));
-  dialog->registerWidgetHelp(
-    m_ui.cdromLoadImageToRAM, tr("Preload Image to RAM"), tr("Unchecked"),
-    tr("Loads the game image into RAM. Useful for network paths that may become unreliable during gameplay. In some "
-       "cases also eliminates stutter when games initiate audio track playback."));
-  dialog->registerWidgetHelp(m_ui.cdromLoadImagePatches, tr("Apply Image Patches"), tr("Unchecked"),
-                             tr("Automatically applies patches to disc images when they are present in the same "
-                                "directory. Currently only PPF patches are supported with this option."));
   dialog->registerWidgetHelp(
     m_ui.vsync, tr("Vertical Sync (VSync)"), tr("Unchecked"),
     tr("Synchronizes presentation of the console's frames to the host. Enabling may result in smoother animations, at "

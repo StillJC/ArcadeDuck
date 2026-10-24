@@ -34,7 +34,6 @@ void Settings::SetDefaultHotkeyConfig(SettingsInterface& si)
 {
   si.ClearSection("Hotkeys");
 
-#ifndef __ANDROID__
   si.SetStringValue("Hotkeys", "FastForward", "Keyboard/Tab");
   si.SetStringValue("Hotkeys", "TogglePause", "Keyboard/Space");
   si.SetStringValue("Hotkeys", "Screenshot", "Keyboard/F10");
@@ -45,7 +44,6 @@ void Settings::SetDefaultHotkeyConfig(SettingsInterface& si)
   si.SetStringValue("Hotkeys", "SaveSelectedSaveState", "Keyboard/F2");
   si.SetStringValue("Hotkeys", "SelectPreviousSaveStateSlot", "Keyboard/F3");
   si.SetStringValue("Hotkeys", "SelectNextSaveStateSlot", "Keyboard/F4");
-#endif
 }
 
 static void HotkeyModifyResolutionScale(s32 increment)
@@ -149,7 +147,6 @@ static void HotkeyToggleOSD()
   g_settings.display_show_enhancements ^= Host::GetBoolSettingValue("Display", "ShowEnhancements", false);
 }
 
-#ifndef __ANDROID__
 
 static bool CanPause()
 {
@@ -176,43 +173,45 @@ static bool CanPause()
   return true;
 }
 
-#endif
 
 BEGIN_HOTKEY_LIST(g_common_hotkeys)
-#ifndef __ANDROID__
 DEFINE_HOTKEY("OpenPauseMenu", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Open Pause Menu"),
               [](s32 pressed) {
                 if (!pressed && CanPause())
                   FullscreenUI::OpenPauseMenu();
               })
-#endif
 
-DEFINE_HOTKEY("FastForward", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Fast Forward"),
+DEFINE_HOTKEY("OpenCheatMenu", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Open Cheat Menu"),
+              [](s32 pressed) {
+                if (!pressed)
+                  FullscreenUI::OpenCheatMenu();
+              })
+
+DEFINE_HIDDEN_HOTKEY("FastForward", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Fast Forward"),
               [](s32 pressed) {
                 if (pressed < 0)
                   return;
                 System::SetFastForwardEnabled(pressed > 0);
               })
 
-DEFINE_HOTKEY("ToggleFastForward", TRANSLATE_NOOP("Hotkeys", "General"),
+DEFINE_HIDDEN_HOTKEY("ToggleFastForward", TRANSLATE_NOOP("Hotkeys", "General"),
               TRANSLATE_NOOP("Hotkeys", "Toggle Fast Forward"), [](s32 pressed) {
                 if (!pressed)
                   System::SetFastForwardEnabled(!System::IsFastForwardEnabled());
               })
 
-DEFINE_HOTKEY("Turbo", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Turbo"), [](s32 pressed) {
+DEFINE_HIDDEN_HOTKEY("Turbo", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Turbo"), [](s32 pressed) {
   if (pressed < 0)
     return;
   System::SetTurboEnabled(pressed > 0);
 })
 
-DEFINE_HOTKEY("ToggleTurbo", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Toggle Turbo"),
+DEFINE_HIDDEN_HOTKEY("ToggleTurbo", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Toggle Turbo"),
               [](s32 pressed) {
                 if (!pressed)
                   System::SetTurboEnabled(!System::IsTurboEnabled());
               })
 
-#ifndef __ANDROID__
 DEFINE_HOTKEY("ToggleFullscreen", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Toggle Fullscreen"),
               [](s32 pressed) {
                 if (!pressed)
@@ -230,7 +229,12 @@ DEFINE_HOTKEY("PowerOff", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("
                 if (!pressed && CanPause())
                   Host::RequestSystemShutdown(true, g_settings.save_state_on_exit);
               })
-#endif
+
+DEFINE_HOTKEY("Reset", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Reboot System"),
+              [](s32 pressed) {
+                if (!pressed)
+                  Host::RunOnCPUThread(System::ResetSystem);
+              })
 
 DEFINE_HOTKEY("Screenshot", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Save Screenshot"),
               [](s32 pressed) {
@@ -238,8 +242,7 @@ DEFINE_HOTKEY("Screenshot", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP
                   System::SaveScreenshot();
               })
 
-#ifndef __ANDROID__
-DEFINE_HOTKEY("ToggleMediaCapture", TRANSLATE_NOOP("Hotkeys", "General"),
+DEFINE_HIDDEN_HOTKEY("ToggleMediaCapture", TRANSLATE_NOOP("Hotkeys", "General"),
               TRANSLATE_NOOP("Hotkeys", "Toggle Media Capture"), [](s32 pressed) {
                 if (!pressed)
                 {
@@ -250,53 +253,37 @@ DEFINE_HOTKEY("ToggleMediaCapture", TRANSLATE_NOOP("Hotkeys", "General"),
                 }
               })
 
-DEFINE_HOTKEY("OpenAchievements", TRANSLATE_NOOP("Hotkeys", "General"),
+DEFINE_HIDDEN_HOTKEY("OpenAchievements", TRANSLATE_NOOP("Hotkeys", "General"),
               TRANSLATE_NOOP("Hotkeys", "Open Achievement List"), [](s32 pressed) {
                 if (!pressed && CanPause())
                   FullscreenUI::OpenAchievementsWindow();
               })
 
-DEFINE_HOTKEY("OpenLeaderboards", TRANSLATE_NOOP("Hotkeys", "General"),
+DEFINE_HIDDEN_HOTKEY("OpenLeaderboards", TRANSLATE_NOOP("Hotkeys", "General"),
               TRANSLATE_NOOP("Hotkeys", "Open Leaderboard List"), [](s32 pressed) {
                 if (!pressed && CanPause())
                   FullscreenUI::OpenLeaderboardsWindow();
               })
-#endif
 
-DEFINE_HOTKEY("Reset", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Reset System"), [](s32 pressed) {
-  if (!pressed)
-    Host::RunOnCPUThread(System::ResetSystem);
-})
-
-#ifndef __ANDROID__
-DEFINE_HOTKEY("FrameStep", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Frame Step"),
+DEFINE_HIDDEN_HOTKEY("FrameStep", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Frame Step"),
               [](s32 pressed) {
                 if (!pressed)
                   System::DoFrameStep();
               })
-#endif
 
-DEFINE_HOTKEY("Rewind", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Rewind"), [](s32 pressed) {
+DEFINE_HIDDEN_HOTKEY("Rewind", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Rewind"), [](s32 pressed) {
   if (pressed < 0)
     return;
   System::SetRewindState(pressed > 0);
 })
 
-#ifndef __ANDROID__
-DEFINE_HOTKEY("ToggleCheats", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Toggle Cheats"),
+DEFINE_HIDDEN_HOTKEY("ToggleCheats", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Toggle Cheats"),
               [](s32 pressed) {
                 if (!pressed)
                   System::DoToggleCheats();
               })
-#else
-DEFINE_HOTKEY("TogglePatchCodes", TRANSLATE_NOOP("Hotkeys", "System"), TRANSLATE_NOOP("Hotkeys", "Toggle Patch Codes"),
-              [](s32 pressed) {
-                if (!pressed)
-                  System::DoToggleCheats();
-              })
-#endif
 
-DEFINE_HOTKEY("ToggleOverclocking", TRANSLATE_NOOP("Hotkeys", "System"),
+DEFINE_HIDDEN_HOTKEY("ToggleOverclocking", TRANSLATE_NOOP("Hotkeys", "System"),
               TRANSLATE_NOOP("Hotkeys", "Toggle Clock Speed Control (Overclocking)"), [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -326,7 +313,7 @@ DEFINE_HOTKEY("ToggleOverclocking", TRANSLATE_NOOP("Hotkeys", "System"),
                 }
               })
 
-DEFINE_HOTKEY("IncreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
+DEFINE_HIDDEN_HOTKEY("IncreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
               TRANSLATE_NOOP("Hotkeys", "Increase Emulation Speed"), [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -340,7 +327,7 @@ DEFINE_HOTKEY("IncreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
                 }
               })
 
-DEFINE_HOTKEY("DecreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
+DEFINE_HIDDEN_HOTKEY("DecreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
               TRANSLATE_NOOP("Hotkeys", "Decrease Emulation Speed"), [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -354,7 +341,7 @@ DEFINE_HOTKEY("DecreaseEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
                 }
               })
 
-DEFINE_HOTKEY("ResetEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
+DEFINE_HIDDEN_HOTKEY("ResetEmulationSpeed", TRANSLATE_NOOP("Hotkeys", "System"),
               TRANSLATE_NOOP("Hotkeys", "Reset Emulation Speed"), [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -545,7 +532,7 @@ DEFINE_HOTKEY("AudioMute", TRANSLATE_NOOP("Hotkeys", "Audio"), TRANSLATE_NOOP("H
                   }
                 }
               })
-DEFINE_HOTKEY("AudioCDAudioMute", TRANSLATE_NOOP("Hotkeys", "Audio"), TRANSLATE_NOOP("Hotkeys", "Toggle CD Audio Mute"),
+DEFINE_HIDDEN_HOTKEY("AudioCDAudioMute", TRANSLATE_NOOP("Hotkeys", "Audio"), TRANSLATE_NOOP("Hotkeys", "Toggle CD Audio Mute"),
               [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -607,7 +594,7 @@ DEFINE_HOTKEY("SelectNextSaveStateSlot", TRANSLATE_NOOP("Hotkeys", "Save States"
                 if (!pressed)
                   Host::RunOnCPUThread([]() { SaveStateSelectorUI::SelectNextSlot(true); });
               })
-DEFINE_HOTKEY("SaveStateAndSelectNextSlot", TRANSLATE_NOOP("Hotkeys", "Save States"),
+DEFINE_HIDDEN_HOTKEY("SaveStateAndSelectNextSlot", TRANSLATE_NOOP("Hotkeys", "Save States"),
               TRANSLATE_NOOP("Hotkeys", "Save State and Select Next Slot"), [](s32 pressed) {
                 if (!pressed && System::IsValid())
                 {
@@ -617,20 +604,22 @@ DEFINE_HOTKEY("SaveStateAndSelectNextSlot", TRANSLATE_NOOP("Hotkeys", "Save Stat
                 }
               })
 
-DEFINE_HOTKEY("UndoLoadState", TRANSLATE_NOOP("Hotkeys", "Save States"), TRANSLATE_NOOP("Hotkeys", "Undo Load State"),
+DEFINE_HIDDEN_HOTKEY("UndoLoadState", TRANSLATE_NOOP("Hotkeys", "Save States"), TRANSLATE_NOOP("Hotkeys", "Undo Load State"),
               [](s32 pressed) {
                 if (!pressed)
                   Host::RunOnCPUThread(System::UndoLoadState);
               })
 
 #define MAKE_LOAD_STATE_HOTKEY(global, slot, name)                                                                     \
-  DEFINE_HOTKEY(global ? "LoadGameState" #slot : "LoadGlobalState" #slot, TRANSLATE_NOOP("Hotkeys", "Save States"),    \
+  DEFINE_HIDDEN_HOTKEY(global ? "LoadGameState" #slot : "LoadGlobalState" #slot,                                      \
+                       TRANSLATE_NOOP("Hotkeys", "Save States"),                                                       \
                 name, [](s32 pressed) {                                                                                \
                   if (!pressed)                                                                                        \
                     Host::RunOnCPUThread([]() { HotkeyLoadStateSlot(global, slot); });                                 \
                 })
 #define MAKE_SAVE_STATE_HOTKEY(global, slot, name)                                                                     \
-  DEFINE_HOTKEY(global ? "SaveGameState" #slot : "SaveGlobalState" #slot, TRANSLATE_NOOP("Hotkeys", "Save States"),    \
+  DEFINE_HIDDEN_HOTKEY(global ? "SaveGameState" #slot : "SaveGlobalState" #slot,                                      \
+                       TRANSLATE_NOOP("Hotkeys", "Save States"),                                                       \
                 name, [](s32 pressed) {                                                                                \
                   if (!pressed)                                                                                        \
                     Host::RunOnCPUThread([]() { HotkeySaveStateSlot(global, slot); });                                 \

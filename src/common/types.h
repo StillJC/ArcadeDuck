@@ -164,8 +164,6 @@ struct dependent_int_false : std::false_type
 // OS detection.
 #if defined(_WIN32)
 #define TARGET_OS_STR "Windows"
-#elif defined(__ANDROID__)
-#define TARGET_OS_STR "Android"
 #elif defined(__linux__)
 #define TARGET_OS_STR "Linux"
 #elif defined(__FreeBSD__)

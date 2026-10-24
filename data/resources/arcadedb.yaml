@@ -1,6 +1,7 @@
 # ArcadeDuck universal arcade database.
-# Game archives are always complete non-merged sets. Parent relationships are metadata only.
-# The title field contains only the game name; region/revision/board qualifiers use dedicated fields.
+# Game definitions describe complete logical sets; supported handlers can resolve those ROMs from non-merged,
+# split, or merged archive layouts. Parent relationships define clone lineage and ROM fallback where supported.
+# The title field keeps the canonical game/edition name; region, board revision, and set notes use dedicated fields.
 schemaVersion: 1
 
 systems:
@@ -79,6 +80,7 @@ systems:
     machineHandler: "namco_system12"
     biosProfile: ""
     releaseYear: 1997
+    cpuClockPercent: 148
     maxPlayers: 2
     supportsLightgun: true
     supportsTrackball: false
@@ -86,8 +88,8 @@ systems:
     supportsNetwork: true
     properties:
       mainCPU: "CXD8661R-compatible R3000A"
-      systemRAM: "0x200000"
-      soundCPU: "Namco C76 / H8 variants"
+      systemRAM: "0x400000 (COH-700/700B), 0x1000000 (COH-716)"
+      soundCPU: "H8/3002 family"
       sound: "Namco C352"
       archivePolicy: "complete_non_merged"
 
@@ -167,7 +169,7 @@ systems:
     supportsLightgun: false
     supportsTrackball: false
     supportsSpecialControls: true
-    supportsNetwork: false
+    supportsNetwork: true
     properties:
       sonyBoard: "COH-3002T"
       archivePolicy: "complete_non_merged"
@@ -188,6 +190,39 @@ systems:
         - { role: "cat702_2_001", region: "cat702_2", name: "tt16.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x6bb167b3", sha1: "9dcba08f10775a9adf2b1f382c947460edd3d239", groupSize: 1, skip: 0 }
       undumpedRoms:
         - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
+  taito_gnet_zn1:
+    name: "Taito G-Net"
+    manufacturer: "Taito"
+    hardwareFamily: "sony_zn1_arcade"
+    machineHandler: "taito_gnet"
+    biosProfile: "coh1002t"
+    releaseYear: 2000
+    maxPlayers: 2
+    supportsLightgun: false
+    supportsTrackball: true
+    supportsSpecialControls: true
+    supportsNetwork: true
+    properties:
+      sonyBoard: "COH-1002T"
+      archivePolicy: "complete_non_merged"
+    bios:
+      archive: "coh1002t.zip"
+      romRegions:
+        - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+        - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+        - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+        - { id: "firm", size: 0x200000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "eprom", size: 0x100000, width: 16, endianness: "little", eraseValue: 0xff }
+        - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+      roms:
+        - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-14.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe3f23b6e", sha1: "e18907cf8c6ba54d96edba0a9a00487a90219e0d", groupSize: 1, skip: 0 }
+        - { role: "cat702_1_001", region: "cat702_1", name: "tt01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xdaac13e7", sha1: "96d94f2b06fb7ecd91454969f4959a583ffb9d5a", groupSize: 1, skip: 0 }
+        - { role: "firm_001", region: "firm", name: "flash.u30", size: 0x200000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x9100dbf2", sha1: "9ce888bd2a7e575c8ca71d978cb85de22afb5660", groupSize: 1, skip: 0 }
+        - { role: "cat702_2_001", region: "cat702_2", name: "tt99.u17", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x2989b6eb", sha1: "89981ec68d30729c27d31f820cbfd0c23ed14a03", groupSize: 1, skip: 0 }
+      undumpedRoms:
+        - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+
   taito_fx1:
     name: "Taito FX-1"
     manufacturer: "Taito"
@@ -1052,13 +1087,13 @@ controlLayouts:
       - { key: "MahjongL", displayName: "L", kind: "button" }
       - { key: "MahjongM", displayName: "M", kind: "button" }
       - { key: "MahjongN", displayName: "N", kind: "button" }
-      - { key: "Start", displayName: "Start", kind: "button" }
       - { key: "MahjongKan", displayName: "Kan", kind: "button" }
       - { key: "MahjongPon", displayName: "Pon", kind: "button" }
       - { key: "MahjongChi", displayName: "Chi", kind: "button" }
       - { key: "MahjongReach", displayName: "Reach", kind: "button" }
       - { key: "MahjongRon", displayName: "Ron", kind: "button" }
       - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
 
   raycris:
     displayName: "RayCrisis"
@@ -1085,6 +1120,12 @@ controlLayouts:
         kind: "button"
       - key: "Button3"
         displayName: "Button 3 - Round Divider / Special Attack"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
         kind: "button"
   plsmaswd:
     displayName: "Plasma Sword / Star Gladiator 2"
@@ -1197,10 +1238,10 @@ controlLayouts:
         displayName: "Button 2 — Secondary / ranged attack"
         kind: "button"
       - key: "Button3"
-        displayName: "Button 3 — Guard"
+        displayName: "Button 3 — Jump"
         kind: "button"
       - key: "Button4"
-        displayName: "Button 4 — Jump"
+        displayName: "Button 4 — Guard"
         kind: "button"
 
   tgmj:
@@ -1358,11 +1399,11 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate or perform the current mini-game's pedal action"
-        kind: "axis"
       - key: "Steering"
-        displayName: "Steering — Steer or perform the current mini-game's wheel action"
+        displayName: "Steering"
+        kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
         kind: "axis"
 
   hyperbbc:
@@ -1514,15 +1555,15 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Steering"
+        displayName: "Steering"
+        kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
       - key: "View"
         displayName: "View — Toggle View"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer the pocket-size racing car"
-        kind: "axis"
 
   primglex:
     displayName: "J-League Soccer Prime Goal EX"
@@ -1682,15 +1723,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
+      - key: "Accelerator"
+        displayName: "Speed Lever — Control train speed"
+        kind: "axis"
       - key: "Button1"
         displayName: "Button 1 — Left"
         kind: "button"
       - key: "Button2"
-        displayName: "Button 2 — Right"
+        displayName: "Button 2 — OK / Horn"
         kind: "button"
-      - key: "Accelerator"
-        displayName: "Speed Lever — Control train speed"
-        kind: "axis"
+      - key: "Button3"
+        displayName: "Button 3 — Right"
+        kind: "button"
       - key: "Start"
         displayName: "Start / OK / Horn — Confirm / sound horn"
         kind: "button"
@@ -1698,8 +1742,20 @@ controlLayouts:
   aquarush:
     displayName: "Aqua Rush"
     controllerType: "arcade"
-    joystickMode: "none"
+    joystickMode: "eight_way"
     bindings:
+      - key: "Up"
+        displayName: "Up - Test menu up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down - Test menu down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left - Test menu left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right - Test menu right"
+        kind: "button"
       - key: "Button1"
         displayName: "Button 1 — Raise/extend the left bubble column"
         kind: "button"
@@ -1787,23 +1843,23 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
+      - key: "Accelerator"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "SelectUp"
+        displayName: "Select Up — Move menu selection up"
+        kind: "button"
       - key: "SelectDown"
         displayName: "Select Down — Move menu selection down"
         kind: "button"
       - key: "Enter"
         displayName: "Enter / Confirm — Confirm"
-        kind: "button"
-      - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
-        kind: "axis"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "SelectUp"
-        displayName: "Select Up — Move menu selection up"
         kind: "button"
 
   lbgrande:
@@ -1913,18 +1969,18 @@ controlLayouts:
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
+        kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
         kind: "axis"
       - key: "Select"
         displayName: "Select / Confirm — Select/confirm the current test"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer or perform the current driving test"
-        kind: "axis"
 
   tenkomor:
     displayName: "Tenkomori Shooting"
@@ -1983,40 +2039,115 @@ controlLayouts:
         displayName: "Button 6 — Wrestling action not yet assigned"
         kind: "button"
 
+  questff:
+    displayName: "Quest for Fame"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "SelectUp"
+        displayName: "Up Select / 1P Left Choose"
+        kind: "button"
+      - key: "SelectDown"
+        displayName: "Down Select / 1P Right Choose"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / 1P Determine"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Drum"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Guitar"
+        kind: "button"
+      - key: "Button3"
+        displayName: "2P Right Choose"
+        kind: "button"
+      - key: "Button4"
+        displayName: "2P Left Choose"
+        kind: "button"
+      - key: "Button5"
+        displayName: "2P Determine"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
+  ujlnow:
+    displayName: "Um Jammer Lammy NOW!"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Up"
+        displayName: "Up Select"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down Select"
+        kind: "button"
+      - key: "Left"
+        displayName: "Joe Switch (J)"
+        kind: "button"
+      - key: "Right"
+        displayName: "Chin Switch (C)"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Circle / Enter"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Cross"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Triangle"
+        kind: "button"
+      - key: "Button7"
+        displayName: "Square"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
   truckk:
     displayName: "Truck Kyosokyoku"
     controllerType: "driving"
     joystickMode: "none"
     bindings:
-      - key: "Brake"
-        displayName: "Brake — Brake"
+      - key: "Steering"
+        displayName: "Steering"
         kind: "axis"
-      - key: "Enter"
-        displayName: "Enter / Confirm — Confirm"
-        kind: "button"
       - key: "Accelerator"
-        displayName: "Accelerator — Accelerate"
+        displayName: "Accelerator"
         kind: "axis"
+      - key: "Brake"
+        displayName: "Brake"
+        kind: "axis"
+      - key: "View"
+        displayName: "View Change — Change camera view"
+        kind: "button"
       - key: "Horn"
         displayName: "Horn — Sound horn"
         kind: "button"
       - key: "MusicPrevious"
-        displayName: "Previous Music — Previous music track"
+        displayName: "Music Back — Previous music track"
         kind: "button"
       - key: "MusicNext"
         displayName: "Next Music — Next music track"
         kind: "button"
-      - key: "SelectDown"
-        displayName: "Select Down — Move menu selection down"
-        kind: "button"
       - key: "SelectUp"
         displayName: "Select Up — Move menu selection up"
         kind: "button"
-      - key: "Steering"
-        displayName: "Steering — Steer"
-        kind: "axis"
-      - key: "View"
-        displayName: "View Change — Change camera view"
+      - key: "SelectDown"
+        displayName: "Select Down — Move menu selection down"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / Confirm — Confirm"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
         kind: "button"
 
   ftimpact:
@@ -2529,6 +2660,21 @@ controlLayouts:
         displayName: "Button 2 — Bomb"
         kind: "button"
 
+  mawasunda:
+    displayName: "Mawasunda!! Handle"
+    controllerType: "trackball"
+    joystickMode: "none"
+    bindings:
+      - key: "TrackballX"
+        displayName: "Handle"
+        kind: "axis"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
   taitogn3b:
     displayName: "Taito G-Net (3 Button)"
     controllerType: "arcade"
@@ -2554,6 +2700,253 @@ controlLayouts:
         kind: "button"
       - key: "Button3"
         displayName: "Button 3"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
+  chaoshea:
+    displayName: "Chaos Heat"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Attack", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - 2nd Weapon", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  shikigam:
+    displayName: "Shikigami no Shiro"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot / Shikigami Attack", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  psyvaria:
+    displayName: "Psyvariar"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  nightrai:
+    displayName: "Night Raid"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Wave", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Bomb", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  xiistag:
+    displayName: "XII Stag"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Bomb", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Full-Auto Shoot", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  spuzbobl:
+    displayName: "Super Puzzle Bobble"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Shoot", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  flipmaze:
+    displayName: "Flip Maze"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Flip Card", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Swap Card", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  kollon:
+    displayName: "Kollon"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Rotate Left", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Rotate Right", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Raise Blocks", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  otenamih:
+    displayName: "Otenami Haiken"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Item", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  zooo:
+    displayName: "Zooo"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Select / Move Tile", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel / Hint", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  shanghai_gnet:
+    displayName: "G-Net Shanghai"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Select / Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Help", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  soutenry:
+    displayName: "Soutenryu"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Confirm", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Cancel", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Help", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  otenki:
+    displayName: "Otenki Kororin"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 - Move Line Left", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 - Move Line Right", kind: "button" }
+      - { key: "Button3", displayName: "Button 3 - Bomb / Activate", kind: "button" }
+      - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  arcade_generic:
+    displayName: "Generic 6-Button Arcade"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 5"
+        kind: "button"
+      - key: "Button6"
+        displayName: "Button 6"
+        kind: "button"
+
+  pacapp:
+    displayName: "Paca Paca Passion / 2 / Special"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Button1"
+        displayName: "Button 1 - Yellow"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 - Red"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 - Blue"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4 - Green"
         kind: "button"
 
 games:
@@ -2647,6 +3040,7 @@ games:
   susume:
     archive: "susume.zip"
     title: "Susume! Taisen Puzzle-Dama"
+    parent: "lacrazyc"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Puzzle"
@@ -2838,6 +3232,7 @@ games:
   tmoshspa:
     archive: "tmoshspa.zip"
     title: "Tokimeki Memorial Oshiete Your Heart Seal Version Plus"
+    parent: "tmoshsp"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Simulation"
@@ -2894,6 +3289,7 @@ games:
   naganoj:
     archive: "naganoj.zip"
     title: "Hyper Olympics in Nagano"
+    parent: "nagano98"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Sports"
@@ -2981,7 +3377,7 @@ games:
       - { id: "eeprom", type: "eeprom_93c46_16", size: 0x80 }
 
   # BEGIN ARCADEDUCK UNIVERSAL GAME CATALOG 20260803
-  # The title field contains only the game name. Region, revision, board code, and set notes are separate metadata.
+  # Canonical edition/subtitle text stays in title; region, board revision, board code, and set notes are separate metadata.
 
   tekken:
     archive: "tekken.zip"
@@ -3160,12 +3556,12 @@ games:
 
   tekken2:
     archive: "tekken2.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "World"
-    revision: "Ver.B; TES2/VER.D"
+    revision: "TES2/VER.D"
     boardCode: "TES2"
     hardwareProfile: "tekken2"
     setFormat: "non_merged"
@@ -3205,13 +3601,13 @@ games:
 
   tekken2b:
     archive: "tekken2b.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "World"
-    revision: "Ver.B; TES2/VER.B"
+    revision: "TES2/VER.B"
     boardCode: "TES2"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3251,13 +3647,13 @@ games:
 
   tekken2ud:
     archive: "tekken2ud.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "US"
-    revision: "Ver.B; TES3/VER.D"
+    revision: "TES3/VER.D"
     boardCode: "TES3"
     hardwareProfile: "tekken2"
     setFormat: "non_merged"
@@ -3297,13 +3693,13 @@ games:
 
   tekken2ub:
     archive: "tekken2ub.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "US"
-    revision: "Ver.B; TES3/VER.B"
+    revision: "TES3/VER.B"
     boardCode: "TES3"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3343,13 +3739,13 @@ games:
 
   tekken2jc:
     archive: "tekken2jc.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "Japan"
-    revision: "Ver.B; TES1/VER.C"
+    revision: "TES1/VER.C"
     boardCode: "TES1"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3389,13 +3785,13 @@ games:
 
   tekken2jb:
     archive: "tekken2jb.zip"
-    title: "Tekken 2"
+    title: "Tekken 2 Ver.B"
     parent: "tekken2"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "Japan"
-    revision: "Ver.B; TES1/VER.B"
+    revision: "TES1/VER.B"
     boardCode: "TES1"
     hardwareProfile: "tekken2o"
     setFormat: "non_merged"
@@ -3527,12 +3923,12 @@ games:
 
   souledge:
     archive: "souledge.zip"
-    title: "Soul Edge"
+    title: "Soul Edge Ver. II"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1996
     region: "Asia"
-    revision: "Ver. II; SO4/VER.C"
+    revision: "SO4/VER.C"
     boardCode: "SO4"
     hardwareProfile: "souledge"
     setFormat: "non_merged"
@@ -3584,13 +3980,13 @@ games:
 
   souledgeuc:
     archive: "souledgeuc.zip"
-    title: "Soul Edge"
+    title: "Soul Edge Ver. II"
     parent: "souledge"
     system: "namco_system11"
     manufacturer: "Namco"
     year: 1995
     region: "US"
-    revision: "Ver. II; SO3/VER.C"
+    revision: "SO3/VER.C"
     boardCode: "SO3"
     hardwareProfile: "souledge"
     setFormat: "non_merged"
@@ -5028,6 +5424,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3a:
     archive: "tekken3a.zip"
@@ -5073,6 +5470,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3b:
     archive: "tekken3b.zip"
@@ -5118,6 +5516,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3c:
     archive: "tekken3c.zip"
@@ -5163,6 +5562,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3d:
     archive: "tekken3d.zip"
@@ -5208,6 +5608,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ua:
     archive: "tekken3ua.zip"
@@ -5253,6 +5654,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ud:
     archive: "tekken3ud.zip"
@@ -5298,6 +5700,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ja:
     archive: "tekken3ja.zip"
@@ -5343,6 +5746,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3jd:
     archive: "tekken3jd.zip"
@@ -5388,6 +5792,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3je1:
     archive: "tekken3je1.zip"
@@ -5433,6 +5838,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   lbgrande:
     archive: "lbgrande.zip"
@@ -5472,6 +5878,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   toukon3:
     archive: "toukon3.zip"
@@ -5551,6 +5958,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrab:
     archive: "soulclbrab.zip"
@@ -5592,6 +6000,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrac:
     archive: "soulclbrac.zip"
@@ -5633,6 +6042,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrub:
     archive: "soulclbrub.zip"
@@ -5674,6 +6084,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbruc:
     archive: "soulclbruc.zip"
@@ -5715,6 +6126,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrja2:
     archive: "soulclbrja2.zip"
@@ -5756,6 +6168,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjb:
     archive: "soulclbrjb.zip"
@@ -5797,6 +6210,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjc:
     archive: "soulclbrjc.zip"
@@ -5838,6 +6252,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeiz:
     archive: "ehrgeiz.zip"
@@ -5881,6 +6296,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizua:
     archive: "ehrgeizua.zip"
@@ -5925,6 +6341,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizja:
     archive: "ehrgeizja.zip"
@@ -5969,6 +6386,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   sws98:
     archive: "sws98.zip"
@@ -6011,6 +6429,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   aplarail:
     archive: "aplarail.zip"
@@ -6052,6 +6471,7 @@ games:
       machineConfig: "aplarail"
       inputProfile: "aplarail"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mdhorse:
     archive: "mdhorse.zip"
@@ -6266,6 +6686,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   fgtlayerja:
     archive: "fgtlayerja.zip"
@@ -6310,6 +6731,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   pacapp:
     archive: "pacapp.zip"
@@ -6326,6 +6748,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -6491,6 +6917,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tektagt:
     archive: "tektagt.zip"
@@ -6537,6 +6964,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtc1a:
     archive: "tektagtc1a.zip"
@@ -6590,6 +7018,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtub:
     archive: "tektagtub.zip"
@@ -6637,6 +7066,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtuc1:
     archive: "tektagtuc1.zip"
@@ -6684,6 +7114,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtja3:
     archive: "tektagtja3.zip"
@@ -6732,6 +7163,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjb:
@@ -6780,6 +7212,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjc1:
@@ -6828,6 +7261,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   ghlpanic:
     archive: "ghlpanic.zip"
@@ -6919,6 +7353,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -6975,6 +7413,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mrdrillrja2:
     archive: "mrdrillrja2.zip"
@@ -7013,6 +7452,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ujlnow:
     archive: "ujlnow.zip"
@@ -7029,6 +7469,9 @@ games:
     minPlayers: 1
     maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "ujlnow" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x2000000, width: 32, endianness: "little" }
@@ -7053,6 +7496,45 @@ games:
       machineConfig: "cdxa_pcb"
       inputProfile: "ujlnow"
       stateClass: "namcos12_cdxa_state"
+
+  questff:
+    archive: "questff.zip"
+    title: "Quest for Fame"
+    system: "namco_system12"
+    manufacturer: "Virtual Music / Namco"
+    year: 1999
+    region: "Japan"
+    revision: "QF2/VER.A"
+    boardCode: "QF2"
+    hardwareProfile: "cdxa_pcb"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "questff" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x1000000, width: 32, endianness: "little" }
+      - { id: "sub", size: 0x80000, width: 8, endianness: "native" }
+      - { id: "c352", size: 0x1000000, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "qf2vera.2l", size: 0x200000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x936778e1", sha1: "2afe556ef4888bbe422c2f92d7b6bd85beffc229", groupSize: 1, skip: 1 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "qf2vera.2p", size: 0x200000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0x429ff82e", sha1: "958e4d61bd9bd0515f837e9c2b910f1581426214", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "qf1rom0l.ic12", size: 0x800000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x3319164f", sha1: "3d673af952203b362f52f83f805f8a24e4864489", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "qf1rom0u.ic11", size: 0x800000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xd892c93e", sha1: "0d7dbf4ff45f823bbc0b4fdbfb2693e18beced45", groupSize: 1, skip: 1 }
+      - { role: "sub_001", region: "sub", name: "qf2vera.11s", size: 0x80000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x843f6ed9", sha1: "fdbd352e6fdbf48112ef67dcc7f34e41e00f017a", groupSize: 2, skip: 0 }
+      - { role: "c352_001", region: "c352", name: "qf1wave0.ic2", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x3f7b9afa", sha1: "b7ecef7447476937c99591b495f859ac6abf3e30", groupSize: 1, skip: 0 }
+    media:
+      - { role: "cdxa_pcb:ata:0:cdrom_001", type: "chd_cdrom", name: "qf1-a", sha1: "c65ac9bb0571e463a2f6a23cff396ca19430ca15", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "namcos12.cpp"
+      machineConfig: "questff"
+      inputProfile: "questff"
+      stateClass: "namcos12_cdxa_state"
+      emulationFlags: "MACHINE_IMPERFECT_CONTROLS"
 
   kaiunqz:
     archive: "kaiunqz.zip"
@@ -7110,6 +7592,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -7166,6 +7652,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   golgo13:
     archive: "golgo13.zip"
@@ -7317,6 +7804,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -7357,6 +7845,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -9259,11 +9748,11 @@ games:
 
   gdarius2:
     archive: "gdarius2.zip"
-    title: "G-Darius"
+    title: "G-Darius Ver.2"
     system: "taito_fx1"
     manufacturer: "Taito"
     year: 1997
-    revision: "Ver.2; Ver 2.03J"
+    revision: "Ver 2.03J"
     hardwareProfile: "coh1002tb"
     setFormat: "non_merged"
     status: "working"
@@ -10545,6 +11034,33 @@ games:
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
       mameDescription: "Mahjong Oh (V2.06J 1999/11/23 08:52:22)"
 
+  mawasunda:
+    archive: "mawasunda.zip"
+    title: "Mawasunda!!"
+    system: "taito_gnet_zn1"
+    manufacturer: "Taito"
+    year: 2000
+    region: "Japan"
+    hardwareProfile: "coh1002t"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+        - { type: "trackball", joystick: "none", layout: "mawasunda" }
+    media:
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "e83-01__", sha1: "ae5b14186905c93401ca65231dec43724df7957a", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "taitogn.cpp"
+      machineConfig: "mawasunda"
+      inputProfile: "mawasunda"
+      stateClass: "mawasunda_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+      mameDescription: "Mawasunda!! (V2.08J 2000/02/01 11:02:54)"
+
   rcdego:
     archive: "rcdego.zip"
     title: "RC de Go!"
@@ -10558,6 +11074,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -10615,8 +11132,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheat", sha1: "4ec3afdf2df487fabd20c330087c2387cb31eaec", required: true, readOnly: true, companion: true }
     properties:
@@ -10643,8 +11160,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
+        - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheatj", sha1: "5d6d5c5da9000ebecf5955add344f891a6848064", required: true, readOnly: true, companion: true }
     properties:
@@ -10671,8 +11188,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
+        - { type: "arcade", joystick: "eight_way", layout: "raycris" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycrisj", sha1: "83c4bd9a8096d1939a241b34a7e5f53403a58e15", required: true, readOnly: true, companion: true }
     properties:
@@ -10698,8 +11215,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
+        - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "flipmaze", sha1: "1a97b2614c29df0294fcb96e856f431ed92a9217", required: true, readOnly: true, companion: true }
     properties:
@@ -10725,8 +11242,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigam", sha1: "be7858990f0260a1666328033dc46a4ec36dd7c0", required: true, readOnly: true, companion: true }
     properties:
@@ -10753,8 +11270,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
+        - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigama", sha1: "6aee63d4cacb210b011be3dfef54f88152da36c3", required: true, readOnly: true, companion: true }
     properties:
@@ -10807,8 +11324,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollon", sha1: "37efcd5333ca7dd10cde480bd31c6b3c21f06b9f", required: true, readOnly: true, companion: true }
     properties:
@@ -10835,8 +11352,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
+        - { type: "arcade", joystick: "eight_way", layout: "kollon" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollonc", sha1: "ce62181659701cfb8f7c564870ab902be4d8e060", required: true, readOnly: true, companion: true }
     properties:
@@ -10890,8 +11407,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamih", sha1: "b50055c5d3cb338fa322f66396b2f2ca9eb2acda", required: true, readOnly: true, companion: true }
     properties:
@@ -10917,8 +11434,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvaria", sha1: "06998a0903e8575909ff4778c89d19ccd364f78f", required: true, readOnly: true, companion: true }
     properties:
@@ -10945,8 +11462,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarij", sha1: "238023e73d99cb76d6495352f9786bb8fb880c63", required: true, readOnly: true, companion: true }
     properties:
@@ -10972,8 +11489,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
+        - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarrv", sha1: "da493715637011883d673046582cc2b2fe8e80c4", required: true, readOnly: true, companion: true }
     properties:
@@ -11026,8 +11543,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "zooo" }
+        - { type: "arcade", joystick: "eight_way", layout: "zooo" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zooo", sha1: "12945dc6fd1230d28aa15360838a9bf3f2b9890b", required: true, readOnly: true, companion: true }
     properties:
@@ -11053,8 +11570,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghss", sha1: "9140cd7e9dc509093065dacfb7b189812917aa6d", required: true, readOnly: true, companion: true }
     properties:
@@ -11080,8 +11597,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
+        - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "soutenry", sha1: "511732c56dcfd57518227247999d81271775aa9c", required: true, readOnly: true, companion: true }
     properties:
@@ -11107,8 +11624,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
+        - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghaito", sha1: "50f25d20a2a2da87645cf4bd00088ad2c96ce10b", required: true, readOnly: true, companion: true }
     properties:
@@ -11134,8 +11651,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
+        - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "nightrai", sha1: "21452da5aefd701b666c495bd391ec9ab90b5a41", required: true, readOnly: true, companion: true }
     properties:
@@ -11161,8 +11678,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenki" }
+        - { type: "arcade", joystick: "eight_way", layout: "otenki" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenki", sha1: "93a618be8056d56106dfdf254b686a41e783b34b", required: true, readOnly: true, companion: true }
     properties:
@@ -11188,8 +11705,8 @@ games:
     display: { orientation: "vertical", rotation: "Rotate270", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
+        - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "xiistag", sha1: "ca1b87a29e8d5ff8c67aee68cdb1c42fd237f92c", required: true, readOnly: true, companion: true }
     properties:
@@ -11215,8 +11732,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobl", sha1: "1b1c72fb7e5656021485fefaef8f2ba48e2b4ea8", required: true, readOnly: true, companion: true }
     properties:
@@ -11244,8 +11761,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
-        - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
+        - { type: "arcade", joystick: "eight_way", layout: "spuzbobl" }
     media:
       - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "spuzbobj", sha1: "dac433cf88543d2499bf797d7406b82ae4338726", required: true, readOnly: true, companion: true }
     properties:
@@ -11269,6 +11786,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -12313,11 +12831,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -12376,11 +12893,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -12439,11 +12955,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -12502,11 +13017,10 @@ games:
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -12655,6 +13169,7 @@ games:
     status: "working"
     minPlayers: 1
     maxPlayers: 1
+    supportsSystemLink: true
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
@@ -15765,12 +16280,12 @@ games:
 
   dstage:
     archive: "dstage.zip"
-    title: "Dancing Stage"
+    title: "Dancing Stage - Internet Ranking Ver"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Europe"
-    revision: "Internet Ranking Ver; GC845 VER. EBA"
+    revision: "GC845 VER. EBA"
     boardCode: "GC845"
     hardwareProfile: "dsftkd"
     setFormat: "non_merged"
@@ -15889,13 +16404,13 @@ games:
 
   ddrj:
     archive: "ddrj.zip"
-    title: "Dance Dance Revolution"
+    title: "Dance Dance Revolution - Internet Ranking Ver"
     parent: "dstage"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1998
     region: "Japan"
-    revision: "Internet Ranking Ver; GC845 VER. JBA"
+    revision: "GC845 VER. JBA"
     boardCode: "GC845"
     hardwareProfile: "ddr"
     setFormat: "non_merged"
@@ -16556,12 +17071,12 @@ games:
 
   gtrfrks:
     archive: "gtrfrks.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Europe"
-    revision: "Ver 1.01; GQ886 VER. EAD"
+    revision: "GQ886 VER. EAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -16596,13 +17111,13 @@ games:
 
   gtrfrksu:
     archive: "gtrfrksu.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "USA"
-    revision: "Ver 1.01; GQ886 VER. UAD"
+    revision: "GQ886 VER. UAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -16637,13 +17152,13 @@ games:
 
   gtrfrksj:
     archive: "gtrfrksj.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Ver 1.01; GQ886 VER. JAD"
+    revision: "GQ886 VER. JAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -16678,13 +17193,13 @@ games:
 
   gtrfrksa:
     archive: "gtrfrksa.zip"
-    title: "Guitar Freaks"
+    title: "Guitar Freaks Ver 1.01"
     parent: "gtrfrks"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Asia"
-    revision: "Ver 1.01; GQ886 VER. AAD"
+    revision: "GQ886 VER. AAD"
     boardCode: "GQ886"
     hardwareProfile: "gtrfrks"
     setFormat: "non_merged"
@@ -17250,13 +17765,13 @@ games:
 
   ddr2ml:
     archive: "ddr2ml.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAC"
+    revision: "GE885 VER. JAC"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -17291,13 +17806,13 @@ games:
 
   ddr2mla:
     archive: "ddr2mla.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAB"
+    revision: "GE885 VER. JAB"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -17333,13 +17848,13 @@ games:
 
   ddr2mlb:
     archive: "ddr2mlb.zip"
-    title: "Dance Dance Revolution 2nd Mix"
+    title: "Dance Dance Revolution 2nd Mix - Link Ver"
     parent: "ddr2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Ver; GE885 VER. JAA"
+    revision: "GE885 VER. JAA"
     boardCode: "GE885"
     hardwareProfile: "ddr2ml"
     setFormat: "non_merged"
@@ -17782,12 +18297,12 @@ games:
 
   gtrfrk2m:
     archive: "gtrfrk2m.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Ver 1.01"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Ver 1.01; GQ883 VER. JAD"
+    revision: "GQ883 VER. JAD"
     boardCode: "GQ883"
     hardwareProfile: "gtrfrk2m"
     setFormat: "non_merged"
@@ -18039,13 +18554,13 @@ games:
 
   gtrfrk2ml1:
     archive: "gtrfrk2ml1.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Link Kit 1"
     parent: "gtrfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Kit 1; GE929 VER. JAA"
+    revision: "GE929 VER. JAA"
     boardCode: "GE929"
     hardwareProfile: "gtrfrk2ml"
     setFormat: "non_merged"
@@ -18082,13 +18597,13 @@ games:
 
   gtrfrk2ml2:
     archive: "gtrfrk2ml2.zip"
-    title: "Guitar Freaks 2nd Mix"
+    title: "Guitar Freaks 2nd Mix Link Kit 2"
     parent: "gtrfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Link Kit 2; GC929 VER. JBB"
+    revision: "GC929 VER. JBB"
     boardCode: "GC929"
     hardwareProfile: "gtrfrk2ml"
     setFormat: "non_merged"
@@ -18241,12 +18756,12 @@ games:
 
   ddr3mk:
     archive: "ddr3mk.zip"
-    title: "Dance Dance Revolution 3rd Mix"
+    title: "Dance Dance Revolution 3rd Mix - Ver.Korea2"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
     region: "Korea"
-    revision: "Ver.Korea2; GN887 VER. KBA"
+    revision: "GN887 VER. KBA"
     boardCode: "GN887"
     hardwareProfile: "ddr3m"
     setFormat: "non_merged"
@@ -18287,13 +18802,13 @@ games:
 
   ddr3mka:
     archive: "ddr3mka.zip"
-    title: "Dance Dance Revolution 3rd Mix"
+    title: "Dance Dance Revolution 3rd Mix - Ver.Korea"
     parent: "ddr3mk"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
     region: "Korea"
-    revision: "Ver.Korea; GN887 VER. KAA"
+    revision: "GN887 VER. KAA"
     boardCode: "GN887"
     hardwareProfile: "ddr3m"
     setFormat: "non_merged"
@@ -18563,12 +19078,12 @@ games:
 
   hypbbc2p:
     archive: "hypbbc2p.zip"
-    title: "Hyper Bishi Bashi Champ"
+    title: "Hyper Bishi Bashi Champ - 2 Player"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "2 Player; GX908 1999/08/24 VER. JAA"
+    revision: "GX908 1999/08/24 VER. JAA"
     boardCode: "GX908"
     hardwareProfile: "hypbbc2p"
     setFormat: "non_merged"
@@ -18607,13 +19122,13 @@ games:
 
   hypbbc2pk:
     archive: "hypbbc2pk.zip"
-    title: "Hyper Bishi Bashi Champ"
+    title: "Hyper Bishi Bashi Champ - 2 Player"
     parent: "hypbbc2p"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Korea"
-    revision: "2 Player; GX908 1999/08/24 VER. KAA"
+    revision: "GX908 1999/08/24 VER. KAA"
     boardCode: "GX908"
     hardwareProfile: "hypbbc2p"
     setFormat: "non_merged"
@@ -18885,13 +19400,13 @@ games:
 
   drmn2mpu:
     archive: "drmn2mpu.zip"
-    title: "DrumMania 2nd Mix"
+    title: "DrumMania 2nd Mix Session Power Up Kit"
     parent: "pcnfrk2m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 1999
     region: "Japan"
-    revision: "Session Power Up Kit; GE912 VER. JAB"
+    revision: "GE912 VER. JAB"
     boardCode: "GE912"
     hardwareProfile: "drmn2m"
     setFormat: "non_merged"
@@ -19892,12 +20407,12 @@ games:
 
   gtfrk3mb:
     archive: "gtfrk3mb.zip"
-    title: "Guitar Freaks 3rd Mix"
+    title: "Guitar Freaks 3rd Mix - security cassette versionup"
     parent: "gtrfrk3m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2000
-    revision: "security cassette versionup; 949JAZ02"
+    revision: "949JAZ02"
     boardCode: "949JAZ02"
     hardwareProfile: "gtrfrk5m"
     setFormat: "non_merged"
@@ -22226,13 +22741,13 @@ games:
 
   drmn7m:
     archive: "drmn7m.zip"
-    title: "DrumMania 7th Mix"
+    title: "DrumMania 7th Mix power-up ver."
     parent: "pcnfrk7m"
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2002
     region: "Japan"
-    revision: "power-up ver.; G*C07 VER. JBA"
+    revision: "G*C07 VER. JBA"
     boardCode: "G*C07"
     hardwareProfile: "drmn4m"
     setFormat: "non_merged"
@@ -22322,12 +22837,12 @@ games:
 
   gtrfrk8m:
     archive: "gtrfrk8m.zip"
-    title: "Guitar Freaks 8th Mix"
+    title: "Guitar Freaks 8th Mix power-up ver."
     system: "konami_system573"
     manufacturer: "Konami"
     year: 2002
     region: "Japan"
-    revision: "power-up ver.; G*C08 VER. JBA"
+    revision: "G*C08 VER. JBA"
     boardCode: "G*C08"
     hardwareProfile: "gtrfrk7m"
     setFormat: "non_merged"

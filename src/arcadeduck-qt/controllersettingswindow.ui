@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1284</width>
-    <height>672</height>
+    <width>900</width>
+    <height>620</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -56,8 +56,8 @@
     <widget class="QStackedWidget" name="settingsContainer">
      <property name="minimumSize">
       <size>
-       <width>1100</width>
-       <height>620</height>
+       <width>560</width>
+       <height>0</height>
       </size>
      </property>
     </widget>

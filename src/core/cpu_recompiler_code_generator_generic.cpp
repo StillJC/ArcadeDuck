@@ -65,7 +65,8 @@ Value CodeGenerator::EmitLoadGuestMemory(Instruction instruction, const CodeCach
 
   const bool use_fastmem = !g_settings.cpu_recompiler_memory_exceptions &&
                            (address_spec ? Bus::CanUseFastmemForAddress(*address_spec) : true) &&
-                           !SpeculativeIsCacheIsolated();
+                           !SpeculativeIsCacheIsolated() &&
+                           !CodeCache::HasPreviouslyFaultedOnPC(info.pc);
   if (address_spec)
   {
     if (!use_fastmem)
@@ -140,7 +141,8 @@ void CodeGenerator::EmitStoreGuestMemory(Instruction instruction, const CodeCach
 
   const bool use_fastmem = !g_settings.cpu_recompiler_memory_exceptions &&
                            (address_spec ? Bus::CanUseFastmemForAddress(*address_spec) : true) &&
-                           !SpeculativeIsCacheIsolated();
+                           !SpeculativeIsCacheIsolated() &&
+                           !CodeCache::HasPreviouslyFaultedOnPC(info.pc);
   if (address_spec)
   {
     if (!use_fastmem)

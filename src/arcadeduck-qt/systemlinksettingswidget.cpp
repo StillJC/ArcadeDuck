@@ -27,7 +27,8 @@ QString Tr(const char* text)
 
 SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidget* parent) : QWidget(parent)
 {
-  DebugAssert(!dialog->isPerGameSettings());
+  DebugAssert(dialog->isPerGameSettings());
+  SettingsInterface* const sif = dialog->getSettingsInterface();
 
   QVBoxLayout* layout = new QVBoxLayout(this);
 
@@ -53,21 +54,21 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
   layout->addWidget(network_group);
 
   QLabel* automatic_note =
-    new QLabel(Tr("System Link provides the network transport used by supported linked arcade hardware. Use "
+    new QLabel(Tr("System Link provides the network transport used by this game's linked arcade hardware. Use "
                   "127.0.0.1 when multiple ArcadeDuck instances run on the same PC. For separate PCs on a LAN, "
                   "enter the IPv4 address of the host machine. All cabinets in the same link group must use the "
-                  "same port. Configure cabinet count, cabinet ID, or other link options in the arcade game's "
-                  "service menu when required."),
+                  "same port. Configure any additional hardware-specific link options, such as cabinet count where "
+                  "applicable, in the arcade game's service menu."),
                this);
   automatic_note->setWordWrap(true);
   layout->addWidget(automatic_note);
   layout->addStretch();
 
-  SettingWidgetBinder::BindWidgetToBoolSetting(nullptr, m_enabled, "SystemLink", "Enabled", false);
-  SettingWidgetBinder::BindWidgetToIntSetting(nullptr, m_cabinet_id, "SystemLink", "CabinetID", 1);
-  SettingWidgetBinder::BindWidgetToStringSetting(nullptr, m_server_address, "SystemLink", "ServerAddress",
+  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_enabled, "SystemLink", "Enabled", false);
+  SettingWidgetBinder::BindWidgetToIntSetting(sif, m_cabinet_id, "SystemLink", "CabinetID", 1);
+  SettingWidgetBinder::BindWidgetToStringSetting(sif, m_server_address, "SystemLink", "ServerAddress",
                                                  "127.0.0.1");
-  SettingWidgetBinder::BindWidgetToIntSetting(nullptr, m_port, "SystemLink", "Port", 19702);
+  SettingWidgetBinder::BindWidgetToIntSetting(sif, m_port, "SystemLink", "Port", 19702);
 
   dialog->registerWidgetHelp(
     m_enabled, Tr("Enable System Link"), Tr("Disabled"),
@@ -75,8 +76,8 @@ SystemLinkSettingsWidget::SystemLinkSettingsWidget(SettingsWindow* dialog, QWidg
        "single-cabinet operation."));
   dialog->registerWidgetHelp(
     m_cabinet_id, Tr("Cabinet ID"), Tr("1"),
-    Tr("Physical cabinet/node ID for linked arcade hardware which uses an external ID switch. Taito G-Net "
-       "Communication PCB uses IDs 1 through 4. Use a unique ID for every linked instance."));
+    Tr("Cabinet/node ID used by linked arcade hardware with an external ID switch. Taito G-Net Communication "
+       "PCB uses IDs 1 through 4. Use a unique ID for every linked instance."));
   dialog->registerWidgetHelp(
     m_server_address, Tr("Host IPv4 Address"), Tr("127.0.0.1"),
     Tr("IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck "

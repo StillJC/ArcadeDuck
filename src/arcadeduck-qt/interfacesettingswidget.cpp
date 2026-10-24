@@ -58,13 +58,17 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.pauseOnControllerDisconnection, "Main",
                                                "PauseOnControllerDisconnection", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.pauseOnStart, "Main", "StartPaused", false);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.saveStateOnExit, "Main", "SaveStateOnExit", true);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.confirmPowerOff, "Main", "ConfirmPowerOff", true);
 
   if (!m_dialog->isPerGameSettings())
+  {
     SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.startFullscreen, "Main", "StartFullscreen", false);
+  }
   else
-    SettingWidgetBinder::SetAvailability(m_ui.startFullscreen, false);
+  {
+    m_ui.startFullscreen->setVisible(false);
+    m_ui.gridLayout->addWidget(m_ui.doubleClickTogglesFullscreen, 0, 0);
+  }
 
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.doubleClickTogglesFullscreen, "Main",
                                                "DoubleClickTogglesFullscreen", true);
@@ -73,8 +77,6 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.hideMainWindow, "Main", "HideMainWindowWhenRunning", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableWindowResizing, "Main", "DisableWindowResize", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.hideMouseCursor, "Main", "HideCursorInFullscreen", true);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.createSaveStateBackups, "Main", "CreateSaveStateBackups",
-                                               Settings::DEFAULT_SAVE_STATE_BACKUPS);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableDiscordPresence, "Main", "EnableDiscordPresence", false);
   connect(m_ui.renderToSeparateWindow, &QCheckBox::checkStateChanged, this,
           &InterfaceSettingsWidget::onRenderToSeparateWindowChanged);
@@ -94,11 +96,11 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
     m_ui.confirmPowerOff, tr("Confirm Power Off"), tr("Checked"),
     tr("Determines whether a prompt will be displayed to confirm shutting down the emulator/game "
        "when the hotkey is pressed."));
-  dialog->registerWidgetHelp(m_ui.saveStateOnExit, tr("Save State On Exit"), tr("Checked"),
-                             tr("Automatically saves the emulator state when powering down or exiting. You can then "
-                                "resume directly from where you left off next time."));
-  dialog->registerWidgetHelp(m_ui.startFullscreen, tr("Start Fullscreen"), tr("Unchecked"),
-                             tr("Automatically switches to fullscreen mode when a game is started."));
+  if (!m_dialog->isPerGameSettings())
+  {
+    dialog->registerWidgetHelp(m_ui.startFullscreen, tr("Start Fullscreen"), tr("Unchecked"),
+                               tr("Automatically switches to fullscreen mode when a game is started."));
+  }
   dialog->registerWidgetHelp(m_ui.hideMouseCursor, tr("Hide Cursor In Fullscreen"), tr("Checked"),
                              tr("Hides the mouse pointer/cursor when the emulator is in fullscreen mode."));
   dialog->registerWidgetHelp(
@@ -116,9 +118,6 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
   dialog->registerWidgetHelp(m_ui.pauseOnControllerDisconnection, tr("Pause On Controller Disconnection"),
                              tr("Unchecked"),
                              tr("Pauses the emulator when a controller with bindings is disconnected."));
-  dialog->registerWidgetHelp(
-    m_ui.createSaveStateBackups, tr("Create Save State Backups"), tr("Checked"),
-    tr("Backs up any previous save state when creating a new save state, with a .bak extension."));
   dialog->registerWidgetHelp(m_ui.enableDiscordPresence, tr("Enable Discord Presence"), tr("Unchecked"),
                              tr("Shows the game you are currently playing as part of your profile in Discord."));
 

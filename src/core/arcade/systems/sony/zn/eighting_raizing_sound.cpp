@@ -4,8 +4,8 @@
 #include "core/arcade/systems/sony/zn/eighting_raizing_sound.h"
 
 #include "core/arcade/devices/audio/ymf271.h"
-#include "core/musashi/m68k.h"
-#include "core/musashi/m68k_bus.h"
+#include "core/arcade/third_party/musashi/m68k.h"
+#include "core/arcade/third_party/musashi/m68k_bus.h"
 #include "core/system.h"
 
 #include "common/error.h"
@@ -34,7 +34,6 @@ static constexpr u32 COMMAND_LATCH_HIGH = 0x180008;
 static constexpr u32 COMMAND_LATCH_LOW = 0x180009;
 static constexpr u32 ADDRESS_MASK = 0x00ffffff;
 static constexpr int MAX_EXECUTE_CYCLES = 0x10000;
-static constexpr u32 TRACE_LIMIT = 128;
 
 struct State
 {
@@ -56,9 +55,6 @@ struct State
   u64 last_host_sync_ticks = 0;
   u64 last_ticks_per_second = 0;
 
-  u32 command_write_count = 0;
-  u32 command_read_count = 0;
-  u32 irq_write_count = 0;
   bool unmapped_read_logged = false;
 };
 
@@ -140,15 +136,7 @@ u8 ReadByte(u32 address)
     return UINT8_C(0xff);
 
   if (address == COMMAND_LATCH_LOW)
-  {
-    if (s_state.command_read_count < TRACE_LIMIT)
-    {
-      DEV_LOG("Eighting.Sound command_read={} value=0x{:02X} pc=0x{:06X}", s_state.command_read_count,
-               s_state.command_latch, m68k_get_reg(nullptr, M68K_REG_PC));
-    }
-    s_state.command_read_count++;
     return s_state.command_latch;
-  }
 
   if (!s_state.unmapped_read_logged)
   {
@@ -360,9 +348,6 @@ void Reset()
   s_state.host_tick_fraction = 0;
   s_state.last_host_sync_ticks = static_cast<u64>(System::GetGlobalTickCounter());
   s_state.last_ticks_per_second = static_cast<u64>(System::GetTicksPerSecond());
-  s_state.command_write_count = 0;
-  s_state.command_read_count = 0;
-  s_state.irq_write_count = 0;
   s_state.unmapped_read_logged = false;
 
   m68k_set_irq(0);
@@ -397,12 +382,6 @@ void MainCommandWrite(u8 value)
 
   SynchronizeHostTime();
   s_state.command_latch = value;
-  if (s_state.command_write_count < TRACE_LIMIT)
-  {
-    DEV_LOG("Eighting.Sound command_write={} value=0x{:02X} sound_pc=0x{:06X}", s_state.command_write_count,
-             value, m68k_get_reg(nullptr, M68K_REG_PC));
-  }
-  s_state.command_write_count++;
 }
 
 void MainIRQWrite()
@@ -415,12 +394,6 @@ void MainIRQWrite()
   // autovector path clears the asserted level when the interrupt is taken,
   // which matches HOLD_LINE semantics for this IRQ2 strobe.
   m68k_set_irq(2);
-  if (s_state.irq_write_count < TRACE_LIMIT)
-  {
-    DEV_LOG("Eighting.Sound irq2_write={} sound_pc=0x{:06X}", s_state.irq_write_count,
-             m68k_get_reg(nullptr, M68K_REG_PC));
-  }
-  s_state.irq_write_count++;
 }
 
 void GenerateAudioFrame(s32* left, s32* right)

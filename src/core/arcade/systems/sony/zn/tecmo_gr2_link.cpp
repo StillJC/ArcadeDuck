@@ -30,7 +30,6 @@ constexpr u32 Z80_ROM_END = 0x7fff;
 constexpr u32 Z80_RAM_BASE = 0x8000;
 constexpr u32 Z80_RAM_SIZE = 0x8000;
 constexpr u32 FIFO_CAPACITY = 1024;
-constexpr u32 TRACE_LIMIT = 96;
 
 constexpr u8 HOST_IRQ_VECTOR = UINT8_C(0xe7);       // IM0 RST 20h.
 constexpr u8 CONTROLLER_IRQ_VECTOR = UINT8_C(0xef); // IM0 RST 28h.
@@ -133,7 +132,6 @@ struct State
   bool controller_control_unknown_logged = false;
   bool controller_fifo_overflow_logged = false;
 
-  u32 trace_count = 0;
   u32 ymz_write_count = 0;
   u32 main_data_read_count = 0;
   u32 main_data_write_count = 0;
@@ -328,12 +326,6 @@ bool ValidateTransportPacket(std::span<const u8> packet)
 
 void HandleTransportPacket(LinkSocket* source, std::span<const u8> packet)
 {
-  const u32 sequence =
-    static_cast<u32>(packet[8]) |
-    (static_cast<u32>(packet[9]) << 8) |
-    (static_cast<u32>(packet[10]) << 16) |
-    (static_cast<u32>(packet[11]) << 24);
-
   if (s_state.transport_node_id == 0)
   {
     u32 relayed = 0;
@@ -344,34 +336,12 @@ void HandleTransportPacket(LinkSocket* source, std::span<const u8> packet)
     }
 
     s_state.transport_relay_count += relayed;
-    if (relayed != 0 && s_state.transport_relay_count <= 24)
-    {
-      DEV_LOG("TecmoGR2Link system link relayed peer_node={} seq={} to {} peer(s)",
-               packet[6] + 1, sequence, relayed);
-    }
   }
 
   std::copy_n(packet.begin() + TRANSPORT_HEADER_SIZE, TRANSPORT_PAYLOAD_SIZE,
               s_state.transport_last_rx.begin());
   s_state.transport_have_last_rx = true;
   s_state.transport_rx_count++;
-
-  if (s_state.transport_rx_count <= 16)
-  {
-    DEV_LOG(
-      "TecmoGR2Link system link rx candidate #{} peer_node={} seq={} "
-      "payload[0..15]={:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-      "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
-      s_state.transport_rx_count, packet[6] + 1, sequence,
-      s_state.transport_last_rx[0], s_state.transport_last_rx[1],
-      s_state.transport_last_rx[2], s_state.transport_last_rx[3],
-      s_state.transport_last_rx[4], s_state.transport_last_rx[5],
-      s_state.transport_last_rx[6], s_state.transport_last_rx[7],
-      s_state.transport_last_rx[8], s_state.transport_last_rx[9],
-      s_state.transport_last_rx[10], s_state.transport_last_rx[11],
-      s_state.transport_last_rx[12], s_state.transport_last_rx[13],
-      s_state.transport_last_rx[14], s_state.transport_last_rx[15]);
-  }
 
   // link3118.bin routine 0x084F builds every outbound 0x48-byte B400 block by
   // first copying B200 -> B400, then overwriting only this cabinet's 0x10-byte
@@ -392,28 +362,6 @@ void HandleTransportPacket(LinkSocket* source, std::span<const u8> packet)
     s_state.controller_irq_count++;
     z80_gen_int(&s_state.cpu, CONTROLLER_IRQ_VECTOR);
 
-    if (s_state.controller_irq_count <= 16)
-    {
-      const size_t peer_slot = static_cast<size_t>(packet[6]) * 0x10;
-      DEV_LOG(
-        "TecmoGR2Link system link receive DMA #{} peer_node={} seq={} -> B200, RST28 "
-        "peer_slot={:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-        "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-        "meta={:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
-        s_state.controller_irq_count, packet[6] + 1, sequence,
-        s_state.transport_last_rx[peer_slot + 0], s_state.transport_last_rx[peer_slot + 1],
-        s_state.transport_last_rx[peer_slot + 2], s_state.transport_last_rx[peer_slot + 3],
-        s_state.transport_last_rx[peer_slot + 4], s_state.transport_last_rx[peer_slot + 5],
-        s_state.transport_last_rx[peer_slot + 6], s_state.transport_last_rx[peer_slot + 7],
-        s_state.transport_last_rx[peer_slot + 8], s_state.transport_last_rx[peer_slot + 9],
-        s_state.transport_last_rx[peer_slot + 10], s_state.transport_last_rx[peer_slot + 11],
-        s_state.transport_last_rx[peer_slot + 12], s_state.transport_last_rx[peer_slot + 13],
-        s_state.transport_last_rx[peer_slot + 14], s_state.transport_last_rx[peer_slot + 15],
-        s_state.transport_last_rx[0x40], s_state.transport_last_rx[0x41],
-        s_state.transport_last_rx[0x42], s_state.transport_last_rx[0x43],
-        s_state.transport_last_rx[0x44], s_state.transport_last_rx[0x45],
-        s_state.transport_last_rx[0x46], s_state.transport_last_rx[0x47]);
-    }
   }
 }
 
@@ -602,9 +550,8 @@ void ServiceTransport()
   const u8 node_id = ReadTransportNodeID();
   const u8 total_nodes = ReadTransportTotalNodes();
 
-  // link3118.bin directly implements four 0x10-byte cabinet slots in its
-  // 0x48-byte B200/B400 working block. Keep the transport bounded by that
-  // firmware contract instead of inventing additional HLE-only nodes.
+  // link3118.bin implements four 0x10-byte cabinet slots in its 0x48-byte
+  // B200/B400 block. Keep the transport bounded by that firmware contract.
   if (total_nodes < TRANSPORT_MIN_NODES || total_nodes > TRANSPORT_MAX_NODES || node_id >= total_nodes)
   {
     if (!s_state.transport_identity_invalid_logged)
@@ -658,10 +605,9 @@ void MaybeTransmitCandidateFrame()
     return;
   }
 
-  // The exact firmware path that builds this observed 0x31 candidate first
-  // constructs the 0x48-byte working block at B400. The transport forwards that block
-  // as an opaque transport block; it deliberately does not assign official
-  // uPD72103A command semantics to opcode 0x31.
+  // The firmware constructs the 0x31 payload in the 0x48-byte block at B400.
+  // Forward that block unchanged without assigning uPD72103A command semantics
+  // to opcode 0x31.
   std::array<u8, TRANSPORT_PAYLOAD_SIZE> payload{};
   std::copy_n(s_state.ram.begin() + (UINT16_C(0xb400) - Z80_RAM_BASE),
               TRANSPORT_PAYLOAD_SIZE, payload.begin());
@@ -683,75 +629,6 @@ void MaybeTransmitCandidateFrame()
   s_state.transport_have_last_tx = true;
   s_state.transport_tx_count++;
 
-  if (s_state.transport_tx_count <= 16)
-  {
-    DEV_LOG(
-      "TecmoGR2Link system link tx candidate #{} local_node={} "
-      "payload[0..15]={:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-      "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
-      s_state.transport_tx_count, s_state.transport_node_id + 1,
-      payload[0], payload[1], payload[2], payload[3],
-      payload[4], payload[5], payload[6], payload[7],
-      payload[8], payload[9], payload[10], payload[11],
-      payload[12], payload[13], payload[14], payload[15]);
-  }
-}
-
-void Trace(const char* operation, u32 value, u32 extra = 0)
-{
-  if (s_state.trace_count >= TRACE_LIMIT)
-    return;
-
-  DEV_LOG("TecmoGR2Link {} value=0x{:02X} extra={} pc=0x{:04X}", operation, value, extra, s_state.cpu.pc);
-  s_state.trace_count++;
-}
-
-void TraceRAMBlock(const char* label, u16 address)
-{
-  if (s_state.trace_count >= TRACE_LIMIT || address < Z80_RAM_BASE ||
-      static_cast<u32>(address - Z80_RAM_BASE) + 16 > s_state.ram.size())
-  {
-    return;
-  }
-
-  const u32 offset = address - Z80_RAM_BASE;
-  DEV_LOG(
-    "TecmoGR2Link controller {} addr=0x{:04X} "
-    "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} "
-    "{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}",
-    label, address,
-    s_state.ram[offset + 0], s_state.ram[offset + 1], s_state.ram[offset + 2], s_state.ram[offset + 3],
-    s_state.ram[offset + 4], s_state.ram[offset + 5], s_state.ram[offset + 6], s_state.ram[offset + 7],
-    s_state.ram[offset + 8], s_state.ram[offset + 9], s_state.ram[offset + 10], s_state.ram[offset + 11],
-    s_state.ram[offset + 12], s_state.ram[offset + 13], s_state.ram[offset + 14], s_state.ram[offset + 15]);
-  s_state.trace_count++;
-}
-
-void TraceControllerCommandState()
-{
-  u32 matches = 0;
-  for (u32 address = 0xa000; address < 0xa200 && matches < 4; address += 0x10)
-  {
-    const u8 command = s_state.ram[address - Z80_RAM_BASE];
-    if (command == UINT8_C(0x31) || command == UINT8_C(0x35) ||
-        command == UINT8_C(0x37) || command == UINT8_C(0x38))
-    {
-      TraceRAMBlock("LCW candidate", static_cast<u16>(address));
-      matches++;
-    }
-  }
-
-  if (matches == 0)
-  {
-    TraceRAMBlock("A000", UINT16_C(0xa000));
-    TraceRAMBlock("A100", UINT16_C(0xa100));
-  }
-
-  TraceRAMBlock("B400[00]", UINT16_C(0xb400));
-  TraceRAMBlock("B400[10]", UINT16_C(0xb410));
-  TraceRAMBlock("B400[20]", UINT16_C(0xb420));
-  TraceRAMBlock("B400[30]", UINT16_C(0xb430));
-  TraceRAMBlock("B400[40]", UINT16_C(0xb440));
 }
 
 void ResetController()
@@ -763,20 +640,16 @@ u8 ReadControllerStatus()
 {
   s_state.controller.status_reads++;
 
-  // Implement only the readiness bits proven by link3118.bin.
+  // Implement only the readiness bits exercised by link3118.bin.
   // Returning zero means CRST completion (bit 1 clear) and command-request
-  // acceptance (bit 5 clear). Unknown link/DMA status is intentionally not
-  // fabricated until the first real firmware trace tells us what is required.
-  if (s_state.trace_count < 12)
-    Trace("uPD72103 status read", UINT8_C(0x00), s_state.controller.status_reads);
-
+  // acceptance (bit 5 clear). Unknown link/DMA status remains clear until
+  // firmware behavior requires additional status bits.
   return UINT8_C(0x00);
 }
 
 void ControllerControlWrite(u8 value)
 {
   s_state.controller.control_writes++;
-  Trace("uPD72103 control write", value, s_state.controller.control_writes);
 
   if (value & UINT8_C(0x02))
   {
@@ -805,13 +678,6 @@ void ControllerControlWrite(u8 value)
     }
     else
     {
-      if (s_state.controller.command_requests <= 32)
-      {
-        DEV_LOG("TecmoGR2Link uPD72103 command request #{} pc=0x{:04X}",
-                 s_state.controller.command_requests, s_state.cpu.pc);
-        TraceControllerCommandState();
-      }
-
       MaybeTransmitCandidateFrame();
       s_state.controller.fifo_count = 0;
     }
@@ -827,7 +693,6 @@ void ControllerControlWrite(u8 value)
 
 void ControllerSelectWrite(u8 value)
 {
-  Trace("uPD72103 selector write", value);
 
   if (value == UINT8_C(0x05))
   {
@@ -841,14 +706,13 @@ void ControllerFIFODataWrite(u8 value)
   if (s_state.controller.fifo_count < s_state.controller.fifo.size())
   {
     s_state.controller.fifo[s_state.controller.fifo_count++] = value;
-    Trace("uPD72103 FIFO write", value, s_state.controller.fifo_count);
     return;
   }
 
   if (!s_state.controller_fifo_overflow_logged)
   {
     s_state.controller_fifo_overflow_logged = true;
-    DEV_LOG("TecmoGR2Link uPD72103 internal FIFO trace buffer overflow pc=0x{:04X}", s_state.cpu.pc);
+    DEV_LOG("TecmoGR2Link uPD72103 internal FIFO overflow pc=0x{:04X}", s_state.cpu.pc);
   }
 }
 
@@ -859,7 +723,6 @@ void RaiseHostIRQ()
 
   s_state.host_irq_latched = true;
   z80_gen_int(&s_state.cpu, HOST_IRQ_VECTOR);
-  Trace("host IRQ IM0 RST20", HOST_IRQ_VECTOR);
 }
 
 u8 ReadMemory(void*, u16 address)
@@ -903,15 +766,12 @@ u8 PortIn(z80*, u8 port)
       return ReadControllerStatus();
 
     case 0x81:
-      Trace("uPD72103 selector read", UINT8_C(0x00));
       return UINT8_C(0x00);
 
     case 0x83:
-      Trace("uPD72103 FIFO read", UINT8_C(0xff));
       return UINT8_C(0xff);
 
     case 0x84:
-      Trace("YMZ address-side read", UINT8_C(0x00));
       return UINT8_C(0x00);
 
     case 0x85:
@@ -920,7 +780,6 @@ u8 PortIn(z80*, u8 port)
     case 0x90:
     {
       const u8 value = s_state.main_to_link.Pop();
-      Trace("Z80 host FIFO read", value, s_state.main_to_link.count);
       return value;
     }
 
@@ -965,11 +824,6 @@ void PortOut(z80*, u8 port, u8 value)
       return;
 
     case 0x85:
-      if (s_state.ymz_write_count < 16)
-      {
-        DEV_LOG("TecmoGR2Link YMZ-facing write reg=0x{:02X} value=0x{:02X} pc=0x{:04X}",
-                s_state.ymz_register, value, s_state.cpu.pc);
-      }
       s_state.ymz_write_count++;
       return;
 
@@ -982,15 +836,10 @@ void PortOut(z80*, u8 port, u8 value)
           WARNING_LOG("TecmoGR2Link Z80-to-main FIFO overflow pc=0x{:04X}", s_state.cpu.pc);
         }
       }
-      else
-      {
-        Trace("Z80 host FIFO write", value, s_state.link_to_main.count);
-      }
       return;
 
     case 0x92:
       s_state.host_irq_latched = false;
-      Trace("host IRQ acknowledge", value);
       return;
 
     default:
@@ -1158,7 +1007,6 @@ void Reset()
   s_state.unmapped_memory_write_logged = false;
   s_state.controller_control_unknown_logged = false;
   s_state.controller_fifo_overflow_logged = false;
-  s_state.trace_count = 0;
   s_state.ymz_write_count = 0;
   s_state.main_data_read_count = 0;
   s_state.main_data_write_count = 0;
@@ -1209,7 +1057,6 @@ u8 MainDataRead()
   SynchronizeHostTime();
   s_state.main_data_read_count++;
   const u8 value = s_state.link_to_main.Pop();
-  Trace("main host FIFO read", value, s_state.link_to_main.count);
   return value;
 }
 
@@ -1230,8 +1077,6 @@ void MainDataWrite(u8 value)
     }
     return;
   }
-
-  Trace("main host FIFO write", value, s_state.main_to_link.count);
 }
 
 void MainIRQWrite(u8 value)
@@ -1241,9 +1086,8 @@ void MainIRQWrite(u8 value)
 
   SynchronizeHostTime();
   s_state.main_irq_write_count++;
-  Trace("main host IRQ strobe", value, s_state.main_irq_write_count);
 
-  // Two host-control values are now observed from the real PSX program.
+  // The PSX program uses two host-control values.
   // 0x0001 requests the initial bootstrap exchange; after that succeeds,
   // 0x0002 is written before the PSX waits for the steady-state 64-byte
   // response. The Z80 has only one host interrupt vector (IM0 RST 20h), and
@@ -1262,17 +1106,11 @@ u8 MainStatusRead()
 
   // The LINK-ON bootstrap proves both host FIFO directions are represented in
   // this status byte. Bit 0 tells the PSX that the main-to-Z80 FIFO can accept
-  // data; bit 1 tells it that the Z80-to-main FIFO contains data. This mirrors
-  // the two ready indications observed by link3118.bin at Z80 port 0x91.
+  // data; bit 1 tells it that the Z80-to-main FIFO contains data, matching the
+  // two ready indications at Z80 port 0x91.
   const u8 status =
     (s_state.main_to_link.Full() ? UINT8_C(0x00) : UINT8_C(0x01)) |
     (s_state.link_to_main.Empty() ? UINT8_C(0x00) : UINT8_C(0x02));
-
-  if (s_state.main_status_read_count <= 24)
-  {
-    DEV_LOG("TecmoGR2Link main status read #{} value=0x{:02X} main_to_link={} link_to_main={}",
-            s_state.main_status_read_count, status, s_state.main_to_link.count, s_state.link_to_main.count);
-  }
 
   return status;
 }

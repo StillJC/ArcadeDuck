@@ -54,12 +54,12 @@ int main(int argc, char* argv[])
 
   if (const char* home_dir = getenv("HOME"))
   {
-    static constexpr char log_file[] = "Library/Application Support/DuckStation/updater.log";
+    static constexpr char log_file[] = "Library/Application Support/ArcadeDuck/updater.log";
     std::string log_path = Path::Combine(home_dir, log_file);
     Log::SetFileOutputParams(true, log_path.c_str());
   }
 
-  std::string program_to_launch = Path::Combine(destination_directory, "Contents/MacOS/DuckStation");
+  std::string program_to_launch = Path::Combine(destination_directory, "Contents/MacOS/ArcadeDuck");
   int result = EXIT_SUCCESS;
 
   std::thread worker([&progress, zip_path = std::move(zip_path),

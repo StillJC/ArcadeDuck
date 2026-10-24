@@ -13,6 +13,7 @@
 #include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 #include "core/arcade/systems/konami/gq/konami_gq_sound_cpu.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "system.h"
 #include "timing_event.h"
@@ -1705,7 +1706,7 @@ void SPU::DMARead(u32* words, u32 word_count)
   u32 halfword_count = word_count * 2;
 
   const u32 size = s_state.transfer_fifo.GetSize();
-  if (word_count > size)
+  if (halfword_count > size)
   {
     u16 fill_value = 0;
     if (size > 0)
@@ -2183,10 +2184,16 @@ ALWAYS_INLINE_RELEASE std::tuple<s32, s32> SPU::SampleVoice(u32 voice_index)
   {
     ADPCMBlock block;
     ReadADPCMBlock(voice.current_address, &block);
+
+    // Preserve the first repeat point across adjacent loop-start blocks.
+    // A loop-end boundary terminates the run, so the next pass can latch normally.
+    const bool continuing_loop_start_run =
+      !voice.is_first_block && voice.current_block_flags.loop_start && !voice.current_block_flags.loop_end;
+
     voice.DecodeBlock(block);
     voice.has_samples = true;
 
-    if (voice.current_block_flags.loop_start && !voice.ignore_loop_address)
+    if (voice.current_block_flags.loop_start && !continuing_loop_start_run && !voice.ignore_loop_address)
     {
       TRACE_LOG("Voice {} loop start @ 0x{:08X}", voice_index, voice.current_address);
       voice.regs.adpcm_repeat_address = voice.current_address;
@@ -2657,6 +2664,11 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
       NamcoSystem11::GenerateAudioFrame(&system11_left, &system11_right);
       output_left += system11_left;
       output_right += system11_right;
+      s32 system12_left = 0;
+      s32 system12_right = 0;
+      NamcoSystem12::GenerateAudioFrame(&system12_left, &system12_right);
+      output_left += system12_left;
+      output_right += system12_right;
 
       s32 sony_zn_left = 0;
       s32 sony_zn_right = 0;
@@ -2701,13 +2713,11 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
       }
     }
 
-#ifndef __ANDROID__
     if (MediaCapture* cap = System::GetMediaCapture()) [[unlikely]]
     {
       if (!cap->DeliverAudioFrames(output_frame_start, frames_in_this_batch))
         System::StopMediaCapture();
     }
-#endif
 
     output_stream->EndWrite(frames_in_this_batch);
     remaining_frames -= frames_in_this_batch;

@@ -376,11 +376,12 @@ bool GPU::HandleRenderPolygonCommand()
       SetDrawMode(texpage_attribute);
     else if (IsCXD8561QMode())
     {
-      // Polygon tpage updates bits 0-8 and type-2 texture-page Y high at bit 11.
-      // Preserve E1-only dither, draw-to-display, and texture flip state.
-      const u16 preserved_state = static_cast<u16>(
-        m_draw_mode.mode_reg.bits & ((1u << 9) | (1u << 10) | (1u << 12) | (1u << 13)));
-      SetDrawMode(static_cast<u16>((texpage_attribute & GPUDrawModeReg::POLYGON_TEXPAGE_MASK) | preserved_state));
+      // Type-2 polygon TPage updates dither (9), draw-to-displayed-field (10),
+      // and the Type-2 texture-page/rectangle-flip state carried in bits 12/13.
+      static constexpr u16 TYPE2_POLYGON_TEXPAGE_MASK =
+        static_cast<u16>(GPUDrawModeReg::POLYGON_TEXPAGE_MASK |
+                         (1u << 9) | (1u << 10) | (1u << 12) | (1u << 13));
+      SetDrawMode(static_cast<u16>(texpage_attribute & TYPE2_POLYGON_TEXPAGE_MASK));
     }
     else
       SetDrawMode((texpage_attribute & GPUDrawModeReg::POLYGON_TEXPAGE_MASK) |
@@ -506,7 +507,7 @@ bool GPU::HandleFillRectangleCommand()
   const u32 dst_x = FifoPeek() & 0x3F0;
   const u32 dst_y = (FifoPop() >> 16) & g_vram_height_mask;
   const u32 width = ((FifoPeek() & VRAM_WIDTH_MASK) + 0xF) & ~0xF;
-  const u32 height = (FifoPop() >> 16) & VRAM_HEIGHT_MASK;
+  const u32 height = (FifoPop() >> 16) & g_vram_height_mask;
 
   DEBUG_LOG("Fill VRAM rectangle offset=({},{}), size=({},{})", dst_x, dst_y, width, height);
 
@@ -540,7 +541,7 @@ bool GPU::HandleCopyRectangleCPUToVRAMCommand()
   const u32 dst_x = coords & VRAM_WIDTH_MASK;
   const u32 dst_y = (coords >> 16) & g_vram_height_mask;
   const u32 copy_width = ReplaceZero(size & VRAM_WIDTH_MASK, 0x400);
-  const u32 copy_height = ReplaceZero((size >> 16) & VRAM_HEIGHT_MASK, VRAM_HEIGHT);
+  const u32 copy_height = ReplaceZero((size >> 16) & g_vram_height_mask, g_vram_address_height);
   const u32 num_pixels = copy_width * copy_height;
   const u32 num_words = ((num_pixels + 1) / 2);
 
@@ -623,7 +624,7 @@ bool GPU::HandleCopyRectangleVRAMToCPUCommand()
   m_vram_transfer.x = Truncate16(FifoPeek() & VRAM_WIDTH_MASK);
   m_vram_transfer.y = Truncate16((FifoPop() >> 16) & g_vram_height_mask);
   m_vram_transfer.width = ((Truncate16(FifoPeek()) - 1) & VRAM_WIDTH_MASK) + 1;
-  m_vram_transfer.height = ((Truncate16(FifoPop() >> 16) - 1) & VRAM_HEIGHT_MASK) + 1;
+  m_vram_transfer.height = ((Truncate16(FifoPop() >> 16) - 1) & g_vram_height_mask) + 1;
 
   DEBUG_LOG("Copy rectangle from VRAM to CPU offset=({},{}), size=({},{})", m_vram_transfer.x, m_vram_transfer.y,
             m_vram_transfer.width, m_vram_transfer.height);
@@ -659,7 +660,7 @@ bool GPU::HandleCopyRectangleVRAMToVRAMCommand()
   const u32 dst_x = FifoPeek() & VRAM_WIDTH_MASK;
   const u32 dst_y = (FifoPop() >> 16) & g_vram_height_mask;
   const u32 width = ReplaceZero(FifoPeek() & VRAM_WIDTH_MASK, 0x400);
-  const u32 height = ReplaceZero((FifoPop() >> 16) & VRAM_HEIGHT_MASK, VRAM_HEIGHT);
+  const u32 height = ReplaceZero((FifoPop() >> 16) & g_vram_height_mask, g_vram_address_height);
 
   DEBUG_LOG("Copy rectangle from VRAM to VRAM src=({},{}), dst=({},{}), size=({},{})", src_x, src_y, dst_x, dst_y,
             width, height);

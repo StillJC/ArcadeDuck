@@ -6,6 +6,7 @@
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "core/bios.h"
 #include "core/bus.h"
@@ -37,11 +38,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GV game definition.");
+      return false;
+    }
+
     m_bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGVContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGVContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -76,11 +83,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
-    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), error);
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GQ game definition.");
+      return false;
+    }
+
+    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), *context.game_definition, error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGQContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGQContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -224,7 +237,7 @@ public:
       return false;
     }
 
-    // MAME maps Tekken and the older Tekken 2 revisions to COH-100/CXD8538Q.
+    // Tekken and the older Tekken 2 revisions use COH-100/CXD8538Q.
     // Later System 11 profiles use COH-110/CXD8561Q; both boards have 2 MiB VRAM.
     m_coh100 = (context.game_definition->hardware_profile == "tekken" ||
                 context.game_definition->hardware_profile == "tekken2o");
@@ -279,6 +292,62 @@ private:
   std::optional<NamcoSystem11::LoadedContent> m_content;
 };
 
+class NamcoSystem12Handler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Namco System 12 game definition.");
+      return false;
+    }
+
+    const std::string& profile = context.game_definition->hardware_profile;
+        m_content = NamcoSystem12::LoadSystem12Content(context.archive_path.c_str(), *context.game_definition, error);
+    if (!m_content.has_value())
+      return false;
+
+    m_coh716 = (m_content->machine_config == "coh716" || profile == "coh716");
+    return true;
+  }
+
+  std::optional<u32> GetRAMSizeOverride() const override
+  {
+    return m_coh716 ? Bus::RAM_16MB_SIZE : Bus::RAM_4MB_SIZE;
+  }
+
+  void PrepareSharedHardware() const override
+  {
+    // COH-700 uses CXD8654Q and COH-716 uses CXD8561CQ, both with 2 MiB VRAM.
+    // ArcadeDuck's current type-2 arcade GPU mode is the closest existing
+    // hardware seam and is already used for CXD8654Q-class ZN-2/G-Net boards.
+    GPU::SetCXD8561QMode(true);
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_content.has_value())
+    {
+      Error::SetStringView(error, "Invalid Namco System 12 boot content.");
+      return false;
+    }
+
+    if (!NamcoSystem12::Initialize(std::move(*m_content), error))
+      return false;
+
+    VERBOSE_LOG("NamcoSystem12.Loader dispatch_ready canonical_set='{}' profile='{}'",
+                context.canonical_game_id, context.game_definition->hardware_profile);
+    return true;
+  }
+
+private:
+  bool m_coh716 = false;
+  std::optional<NamcoSystem12::LoadedContent> m_content;
+};
+
 class CapcomZN1Handler final : public MachineHandler
 {
 public:
@@ -292,8 +361,8 @@ public:
       return false;
     }
 
-    // MAME uses the same Capcom ZN-1 machine around both board populations:
-    // COH-1000C has 1 MiB VRAM, while COH-1002C has the second 1 MiB VRAM populated.
+    // Capcom ZN-1 spans two board populations: COH-1000C has 1 MiB VRAM,
+    // while COH-1002C has the second 1 MiB VRAM populated.
     const bool supported_coh1000c =
       context.canonical_game_id == "ts2" || context.canonical_game_id == "ts2u" ||
       context.canonical_game_id == "ts2ua" || context.canonical_game_id == "ts2j" ||
@@ -313,7 +382,7 @@ public:
     {
       Error::SetStringFmt(
         error,
-        "Capcom ZN-1 bring-up supports TS2/Star Gladiator/Gallop Racer on COH-1000C and "
+        "Capcom ZN-1 supports TS2/Star Gladiator/Gallop Racer on COH-1000C and "
         "Street Fighter EX/EX Plus on COH-1002C; requested '{}' with profile '{}'.",
         context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
@@ -324,8 +393,8 @@ public:
     const std::string firmware_archive_path =
       Path::Combine(EmuFolders::Bios, context.firmware_definition->archive_name);
 
-    // MAME's COH-1000C BIOS definition selects the Japanese mask ROM as the default BIOS.
-    // Keep that explicit during bring-up rather than silently inferring a BIOS from game region.
+    // COH-1000C uses the Japanese mask ROM as the default BIOS. Keep that
+    // selection explicit rather than inferring a BIOS from the game region.
     m_bios = SonyZN::LoadFirmwareBIOS(firmware_archive_path.c_str(), *context.firmware_definition, "j", error);
     if (!m_bios.has_value())
       return false;
@@ -453,10 +522,11 @@ public:
       return false;
     }
 
-    if (context.game_definition->hardware_profile != "coh3002t" &&
+    const bool use_zn1_motherboard = (context.game_definition->hardware_profile == "coh1002t");
+    if (!use_zn1_motherboard && context.game_definition->hardware_profile != "coh3002t" &&
         context.game_definition->hardware_profile != "coh3002t_comm")
     {
-      Error::SetStringFmt(error, "Taito G-Net handler requires COH-3002T; requested '{}' with profile '{}'.",
+      Error::SetStringFmt(error, "Taito G-Net handler does not support '{}' with profile '{}'.",
                           context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
     }
@@ -477,9 +547,9 @@ public:
 
   void PrepareSharedHardware() const override
   {
-    // COH-3002T is ZN-2 class hardware with the full 2 MiB VRAM population.
-    // The current ZN-2 path supplies the required 2 MiB aperture until a
-    // distinct CXD8654Q identity is warranted by demonstrated behavior.
+    // COH-1002T is ZN-1 class and COH-3002T is ZN-2 class, but both populate
+    // the full 2 MiB VRAM aperture. ArcadeDuck uses the shared type-2 GPU path
+    // for both while SonyZN keeps their motherboard-generation behavior distinct.
     GPU::SetCXD8561QMode(true);
   }
 
@@ -905,7 +975,7 @@ public:
       return false;
     }
 
-    // Ordinary COH-1002M is validated. CBAJ uses the same base board plus its separate Z80/YMZ/FIFO sound board.
+    // Ordinary COH-1002M uses the base board path. CBAJ adds its separate Z80/YMZ/FIFO sound board.
     // Brave Blade is the documented hybrid: COH-1002M/MG01 motherboard BIOS and security with the
     // Eighting/Raizing PS9805 game/sound board and Raizing bank select.
     m_use_eighting_hybrid = false;
@@ -1061,7 +1131,7 @@ public:
     {
       Error::SetStringFmt(
         error,
-        "Taito FX-1 support covers the validated FX-1A families on COH-1000TA; RayStorm and Fighters' Impact "
+        "Taito FX-1 support covers the FX-1A families on COH-1000TA; RayStorm and Fighters' Impact "
         "families on COH-1000TB; and G-Darius on COH-1002TB; requested '{}' with profile '{}'.",
         context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
@@ -1193,6 +1263,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<NamcoSystem10Handler>();
   if (id == "namco_system11")
     return std::make_unique<NamcoSystem11Handler>();
+  if (id == "namco_system12")
+    return std::make_unique<NamcoSystem12Handler>();
   if (id == "capcom_zn1")
     return std::make_unique<CapcomZN1Handler>();
   if (id == "capcom_zn2")
@@ -1221,6 +1293,13 @@ bool MachineHandlerSupportsSaveStates(std::string_view id)
 {
   const std::unique_ptr<MachineHandler> handler = CreateMachineHandler(id);
   return handler && handler->SupportsSaveStates();
+}
+
+bool MachineHandlerSupportsSplitMergedSets(std::string_view id)
+{
+  // Every registered arcade handler is required to resolve logical game content from non-merged, split, and merged
+  // archive layouts. Keep this tied to handler registration so new systems cannot silently omit clone launching.
+  return CreateMachineHandler(id) != nullptr;
 }
 
 } // namespace Arcade

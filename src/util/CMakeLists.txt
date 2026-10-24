@@ -114,7 +114,7 @@ if(ENABLE_OPENGL)
     target_link_libraries(util PRIVATE "opengl32.lib")
   endif()
 
-  if(LINUX OR BSD OR ANDROID)
+  if(LINUX OR BSD)
     target_sources(util PRIVATE
       opengl_context_egl.cpp
       opengl_context_egl.h
@@ -132,9 +132,6 @@ if(ENABLE_OPENGL)
         opengl_context_egl_wayland.cpp
         opengl_context_egl_wayland.h
       )
-    endif()
-    if(ANDROID)
-      target_include_directories(util PRIVATE "${CMAKE_SOURCE_DIR}/android/app/src/cpp")
     endif()
   endif()
 
@@ -176,7 +173,6 @@ if(ENABLE_VULKAN OR APPLE)
   target_include_directories(util PUBLIC ${SHADERC_INCLUDE_DIR})
 endif()
 
-if(NOT ANDROID)
   target_sources(util PRIVATE
     cubeb_audio_stream.cpp
     sdl_audio_stream.cpp
@@ -189,7 +185,6 @@ if(NOT ANDROID)
   )
   # FFmpeg loaded dynamically on demand.
   target_include_directories(util PUBLIC ${FFMPEG_INCLUDE_DIRS})
-endif()
 
 if(WIN32)
   target_sources(util PRIVATE
@@ -252,7 +247,7 @@ elseif(APPLE)
   find_library(QUARTZCORE_LIBRARY QuartzCore)
   target_link_libraries(util PRIVATE ${METAL_LIBRARY} ${QUARTZCORE_LIBRARY} ${IOK_LIBRARY})
   set_source_files_properties(${MAC_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS TRUE)
-elseif(NOT ANDROID)
+else()
   target_sources(util PRIVATE
     platform_misc_unix.cpp
   )
@@ -266,7 +261,7 @@ elseif(NOT ANDROID)
   endif()
 endif()
 
-if(NOT WIN32 AND NOT ANDROID)
+if(NOT WIN32)
   target_sources(util PRIVATE
     http_downloader_curl.cpp
     http_downloader_curl.h

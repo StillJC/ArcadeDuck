@@ -45,3 +45,6 @@ __pycache__
 # other repos
 /android
 
+
+# Local audit and diagnostic output
+/audit-output/

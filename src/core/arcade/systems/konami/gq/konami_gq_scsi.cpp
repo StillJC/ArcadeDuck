@@ -5,7 +5,7 @@
 
 #include "core/arcade/devices/storage/ncr53cf96.h"
 
-#include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/konami/gq/konami_gq.h"
 #include "core/arcade/systems/konami/gq/konami_gq_hdd.h"
 #include "core/dma.h"
 #include "core/interrupt_controller.h"
@@ -21,8 +21,8 @@
 
 Log_SetChannel(KonamiGQScsi);
 
-// Extremely high-volume NCR53CF96 transaction detail remains intentionally
-// suppressed so diagnostic logging cannot starve the low-latency audio path.
+// Suppress high-volume NCR53CF96 transaction detail to avoid starving the
+// low-latency audio path.
 
 namespace KonamiGQScsi {
 namespace {
@@ -175,7 +175,7 @@ static void CaptureCDB(u32 pc)
   if (s_state.fifo_count < 2)
   {
     s_state.status |= STATUS_GROSS_ERROR;
-    s_controller.RequestDeferredStop(MigrationStopReason::IncompleteCDB, "selection_without_cdb", pc);
+    s_controller.RequestDeferredStop(DeferredStopReason::IncompleteCDB, "selection_without_cdb", pc);
     return;
   }
 
@@ -184,7 +184,7 @@ static void CaptureCDB(u32 pc)
   if (cdb_length == 0 || cdb_length > s_state.cdb.size() || s_state.fifo_count < (cdb_length + 1))
   {
     s_state.status |= STATUS_GROSS_ERROR;
-    s_controller.RequestDeferredStop(MigrationStopReason::IncompleteCDB, "unsupported_or_incomplete_cdb", pc);
+    s_controller.RequestDeferredStop(DeferredStopReason::IncompleteCDB, "unsupported_or_incomplete_cdb", pc);
     return;
   }
 
@@ -233,7 +233,7 @@ static void CaptureCDB(u32 pc)
   auto start_data_out = [&](u32 length) {
     if (length > s_state.response.size())
     {
-      s_controller.RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "oversized_data_out", pc);
+      s_controller.RequestDeferredStop(DeferredStopReason::UnsupportedTargetCommand, "oversized_data_out", pc);
       return false;
     }
     s_state.response.fill(0);
@@ -660,7 +660,7 @@ static void CaptureCDB(u32 pc)
   }
   ERROR_LOG("KonamiGQ.NCR53CF96 next_unsupported_cdb canonical_set='{}' opcode=0x{:02X} cdb='{}' length={} pc=0x{:08X}",
             Konami::GetGQSetName(), opcode, bytes, cdb_length, pc);
-  s_controller.RequestDeferredStop(MigrationStopReason::UnsupportedTargetCommand, "unimplemented_target_command", pc);
+  s_controller.RequestDeferredStop(DeferredStopReason::UnsupportedTargetCommand, "unimplemented_target_command", pc);
 }
 
 static bool LoadReadSector()
@@ -713,9 +713,9 @@ void WriteRegister(u32 width, u32 offset, u32 value, u32 pc)
   s_controller.WriteRegister(width, offset, value, pc);
 }
 
-MigrationStopReason ConsumeMigrationStopRequest()
+DeferredStopReason ConsumeDeferredStopRequest()
 {
-  return s_controller.ConsumeMigrationStopRequest();
+  return s_controller.ConsumeDeferredStopRequest();
 }
 
 u8 GetActiveCommand()

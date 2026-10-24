@@ -1211,8 +1211,10 @@ float LoadDepth(int2 coords)
 
 float3 SampleVRAM24(uint2 icoords)
 {
-  // load adjacent 16-bit texels
-  uint2 clamp_size = u_vram_size / RESOLUTION_SCALE;
+  // Load adjacent 16-bit texels. 24-bit scanout coordinates are logical VRAM
+  // coordinates even when the backing hardware texture is internally upscaled.
+  // Wrap in the active hardware VRAM aperture, then scale only for texture fetch.
+  uint2 clamp_size = VRAM_BASE_SIZE;
 
   // relative to start of scanout
   uint2 vram_coords = u_vram_offset + uint2((icoords.x * 3u) / 2u, icoords.y);

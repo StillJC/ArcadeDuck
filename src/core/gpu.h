@@ -231,6 +231,15 @@ public:
   void CalculateDrawRect(s32 window_width, s32 window_height, bool apply_rotation, bool apply_aspect_ratio,
                          GSVector4i* display_rect, GSVector4i* draw_rect) const;
 
+  /// Computes the host presentation rectangle, reserving space for attached cabinet displays.
+  void CalculatePresentationDrawRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                     bool apply_aspect_ratio, GSVector4i* display_rect,
+                                     GSVector4i* draw_rect) const;
+
+  /// Computes the pixel-aligned rectangle for the attached Namco Cyber Lead LED panel.
+  bool CalculateCyberLeadLEDAttachedRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                         bool apply_aspect_ratio, GSVector4i* led_rect) const;
+
   /// Helper function for computing screenshot bounds.
   void CalculateScreenshotSize(DisplayScreenshotMode mode, u32* width, u32* height, GSVector4i* display_rect,
                                GSVector4i* draw_rect) const;
@@ -490,7 +499,7 @@ protected:
   } m_GPUSTAT = {};
 
   // CXD8538Q/type-1 GPUSTAT bits 0-12 retain the raw texture-page layout. Rendering continues to use
-  // m_draw_mode.mode_reg, whose fields are decoded into DuckStation's canonical internal layout.
+  // m_draw_mode.mode_reg, whose fields are decoded into ArcadeDuck's canonical internal layout.
   u16 m_gq_gpustat_low_bits = 0;
 
   struct DrawMode

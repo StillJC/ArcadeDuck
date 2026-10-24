@@ -18,6 +18,7 @@ class QVBoxLayout;
 
 namespace Arcade {
 enum class ArcadeControllerType : u8;
+struct ArcadeControlLayoutInfo;
 }
 
 class ArcadeControllerBindingWidget final : public QWidget
@@ -28,6 +29,7 @@ public:
   u32 getPortNumber() const { return m_port_number; }
   QString getDisplayName() const;
   void queueRebuild();
+  void clearBindings();
 
 private:
   std::string getConfigSection() const;
@@ -35,15 +37,15 @@ private:
   void rebuildLayoutList();
   void addBinding(QFormLayout* layout, const char* key, const QString& label, InputBindingInfo::Type type);
   void addBindingsPage(QVBoxLayout* layout);
-  QWidget* createArtworkWidget();
   void addSettingsPage(QVBoxLayout* layout);
   void setStringValue(const char* key, const char* value);
   void setBoolValue(const char* key, bool value);
   void setIntValue(const char* key, s32 value);
   void clearAllBindingValues();
   void clearControllerSpecificValues();
-  void clearBindings();
   Arcade::ArcadeControllerType getType() const;
+  const Arcade::ArcadeControlLayoutInfo* getLayoutInfo() const;
+  bool hasAdditionalSettings() const;
   bool usesNativeDevice() const;
 
   ControllerSettingsWindow* m_dialog;

@@ -44,8 +44,12 @@ void ConfigureComboBoxPopup(QComboBox* combo, int max_visible_items = 18)
 } // namespace
 
 ControllerSettingsWindow::ControllerSettingsWindow(SettingsInterface* game_sif /* = nullptr */,
-                                                   QWidget* parent /* = nullptr */)
-  : QWidget(parent), m_editing_settings_interface(game_sif)
+                                                   QWidget* parent /* = nullptr */,
+                                                   bool controls_only /* = false */,
+                                                   const Arcade::ArcadeGameControlProfile* game_profile /* = nullptr */,
+                                                   bool embedded /* = false */)
+  : QWidget(parent), m_editing_settings_interface(game_sif), m_controls_only(controls_only), m_embedded(embedded),
+    m_game_control_profile(game_profile)
 {
   m_ui.setupUi(this);
   ConfigureComboBoxPopup(m_ui.currentProfile);
@@ -118,6 +122,43 @@ ControllerSettingsWindow::ControllerSettingsWindow(SettingsInterface* game_sif /
             [this](const std::string&) { refreshPointerDeviceList(); });
   }
 
+  if (m_controls_only)
+  {
+    m_ui.settingsContainer->setMinimumSize(0, 0);
+    m_ui.settingsCategory->setMinimumWidth(135);
+    m_ui.settingsCategory->setMaximumWidth(150);
+    m_ui.gridLayout->setContentsMargins(0, 0, 0, 0);
+
+    for (QWidget* widget : {static_cast<QWidget*>(m_ui.editProfileLabel), static_cast<QWidget*>(m_ui.currentProfile),
+                            static_cast<QWidget*>(m_ui.newProfile), static_cast<QWidget*>(m_ui.applyProfile),
+                            static_cast<QWidget*>(m_ui.deleteProfile), static_cast<QWidget*>(m_ui.saveGameProfile),
+                            static_cast<QWidget*>(m_ui.copyGlobalSettings), static_cast<QWidget*>(m_ui.restoreDefaults),
+                            static_cast<QWidget*>(m_ui.buttonBox)})
+    {
+      if (widget)
+        widget->hide();
+    }
+  }
+  else if (m_embedded)
+  {
+    m_ui.settingsContainer->setMinimumSize(0, 0);
+    m_ui.settingsCategory->setMinimumWidth(125);
+    m_ui.settingsCategory->setMaximumWidth(140);
+    m_ui.gridLayout->setContentsMargins(0, 0, 0, 0);
+
+    for (QWidget* widget : {static_cast<QWidget*>(m_ui.editProfileLabel), static_cast<QWidget*>(m_ui.currentProfile),
+                            static_cast<QWidget*>(m_ui.newProfile), static_cast<QWidget*>(m_ui.applyProfile),
+                            static_cast<QWidget*>(m_ui.deleteProfile), static_cast<QWidget*>(m_ui.saveGameProfile),
+                            static_cast<QWidget*>(m_ui.copyGlobalSettings), static_cast<QWidget*>(m_ui.buttonBox)})
+    {
+      if (widget)
+        widget->hide();
+    }
+
+    if (m_ui.restoreDefaults)
+      m_ui.restoreDefaults->setText(tr("Restore Controls Defaults"));
+  }
+
   refreshPointerDeviceList();
   createWidgets();
 }
@@ -135,41 +176,39 @@ void ControllerSettingsWindow::editControllerSettingsForGame(QWidget* parent, Se
   dlg->show();
 }
 
-int ControllerSettingsWindow::getHotkeyCategoryIndex() const
-{
-  return 1 + static_cast<int>(Arcade::NUM_ARCADE_CONTROLLER_PORTS);
-}
-
 ControllerSettingsWindow::Category ControllerSettingsWindow::getCurrentCategory() const
 {
   const int index = m_ui.settingsCategory->currentRow();
-  if (index == 0)
+  if (index == m_global_category_index)
     return Category::GlobalSettings;
-  else if (index >= getHotkeyCategoryIndex())
+  if (index == m_hotkey_category_index)
     return Category::HotkeySettings;
-  else
-    return Category::FirstControllerSettings;
+  return Category::FirstControllerSettings;
 }
 
 void ControllerSettingsWindow::setCategory(Category category)
 {
+  int index = -1;
   switch (category)
   {
     case Category::GlobalSettings:
-      m_ui.settingsCategory->setCurrentRow(0);
+      index = m_global_category_index;
       break;
 
     case Category::FirstControllerSettings:
-      m_ui.settingsCategory->setCurrentRow(1);
+      index = m_first_controller_category_index;
       break;
 
     case Category::HotkeySettings:
-      m_ui.settingsCategory->setCurrentRow(getHotkeyCategoryIndex());
+      index = m_hotkey_category_index;
       break;
 
     default:
       break;
   }
+
+  if (index >= 0)
+    m_ui.settingsCategory->setCurrentRow(index);
 }
 
 void ControllerSettingsWindow::onCategoryCurrentRowChanged(int row)
@@ -510,15 +549,19 @@ void ControllerSettingsWindow::onRestoreDefaultsForGameClicked()
 void ControllerSettingsWindow::onInputDevicesEnumerated(const std::vector<std::pair<std::string, std::string>>& devices)
 {
   m_device_list = devices;
-  for (const auto& [device_name, display_name] : m_device_list)
-    m_global_settings->addDeviceToList(QString::fromStdString(device_name), QString::fromStdString(display_name));
+  if (m_global_settings)
+  {
+    for (const auto& [device_name, display_name] : m_device_list)
+      m_global_settings->addDeviceToList(QString::fromStdString(device_name), QString::fromStdString(display_name));
+  }
   refreshPointerDeviceList();
 }
 
 void ControllerSettingsWindow::onInputDeviceConnected(const std::string& identifier, const std::string& device_name)
 {
   m_device_list.emplace_back(identifier, device_name);
-  m_global_settings->addDeviceToList(QString::fromStdString(identifier), QString::fromStdString(device_name));
+  if (m_global_settings)
+    m_global_settings->addDeviceToList(QString::fromStdString(identifier), QString::fromStdString(device_name));
   refreshPointerDeviceList();
   g_emu_thread->enumerateVibrationMotors();
 }
@@ -534,7 +577,8 @@ void ControllerSettingsWindow::onInputDeviceDisconnected(const std::string& iden
     }
   }
 
-  m_global_settings->removeDeviceFromList(QString::fromStdString(identifier));
+  if (m_global_settings)
+    m_global_settings->removeDeviceFromList(QString::fromStdString(identifier));
   refreshPointerDeviceList();
   g_emu_thread->enumerateVibrationMotors();
 }
@@ -694,17 +738,20 @@ void ControllerSettingsWindow::createWidgets()
   }
 
   m_ui.settingsCategory->clear();
-
+  m_arcade_port_bindings.fill(nullptr);
   m_global_settings = nullptr;
   m_hotkey_settings = nullptr;
+  m_global_category_index = -1;
+  m_first_controller_category_index = -1;
+  m_hotkey_category_index = -1;
 
+  if (!m_controls_only)
   {
-    // global settings
     QListWidgetItem* item = new QListWidgetItem();
     item->setText(tr("Global Settings"));
-    item->setIcon(QIcon::fromTheme(QStringLiteral("settings-3-line")));
+    item->setIcon(QIcon(QStringLiteral(":/icons/arcadeduck/globalsettings.png")));
+    m_global_category_index = m_ui.settingsCategory->count();
     m_ui.settingsCategory->addItem(item);
-    m_ui.settingsCategory->setCurrentRow(0);
     m_global_settings = new ControllerGlobalSettingsWidget(m_ui.settingsContainer, this);
     m_ui.settingsContainer->addWidget(m_global_settings);
     connect(m_global_settings, &ControllerGlobalSettingsWidget::bindingSetupChanged, this,
@@ -713,30 +760,50 @@ void ControllerSettingsWindow::createWidgets()
       m_global_settings->addDeviceToList(QString::fromStdString(identifier), QString::fromStdString(device_name));
   }
 
-  // ArcadeDuck always presents four independent arcade ports. They are host-binding profiles,
-  // Arcade controls are independent machine inputs, so legacy port state does not affect this list.
-  for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
+  if (m_controls_only || isEditingGameSettings())
   {
-    m_arcade_port_bindings[port] = new ArcadeControllerBindingWidget(m_ui.settingsContainer, this, port);
-    m_ui.settingsContainer->addWidget(m_arcade_port_bindings[port]);
+    for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
+    {
+      if (m_controls_only && m_game_control_profile &&
+          m_game_control_profile->ports[port].controller_type == Arcade::ArcadeControllerType::None)
+      {
+        continue;
+      }
 
-    QListWidgetItem* item = new QListWidgetItem();
-    item->setText(tr("Controller Port %1\n%2").arg(port + 1).arg(m_arcade_port_bindings[port]->getDisplayName()));
-    item->setIcon(QIcon::fromTheme(QStringLiteral("controller-line")));
-    item->setData(Qt::UserRole, QVariant(port));
-    m_ui.settingsCategory->addItem(item);
+      if (m_first_controller_category_index < 0)
+        m_first_controller_category_index = m_ui.settingsCategory->count();
+
+      m_arcade_port_bindings[port] = new ArcadeControllerBindingWidget(m_ui.settingsContainer, this, port);
+      m_ui.settingsContainer->addWidget(m_arcade_port_bindings[port]);
+
+      QListWidgetItem* item = new QListWidgetItem();
+      item->setText(m_controls_only ? tr("Player %1").arg(port + 1) :
+                                      tr("Controller Port %1\n%2")
+                                        .arg(port + 1)
+                                        .arg(m_arcade_port_bindings[port]->getDisplayName()));
+      item->setIcon(QIcon::fromTheme(QStringLiteral("controller-line")));
+      item->setData(Qt::UserRole, QVariant(port));
+      m_ui.settingsCategory->addItem(item);
+    }
   }
 
-  // only add hotkeys if we're editing global settings
-  if (!m_editing_settings_interface ||
-      m_editing_settings_interface->GetBoolValue("ArcadeProfiles", "UseProfileHotkeyBindings", false))
+  if (!m_controls_only &&
+      (!m_editing_settings_interface ||
+       m_editing_settings_interface->GetBoolValue("ArcadeProfiles", "UseProfileHotkeyBindings", false)))
   {
     QListWidgetItem* item = new QListWidgetItem();
     item->setText(tr("Hotkeys"));
-    item->setIcon(QIcon::fromTheme(QStringLiteral("keyboard-line")));
+    item->setIcon(QIcon(QStringLiteral(":/icons/arcadeduck/hotkeys.png")));
+    m_hotkey_category_index = m_ui.settingsCategory->count();
     m_ui.settingsCategory->addItem(item);
     m_hotkey_settings = new HotkeySettingsWidget(m_ui.settingsContainer, this);
     m_ui.settingsContainer->addWidget(m_hotkey_settings);
+  }
+
+  if (m_ui.settingsCategory->count() > 0)
+  {
+    m_ui.settingsCategory->setCurrentRow(0);
+    m_ui.settingsContainer->setCurrentIndex(0);
   }
 
   if (!isEditingGameSettings())
@@ -747,17 +814,36 @@ void ControllerSettingsWindow::createWidgets()
   }
 }
 
-void ControllerSettingsWindow::copyArcadeControllerConfiguration(SettingsInterface* dest_si, const SettingsInterface& src_si)
+void ControllerSettingsWindow::clearCurrentArcadeMapping()
 {
-  static constexpr std::array<const char*, 38> binding_keys = {{
+  const int row = m_ui.settingsCategory->currentRow();
+  if (row < 0)
+    return;
+
+  bool ok = false;
+  const u32 port = m_ui.settingsCategory->item(row)->data(Qt::UserRole).toUInt(&ok);
+  if (!ok || port >= m_arcade_port_bindings.size() || !m_arcade_port_bindings[port])
+    return;
+
+  m_arcade_port_bindings[port]->clearBindings();
+}
+
+void ControllerSettingsWindow::copyArcadeControllerConfiguration(
+  SettingsInterface* dest_si, const SettingsInterface& src_si, const Arcade::ArcadeGameControlProfile* target_profile)
+{
+  static constexpr std::array<const char*, 40> binding_keys = {{
     "Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4", "Button5", "Button6",
     "Coin", "Start", "TrackballX", "TrackballY", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
-    "GSRDecrease", "Steering", "Accelerator", "Brake", "Clutch", "GearUp", "GearDown", "Handbrake",
+    "GSRDecrease", "Steering", "SteeringLeft", "SteeringRight", "Accelerator", "Brake", "Clutch", "GearUp",
+    "GearDown", "Handbrake",
     "View", "Horn", "MusicNext", "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft",
     "SelectRight", "Enter", "Sensor"}};
-  static constexpr std::array<const char*, 17> value_keys = {{"Type", "Layout", "InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity",
+  static constexpr std::array<const char*, 26> value_keys = {{
+    "Type", "Layout", "InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity",
     "YSensitivity", "InvertX", "InvertY", "OffscreenReload", "CrosshairEnabled", "CrosshairImagePath", "CrosshairSize",
-    "CrosshairScale", "SindenBorder", "SindenBorderWidth"}};
+    "CrosshairScale", "SindenBorder", "SindenBorderWidth", "UseButtonsAsAxis", "SteeringDeadzone",
+    "SteeringSensitivity", "AcceleratorDeadzone", "AcceleratorSensitivity", "BrakeDeadzone", "BrakeSensitivity",
+    "ClutchDeadzone", "ClutchSensitivity"}};
 
   for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
   {
@@ -767,16 +853,25 @@ void ControllerSettingsWindow::copyArcadeControllerConfiguration(SettingsInterfa
     for (const char* key : value_keys)
       dest_si->DeleteValue(section.c_str(), key);
 
-    const std::string type_name = src_si.GetStringValue(section.c_str(), "Type", "none");
     Arcade::ArcadeControllerType type = Arcade::ArcadeControllerType::None;
     const Arcade::ArcadeControllerTypeInfo* type_info = nullptr;
-    for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
+    const Arcade::ArcadePortProfile* const target_port = target_profile ? &target_profile->ports[port] : nullptr;
+    if (target_port)
     {
-      if (info.name == type_name)
+      type = target_port->controller_type;
+      type_info = Arcade::GetArcadeControllerTypeInfo(type);
+    }
+    else
+    {
+      const std::string type_name = src_si.GetStringValue(section.c_str(), "Type", "none");
+      for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
       {
-        type = info.type;
-        type_info = &info;
-        break;
+        if (info.name == type_name)
+        {
+          type = info.type;
+          type_info = &info;
+          break;
+        }
       }
     }
 
@@ -793,8 +888,9 @@ void ControllerSettingsWindow::copyArcadeControllerConfiguration(SettingsInterfa
       dest_si->CopyStringValue(src_si, section.c_str(), key);
     };
     const auto copy_layout_bindings = [&]() {
-      const std::string layout = src_si.GetStringValue(section.c_str(), "Layout", "");
-      const Arcade::ArcadeControlLayoutInfo* layout_info = Arcade::GetArcadeControlLayoutInfo(layout);
+      const Arcade::ArcadeControlLayoutInfo* layout_info =
+        target_port ? Arcade::GetArcadeControlLayoutInfo(target_port->game_layout_key) :
+                      Arcade::GetArcadeControlLayoutInfo(src_si.GetStringValue(section.c_str(), "Layout", ""));
       if (!layout_info || layout_info->controller_type != type)
         return false;
 
@@ -815,15 +911,32 @@ void ControllerSettingsWindow::copyArcadeControllerConfiguration(SettingsInterfa
     };
 
     dest_si->SetStringValue(section.c_str(), "Type", type_info->name.data());
-    copy_value("Layout");
+    if (target_port)
+      dest_si->SetStringValue(section.c_str(), "Layout", target_port->game_layout_key.data());
+    else
+      copy_value("Layout");
     copy_binding("Coin");
     copy_binding("Start");
 
     switch (type)
     {
       case Arcade::ArcadeControllerType::Arcade:
+        copy_layout_bindings();
+        break;
+
       case Arcade::ArcadeControllerType::Driving:
         copy_layout_bindings();
+        for (const char* key : {"UseButtonsAsAxis", "SteeringDeadzone", "SteeringSensitivity",
+                                "AcceleratorDeadzone", "AcceleratorSensitivity", "BrakeDeadzone",
+                                "BrakeSensitivity", "ClutchDeadzone", "ClutchSensitivity"})
+        {
+          copy_value(key);
+        }
+        if (src_si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false))
+        {
+          copy_binding("SteeringLeft");
+          copy_binding("SteeringRight");
+        }
         break;
 
       case Arcade::ArcadeControllerType::Trackball:
@@ -906,7 +1019,8 @@ void ControllerSettingsWindow::updateArcadeListDescription(u32 port, const QStri
     bool is_ok = false;
     if (item->data(Qt::UserRole).toUInt(&is_ok) == port && is_ok)
     {
-      item->setText(tr("Controller Port %1\n%2").arg(port + 1).arg(display_name));
+      item->setText(m_controls_only ? tr("Player %1").arg(port + 1) :
+                                      tr("Controller Port %1\n%2").arg(port + 1).arg(display_name));
       break;
     }
   }

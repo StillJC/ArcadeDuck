@@ -34,6 +34,7 @@ class AutoUpdaterDialog;
 class CheatManagerWindow;
 class DebuggerWindow;
 class MemoryScannerWindow;
+class CyberLeadLEDWindow;
 
 struct SystemBootParameters;
 
@@ -238,6 +239,8 @@ private:
   void setBezelAspectRatioLockEnabled(bool enabled);
   void applyBezelAspectRatioToCurrentWindow();
   bool isBezelAspectRatioLockActive() const;
+  void updateCyberLeadLEDWindow();
+  void destroyCyberLeadLEDWindow();
 
   SettingsWindow* getSettingsWindow();
   void doSettings(const char* category = nullptr);
@@ -269,7 +272,8 @@ private:
   /// Fills menu with the current cheat options.
   void populateCheatsMenu(QMenu* menu);
 
-  std::shared_ptr<SystemBootParameters> getSystemBootParameters(std::string file);
+  std::shared_ptr<SystemBootParameters> getSystemBootParameters(std::string file,
+                                                               std::string arcade_game_id = {});
   std::optional<bool> promptForResumeState(const std::string& save_state_path);
   void startFile(std::string path, std::optional<std::string> save_path);
   void startArcadeSet(const QString& path);
@@ -280,6 +284,7 @@ private:
 
   DisplayWidget* m_display_widget = nullptr;
   DisplayContainer* m_display_container = nullptr;
+  CyberLeadLEDWindow* m_cyber_lead_led_window = nullptr;
 
   QProgressBar* m_status_progress_widget = nullptr;
   QLabel* m_status_renderer_widget = nullptr;

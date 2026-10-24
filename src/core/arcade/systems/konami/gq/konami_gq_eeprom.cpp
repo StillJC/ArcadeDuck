@@ -445,7 +445,7 @@ void WriteControl(u32 value)
       ResetTransaction(state);
     }
 
-    // MAME's 93C46 state machine ignores a CLK edge that arrives in the same register write as CS rising.
+    // Ignore a CLK edge that arrives in the same register write as CS rising.
     return;
   }
 

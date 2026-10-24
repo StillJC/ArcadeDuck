@@ -15,8 +15,6 @@
 
 #if defined(_WIN32)
 #include "windows_headers.h"
-#elif defined(__ANDROID__)
-#include <android/log.h>
 #else
 #include <unistd.h>
 #endif
@@ -274,7 +272,7 @@ void Log::ConsoleOutputLogCallback(void* pUserParam, const char* channelName, co
                               WriteConsoleW(hOutput, message.data(), static_cast<DWORD>(message.length()),
                                             &chars_written, nullptr);
                             });
-#elif !defined(__ANDROID__)
+#else
   FormatLogMessageAndPrint(channelName, functionName, level, message, s_console_output_timestamps, true, true,
                            [level](std::string_view message) {
                              const int outputFd = (level <= LOGLEVEL_WARNING) ? STDERR_FILENO : STDOUT_FILENO;
@@ -292,25 +290,6 @@ void Log::DebugOutputLogCallback(void* pUserParam, const char* channelName, cons
 #if defined(_WIN32)
   FormatLogMessageAndPrintW(channelName, functionName, level, message, false, false, true,
                             [](const std::wstring_view& message) { OutputDebugStringW(message.data()); });
-#elif defined(__ANDROID__)
-  if (message.empty())
-    return;
-
-  static constexpr int logPriority[LOGLEVEL_COUNT] = {
-    ANDROID_LOG_INFO,  // NONE
-    ANDROID_LOG_ERROR, // ERROR
-    ANDROID_LOG_WARN,  // WARNING
-    ANDROID_LOG_INFO,  // PERF
-    ANDROID_LOG_INFO,  // INFO
-    ANDROID_LOG_INFO,  // VERBOSE
-    ANDROID_LOG_DEBUG, // DEV
-    ANDROID_LOG_DEBUG, // PROFILE
-    ANDROID_LOG_DEBUG, // DEBUG
-    ANDROID_LOG_DEBUG, // TRACE
-  };
-
-  __android_log_print(logPriority[level], channelName, "%.*s", static_cast<int>(message.length()), message.data());
-#else
 #endif
 }
 

@@ -676,9 +676,9 @@ void WriteCommand(u16 value)
   s_state.host_in = value;
   adsp2181_set_irq(s_state.cpu, ADSP2181_IRQL0, 1);
 
-  // MAME gives the RAX board a 5 us perfect-quantum window after each host
-  // write. Running that small slice here prevents back-to-back 16-bit writes
-  // from overwriting the hardware latch before the DSP can read IO port 3.
+  // Give the RAX DSP a 5 us execution window after each host write. This
+  // prevents back-to-back 16-bit writes from overwriting the hardware latch
+  // before the DSP can read IO port 3.
   RunToTarget(s_state.board_cycles + COMMAND_QUANTUM_CYCLES);
 
 

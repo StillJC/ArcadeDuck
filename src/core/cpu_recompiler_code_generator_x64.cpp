@@ -2143,6 +2143,20 @@ void CodeGenerator::EmitLoadGuestRAMFastmem(const Value& address, RegSize size, 
 void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const CodeCache::InstructionInfo& info,
                                                const Value& address, RegSize size, Value& result)
 {
+  // Scratchpad is not host-page mapped, so dynamic accesses use the slowmem thunk.
+  Xbyak::Label scratchpad_slowmem;
+  Xbyak::Label fastmem_done;
+  void* scratchpad_jump_pc = nullptr;
+  Value scratchpad_check;
+  if (!address.IsConstant())
+  {
+    scratchpad_check = m_register_cache.AllocateScratch(RegSize_32);
+    EmitCopyValue(scratchpad_check.GetHostRegister(), address);
+    m_emit->and_(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR_MASK);
+    m_emit->cmp(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR);
+    m_emit->je(scratchpad_slowmem);
+  }
+
   if (g_settings.cpu_fastmem_mode == CPUFastmemMode::LUT)
   {
     EmitCopyValue(RARG1, address);
@@ -2199,6 +2213,9 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
       break;
   }
 
+  // Apply RAM read latency at the actual fastmem access, matching the checked memory path.
+  EmitAddCPUStructField(OFFSETOF(State, pending_ticks), Value::FromConstantU32(Bus::RAM_READ_TICKS));
+
   // insert nops, we need at least 5 bytes for a relative jump
   const u32 fastmem_size = static_cast<u32>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc));
   const u32 nops = (fastmem_size < 5 ? 5 - fastmem_size : 0);
@@ -2208,6 +2225,16 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
   const u32 host_code_size =
     static_cast<u32>(static_cast<ptrdiff_t>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc)));
 
+  if (!address.IsConstant())
+  {
+    m_emit->jmp(fastmem_done);
+    m_emit->L(scratchpad_slowmem);
+    scratchpad_jump_pc = GetCurrentNearCodePointer();
+    for (u32 i = 0; i < 5; i++)
+      m_emit->nop();
+    m_emit->L(fastmem_done);
+  }
+
   // generate slowmem fallback
   m_far_emitter.align(16);
   void* thunk_host_pc = GetCurrentFarCodePointer();
@@ -2216,7 +2243,6 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
   // we add the ticks *after* the add here, since we counted incorrectly, then correct for it below
   DebugAssert(m_delayed_cycles_add > 0);
   EmitAddCPUStructField(OFFSETOF(State, pending_ticks), Value::FromConstantU32(static_cast<u32>(m_delayed_cycles_add)));
-  m_delayed_cycles_add += Bus::RAM_READ_TICKS;
 
   EmitLoadGuestMemorySlowmem(instruction, info, address, size, result, true);
 
@@ -2228,6 +2254,9 @@ void CodeGenerator::EmitLoadGuestMemoryFastmem(Instruction instruction, const Co
 
   SwitchToNearCode();
   m_register_cache.UninhibitAllocation();
+
+  if (scratchpad_jump_pc)
+    CPU::CodeCache::EmitJump(scratchpad_jump_pc, thunk_host_pc, false);
 
   CPU::CodeCache::AddLoadStoreInfo(host_pc, host_code_size, info.pc, thunk_host_pc);
 }
@@ -2307,6 +2336,20 @@ void CodeGenerator::EmitLoadGuestMemorySlowmem(Instruction instruction, const Co
 void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const CodeCache::InstructionInfo& info,
                                                 const Value& address, RegSize size, const Value& value)
 {
+  // Scratchpad is not host-page mapped, so dynamic accesses use the slowmem thunk.
+  Xbyak::Label scratchpad_slowmem;
+  Xbyak::Label fastmem_done;
+  void* scratchpad_jump_pc = nullptr;
+  Value scratchpad_check;
+  if (!address.IsConstant())
+  {
+    scratchpad_check = m_register_cache.AllocateScratch(RegSize_32);
+    EmitCopyValue(scratchpad_check.GetHostRegister(), address);
+    m_emit->and_(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR_MASK);
+    m_emit->cmp(GetHostReg32(scratchpad_check.host_reg), SCRATCHPAD_ADDR);
+    m_emit->je(scratchpad_slowmem);
+  }
+
   if (g_settings.cpu_fastmem_mode == CPUFastmemMode::LUT)
   {
     EmitCopyValue(RARG1, address);
@@ -2405,6 +2448,16 @@ void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const C
   const u32 host_code_size =
     static_cast<u32>(static_cast<ptrdiff_t>(static_cast<u8*>(GetCurrentNearCodePointer()) - static_cast<u8*>(host_pc)));
 
+  if (!address.IsConstant())
+  {
+    m_emit->jmp(fastmem_done);
+    m_emit->L(scratchpad_slowmem);
+    scratchpad_jump_pc = GetCurrentNearCodePointer();
+    for (u32 i = 0; i < 5; i++)
+      m_emit->nop();
+    m_emit->L(fastmem_done);
+  }
+
   // generate slowmem fallback
   m_far_emitter.align();
   const void* host_thunk_pc = GetCurrentFarCodePointer();
@@ -2423,6 +2476,9 @@ void CodeGenerator::EmitStoreGuestMemoryFastmem(Instruction instruction, const C
 
   SwitchToNearCode();
   m_register_cache.UninhibitAllocation();
+
+  if (scratchpad_jump_pc)
+    CPU::CodeCache::EmitJump(scratchpad_jump_pc, host_thunk_pc, false);
 
   CPU::CodeCache::AddLoadStoreInfo(host_pc, host_code_size, info.pc, host_thunk_pc);
 }
@@ -2784,17 +2840,14 @@ void CodeGenerator::EmitICacheCheckAndUpdate()
 {
   if (!m_block->HasFlag(CodeCache::BlockFlags::IsUsingICache))
   {
-    if (m_block->HasFlag(CodeCache::BlockFlags::NeedsDynamicFetchTicks))
-    {
-      m_emit->mov(m_emit->eax, m_block->size);
-      m_emit->mul(m_emit->dword[m_emit->rip + GetFetchMemoryAccessTimePtr()]);
-      m_emit->add(m_emit->dword[GetCPUPtrReg() + OFFSETOF(State, pending_ticks)], m_emit->eax);
-    }
-    else
+    if (!m_block->HasFlag(CodeCache::BlockFlags::NeedsDynamicFetchTicks))
     {
       m_emit->add(m_emit->dword[GetCPUPtrReg() + OFFSETOF(State, pending_ticks)],
                   static_cast<u32>(m_block->uncached_fetch_ticks));
     }
+    // Dynamic BIOS fetch timing is emitted per instruction by
+    // InstructionPrologue() on x64 so wait states occur at the same pipeline
+    // position as the interpreter.
   }
   else if (m_block->icache_line_count > 0)
   {

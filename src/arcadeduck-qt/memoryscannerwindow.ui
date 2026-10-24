@@ -376,7 +376,7 @@
        </attribute>
        <column>
         <property name="text">
-         <string>Simple Cheat Code or Description</string>
+         <string>Description</string>
         </property>
        </column>
        <column>

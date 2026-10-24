@@ -118,6 +118,7 @@ struct SystemDefinition
   std::string machine_handler;
   std::string bios_profile;
   u16 release_year = 0;
+  u16 cpu_clock_percent = 100;
   u8 max_players = 1;
   bool supports_lightgun = false;
   bool supports_trackball = false;
@@ -189,6 +190,7 @@ struct GameDefinition
   u16 cpu_clock_percent = 100;
   u8 min_players = 1;
   u8 max_players = 1;
+  bool supports_system_link = false;
   WorkingStatus status = WorkingStatus::Unknown;
   DisplayDefinition display;
   std::array<PortDefinition, NUM_ARCADE_CONTROLLER_PORTS> ports{};
@@ -217,6 +219,7 @@ struct ControlLayoutDefinition
 bool EnsureLoaded();
 void Unload();
 bool IsLoaded();
+std::string_view GetContentFingerprint();
 
 std::span<const SystemDefinition> GetSystems();
 std::span<const GameDefinition> GetGames();
@@ -224,6 +227,7 @@ std::span<const ControlLayoutDefinition> GetControlLayouts();
 
 const SystemDefinition* GetSystem(std::string_view id);
 const GameDefinition* GetGame(std::string_view id);
+std::vector<const GameDefinition*> GetClones(std::string_view parent_id);
 const ControlLayoutDefinition* GetControlLayout(std::string_view id);
 
 const FirmwareDefinition* GetFirmwareDefinition(const SystemDefinition& system, std::string_view id);
@@ -232,10 +236,18 @@ const FirmwareDefinition* ResolveFirmwareProfile(const SystemDefinition& system)
 bool IsArchivePath(std::string_view path);
 std::string_view GetSetNameFromArchivePath(std::string_view path);
 const GameDefinition* IdentifyArchive(std::string_view path);
+void ClearArchivePathIndex();
+void IndexArchivePath(std::string_view path);
+std::string GetIndexedArchivePath(std::string_view archive_name);
+std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game);
 
 const ROMDefinition* GetROMByRole(const GameDefinition& game, std::string_view role);
 const MediaDefinition* GetMediaByRole(const GameDefinition& game, std::string_view role);
 std::string GetMediaFilename(const MediaDefinition& media);
+void ClearCompanionMediaIndex();
+void IndexCompanionMediaPath(std::string_view path);
+std::string GetCompanionMediaPath(std::string_view archive_path, std::string_view set_name,
+                                  std::string_view parent_set_name, std::string_view filename);
 std::string GetCompanionMediaPath(std::string_view archive_path, const GameDefinition& game,
                                   const MediaDefinition& media);
 

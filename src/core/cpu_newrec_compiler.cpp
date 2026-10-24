@@ -1182,6 +1182,12 @@ void CPU::NewRec::Compiler::CompileInstruction()
 
   m_cycles++;
 
+  // A timing deadline may become due after the branch itself but before its
+  // architectural delay slot. Check before NewRec can swap or inline the
+  // delay slot so the rare slow path can preserve that boundary exactly.
+  if (iinfo->is_branch_instruction && !m_current_instruction_branch_delay_slot)
+    GenerateBranchEventBoundaryCheck();
+
   if (IsNopInstruction(*inst))
   {
     UpdateLoadDelay();
@@ -1209,14 +1215,14 @@ void CPU::NewRec::Compiler::CompileInstruction()
         case InstructionFunct::jalr: CompileTemplate(&Compiler::Compile_jalr_const, &Compiler::Compile_jalr, nullptr, /*TF_WRITES_D |*/ TF_READS_S | TF_NO_NOP); SpecExec_jalr(); break;
         case InstructionFunct::syscall: Compile_syscall(); break;
         case InstructionFunct::break_: Compile_break(); break;
-        case InstructionFunct::mfhi: SpecCopyReg(inst->r.rd, Reg::hi); CompileMoveRegTemplate(inst->r.rd, Reg::hi, g_settings.gpu_pgxp_cpu); break;
+        case InstructionFunct::mfhi: GenerateMulDivReadStall(); SpecCopyReg(inst->r.rd, Reg::hi); CompileMoveRegTemplate(inst->r.rd, Reg::hi, g_settings.gpu_pgxp_cpu); break;
         case InstructionFunct::mthi: SpecCopyReg(Reg::hi, inst->r.rs); CompileMoveRegTemplate(Reg::hi, inst->r.rs, g_settings.gpu_pgxp_cpu); break;
-        case InstructionFunct::mflo: SpecCopyReg(inst->r.rd, Reg::lo); CompileMoveRegTemplate(inst->r.rd, Reg::lo, g_settings.gpu_pgxp_cpu); break;
+        case InstructionFunct::mflo: GenerateMulDivReadStall(); SpecCopyReg(inst->r.rd, Reg::lo); CompileMoveRegTemplate(inst->r.rd, Reg::lo, g_settings.gpu_pgxp_cpu); break;
         case InstructionFunct::mtlo: SpecCopyReg(Reg::lo, inst->r.rs); CompileMoveRegTemplate(Reg::lo, inst->r.rs, g_settings.gpu_pgxp_cpu); break;
-        case InstructionFunct::mult: CompileTemplate(&Compiler::Compile_mult_const, &Compiler::Compile_mult, PGXPFN(CPU_MULT), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI | TF_COMMUTATIVE); SpecExec_mult(); break;
-        case InstructionFunct::multu: CompileTemplate(&Compiler::Compile_multu_const, &Compiler::Compile_multu, PGXPFN(CPU_MULTU), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI | TF_COMMUTATIVE); SpecExec_multu(); break;
-        case InstructionFunct::div: CompileTemplate(&Compiler::Compile_div_const, &Compiler::Compile_div, PGXPFN(CPU_DIV), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI); SpecExec_div(); break;
-        case InstructionFunct::divu: CompileTemplate(&Compiler::Compile_divu_const, &Compiler::Compile_divu, PGXPFN(CPU_DIVU), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI); SpecExec_divu(); break;
+        case InstructionFunct::mult: GenerateMulDivMultiplyStart(true, inst->r.rs); CompileTemplate(&Compiler::Compile_mult_const, &Compiler::Compile_mult, PGXPFN(CPU_MULT), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI | TF_COMMUTATIVE); SpecExec_mult(); break;
+        case InstructionFunct::multu: GenerateMulDivMultiplyStart(false, inst->r.rs); CompileTemplate(&Compiler::Compile_multu_const, &Compiler::Compile_multu, PGXPFN(CPU_MULTU), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI | TF_COMMUTATIVE); SpecExec_multu(); break;
+        case InstructionFunct::div: GenerateMulDivDivideStart(); CompileTemplate(&Compiler::Compile_div_const, &Compiler::Compile_div, PGXPFN(CPU_DIV), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI); SpecExec_div(); break;
+        case InstructionFunct::divu: GenerateMulDivDivideStart(); CompileTemplate(&Compiler::Compile_divu_const, &Compiler::Compile_divu, PGXPFN(CPU_DIVU), TF_READS_S | TF_READS_T | TF_WRITES_LO | TF_WRITES_HI); SpecExec_divu(); break;
         case InstructionFunct::add: CompileTemplate(&Compiler::Compile_add_const, &Compiler::Compile_add, PGXPFN(CPU_ADD), TF_WRITES_D | TF_READS_S | TF_READS_T | TF_COMMUTATIVE | TF_CAN_OVERFLOW | TF_RENAME_WITH_ZERO_T); SpecExec_add(); break;
         case InstructionFunct::addu: CompileTemplate(&Compiler::Compile_addu_const, &Compiler::Compile_addu, PGXPFN(CPU_ADD), TF_WRITES_D | TF_READS_S | TF_READS_T | TF_COMMUTATIVE | TF_RENAME_WITH_ZERO_T); SpecExec_addu(); break;
         case InstructionFunct::sub: CompileTemplate(&Compiler::Compile_sub_const, &Compiler::Compile_sub, PGXPFN(CPU_SUB), TF_WRITES_D | TF_READS_S | TF_READS_T | TF_CAN_OVERFLOW | TF_RENAME_WITH_ZERO_T); SpecExec_sub(); break;

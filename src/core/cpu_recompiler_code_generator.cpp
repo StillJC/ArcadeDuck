@@ -1105,10 +1105,20 @@ void CodeGenerator::InstructionPrologue(Instruction instruction, const CodeCache
     m_current_instruction_in_branch_delay_slot_dirty = false;
   }
 
+  m_delayed_cycles_add += cycles;
+
+#if defined(CPU_ARCH_X64)
+  if (m_block->HasFlag(CodeCache::BlockFlags::NeedsDynamicFetchTicks))
+  {
+    Value fetch_ticks = m_register_cache.AllocateScratch(RegSize_32);
+    EmitLoadGlobal(fetch_ticks.GetHostRegister(), RegSize_32, GetFetchMemoryAccessTimePtr());
+    EmitAddCPUStructField(OFFSETOF(State, pending_ticks), fetch_ticks);
+  }
+#endif
+
   if (!force_sync)
   {
     // Defer updates for non-faulting instructions.
-    m_delayed_cycles_add += cycles;
     return;
   }
 
@@ -1119,7 +1129,6 @@ void CodeGenerator::InstructionPrologue(Instruction instruction, const CodeCache
     m_current_instruction_in_branch_delay_slot_dirty = true;
   }
 
-  m_delayed_cycles_add += cycles;
   AddPendingCycles(true);
 }
 
@@ -1915,6 +1924,9 @@ bool CodeGenerator::Compile_MoveHiLo(Instruction instruction, const CodeCache::I
   {
     case InstructionFunct::mfhi:
     {
+      AddPendingCycles(true);
+      EmitFunctionCall(nullptr, &CPU::StallUntilMulDivCompleteForRecompiler);
+
       Value hi = m_register_cache.ReadGuestRegister(Reg::hi);
       if (g_settings.UsingPGXPCPUMode())
       {
@@ -1943,6 +1955,9 @@ bool CodeGenerator::Compile_MoveHiLo(Instruction instruction, const CodeCache::I
 
     case InstructionFunct::mflo:
     {
+      AddPendingCycles(true);
+      EmitFunctionCall(nullptr, &CPU::StallUntilMulDivCompleteForRecompiler);
+
       Value lo = m_register_cache.ReadGuestRegister(Reg::lo);
       if (g_settings.UsingPGXPCPUMode())
       {
@@ -2106,12 +2121,18 @@ bool CodeGenerator::Compile_Subtract(Instruction instruction, const CodeCache::I
 bool CodeGenerator::Compile_Multiply(Instruction instruction, const CodeCache::InstructionInfo& info)
 {
   InstructionPrologue(instruction, info, 1);
+  AddPendingCycles(true);
 
   const bool signed_multiply = (instruction.r.funct == InstructionFunct::mult);
   Value rs = m_register_cache.ReadGuestRegister(instruction.r.rs);
   Value rt = m_register_cache.ReadGuestRegister(instruction.r.rt);
   const SpeculativeValue rs_spec = SpeculativeReadReg(instruction.r.rs);
   const SpeculativeValue rt_spec = SpeculativeReadReg(instruction.r.rt);
+
+  EmitFunctionCall(
+    nullptr, &CPU::BeginMulDivMultiply,
+    Value::FromConstantU32(signed_multiply ? 1 : 0), rs);
+
   if (g_settings.UsingPGXPCPUMode())
   {
     EmitFunctionCall(nullptr, signed_multiply ? &PGXP::CPU_MULT : &PGXP::CPU_MULTU,
@@ -2189,6 +2210,8 @@ static std::tuple<s32, s32> MIPSDivide(s32 num, s32 denom)
 bool CodeGenerator::Compile_Divide(Instruction instruction, const CodeCache::InstructionInfo& info)
 {
   InstructionPrologue(instruction, info, 1);
+  AddPendingCycles(true);
+  EmitFunctionCall(nullptr, &CPU::BeginMulDivDivide);
 
   Value num = m_register_cache.ReadGuestRegister(instruction.r.rs);
   Value denom = m_register_cache.ReadGuestRegister(instruction.r.rt);
@@ -2263,6 +2286,8 @@ bool CodeGenerator::Compile_Divide(Instruction instruction, const CodeCache::Ins
 bool CodeGenerator::Compile_SignedDivide(Instruction instruction, const CodeCache::InstructionInfo& info)
 {
   InstructionPrologue(instruction, info, 1);
+  AddPendingCycles(true);
+  EmitFunctionCall(nullptr, &CPU::BeginMulDivDivide);
 
   Value num = m_register_cache.ReadGuestRegister(instruction.r.rs);
   Value denom = m_register_cache.ReadGuestRegister(instruction.r.rt);
@@ -2431,6 +2456,61 @@ bool CodeGenerator::Compile_SetLess(Instruction instruction, const CodeCache::In
 bool CodeGenerator::Compile_Branch(Instruction instruction, const CodeCache::InstructionInfo& info)
 {
   InstructionPrologue(instruction, info, 1);
+
+  // Branches normally keep their delay slot in the same compiled block.
+  // If the timing deadline lands at this branch, take a rare slow path which
+  // preserves the hardware-visible branch -> event -> delay-slot boundary.
+  if (info.is_branch_instruction && !info.is_branch_delay_slot &&
+      (m_current_instruction.instruction + 1) != m_block_end.instruction)
+  {
+    Value pending_ticks = m_register_cache.AllocateScratch(RegSize_32);
+    Value downcount = m_register_cache.AllocateScratch(RegSize_32);
+
+    EmitLoadCPUStructField(pending_ticks.GetHostRegister(), RegSize_32, OFFSETOF(State, pending_ticks));
+    if (m_delayed_cycles_add > 0)
+    {
+      EmitAdd(pending_ticks.GetHostRegister(), pending_ticks.GetHostRegister(),
+              Value::FromConstantU32(m_delayed_cycles_add), false);
+    }
+    EmitLoadCPUStructField(downcount.GetHostRegister(), RegSize_32, OFFSETOF(State, downcount));
+
+    LabelType continue_branch;
+    EmitConditionalBranch(Condition::Less, false, pending_ticks.GetHostRegister(), downcount, &continue_branch);
+
+    const TickCount saved_delayed_cycles_add = m_delayed_cycles_add;
+    const TickCount saved_gte_done_cycle = m_gte_done_cycle;
+    const bool saved_load_delay_dirty = m_load_delay_dirty;
+
+    DebugAssert(saved_delayed_cycles_add >= 1);
+
+    m_register_cache.PushState();
+    EmitBranch(GetCurrentFarCodePointer());
+
+    SwitchToFarCode();
+
+    // InstructionPrologue() has already included the branch's one cycle.
+    // Commit only the work which architecturally precedes the branch; the
+    // slow-path helper accounts for the branch itself.
+    m_delayed_cycles_add = saved_delayed_cycles_add - 1;
+    BlockEpilogue();
+
+    EmitFunctionCall(
+      nullptr, &CPU::ExecuteRecompilerBranchEventBoundary,
+      Value::FromConstantU32(info.pc),
+      Value::FromConstantU32(instruction.bits),
+      Value::FromConstantU32((m_current_instruction.instruction + 1)->bits));
+
+    EmitEndBlock(true, CodeCache::g_check_events_and_dispatch);
+
+    SwitchToNearCode();
+
+    m_delayed_cycles_add = saved_delayed_cycles_add;
+    m_gte_done_cycle = saved_gte_done_cycle;
+    m_load_delay_dirty = saved_load_delay_dirty;
+
+    m_register_cache.PopState();
+    EmitBindLabel(&continue_branch);
+  }
 
   auto DoBranch = [this, &instruction, &info](Condition condition, const Value& lhs, const Value& rhs, Reg lr_reg,
                                               Value&& branch_target) {

@@ -26,8 +26,8 @@ void OnSystemResumed();
 void OnSystemDestroyed();
 void OnRunningGameChanged();
 
-#ifndef __ANDROID__
 void OpenPauseMenu();
+void OpenCheatMenu();
 void OpenAchievementsWindow();
 bool IsAchievementsWindowOpen();
 void OpenLeaderboardsWindow();
@@ -35,7 +35,6 @@ bool IsLeaderboardsWindowOpen();
 void ReturnToMainWindow();
 void ReturnToPreviousWindow();
 void SetStandardSelectionFooterText(bool back_instead_of_cancel);
-#endif
 
 void Shutdown();
 void Render();

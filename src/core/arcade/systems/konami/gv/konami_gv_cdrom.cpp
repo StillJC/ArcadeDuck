@@ -4,7 +4,7 @@
 #include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 
 #include "core/cdrom.h"
-#include "core/arcade/systems/konami/konami.h"
+#include "core/arcade/systems/konami/gv/konami_gv.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "util/cd_image.h"
@@ -279,11 +279,9 @@ u32 ReadSubChannel(const u8* cdb, u8* response, u32 response_size)
   response[3] = 0x0c;
   response[4] = 0x01;
 
-  // Match the Toshiba XM-5401/MAME current-position response. The CDImage CHD
-  // index control field does not carry the MMC ADR=1 bit, so deriving this byte
-  // from current_index->control.bits reports 0x00 for audio tracks. The drive
-  // reports ADR=1, CONTROL=0 while audio is active/paused, and CONTROL=4 when
-  // there is no active audio operation.
+  // The XM-5401 current-position response reports ADR=1, CONTROL=0 while
+  // audio is active or paused, and CONTROL=4 when no audio operation is active.
+  // CDImage's index control field does not include the MMC ADR bit.
   response[5] = s_playing ? 0x10 : 0x14;
 
   const CDImage::Index* current_index = FindCurrentIndex();
@@ -292,7 +290,7 @@ u32 ReadSubChannel(const u8* cdb, u8* response, u32 response_size)
   else
     response[6] = s_track;
 
-  // Toshiba/MAME reports index 0 for READ SUB-CHANNEL current-position data.
+  // The XM-5401 reports index 0 for READ SUB-CHANNEL current-position data.
   response[7] = 0x00;
 
   const CDImage::LBA relative_lba = current_index ? (s_lba - current_index->start_lba_on_disc) : 0;

@@ -5,6 +5,6 @@ contact_links:
     url: https://docs.google.com/spreadsheets/d/1H66MxViRjjE5f8hOl5RQmF5woS1murio2dsLn14kEqo/edit
     about: Please refer to the game compatibility list before opening an issue.
 
-  - name: Discord server
-  - url: https://discord.gg/Buktv3t
-  - about: Please ask support questions on the Discord server, not here.
+  - name: ArcadeDuck Discord server
+    url: https://discord.gg/e3ADpmY54f
+    about: Please ask general setup and support questions on the Discord server rather than opening an issue.

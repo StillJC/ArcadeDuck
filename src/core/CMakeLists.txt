@@ -11,8 +11,12 @@ add_library(core
   arcade/arcade_database.h
   arcade/arcade_input.cpp
   arcade/arcade_input.h
+  arcade/arcade_link.cpp
+  arcade/arcade_link.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
+  arcade/arcade_rom_loader.cpp
+  arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
   arcade/arcade_output.h
   arcade/arcade_output_network.cpp
@@ -28,8 +32,16 @@ add_library(core
   cdrom.h
   cdrom_async_reader.cpp
   cdrom_async_reader.h
-  cheats.cpp
-  cheats.h
+  memory_scanner.cpp
+  memory_scanner.h
+  mame_cheats.cpp
+  mame_cheats.h
+  mame_cheat_expression.cpp
+  mame_cheat_expression.h
+  mame_cheat_package.cpp
+  mame_cheat_package.h
+  mame_cheat_runtime.cpp
+  mame_cheat_runtime.h
   cpu_code_cache.cpp
   cpu_code_cache.h
   cpu_code_cache_private.h
@@ -85,6 +97,26 @@ add_library(core
   arcade/devices/audio/k054539.h
   arcade/devices/audio/ymf271.cpp
   arcade/devices/audio/ymf271.h
+  arcade/devices/jvs/jvs_bus.cpp
+  arcade/devices/jvs/jvs_bus.h
+  arcade/devices/jvs/jvs_chain.cpp
+  arcade/devices/jvs/jvs_chain.h
+  arcade/devices/jvs/namco_cyberlead.cpp
+  arcade/devices/jvs/namco_cyberlead.h
+  arcade/devices/jvs/namco_cyberlead_led.cpp
+  arcade/devices/jvs/namco_cyberlead_led.h
+  arcade/devices/jvs/namco_fca10.cpp
+  arcade/devices/jvs/namco_fca10.h
+  arcade/devices/jvs/namco_emio102.cpp
+  arcade/devices/jvs/namco_emio102.h
+  arcade/devices/jvs/namco_empri101.cpp
+  arcade/devices/jvs/namco_empri101.h
+  arcade/devices/cpu/sh7014.cpp
+  arcade/devices/cpu/sh7014.h
+  arcade/devices/namco/namco_system12_cdxa.cpp
+  arcade/devices/namco/namco_system12_cdxa.h
+  arcade/devices/namco/namco_system12_hsc.cpp
+  arcade/devices/namco/namco_system12_hsc.h
   arcade/devices/security/cat702.cpp
   arcade/devices/storage/chd_hard_disk.cpp
   arcade/devices/storage/chd_hard_disk.h
@@ -103,6 +135,9 @@ add_library(core
   arcade/third_party/ymfm/ymfm_ssg.h
   arcade/third_party/z80_superzazu/z80.cpp
   arcade/third_party/z80_superzazu/z80.h
+  arcade/third_party/sh2/sh2.cpp
+  arcade/third_party/sh2/sh2.h
+  arcade/third_party/sh2/LICENSE
   arcade/systems/sony/zn/acclaim_ata.cpp
   arcade/systems/sony/zn/acclaim_ata.h
   arcade/systems/sony/zn/time_warner_ata.cpp
@@ -139,6 +174,8 @@ add_library(core
   arcade/devices/storage/ncr53cf96.h
   arcade/systems/konami/konami.cpp
   arcade/systems/konami/konami.h
+  arcade/systems/konami/gq/konami_gq.cpp
+  arcade/systems/konami/gq/konami_gq.h
   arcade/systems/konami/gq/konami_gq_eeprom.cpp
   arcade/systems/konami/gq/konami_gq_eeprom.h
   arcade/systems/konami/gq/konami_gq_hdd.cpp
@@ -155,23 +192,25 @@ add_library(core
   arcade/systems/konami/gq/konami_gq_tms57002.h
   arcade/systems/konami/gq/konami_gq_tms57002.hxx
   arcade/systems/konami/gq/konami_gq_tms57002_ops.cpp
-  m37710/m37710.cpp
-  m37710/m37710.h
-  m37710/m37710cm.h
-  m37710/m37710il.h
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
-  m37710/m37710op.h
-  musashi/m68k.h
-  musashi/m68k_bus.cpp
-  musashi/m68k_bus.h
-  musashi/m68kconf.h
-  musashi/m68kcpu.c
-  musashi/m68kcpu.h
-  musashi/m68kops.c
-  musashi/m68kops.h
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710.h
+  arcade/third_party/m37710/m37710cm.h
+  arcade/third_party/m37710/m37710il.h
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710op.h
+  arcade/third_party/musashi/m68k.h
+  arcade/third_party/musashi/m68k_bus.cpp
+  arcade/third_party/musashi/m68k_bus.h
+  arcade/third_party/musashi/m68kconf.h
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kcpu.h
+  arcade/third_party/musashi/m68kops.c
+  arcade/third_party/musashi/m68kops.h
+  arcade/systems/konami/gv/konami_gv.cpp
+  arcade/systems/konami/gv/konami_gv.h
   arcade/systems/konami/gv/konami_gv_cdrom.cpp
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp
@@ -182,16 +221,24 @@ add_library(core
   arcade/systems/namco/system10/namco_system10_memn.h
   arcade/systems/namco/system11/namco_system11.cpp
   arcade/systems/namco/system11/namco_system11.h
+  arcade/third_party/h8_300h/emu.c
+  arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+  arcade/third_party/h8_300h/config.h
+  arcade/third_party/h8_300h/device.h
+  arcade/third_party/h8_300h/ir.h
+  arcade/third_party/h8_300h/logger.h
+  arcade/third_party/h8_300h/registers.h
+  arcade/third_party/h8_300h/rtc.h
+  arcade/third_party/h8_300h/system.h
+  arcade/third_party/h8_300h/types.h
+  arcade/systems/namco/system12/namco_system12.cpp
+  arcade/systems/namco/system12/namco_system12.h
   legacy_pad_state.cpp
   legacy_pad_state.h
   mdec.cpp
   mdec.h
   mips_encoder.h
   pad.h
-  pcdrv.cpp
-  pcdrv.h
-  pine_server.cpp
-  pine_server.h
   save_state_version.h
   settings.cpp
   settings.h
@@ -229,14 +276,16 @@ set(NEWREC_SOURCES
 target_precompile_headers(core PRIVATE "pch.h")
 set_property(TARGET core PROPERTY C_STANDARD 11)
 set_source_files_properties(
-  m37710/m37710.cpp
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
   arcade/third_party/adsp2181/adsp2181_core.c
-  musashi/m68kcpu.c
-  musashi/m68kops.c
+  arcade/third_party/h8_300h/emu.c
+  arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kops.c
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 # ArcadeDuck reviewed imported/adapted core warning isolation (MSVC only).
@@ -271,24 +320,37 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   )
 
   set_source_files_properties(
-    m37710/m37710.cpp
-    m37710/m37710o0.cpp
-    m37710/m37710o1.cpp
-    m37710/m37710o2.cpp
-    m37710/m37710o3.cpp
+    arcade/third_party/m37710/m37710.cpp
+    arcade/third_party/m37710/m37710o0.cpp
+    arcade/third_party/m37710/m37710o1.cpp
+    arcade/third_party/m37710/m37710o2.cpp
+    arcade/third_party/m37710/m37710o3.cpp
     PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244"
   )
 
   set_source_files_properties(
-    musashi/m68kcpu.c
-    musashi/m68kops.c
+    arcade/third_party/h8_300h/emu.c
+    arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+    PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244;/wd4245;/wd4702"
+  )
+
+  set_source_files_properties(
+    arcade/third_party/musashi/m68kcpu.c
+    arcade/third_party/musashi/m68kops.c
     PROPERTIES COMPILE_OPTIONS "/wd4101;/wd4189;/wd4244;/wd4245;/wd4702"
+  )
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    arcade/third_party/h8_300h/emu.c
+    arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+    PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-function;-Wno-sign-compare"
   )
 endif()
 target_include_directories(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(core PUBLIC Threads::Threads common util)
-target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr)
+target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr lzma)
 
 if(CPU_ARCH_X64)
   target_compile_definitions(core PUBLIC "ENABLE_RECOMPILER=1" "ENABLE_NEWREC=1" "ENABLE_MMAP_FASTMEM=1")

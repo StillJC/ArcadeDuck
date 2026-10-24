@@ -7,6 +7,7 @@
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/settings.h"
+#include "core/system.h"
 
 #include "common/path.h"
 #include "common/settings_interface.h"
@@ -31,13 +32,12 @@ enum class Control : u8
   SelectUp, SelectDown, SelectLeft, SelectRight, Enter, Sensor,
   MahjongA, MahjongB, MahjongC, MahjongD, MahjongE, MahjongF, MahjongG, MahjongH,
   MahjongI, MahjongJ, MahjongK, MahjongL, MahjongM, MahjongN, MahjongKan, MahjongPon,
-  MahjongChi, MahjongReach, MahjongRon, Count
+  MahjongChi, MahjongReach, MahjongRon, Button7, Button8, Count
 };
 
 enum class DrivingAxis : u8
 {
   Steering,
-  ThrottleBrake,
   Accelerator,
   Brake,
   Clutch,
@@ -51,6 +51,8 @@ enum class OperatorControl : u8
 {
   Service,
   Test,
+  CyberLeadModeA,
+  CyberLeadModeB,
   Count
 };
 
@@ -75,6 +77,8 @@ struct PortState
   float axis_x = 0.0f;
   float axis_y = 0.0f;
   float steering = 0.5f;
+  float steering_axis = 0.5f;
+  std::array<u32, 2> steering_button_counts = {};
   float throttle_brake = 0.5f;
   float accelerator = 0.0f;
   float brake = 0.0f;
@@ -98,6 +102,8 @@ struct OperatorState
 };
 
 std::mutex s_mutex;
+u32 s_service_min_hold_ms = 0;
+GlobalTicks s_service_hold_until = 0;
 std::array<PortState, Arcade::NUM_ARCADE_CONTROLLER_PORTS> s_ports;
 OperatorState s_operator;
 bool s_sinden_border_enabled = false;
@@ -111,7 +117,7 @@ float s_lightgun_viewport_border_y = 0.0f;
 
 std::optional<Control> GetControl(std::string_view key)
 {
-  static constexpr std::array<std::pair<std::string_view, Control>, 49> controls = {{
+  static constexpr std::array<std::pair<std::string_view, Control>, 51> controls = {{
     {"Left", Control::Left}, {"Right", Control::Right}, {"Up", Control::Up}, {"Down", Control::Down},
     {"Button1", Control::Button1}, {"Button2", Control::Button2}, {"Button3", Control::Button3},
     {"Button4", Control::Button4}, {"Button5", Control::Button5}, {"Button6", Control::Button6},
@@ -129,6 +135,7 @@ std::optional<Control> GetControl(std::string_view key)
     {"MahjongM", Control::MahjongM}, {"MahjongN", Control::MahjongN}, {"MahjongKan", Control::MahjongKan},
     {"MahjongPon", Control::MahjongPon}, {"MahjongChi", Control::MahjongChi},
     {"MahjongReach", Control::MahjongReach}, {"MahjongRon", Control::MahjongRon},
+    {"Button7", Control::Button7}, {"Button8", Control::Button8},
   }};
   for (const auto& [name, control] : controls)
   {
@@ -299,7 +306,7 @@ void OnDigital(u32 port_index, Control control, s32 value)
       port.direction_order[static_cast<u32>(control)] = ++port.direction_sequence;
     if (port.type == Arcade::ArcadeControllerType::Tokimeki)
     {
-      // Legacy GSR binding names control the combined PoC excitement level for profile compatibility.
+      // Legacy GSR binding names control the combined excitement level for profile compatibility.
       if (control == Control::GSRIncrease)
         Konami::AdjustGVTokimekiExcitement(+1);
       if (control == Control::GSRDecrease)
@@ -319,6 +326,11 @@ void OnOperatorDigital(OperatorControl control, s32 value)
     s_operator.pressed_counts[control_index]--;
 
   const bool pressed = s_operator.pressed_counts[control_index] != 0;
+  if (control == OperatorControl::Service && value > 0 && s_service_min_hold_ms != 0)
+  {
+    s_service_hold_until = System::GetGlobalTickCounter() +
+                           (static_cast<GlobalTicks>(s_service_min_hold_ms) * System::GetTicksPerSecond()) / 1000;
+  }
   if (Konami::IsGQActive())
   {
     if (control == OperatorControl::Service)
@@ -383,6 +395,20 @@ float ApplyDrivingAxisAdjustment(float value, bool centered, float deadzone, flo
   return (sensitivity == 1.0f) ? normalized : std::pow(normalized, 1.0f / sensitivity);
 }
 
+void UpdateDrivingSteering(PortState& port)
+{
+  const bool left = port.steering_button_counts[0] != 0;
+  const bool right = port.steering_button_counts[1] != 0;
+  if (left && !right)
+    port.steering = 0.0f;
+  else if (right && !left)
+    port.steering = 1.0f;
+  else if (left && right)
+    port.steering = 0.5f;
+  else
+    port.steering = port.steering_axis;
+}
+
 void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
@@ -390,11 +416,9 @@ void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
   switch (axis)
   {
     case DrivingAxis::Steering:
-      port.steering =
+      port.steering_axis =
         ApplyDrivingAxisAdjustment(value, true, port.steering_deadzone, port.steering_sensitivity);
-      break;
-    case DrivingAxis::ThrottleBrake:
-      port.throttle_brake = ApplyDrivingAxisAdjustment(value, true, 0.0f, 1.0f);
+      UpdateDrivingSteering(port);
       break;
     case DrivingAxis::Accelerator:
       port.accelerator =
@@ -407,6 +431,19 @@ void OnDrivingAxis(u32 port_index, DrivingAxis axis, float value)
       port.clutch = ApplyDrivingAxisAdjustment(value, false, port.clutch_deadzone, port.clutch_sensitivity);
       break;
   }
+}
+
+void OnDrivingSteeringButton(u32 port_index, bool right, s32 value)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  PortState& port = s_ports[port_index];
+  u32& pressed_count = port.steering_button_counts[right ? 1 : 0];
+  if (value > 0)
+    pressed_count++;
+  else if (pressed_count > 0)
+    pressed_count--;
+
+  UpdateDrivingSteering(port);
 }
 
 void OnPointerMove(u32 port_index, InputBindingKey key, float delta)
@@ -506,9 +543,9 @@ void AddDigitalBindings(SettingsInterface& si, const std::string& section, u32 p
   }
 }
 
-void AddOperatorBinding(SettingsInterface& si, std::string_view key, OperatorControl control)
+void AddOperatorBinding(SettingsInterface& si, std::string_view section, std::string_view key, OperatorControl control)
 {
-  for (const std::string& binding : si.GetStringList("ArcadeOperator", key.data()))
+  for (const std::string& binding : si.GetStringList(section.data(), key.data()))
   {
     InputManager::AddBinding(
       binding, InputButtonEventHandler{[control](s32 value) { OnOperatorDigital(control, value); }});
@@ -541,9 +578,19 @@ void AddDrivingAxisBindings(SettingsInterface& si, const std::string& section, u
   for (const std::string& binding : si.GetStringList(section.c_str(), key.data()))
   {
     const std::string normalized_binding =
-      (axis == DrivingAxis::Steering || axis == DrivingAxis::ThrottleBrake) ? NormalizeCenteredControllerAxisBinding(binding) : binding;
+      (axis == DrivingAxis::Steering) ? NormalizeCenteredControllerAxisBinding(binding) : binding;
     InputManager::AddBinding(
       normalized_binding, InputAxisEventHandler{[port, axis](float value) { OnDrivingAxis(port, axis, value); }});
+  }
+}
+
+void AddDrivingSteeringButtonBindings(SettingsInterface& si, const std::string& section, u32 port,
+                                      std::string_view key, bool right)
+{
+  for (const std::string& binding : si.GetStringList(section.c_str(), key.data()))
+  {
+    InputManager::AddBinding(
+      binding, InputButtonEventHandler{[port, right](s32 value) { OnDrivingSteeringButton(port, right, value); }});
   }
 }
 
@@ -578,7 +625,7 @@ void ResyncWindowedPointer(float x, float y)
 
   InputManager::SetPointerAbsolutePosition(physical_device, x, y);
 }
-void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
+void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std::string_view game_id, SettingsInterface* game_si)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
   Konami::ResetGQArcadeInputs();
@@ -587,24 +634,43 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
   s_operator = {};
   s_sinden_border_enabled = si.GetBoolValue("ArcadeControllerPort1", "SindenBorder", false);
   s_sinden_border_width = std::clamp<u32>(si.GetUIntValue("ArcadeControllerPort1", "SindenBorderWidth", 4), 1, 64);
-  AddOperatorBinding(operator_si, "Test", OperatorControl::Test);
-  AddOperatorBinding(operator_si, "Service", OperatorControl::Service);
+  AddOperatorBinding(operator_si, "ArcadeOperator", "Test", OperatorControl::Test);
+  AddOperatorBinding(operator_si, "ArcadeOperator", "Service", OperatorControl::Service);
+  if (game_si)
+  {
+    AddOperatorBinding(*game_si, "ArcadeMachine", "NamcoSystem12CyberLeadLEDModeA", OperatorControl::CyberLeadModeA);
+    AddOperatorBinding(*game_si, "ArcadeMachine", "NamcoSystem12CyberLeadLEDModeB", OperatorControl::CyberLeadModeB);
+  }
+  const Arcade::ArcadeGameControlProfile* const game_profile =
+    game_id.empty() ? nullptr : Arcade::GetArcadeGameControlProfile(game_id);
   for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
   {
     const std::string section = "ArcadeControllerPort" + std::to_string(port + 1);
-    const std::string type_name = si.GetStringValue(section.c_str(), "Type", "none");
     PortState& state = s_ports[port];
-    for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
+    if (game_profile)
     {
-      if (info.name == type_name)
-        state.type = info.type;
+      const Arcade::ArcadePortProfile& port_profile = game_profile->ports[port];
+      state.type = port_profile.controller_type;
+      state.layout = port_profile.game_layout_key;
+      state.joystick_mode = port_profile.joystick_mode;
+    }
+    else
+    {
+      const std::string type_name = si.GetStringValue(section.c_str(), "Type", "none");
+      for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
+      {
+        if (info.name == type_name)
+          state.type = info.type;
+      }
+      state.layout = si.GetStringValue(section.c_str(), "Layout", "");
+      if (const Arcade::ArcadeControlLayoutInfo* layout = Arcade::GetArcadeControlLayoutInfo(state.layout))
+        state.joystick_mode = layout->joystick_mode;
     }
     if (state.type == Arcade::ArcadeControllerType::None)
       continue;
-    state.layout = si.GetStringValue(section.c_str(), "Layout", "");
-    if (const Arcade::ArcadeControlLayoutInfo* layout = Arcade::GetArcadeControlLayoutInfo(state.layout))
-      state.joystick_mode = layout->joystick_mode;
     state.input_mode = si.GetStringValue(section.c_str(), "InputMode", "BoundAxis");
+    if (state.input_mode != "NativeRawInputDevice")
+      state.input_mode = "BoundAxis";
     state.physical_device = si.GetStringValue(section.c_str(), "PhysicalDevice", "");
     state.x_sensitivity = si.GetIntValue(section.c_str(), "XSensitivity", 100) / 100.0f;
     state.y_sensitivity = si.GetIntValue(section.c_str(), "YSensitivity", 100) / 100.0f;
@@ -638,7 +704,7 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
                             "GSRDecrease", "GearUp", "GearDown", "Handbrake", "View", "Horn", "MusicNext",
                             "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft", "SelectRight",
                             "Enter", "Sensor", "MahjongA", "MahjongB", "MahjongC", "MahjongD",
-                            "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
+                            "Button7", "Button8", "MahjongE", "MahjongF", "MahjongG", "MahjongH", "MahjongI", "MahjongJ",
                             "MahjongK", "MahjongL", "MahjongM", "MahjongN", "MahjongKan", "MahjongPon",
                             "MahjongChi", "MahjongReach", "MahjongRon"})
     {
@@ -657,7 +723,11 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si)
     else if (state.type == Arcade::ArcadeControllerType::Driving)
     {
       AddDrivingAxisBindings(si, section, port, "Steering", DrivingAxis::Steering);
-      AddDrivingAxisBindings(si, section, port, "ThrottleBrake", DrivingAxis::ThrottleBrake);
+      if (si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false))
+      {
+        AddDrivingSteeringButtonBindings(si, section, port, "SteeringLeft", false);
+        AddDrivingSteeringButtonBindings(si, section, port, "SteeringRight", true);
+      }
       AddDrivingAxisBindings(si, section, port, "Accelerator", DrivingAxis::Accelerator);
       AddDrivingAxisBindings(si, section, port, "Brake", DrivingAxis::Brake);
       AddDrivingAxisBindings(si, section, port, "Clutch", DrivingAxis::Clutch);
@@ -724,8 +794,6 @@ float GetAnalogValue(u32 port, std::string_view key)
   const PortState& state = s_ports[port];
   if (key == "Steering")
     return state.steering;
-  if (key == "ThrottleBrake")
-    return state.throttle_brake;
   if (key == "Accelerator")
     return state.accelerator;
   if (key == "Brake")
@@ -759,14 +827,28 @@ bool HasAnalogControl(u32 port, std::string_view key)
   return false;
 }
 
+void SetOperatorServiceMinimumHold(u32 milliseconds)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  s_service_min_hold_ms = milliseconds;
+  s_service_hold_until = 0;
+}
+
 bool IsOperatorPressed(std::string_view key)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
 
   if (key == "Service")
-    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Service)] != 0;
+  {
+    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Service)] != 0 ||
+           (s_service_min_hold_ms != 0 && System::GetGlobalTickCounter() < s_service_hold_until);
+  }
   if (key == "Test")
     return s_operator.pressed_counts[static_cast<u32>(OperatorControl::Test)] != 0;
+  if (key == "CyberLeadModeA")
+    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::CyberLeadModeA)] != 0;
+  if (key == "CyberLeadModeB")
+    return s_operator.pressed_counts[static_cast<u32>(OperatorControl::CyberLeadModeB)] != 0;
 
   return false;
 }
@@ -787,21 +869,6 @@ void Update()
         NamcoSystem11::AddFamilyBowlTrackballDelta(port, delta_x, delta_y);
       else
         Konami::AddGVTrackballDelta(port, delta_x, delta_y);
-    }
-    else if (state.type == Arcade::ArcadeControllerType::Lightgun &&
-             (state.input_mode == "AnalogCursor" || state.input_mode == "AnalogVelocity") &&
-             port < (Konami::IsGQActive() ? 3U : 2U))
-    {
-      const float x = 0.5f + state.axis_x * state.x_sensitivity * (state.invert_x ? -0.02f : 0.02f);
-      const float y = 0.5f + state.axis_y * state.y_sensitivity * (state.invert_y ? -0.02f : 0.02f);
-      state.lightgun_x = std::clamp(x, 0.0f, 1.0f);
-      state.lightgun_y = std::clamp(y, 0.0f, 1.0f);
-      state.lightgun_offscreen = false;
-      if (Konami::IsGQActive())
-        Konami::SetGQLightgunPosition(port, state.lightgun_x, state.lightgun_y);
-      else
-        Konami::SetGVLightgunPosition(port, state.lightgun_x, state.lightgun_y);
-      ApplyPort(port);
     }
   }
 }

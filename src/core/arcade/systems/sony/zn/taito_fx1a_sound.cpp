@@ -385,8 +385,7 @@ void AdvanceYMSynthesis(u32 z80_cycles)
 
   // Keep the YM2610B synthesis timeline tied to the same 4 MHz Z80
   // timeline used for command execution and Yamaha timer scheduling.
-  // This is the same architecture used by the working Capcom QSound path:
-  // hardware sound generation advances whenever the sound CPU advances,
+  // Hardware sound generation advances whenever the sound CPU advances,
   // including host-side synchronization before command writes.
   s_state.ym_native_phase += static_cast<u64>(z80_cycles) * s_state.ym_native_sample_rate;
   while (s_state.ym_native_phase >= Z80_CLOCK_HZ)
@@ -539,8 +538,8 @@ void GenerateYMNativeSample()
   s_ym2610->generate(&sample, 1);
 
   // YMFM exposes the OPNB stereo mix on outputs 0/1 and the SSG mono mix on
-  // output 2. Match the FX-1A board routing used by the reference driver:
-  // SSG 0.75 to both channels, FM/ADPCM at unity to their stereo channels.
+  // output 2. FX-1A routes SSG at 0.75 to both channels and FM/ADPCM at unity
+  // to their stereo channels.
   const s32 ssg = (sample.data[2] * 3) / 4;
   s_state.ym_last_left = sample.data[0] + ssg;
   s_state.ym_last_right = sample.data[1] + ssg;

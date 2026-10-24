@@ -258,7 +258,7 @@ void SetupWizardDialog::onDirectoryListContextMenuRequested(const QPoint& point)
 
 void SetupWizardDialog::onAddSearchDirectoryButtonClicked()
 {
-  QString dir = QDir::toNativeSeparators(QFileDialog::getExistingDirectory(this, tr("Select Search Directory")));
+  QString dir = QDir::toNativeSeparators(QFileDialog::getExistingDirectory(this, tr("Select Content Directory")));
 
   if (dir.isEmpty())
     return;

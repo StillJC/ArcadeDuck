@@ -25,7 +25,6 @@
     <ClCompile Include="postprocessingsettingswidget.cpp" />
     <ClCompile Include="reshadepackagemanagerdialog.cpp" />
     <ClCompile Include="cheatmanagerwindow.cpp" />
-    <ClCompile Include="cheatcodeeditordialog.cpp" />
     <ClCompile Include="debuggerwindow.cpp" />
     <ClCompile Include="debuggermodels.cpp" />
     <ClCompile Include="memoryviewwidget.cpp" />
@@ -63,9 +62,6 @@
       <Filter>moc</Filter>
     </ClCompile>
     <ClCompile Include="$(IntDir)moc_operatorsettingswidget.cpp">
-      <Filter>moc</Filter>
-    </ClCompile>
-    <ClCompile Include="$(IntDir)moc_cheatcodeeditordialog.cpp">
       <Filter>moc</Filter>
     </ClCompile>
     <ClCompile Include="$(IntDir)moc_cheatmanagerwindow.cpp">
@@ -205,7 +201,6 @@
     <QtMoc Include="operatorsettingswidget.h" />
     <QtMoc Include="postprocessingsettingswidget.h" />
     <QtMoc Include="cheatmanagerwindow.h" />
-    <QtMoc Include="cheatcodeeditordialog.h" />
     <QtMoc Include="debuggermodels.h" />
     <QtMoc Include="debuggerwindow.h" />
     <QtMoc Include="memoryviewwidget.h" />
@@ -238,7 +233,6 @@
     <QtUi Include="operatorsettingswidget.ui" />
     <QtUi Include="postprocessingchainconfigwidget.ui" />
     <QtUi Include="cheatmanagerwindow.ui" />
-    <QtUi Include="cheatcodeeditordialog.ui" />
     <QtUi Include="emulationsettingswidget.ui" />
     <QtUi Include="achievementsettingswidget.ui" />
     <QtUi Include="achievementlogindialog.ui" />

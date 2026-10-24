@@ -2644,6 +2644,9 @@ void GPU_HW::LoadVertices()
       const auto [texcoord_x, texcoord_y] = UnpackTexcoord(rc.texture_enable ? Truncate16(FifoPop()) : 0);
       u32 orig_tex_left = ZeroExtend16(texcoord_x);
       u32 orig_tex_top = ZeroExtend16(texcoord_y);
+      const bool texture_x_flip = rc.texture_enable && m_draw_mode.mode_reg.texture_x_flip;
+      const bool texture_y_flip = rc.texture_enable && m_draw_mode.mode_reg.texture_y_flip;
+      const u32 flipped_uv_start_adjust = (m_resolution_scale > 1) ? 1u : 0u;
       u32 rectangle_width;
       u32 rectangle_height;
       switch (rc.rectangle_size)
@@ -2684,42 +2687,53 @@ void GPU_HW::LoadVertices()
       DebugAssert(m_batch_vertex_space >= MAX_VERTICES_FOR_RECTANGLE &&
                   m_batch_index_space >= MAX_INDICES_FOR_RECTANGLE);
 
-      // Split the rectangle into multiple quads if it's greater than 256x256, as the texture page should repeat.
+      // Split rectangles at 8-bit texture-coordinate wrap boundaries. Flipped sprites walk U/V backwards, so they
+      // wrap through 0 back to 255 instead of always advancing toward 255.
       u32 tex_top = orig_tex_top;
       for (u32 y_offset = 0; y_offset < rectangle_height;)
       {
-        const s32 quad_height = std::min(rectangle_height - y_offset, TEXTURE_PAGE_HEIGHT - tex_top);
+        const u32 quad_height =
+          texture_y_flip ? std::min(rectangle_height - y_offset, tex_top + 1u) :
+                           std::min(rectangle_height - y_offset, TEXTURE_PAGE_HEIGHT - tex_top);
         const float quad_start_y = static_cast<float>(pos_y + static_cast<s32>(y_offset));
         const float quad_end_y = quad_start_y + static_cast<float>(quad_height);
-        const u32 tex_bottom = tex_top + quad_height;
+        const u32 tex_v0 = texture_y_flip ? (tex_top + flipped_uv_start_adjust) : tex_top;
+        const u32 tex_v1 = texture_y_flip ? (tex_top - (quad_height - 1u)) : (tex_top + quad_height);
+        const u32 tex_min_v = texture_y_flip ? tex_v1 : tex_top;
+        const u32 tex_max_v = texture_y_flip ? tex_top : (tex_v1 - 1u);
 
         u32 tex_left = orig_tex_left;
         for (u32 x_offset = 0; x_offset < rectangle_width;)
         {
-          const s32 quad_width = std::min(rectangle_width - x_offset, TEXTURE_PAGE_WIDTH - tex_left);
+          const u32 quad_width =
+            texture_x_flip ? std::min(rectangle_width - x_offset, tex_left + 1u) :
+                             std::min(rectangle_width - x_offset, TEXTURE_PAGE_WIDTH - tex_left);
           const float quad_start_x = static_cast<float>(pos_x + static_cast<s32>(x_offset));
           const float quad_end_x = quad_start_x + static_cast<float>(quad_width);
-          const u32 tex_right = tex_left + quad_width;
-          const u32 uv_limits = BatchVertex::PackUVLimits(tex_left, tex_right - 1, tex_top, tex_bottom - 1);
+          const u32 tex_u0 = texture_x_flip ? (tex_left + flipped_uv_start_adjust) : tex_left;
+          const u32 tex_u1 = texture_x_flip ? (tex_left - (quad_width - 1u)) : (tex_left + quad_width);
+          const u32 tex_min_u = texture_x_flip ? tex_u1 : tex_left;
+          const u32 tex_max_u = texture_x_flip ? tex_left : (tex_u1 - 1u);
+          const u32 uv_limits = BatchVertex::PackUVLimits(tex_min_u, tex_max_u, tex_min_v, tex_max_v);
 
           if (rc.texture_enable && m_texpage_dirty != 0)
           {
-            CheckForTexPageOverlap(GSVector4i(static_cast<s32>(tex_left), static_cast<s32>(tex_top),
-                                              static_cast<s32>(tex_right), static_cast<s32>(tex_bottom)));
+            CheckForTexPageOverlap(GSVector4i(static_cast<s32>(tex_min_u), static_cast<s32>(tex_min_v),
+                                              static_cast<s32>(tex_max_u + 1u), static_cast<s32>(tex_max_v + 1u)));
           }
 
           const u32 base_vertex = m_batch_vertex_count;
           (m_batch_vertex_ptr++)
-            ->Set(quad_start_x, quad_start_y, depth, 1.0f, color, texpage, Truncate16(tex_left), Truncate16(tex_top),
+            ->Set(quad_start_x, quad_start_y, depth, 1.0f, color, texpage, Truncate16(tex_u0), Truncate16(tex_v0),
                   uv_limits);
           (m_batch_vertex_ptr++)
-            ->Set(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, Truncate16(tex_right), Truncate16(tex_top),
+            ->Set(quad_end_x, quad_start_y, depth, 1.0f, color, texpage, Truncate16(tex_u1), Truncate16(tex_v0),
                   uv_limits);
           (m_batch_vertex_ptr++)
-            ->Set(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, Truncate16(tex_left), Truncate16(tex_bottom),
+            ->Set(quad_start_x, quad_end_y, depth, 1.0f, color, texpage, Truncate16(tex_u0), Truncate16(tex_v1),
                   uv_limits);
           (m_batch_vertex_ptr++)
-            ->Set(quad_end_x, quad_end_y, depth, 1.0f, color, texpage, Truncate16(tex_right), Truncate16(tex_bottom),
+            ->Set(quad_end_x, quad_end_y, depth, 1.0f, color, texpage, Truncate16(tex_u1), Truncate16(tex_v1),
                   uv_limits);
           m_batch_vertex_count += 4;
           m_batch_vertex_space -= 4;
@@ -2734,11 +2748,11 @@ void GPU_HW::LoadVertices()
           m_batch_index_space -= 6;
 
           x_offset += quad_width;
-          tex_left = 0;
+          tex_left = texture_x_flip ? (TEXTURE_PAGE_WIDTH - 1u) : 0u;
         }
 
         y_offset += quad_height;
-        tex_top = 0;
+        tex_top = texture_y_flip ? (TEXTURE_PAGE_HEIGHT - 1u) : 0u;
       }
 
       AddDrawnRectangle(clamped_rect);

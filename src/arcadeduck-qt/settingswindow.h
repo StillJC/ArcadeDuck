@@ -6,6 +6,7 @@
 
 #pragma once
 #include "ui_settingswindow.h"
+#include "controllersettingswindow.h"
 
 #include "util/ini_settings_interface.h"
 
@@ -17,6 +18,7 @@
 #include <array>
 #include <string>
 
+class QShowEvent;
 class QWheelEvent;
 
 
@@ -103,15 +105,18 @@ Q_SIGNALS:
 public Q_SLOTS:
   void setCategory(const char* category);
   void setCategoryRow(int index);
+  void setControlsCategory(ControllerSettingsWindow::Category category);
 
 private Q_SLOTS:
   void onCategoryCurrentRowChanged(int row);
   void onRestoreDefaultsClicked();
   void onCopyGlobalSettingsClicked();
   void onClearSettingsClicked();
+  void onClearControlMappingClicked();
 
 protected:
   void closeEvent(QCloseEvent* event) override;
+  void showEvent(QShowEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
 
 private:
@@ -128,6 +133,8 @@ private:
   QWidget* createArcadeControlsPage();
 
   void addWidget(QWidget* widget, QString title, QString icon, QString help_text);
+  void scheduleResizeToContents();
+  void resizeToContents();
   bool handleWheelEvent(QWheelEvent* event);
 
   Ui::SettingsWindow m_ui;
@@ -147,6 +154,9 @@ private:
   AchievementSettingsWidget* m_achievement_settings = nullptr;
   FolderSettingsWidget* m_folder_settings = nullptr;
   AdvancedSettingsWidget* m_advanced_settings = nullptr;
+  ControllerSettingsWindow* m_controller_settings = nullptr;
+  ControllerSettingsWindow* m_arcade_game_controls = nullptr;
+  int m_arcade_controls_category_index = -1;
 
   std::array<QString, MAX_SETTINGS_WIDGETS> m_category_help_text;
 

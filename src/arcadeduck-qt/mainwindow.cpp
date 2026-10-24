@@ -26,6 +26,7 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/game_list.h"
 #include "core/fullscreen_ui.h"
 #include "core/host.h"
@@ -48,13 +49,21 @@
 #include <QtCore/QSaveFile>
 #include <QtCore/QTimer>
 #include <QtCore/QUrl>
+#include <QtGui/QColor>
 #include <QtGui/QCursor>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QPainter>
+#include <QtGui/QPixmap>
+#include <QtGui/QScreen>
 #include <QtGui/QWindowStateChangeEvent>
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressBar>
 #include <QtWidgets/QStyleFactory>
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <span>
 
 #ifdef _WIN32
 #include "common/windows_headers.h"
@@ -112,7 +121,203 @@ static void ConstrainWindowSizingRectTo16By9(RECT* rect, WPARAM edge, LONG extra
 
 Log_SetChannel(MainWindow);
 
-static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip)");
+namespace ImGuiManager {
+bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+u64 GetCyberLeadLEDSnapshotVersion();
+}
+
+class CyberLeadLEDWindow final : public QWidget
+{
+public:
+  CyberLeadLEDWindow()
+  {
+    setWindowTitle(QStringLiteral("Cyber Lead LED"));
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setMinimumSize(288, 48);
+
+    m_refresh_timer.setInterval(16);
+    connect(&m_refresh_timer, &QTimer::timeout, this, [this]() {
+      if (ImGuiManager::GetCyberLeadLEDSnapshotVersion() != m_panel_version)
+        update();
+    });
+    m_refresh_timer.start();
+  }
+
+  void setPanelSize(u8 size)
+  {
+    size = std::clamp<u8>(size, 1, 3);
+    if (m_panel_size == size)
+      return;
+
+    m_panel_size = size;
+    if (!m_borderless_fullscreen)
+      resize(getNormalSize());
+  }
+
+  void setTargetScreen(const QString& screen_name, QScreen* fallback_screen)
+  {
+    if (m_screen_initialized && m_target_screen_name == screen_name)
+      return;
+
+    m_screen_initialized = true;
+    m_target_screen_name = screen_name;
+    applyScreenGeometry(resolveTargetScreen(fallback_screen));
+  }
+
+  void setBorderlessFullscreen(bool enabled, QScreen* fallback_screen)
+  {
+    if (m_borderless_fullscreen == enabled)
+      return;
+
+    const bool was_visible = isVisible();
+    m_borderless_fullscreen = enabled;
+    setWindowFlag(Qt::FramelessWindowHint, enabled);
+    applyScreenGeometry(resolveTargetScreen(fallback_screen));
+    if (was_visible)
+      show();
+  }
+
+protected:
+  void paintEvent(QPaintEvent* event) override
+  {
+    Q_UNUSED(event);
+
+    // The panel is only redrawn when the LED frame, window size or colour changes.
+    const u64 version = ImGuiManager::GetCyberLeadLEDSnapshotVersion();
+    const u8 color = std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8);
+    const qreal dpr = devicePixelRatioF();
+    if (m_panel.isNull() || version != m_panel_version || color != m_panel_color || size() != m_panel_size_px ||
+        dpr != m_panel.devicePixelRatio())
+    {
+      m_panel = QPixmap(size() * dpr);
+      m_panel.setDevicePixelRatio(dpr);
+      m_panel_version = version;
+      m_panel_color = color;
+      m_panel_size_px = size();
+
+      QPainter panel_painter(&m_panel);
+      drawPanel(panel_painter, color);
+    }
+
+    QPainter painter(this);
+    painter.drawPixmap(0, 0, m_panel);
+  }
+
+private:
+  void drawPanel(QPainter& painter, u8 color)
+  {
+    painter.fillRect(rect(), Qt::black);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    static constexpr u32 WIDTH = 96;
+    static constexpr u32 HEIGHT = 16;
+    std::array<u8, WIDTH * HEIGHT> pixels{};
+    if (!ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8>(pixels.data(), pixels.size())))
+      return;
+
+    const int grid_width = std::max(width(), 1);
+    const int grid_height = std::max(
+      static_cast<int>(std::lround((static_cast<double>(grid_width) * static_cast<double>(HEIGHT)) /
+                                   static_cast<double>(WIDTH))),
+      1);
+    const int grid_x = 0;
+    const int grid_y = (height() - grid_height) / 2;
+    const qreal nominal_cell =
+      std::max<qreal>(1.0, static_cast<qreal>(grid_width) / static_cast<qreal>(WIDTH));
+    const int gap = static_cast<int>(
+      std::clamp(std::round(nominal_cell * 0.12), 1.0, std::max(nominal_cell - 1.0, 1.0)));
+
+    static const std::array<std::array<QColor, 4>, 9> COLOR_PALETTES = {{
+      {{QColor(20, 16, 8), QColor(96, 64, 8), QColor(208, 128, 8), QColor(255, 210, 64)}},
+      {{QColor(20, 5, 5), QColor(96, 8, 8), QColor(208, 20, 12), QColor(255, 64, 48)}},
+      {{QColor(20, 10, 4), QColor(96, 40, 4), QColor(208, 88, 8), QColor(255, 160, 32)}},
+      {{QColor(20, 18, 4), QColor(96, 80, 4), QColor(208, 176, 8), QColor(255, 240, 64)}},
+      {{QColor(4, 18, 6), QColor(8, 80, 12), QColor(16, 176, 24), QColor(64, 255, 80)}},
+      {{QColor(4, 16, 18), QColor(8, 72, 80), QColor(16, 160, 176), QColor(64, 240, 255)}},
+      {{QColor(4, 6, 20), QColor(8, 20, 96), QColor(16, 48, 208), QColor(64, 112, 255)}},
+      {{QColor(12, 5, 20), QColor(52, 12, 96), QColor(120, 24, 208), QColor(200, 80, 255)}},
+      {{QColor(12, 12, 12), QColor(72, 72, 72), QColor(176, 176, 176), QColor(255, 255, 255)}},
+    }};
+    const auto& colors = COLOR_PALETTES[color];
+
+    painter.setPen(Qt::NoPen);
+    for (u32 y = 0; y < HEIGHT; y++)
+    {
+      const int cell_top = grid_y + ((static_cast<int>(y) * grid_height) / static_cast<int>(HEIGHT));
+      const int cell_bottom = grid_y + ((static_cast<int>(y + 1) * grid_height) / static_cast<int>(HEIGHT));
+      const int dot_bottom = std::max(cell_top + 1, cell_bottom - gap);
+      for (u32 x = 0; x < WIDTH; x++)
+      {
+        const int cell_left = grid_x + ((static_cast<int>(x) * grid_width) / static_cast<int>(WIDTH));
+        const int cell_right = grid_x + ((static_cast<int>(x + 1) * grid_width) / static_cast<int>(WIDTH));
+        const int dot_right = std::max(cell_left + 1, cell_right - gap);
+        const qreal dot_size = static_cast<qreal>(std::min(dot_right - cell_left, dot_bottom - cell_top));
+        const qreal radius = dot_size * 0.2;
+
+        painter.setBrush(colors[pixels[(y * WIDTH) + x] & 3]);
+        painter.drawRoundedRect(QRectF(static_cast<qreal>(cell_left), static_cast<qreal>(cell_top),
+                                       static_cast<qreal>(dot_right - cell_left),
+                                       static_cast<qreal>(dot_bottom - cell_top)),
+                                radius, radius);
+      }
+    }
+  }
+
+  QSize getNormalSize() const
+  {
+    static const std::array<QSize, 3> WINDOW_SIZES = {
+      QSize(576, 96),
+      QSize(768, 128),
+      QSize(960, 160),
+    };
+    return WINDOW_SIZES[std::clamp<u8>(m_panel_size, 1, 3) - 1];
+  }
+
+  QScreen* resolveTargetScreen(QScreen* fallback_screen) const
+  {
+    if (!m_target_screen_name.isEmpty())
+    {
+      const QList<QScreen*> screens = QGuiApplication::screens();
+      for (QScreen* screen : screens)
+      {
+        if (screen->name() == m_target_screen_name)
+          return screen;
+      }
+    }
+
+    return fallback_screen ? fallback_screen : QGuiApplication::primaryScreen();
+  }
+
+  void applyScreenGeometry(QScreen* target)
+  {
+    if (!target)
+      return;
+
+    if (m_borderless_fullscreen)
+    {
+      setGeometry(target->geometry());
+      return;
+    }
+
+    const QRect available = target->availableGeometry();
+    const QSize normal_size = getNormalSize();
+    resize(std::min(normal_size.width(), std::max(available.width(), 1)),
+           std::min(normal_size.height(), std::max(available.height(), 1)));
+    move(available.center() - QPoint(width() / 2, height() / 2));
+  }
+
+  QTimer m_refresh_timer;
+  QPixmap m_panel;
+  QSize m_panel_size_px;
+  u64 m_panel_version = 0;
+  u8 m_panel_color = 0;
+  QString m_target_screen_name;
+  u8 m_panel_size = 0;
+  bool m_screen_initialized = false;
+  bool m_borderless_fullscreen = false;
+};
+
+static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip *.7z)");
 
 MainWindow* g_main_window = nullptr;
 
@@ -163,6 +368,21 @@ static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameL
   if (const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(entry->serial))
     return game;
   return Arcade::Database::IdentifyArchive(entry->path);
+}
+
+static bool IsCyberLeadGame(std::string_view serial)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
+  if (!game || game->system_id != "namco_system12")
+    return false;
+
+  for (const Arcade::Database::Property& property : game->properties)
+  {
+    if (property.name == "ioBoard" && property.value == "cyberlead")
+      return true;
+  }
+
+  return false;
 }
 
 static QString s_current_game_serial;
@@ -234,10 +454,6 @@ void MainWindow::initialize()
   switchToGameListView();
   updateWindowTitle();
 
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-    Achievements::RAIntegration::MainWindowChanged((void*)winId());
-#endif
 
 #ifdef _WIN32
   registerForDeviceNotifications();
@@ -632,6 +848,49 @@ void MainWindow::setBezelAspectRatioLockForGame(std::string_view game_serial, bo
   setBezelAspectRatioLockEnabled(enabled);
 }
 
+void MainWindow::updateCyberLeadLEDWindow()
+{
+  const bool want_window =
+    s_system_valid &&
+    g_settings.arcade_namco_system12_cyber_lead_led_mode == 3 &&
+    IsCyberLeadGame(s_current_game_serial.toStdString());
+
+  if (!want_window)
+  {
+    destroyCyberLeadLEDWindow();
+    return;
+  }
+
+  const bool created = (m_cyber_lead_led_window == nullptr);
+  if (created)
+  {
+    m_cyber_lead_led_window = new CyberLeadLEDWindow();
+    m_cyber_lead_led_window->setWindowIcon(windowIcon());
+  }
+
+  QScreen* const fallback_screen = getDisplayContainer() ? getDisplayContainer()->screen() : screen();
+  m_cyber_lead_led_window->setPanelSize(g_settings.arcade_namco_system12_cyber_lead_led_size);
+  m_cyber_lead_led_window->setTargetScreen(
+    QString::fromStdString(g_settings.arcade_namco_system12_cyber_lead_led_monitor), fallback_screen);
+  m_cyber_lead_led_window->setBorderlessFullscreen(
+    g_settings.arcade_namco_system12_cyber_lead_led_borderless_fullscreen, fallback_screen);
+
+  if (created)
+    m_cyber_lead_led_window->show();
+  else
+    m_cyber_lead_led_window->update();
+}
+
+void MainWindow::destroyCyberLeadLEDWindow()
+{
+  if (!m_cyber_lead_led_window)
+    return;
+
+  m_cyber_lead_led_window->close();
+  m_cyber_lead_led_window->deleteLater();
+  m_cyber_lead_led_window = nullptr;
+}
+
 void MainWindow::applyBezelAspectRatioToCurrentWindow()
 {
   if (!isBezelAspectRatioLockActive() || isRenderingFullscreen())
@@ -696,6 +955,7 @@ void MainWindow::onSystemStarted()
   updateStatusBarWidgetVisibility();
   updateDisplayWidgetCursor();
   setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+  updateCyberLeadLEDWindow();
 }
 
 void MainWindow::onSystemPaused()
@@ -742,6 +1002,7 @@ void MainWindow::onSystemDestroyed()
   s_system_valid = false;
   s_system_paused = false;
   setBezelAspectRatioLockEnabled(false);
+  destroyCyberLeadLEDWindow();
 
   // If we're closing or in batch mode, quit the whole application now.
   if (m_is_closing || QtHost::InBatchMode())
@@ -771,7 +1032,10 @@ void MainWindow::onRunningGameChanged(const QString& filename, const QString& ga
 
   updateWindowTitle();
   if (s_system_valid)
+  {
     setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+    updateCyberLeadLEDWindow();
+  }
 }
 
 void MainWindow::onMediaCaptureStarted()
@@ -926,6 +1190,7 @@ void MainWindow::destroySubWindows()
   QtUtils::CloseAndDeleteWindow(m_cheat_manager_window);
   QtUtils::CloseAndDeleteWindow(m_controller_settings_window);
   QtUtils::CloseAndDeleteWindow(m_settings_window);
+  destroyCyberLeadLEDWindow();
 
   SettingsWindow::closeGamePropertiesDialogs();
 
@@ -1115,17 +1380,26 @@ void MainWindow::populateSaveStateMenu(const char* game_serial, QMenu* menu)
 
 void MainWindow::updateCheatActionsVisibility()
 {
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
   m_ui.actionCheats->setVisible(true);
   m_ui.actionCheatsToolbar->setVisible(true);
-  m_ui.menuCheats->menuAction()->setVisible(false);
+  m_ui.menuCheats->menuAction()->setVisible(true);
 }
+
 void MainWindow::onCheatsActionTriggered()
 {
-  QMessageBox::information(
-    this, tr("Cheats Under Investigation"),
-    tr("ArcadeDuck cheat support is still under investigation and is not implemented yet.\n\n"
-       "MAME cheat package compatibility is planned for a future update."));
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  if (!m_cheat_manager_window)
+  {
+    m_cheat_manager_window = new CheatManagerWindow();
+    connect(m_cheat_manager_window, &CheatManagerWindow::closed, this, [this]() {
+      m_cheat_manager_window->deleteLater();
+      m_cheat_manager_window = nullptr;
+    });
+  }
+
+  QtUtils::ShowOrRaiseWindow(m_cheat_manager_window);
 }
 
 void MainWindow::onCheatsMenuAboutToShow()
@@ -1133,19 +1407,18 @@ void MainWindow::onCheatsMenuAboutToShow()
   m_ui.menuCheats->clear();
   connect(m_ui.menuCheats->addAction(tr("Cheat Manager")), &QAction::triggered, this,
           &MainWindow::onCheatsActionTriggered);
-  m_ui.menuCheats->addSeparator();
-  populateCheatsMenu(m_ui.menuCheats);
 }
 
 void MainWindow::populateCheatsMenu(QMenu* menu)
 {
-  QAction* placeholder_action = menu->addAction(tr("Cheats Under Investigation"));
-  connect(placeholder_action, &QAction::triggered, this, &MainWindow::onCheatsActionTriggered);
+  Q_UNUSED(menu);
 }
 
-std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file)
+std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file,
+                                                                          std::string arcade_game_id)
 {
   std::shared_ptr<SystemBootParameters> ret = std::make_shared<SystemBootParameters>(std::move(file));
+  ret->arcade_game_id = std::move(arcade_game_id);
   ret->boot_intent = SystemBootIntent::PublicArcade;
   ret->start_media_capture = m_ui.actionMediaCapture->isChecked();
   return ret;
@@ -1440,6 +1713,90 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
       connect(menu.addAction(tr("Start")), &QAction::triggered,
               [this, entry]() { g_emu_thread->bootSystem(getSystemBootParameters(entry->path)); });
 
+      const Arcade::Database::GameDefinition* const parent_game = GetArcadeGameForEntry(entry);
+      const Arcade::Database::GameDefinition* const archive_game = Arcade::Database::IdentifyArchive(entry->path);
+      if (parent_game && archive_game && parent_game != archive_game)
+      {
+        WARNING_LOG("Arcade game-list identity mismatch for '{}': cached game '{}' differs from archive game '{}'.",
+                    entry->path, parent_game->id, archive_game->id);
+      }
+
+      const Arcade::Database::SystemDefinition* const parent_system =
+        parent_game ? Arcade::Database::GetSystem(parent_game->system_id) : nullptr;
+      if (!parent_game)
+      {
+        INFO_LOG("Clone launch unavailable for '{}' (serial '{}'): entry is not present in the arcade database.",
+                 entry->path, entry->serial);
+      }
+      else if (!parent_game->parent.empty())
+      {
+        INFO_LOG("Clone launch unavailable for '{}': database game '{}' is a clone of '{}'.", entry->path,
+                 parent_game->id, parent_game->parent);
+      }
+      else if (!parent_system)
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': arcade system '{}' was not found.", parent_game->id,
+                 parent_game->system_id);
+      }
+      else if (!Arcade::MachineHandlerSupportsSplitMergedSets(parent_system->machine_handler))
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': machine handler '{}' does not support split/merged sets.",
+                 parent_game->id, parent_system->machine_handler);
+      }
+      else
+      {
+        const auto clones = Arcade::Database::GetClones(parent_game->id);
+        if (clones.empty())
+          INFO_LOG("Clone launch unavailable for parent '{}': no clones are defined in the arcade database.",
+                   parent_game->id);
+
+        QMenu* clone_menu = nullptr;
+        QMenu* clone_properties_menu = nullptr;
+        for (const Arcade::Database::GameDefinition* const clone : clones)
+        {
+          std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+          if (clone_path.empty())
+            clone_path = entry->path;
+          if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+          {
+            INFO_LOG("Clone '{}' suppressed for parent '{}': required ROMs could not be resolved using archive anchor "
+                     "'{}'.",
+                     clone->id, parent_game->id, clone_path);
+            continue;
+          }
+
+          if (!clone_menu)
+          {
+            clone_menu = menu.addMenu(tr("Start Clone"));
+            clone_properties_menu = menu.addMenu(tr("Clone Properties"));
+          }
+
+          QString label = QString::fromStdString(clone->title);
+          if (!clone->region.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->region));
+          if (!clone->revision.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->revision));
+          label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_properties_action = clone_properties_menu->addAction(label);
+          connect(clone_properties_action, &QAction::triggered,
+                  [clone_path, clone_id = clone->id]() { SettingsWindow::openGamePropertiesDialog(clone_path, clone_id); });
+
+          QAction* const clone_action = clone_menu->addAction(label);
+          connect(clone_action, &QAction::triggered,
+                  [this, clone_path = std::move(clone_path), clone_id = clone->id]() mutable {
+                    g_emu_thread->bootSystem(getSystemBootParameters(std::move(clone_path), std::move(clone_id)));
+                  });
+        }
+
+        if (!clone_menu && !clones.empty())
+        {
+          INFO_LOG("Start Clone menu suppressed for parent '{}': none of {} database clone(s) could resolve their "
+                   "required ROMs.",
+                   parent_game->id, clones.size());
+        }
+      }
+
       if (m_ui.menuDebug->menuAction()->isVisible() && !Achievements::IsHardcoreModeActive())
       {
         connect(menu.addAction(tr("Start and Debug")), &QAction::triggered, [this, entry]() {
@@ -1463,7 +1820,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
 
   menu.addSeparator();
 
-  connect(menu.addAction(tr("Add Search Directory...")), &QAction::triggered,
+  connect(menu.addAction(tr("Add Content Directory...")), &QAction::triggered,
           [this]() { getSettingsWindow()->getGameListSettingsWidget()->addSearchDirectory(this); });
 
   menu.exec(point);
@@ -1804,36 +2161,6 @@ void MainWindow::setupAdditionalUi()
     connect(action, &QAction::triggered, [scale]() { g_emu_thread->requestDisplaySize(scale); });
   }
 
-#ifdef ENABLE_RAINTEGRATION
-  if (Achievements::IsUsingRAIntegration())
-  {
-    QMenu* raMenu = new QMenu(QStringLiteral("RAIntegration"), m_ui.menu_Tools);
-    connect(raMenu, &QMenu::aboutToShow, this, [this, raMenu]() {
-      raMenu->clear();
-
-      const auto items = Achievements::RAIntegration::GetMenuItems();
-      for (const auto& [id, title, checked] : items)
-      {
-        if (id == 0)
-        {
-          raMenu->addSeparator();
-          continue;
-        }
-
-        QAction* raAction = raMenu->addAction(QString::fromUtf8(title));
-        if (checked)
-        {
-          raAction->setCheckable(true);
-          raAction->setChecked(checked);
-        }
-
-        connect(raAction, &QAction::triggered, this,
-                [id = id]() { Host::RunOnCPUThread([id]() { Achievements::RAIntegration::ActivateMenuItem(id); }); });
-      }
-    });
-    m_ui.menu_Tools->insertMenu(m_ui.actionOpenDataDirectory, raMenu);
-  }
-#endif
 }
 
 void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevos_challenge_mode)
@@ -1847,10 +2174,10 @@ void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevo
   m_ui.actionPowerOffWithoutSaving->setDisabled(starting || !running);
   m_ui.actionReset->setDisabled(starting || !running);
   m_ui.actionPause->setDisabled(starting || !running);
-  m_ui.actionCheats->setDisabled(cheevos_challenge_mode);
-  m_ui.actionCheatsToolbar->setDisabled(cheevos_challenge_mode);
+  m_ui.actionCheats->setDisabled(starting || !running || cheevos_challenge_mode);
+  m_ui.actionCheatsToolbar->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionScreenshot->setDisabled(starting || !running);
-  m_ui.menuCheats->setDisabled(cheevos_challenge_mode);
+  m_ui.menuCheats->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionCPUDebugger->setDisabled(cheevos_challenge_mode);
   m_ui.actionMemoryScanner->setDisabled(cheevos_challenge_mode);
   m_ui.actionDumpRAM->setDisabled(starting || !running || cheevos_challenge_mode);
@@ -2105,14 +2432,17 @@ void MainWindow::connectSignals()
   connect(m_ui.actionSettings2, &QAction::triggered, this, &MainWindow::onSettingsTriggeredFromToolbar);
   connect(m_ui.actionInterfaceSettings, &QAction::triggered, [this]() { doSettings("Interface"); });
   connect(m_ui.actionOperatorSettings, &QAction::triggered, [this]() { doSettings("Operator"); });
-  connect(m_ui.actionSystemLinkSettings, &QAction::triggered, [this]() { doSettings("System Link"); });
   connect(m_ui.actionConsoleSettings, &QAction::triggered, [this]() { doSettings("Machine"); });
   connect(m_ui.actionEmulationSettings, &QAction::triggered, [this]() { doSettings("Emulation"); });
   connect(m_ui.actionGameListSettings, &QAction::triggered, [this]() { doSettings("Game List"); });
-  connect(m_ui.actionHotkeySettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::HotkeySettings); });
-  connect(m_ui.actionControllerSettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::GlobalSettings); });
+  connect(m_ui.actionHotkeySettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::HotkeySettings);
+  });
+  connect(m_ui.actionControllerSettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::GlobalSettings);
+  });
   connect(m_ui.actionGraphicsSettings, &QAction::triggered, [this]() { doSettings("Graphics"); });
   connect(m_ui.actionPostProcessingSettings, &QAction::triggered, [this]() { doSettings("Post-Processing"); });
   connect(m_ui.actionAudioSettings, &QAction::triggered, [this]() { doSettings("Audio"); });
@@ -2711,7 +3041,14 @@ void MainWindow::checkForSettingChanges()
   updateWindowState();
   updateCheatActionsVisibility();
   if (s_system_valid)
+  {
     setBezelAspectRatioLockEnabled(g_settings.display_bezel_enabled && !g_settings.display_bezel_path.empty());
+    updateCyberLeadLEDWindow();
+  }
+  else
+  {
+    destroyCyberLeadLEDWindow();
+  }
 }
 
 std::optional<WindowInfo> MainWindow::getWindowInfo()

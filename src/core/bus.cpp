@@ -24,6 +24,7 @@
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
 #include "core/arcade/systems/namco/system10/namco_system10.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "mdec.h"
 #include "settings.h"
@@ -54,7 +55,6 @@ Log_SetChannel(Bus);
 // TODO: Get rid of page code bits, instead use page faults to track SMC.
 
 // Exports for external debugger access
-#ifndef __ANDROID__
 namespace Exports {
 
 extern "C" {
@@ -68,7 +68,6 @@ __attribute__((visibility("default"), used)) u32 RAM_SIZE, RAM_MASK;
 }
 
 } // namespace Exports
-#endif
 
 namespace Bus {
 
@@ -213,7 +212,7 @@ bool Bus::AllocateMemoryMap(bool export_shared_memory, Error* error)
   INFO_LOG("Allocating{} shared memory map.", export_shared_memory ? " EXPORTED" : "");
   if (export_shared_memory)
   {
-    s_shmem_name = MemMap::GetFileMappingName("duckstation");
+    s_shmem_name = MemMap::GetFileMappingName("arcadeduck");
     INFO_LOG("Shared memory object name is \"{}\".", s_shmem_name);
   }
   s_shmem_handle = MemMap::CreateSharedMemory(s_shmem_name.c_str(), MemoryMap::TOTAL_SIZE, error);
@@ -265,20 +264,16 @@ bool Bus::AllocateMemoryMap(bool export_shared_memory, Error* error)
   g_memory_handlers_isc = g_memory_handlers + MEMORY_LUT_SLOTS;
   SetHandlers();
 
-#ifndef __ANDROID__
   Exports::RAM = reinterpret_cast<uintptr_t>(g_unprotected_ram);
-#endif
 
   return true;
 }
 
 void Bus::ReleaseMemoryMap()
 {
-#ifndef __ANDROID__
   Exports::RAM = 0;
   Exports::RAM_SIZE = 0;
   Exports::RAM_MASK = 0;
-#endif
 
   g_memory_handlers_isc = nullptr;
   if (g_memory_handlers)
@@ -384,7 +379,7 @@ bool Bus::ReallocateMemoryMap(bool export_shared_memory, Error* error)
 
 void Bus::CleanupMemoryMap()
 {
-#if !defined(_WIN32) && !defined(__ANDROID__)
+#if !defined(_WIN32)
   // This is only needed on Linux.
   if (!s_shmem_name.empty())
     MemMap::DeleteSharedMemory(s_shmem_name.c_str());
@@ -432,10 +427,8 @@ bool Bus::SetRAMSize(u32 ram_size)
 
   g_ram_size = ram_size;
 
-#ifndef __ANDROID__
   Exports::RAM_SIZE = g_ram_size;
   Exports::RAM_MASK = g_ram_mask;
-#endif
   return true;
 }
 
@@ -574,8 +567,8 @@ void Bus::RecalculateMemoryTimings()
   TRACE_LOG("SPU Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.spu_delay_size.data_bus_16bit ? 16 : 8, g_spu_access_time[0] + 1, g_spu_access_time[1] + 1,
             g_spu_access_time[2] + 1);
-  const u32 exp1_bus_width = s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u;
-  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}", exp1_bus_width, g_exp1_access_time[0] + 1,
+  TRACE_LOG("EXP1 timing: bus={}bit, byte={}, halfword={}, word={}",
+            s_MEMCTRL.exp1_delay_size.data_bus_16bit ? 16u : 8u, g_exp1_access_time[0] + 1,
             g_exp1_access_time[1] + 1, g_exp1_access_time[2] + 1);
   TRACE_LOG("EXP3 Memory Timing: {} bit bus, byte={}, halfword={}, word={}",
             s_MEMCTRL.exp3_delay_size.data_bus_16bit ? 16 : 8, g_exp3_access_time[0] + 1,
@@ -988,6 +981,11 @@ bool Bus::ReadBIOSInstructionWord(PhysicalMemoryAddress address, u32* value)
   return false;
 }
 
+u32 Bus::GetEXP1Base()
+{
+  return s_MEMCTRL.exp1_base;
+}
+
 bool Bus::ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value)
 {
   address &= CPU::PHYSICAL_MEMORY_ADDRESS_MASK;
@@ -1190,6 +1188,11 @@ u32 Bus::BIOSReadHandler(VirtualMemoryAddress address)
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
   }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
+  }
 
   // TODO: Configurable mirroring.
   const u32 offset = address & UINT32_C(0x7FFFF);
@@ -1321,20 +1324,25 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadBankedROM(width, offset);
   }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP1(width, offset);
+  }
   if (Konami::IsGQActive())
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     if (offset < 0x20)
     {
       const u32 value = KonamiGQScsi::ReadRegister(width, offset);
-      const KonamiGQScsi::MigrationStopReason stop_reason = KonamiGQScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGQScsi::MigrationStopReason::None)
+      const KonamiGQScsi::DeferredStopReason stop_reason = KonamiGQScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGQScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GQ NCR53CF96 encountered an unimplemented controller command 0x{:02X}.",
                                 KonamiGQScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GQ SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGQScsi::GetTargetCommandOpcode());
         else
@@ -1372,16 +1380,14 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
     if (offset < 0x20)
     {
       const u32 value = KonamiGVScsi::ReadRegister(width, offset);
-      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
+      const KonamiGVScsi::DeferredStopReason stop_reason = KonamiGVScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGVScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
-          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGVScsi::GetTargetCommandOpcode());
         else
@@ -1476,6 +1482,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
       return;
   }
 
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 offset = address & EXP1_MASK;
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP1(width, offset, value))
+      return;
+  }
+
   if (NamcoSystem11::IsActive())
   {
     const u32 offset = address & EXP1_MASK;
@@ -1509,14 +1523,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     if (offset < 0x20)
     {
       KonamiGQScsi::WriteRegister(width, offset, value, CPU::g_state.pc);
-      const KonamiGQScsi::MigrationStopReason stop_reason = KonamiGQScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGQScsi::MigrationStopReason::None)
+      const KonamiGQScsi::DeferredStopReason stop_reason = KonamiGQScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGQScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GQ NCR53CF96 encountered an unimplemented controller command 0x{:02X}.",
                                 KonamiGQScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGQScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGQScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GQ SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGQScsi::GetTargetCommandOpcode());
         else
@@ -1571,16 +1585,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     if (offset < 0x20)
     {
       KonamiGVScsi::WriteRegister(width, offset, value, CPU::g_state.pc);
-      const KonamiGVScsi::MigrationStopReason stop_reason = KonamiGVScsi::ConsumeMigrationStopRequest();
-      if (stop_reason != KonamiGVScsi::MigrationStopReason::None)
+      const KonamiGVScsi::DeferredStopReason stop_reason = KonamiGVScsi::ConsumeDeferredStopRequest();
+      if (stop_reason != KonamiGVScsi::DeferredStopReason::None)
       {
         std::string message;
-        if (stop_reason == KonamiGVScsi::MigrationStopReason::FirstCDB)
-          message = "Konami GV NCR53CF96 captured its first SCSI command, but SCSI target command execution is not implemented yet.";
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedControllerCommand)
+        if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedControllerCommand)
           message = fmt::format("Konami GV NCR53CF96 encountered an unimplemented controller command 0x{:02X} before CDB capture.",
                                 KonamiGVScsi::GetActiveCommand());
-        else if (stop_reason == KonamiGVScsi::MigrationStopReason::UnsupportedTargetCommand)
+        else if (stop_reason == KonamiGVScsi::DeferredStopReason::UnsupportedTargetCommand)
           message = fmt::format("Konami GV SCSI encountered target command 0x{:02X}, which is not implemented yet.",
                                 KonamiGVScsi::GetTargetCommandOpcode());
         else
@@ -1725,6 +1737,12 @@ u32 Bus::EXP3ReadHandler(VirtualMemoryAddress address)
     return SonyZN::ReadEXP3(width, offset);
   }
 
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP3(width, offset);
+  }
+
   if (NamcoSystem11::IsActive() && offset >= 0x04000 && offset <= 0x0ffff)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
@@ -1762,6 +1780,16 @@ void Bus::EXP3WriteHandler(VirtualMemoryAddress address, u32 value)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     SonyZN::WriteEXP3(width, offset, value);
+    return;
+  }
+
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP3(width, offset, value))
+      return;
+
+    // The ordinary System 12 banked ROM aperture is read-only.
     return;
   }
 
@@ -1887,7 +1915,21 @@ void Bus::HWHandlers::MemCtrlWrite(PhysicalMemoryAddress address, u32 value)
 
   value = FIXUP_WORD_WRITE_VALUE(size, offset, value);
 
-  const u32 write_mask = (index == 8) ? COMDELAY::WRITE_MASK : MEMDELAY::WRITE_MASK;
+  u32 write_mask = MEMDELAY::WRITE_MASK;
+  switch (index)
+  {
+    case 0:
+    case 1:
+      write_mask = 0xFFFFFFFFu;
+      break;
+
+    case 8:
+      write_mask = COMDELAY::WRITE_MASK;
+      break;
+
+    default:
+      break;
+  }
   const u32 new_value = (s_MEMCTRL.regs[index] & ~write_mask) | (value & write_mask);
   if (s_MEMCTRL.regs[index] != new_value)
   {
@@ -1937,7 +1979,7 @@ void Bus::HWHandlers::MemCtrl2Write(PhysicalMemoryAddress address, u32 value)
 
   DEV_LOG("RAM size register set to 0x{:08X}", s_RAM_SIZE.bits);
 
-  // MAME refreshes the RAM map when any byte in bits 8-15 changes.
+  // Refresh the RAM map when any byte in bits 8-15 changes.
   if (((s_RAM_SIZE.bits ^ old_ram_size_reg.bits) & UINT32_C(0x0000FF00)) != 0)
     UpdateMappedRAMSize();
 }

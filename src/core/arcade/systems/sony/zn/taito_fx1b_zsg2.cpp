@@ -56,7 +56,7 @@ void Chip::Reset()
   for (Channel& channel : m_chan)
     channel = {};
 
-  // MAME's device reset explicitly keys off all 48 channels.
+  // Reset keys off all 48 channels.
   ControlWrite(4, UINT16_C(0xffff));
   ControlWrite(5, UINT16_C(0xffff));
   ControlWrite(6, UINT16_C(0xffff));
@@ -186,7 +186,7 @@ void Chip::GenerateFrame(std::array<s32, OUTPUT_COUNT>* output)
     }
 
     // The standalone backend asks the ZSG-2 for one native frame per update,
-    // making this equivalent to MAME's "every other update" ramp cadence.
+    // so volume ramps advance every other update.
     if (m_sample_count & 1)
     {
       channel.vol = Ramp(channel.vol, channel.vol_target, channel.vol_delta);

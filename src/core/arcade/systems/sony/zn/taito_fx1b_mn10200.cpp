@@ -126,8 +126,8 @@ void Core::Reset()
   for (PortState& port : m_port)
     port = {};
 
-  // MN1020012A reset defaults. These writes intentionally go through the
-  // internal register model, matching the original MAME device reset path.
+  // MN1020012A reset defaults. Route these writes through the internal
+  // register model so reset observes normal register side effects.
   WriteWord(0x00fc00u, UINT16_C(0x8000));
   WriteWord(0x00fc02u, UINT16_C(0x0737));
   for (int pass = 0; pass < 2; pass++)
@@ -242,8 +242,8 @@ void Core::RefreshTimer(int timer)
   const int prescaler = m_simple_timer[timer].mode & 1;
   if ((m_simple_timer[timer].mode & 0x82) == 0x82 && (m_prescaler[prescaler].mode & 0x80))
   {
-    // MAME drives the MN10200 internal timer system from CPU clock / 2.
-    // Execute() consumes CPU clocks, so express the timer period in those
+    // The MN10200 internal timer system runs at CPU clock / 2. Execute()
+    // consumes CPU clocks, so express the timer period in those
     // units: two CPU cycles for each timer system-clock tick.
     m_simple_timer[timer].cycles_until_tick =
       2 * static_cast<s64>(m_prescaler[prescaler].base + 1) *
@@ -1606,14 +1606,7 @@ void Core::WriteInternalIO(u32 offset, u8 data)
 		case 0x180: case 0x190:
 		{
 			int ser = (offset-0x180) >> 4;
-			// const char *parity[8] = { "no", "1", "2", "3", "l", "h", "even", "odd" };
-			// const char *source[4] = { "sbt0", "timer 8", "2", "timer 9" };
 			m_serial[ser].ctrll = data;
-
-			// MN10200_LOG("MN102", "Serial %d length=%c, parity=%s, stop=%c, source=%s",
-			//     ser,
-			//     data & 0x80 ? '8' : '7', parity[(data >> 4) & 7],
-			//     data & 8 ? '2' : '1', source[data & 3]);
 			break;
 		}
 
@@ -1621,11 +1614,6 @@ void Core::WriteInternalIO(u32 offset, u8 data)
 		{
 			int ser = (offset-0x180) >> 4;
 			m_serial[ser].ctrlh = data;
-			// MN10200_LOG("MN102", "Serial %d transmit=%s, receive=%s, break=%s, proto=%s, order=%s",
-			//     ser,
-			//     data & 0x80 ? "on" : "off", data & 0x40 ? "on" : "off",
-			//     data & 0x20 ? "on" : "off", data & 8 ? "sync" : "async",
-			//     data & 2 ? "msb" : "lsb");
 			break;
 		}
 
@@ -1724,11 +1712,6 @@ void Core::WriteInternalIO(u32 offset, u8 data)
 
 		case 0x260: case 0x261:
 		{
-			// const char *mode[4] = { "sysbuf", "4-phase", "4-phase 1/2", "3" };
-			// MN10200_LOG("MN102", "Sync Output %c timing=%s out=%s dir=%s mode=%s",
-			//     offset == 0x261 ? 'B' : 'A',
-			//     data & 0x10 ? "12A" : "1", data & 8 ? "sync a" :"P13-10",
-			//     data & 4 ? "ccw" : "cw", mode[data & 3]);
 			break;
 		}
 

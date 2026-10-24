@@ -251,7 +251,7 @@ void DisplayWidget::handleCloseEvent(QCloseEvent* event)
 
   // Closing the separate widget will either cancel the close, or trigger shutdown.
   // In the latter case, it's going to destroy us, so don't let Qt do it first.
-  // Treat a close event while fullscreen as an exit, that way ALT+F4 closes DuckStation,
+  // Treat a close event while fullscreen as an exit, that way ALT+F4 closes ArcadeDuck,
   // rather than just the game.
   if (QtHost::IsSystemValid() && !isActuallyFullscreen())
   {
@@ -433,9 +433,6 @@ bool DisplayWidget::event(QEvent* event)
     case QEvent::MouseButtonDblClick:
     case QEvent::MouseButtonRelease:
     {
-      if (event->type() == QEvent::MouseButtonPress)
-        requestWindowedPointerResync();
-
       if (!m_relative_mouse_enabled || !InputManager::IsUsingRawInput())
       {
         const u32 button_index = CountTrailingZeros(static_cast<u32>(static_cast<const QMouseEvent*>(event)->button()));
@@ -490,6 +487,7 @@ bool DisplayWidget::event(QEvent* event)
       updatePointerAbsoluteDisplayRect();
 
       const float dpr = QtUtils::GetDevicePixelRatioForWidget(this);
+      InputManager::SetRawPointerVirtualScale(dpr);
       const u32 scaled_width =
         static_cast<u32>(std::max(static_cast<int>(std::ceil(static_cast<qreal>(width()) * dpr)), 1));
       const u32 scaled_height =
