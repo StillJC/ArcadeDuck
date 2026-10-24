@@ -226,7 +226,7 @@ public:
     }
   }
 
-  void Advance(u64 clocks)
+  ALWAYS_INLINE void Advance(u64 clocks)
   {
     if (clocks == 0)
       return;
@@ -240,23 +240,13 @@ public:
     // Enabled channels only need updating once a compare match, clear or
     // overflow can occur. UpdateChannel() catches up over any number of
     // counts, and register accesses update their channel before use.
-    const u8 enabled_mask = static_cast<u8>(m_tstr & UINT8_C(0x1F));
-    if (enabled_mask != 0 && new_time >= m_next_update_clock)
-    {
-      u64 next_update = UINT64_MAX;
-      for (size_t i = 0; i < m_channels.size(); i++)
-      {
-        if ((enabled_mask & static_cast<u8>(UINT8_C(1) << i)) != 0)
-        {
-          UpdateChannel(i, new_time);
-          next_update = std::min(next_update, NextEventClock(m_channels[i], new_time));
-        }
-      }
-      m_next_update_clock = next_update;
-    }
+    if ((m_tstr & UINT8_C(0x1F)) != 0 && new_time >= m_next_update_clock)
+      UpdateEnabledChannels(new_time);
 
     m_total_clocks = new_time;
   }
+
+  bool HasPendingInterrupt() const { return m_pending_channels != 0; }
 
   std::optional<u32> TakePendingInterrupt()
   {
@@ -419,6 +409,21 @@ private:
       c.pending = static_cast<u8>(c.pending | source);
       m_pending_channels = static_cast<u8>(m_pending_channels | (UINT8_C(1) << index));
     }
+  }
+
+  void UpdateEnabledChannels(u64 new_time)
+  {
+    const u8 enabled_mask = static_cast<u8>(m_tstr & UINT8_C(0x1F));
+    u64 next_update = UINT64_MAX;
+    for (size_t i = 0; i < m_channels.size(); i++)
+    {
+      if ((enabled_mask & static_cast<u8>(UINT8_C(1) << i)) != 0)
+      {
+        UpdateChannel(i, new_time);
+        next_update = std::min(next_update, NextEventClock(m_channels[i], new_time));
+      }
+    }
+    m_next_update_clock = next_update;
   }
 
   // First clock at which UpdateChannel() could raise a compare match, counter

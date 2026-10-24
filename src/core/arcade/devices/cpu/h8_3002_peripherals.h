@@ -199,6 +199,8 @@ public:
     }
   }
 
+  bool HasPendingInterrupt() const { return m_pending_vectors != 0; }
+
   std::optional<u32> TakePendingInterrupt()
   {
     if (m_pending_vectors == 0)

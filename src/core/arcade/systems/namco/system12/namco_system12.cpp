@@ -2562,18 +2562,25 @@ void H8SetExternalIRQLine(RuntimeState& runtime, u32 irq, bool asserted)
   runtime.h8_internal[UINT16_C(0xFFF9)] = static_cast<u8>(runtime.h8_intc.GetICR() >> 8);
 }
 
-void H8CollectInterruptSources(RuntimeState& runtime)
+// The two helpers below run after every H8 instruction.
+ALWAYS_INLINE void H8CollectInterruptSources(RuntimeState& runtime)
 {
   // External IRQ0-7 are already represented directly inside h8_intc.
   // Drain peripheral-local event latches into the single H8H INTC pending set.
-  while (const std::optional<u32> vector = runtime.h8_timer16.TakePendingInterrupt())
-    runtime.h8_intc.InternalInterrupt(*vector);
+  if (runtime.h8_timer16.HasPendingInterrupt())
+  {
+    while (const std::optional<u32> vector = runtime.h8_timer16.TakePendingInterrupt())
+      runtime.h8_intc.InternalInterrupt(*vector);
+  }
 
-  while (const std::optional<u32> vector = runtime.h8_peripherals.TakePendingInterrupt())
-    runtime.h8_intc.InternalInterrupt(*vector);
+  if (runtime.h8_peripherals.HasPendingInterrupt())
+  {
+    while (const std::optional<u32> vector = runtime.h8_peripherals.TakePendingInterrupt())
+      runtime.h8_intc.InternalInterrupt(*vector);
+  }
 }
 
-void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_c352)
+ALWAYS_INLINE void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_c352)
 {
   if (h8_clocks == 0)
     return;
@@ -2592,6 +2599,9 @@ void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_
 u32 H8ServiceInterrupts(RuntimeState& runtime)
 {
   if (!runtime.h8_cpu)
+    return 0;
+
+  if (runtime.h8_intc.GetPendingMask() == 0)
     return 0;
 
   h8_system_t& h8 = *runtime.h8_cpu;
