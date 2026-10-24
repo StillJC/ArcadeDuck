@@ -11,6 +11,7 @@ extern "C" {
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstring>
 #include <utility>
 
@@ -175,7 +176,7 @@ struct NamcoCyberLeadLEDDevice::Impl
   bool flash_sdp = false;
   bool flash_modified = false;
 
-  std::array<bool, 64> pending_interrupts{};
+  u64 pending_interrupts = 0; // one bit per vector
 
   std::array<u8, 9> port_ddr{};
   std::array<u8, 9> port_dr{};
@@ -256,7 +257,7 @@ struct NamcoCyberLeadLEDDevice::Impl
     flash_bank = 0;
     flash_mode = FlashMode::Normal;
     flash_page_count = 0;
-    pending_interrupts.fill(false);
+    pending_interrupts = 0;
     port_ddr.fill(0);
     port_dr.fill(0);
     wscr = 0;
@@ -345,8 +346,8 @@ struct NamcoCyberLeadLEDDevice::Impl
 
   void RaiseInterrupt(u32 vector)
   {
-    if (vector < pending_interrupts.size())
-      pending_interrupts[vector] = true;
+    if (vector < 64)
+      pending_interrupts |= UINT64_C(1) << vector;
   }
 
   bool IsVBlankIRQEdgeTriggered() const
@@ -358,7 +359,10 @@ struct NamcoCyberLeadLEDDevice::Impl
   {
     const bool enabled = (ier & UINT8_C(0x40)) != 0;
     const bool asserted = IsVBlankIRQEdgeTriggered() ? irq6_latched : vblank_active;
-    pending_interrupts[IRQ_VECTOR_VBLANK] = enabled && asserted;
+    if (enabled && asserted)
+      pending_interrupts |= UINT64_C(1) << IRQ_VECTOR_VBLANK;
+    else
+      pending_interrupts &= ~(UINT64_C(1) << IRQ_VECTOR_VBLANK);
   }
 
   void SetVBlankIRQLine(bool asserted)
@@ -386,37 +390,31 @@ struct NamcoCyberLeadLEDDevice::Impl
 
   bool ServiceInterrupt()
   {
-    if (cpu.cpu.ccr.flags.i != 0)
+    if (pending_interrupts == 0 || cpu.cpu.ccr.flags.i != 0)
       return false;
 
-    for (u32 vector = 0; vector < pending_interrupts.size(); vector++)
+    // Lowest pending vector first.
+    const u32 vector = static_cast<u32>(std::countr_zero(pending_interrupts));
+    pending_interrupts &= ~(UINT64_C(1) << vector);
+    cpu.cycles = 0;
+    if (!h8_interrupt(&cpu, vector))
     {
-      if (!pending_interrupts[vector])
-        continue;
-
-      pending_interrupts[vector] = false;
-      cpu.cycles = 0;
-      if (!h8_interrupt(&cpu, vector))
-      {
-        if (vector == IRQ_VECTOR_VBLANK)
-          UpdateVBlankInterruptPending();
-        return false;
-      }
-
       if (vector == IRQ_VECTOR_VBLANK)
-      {
-        if (IsVBlankIRQEdgeTriggered() || !vblank_active)
-          irq6_latched = false;
-        stats.vblank_interrupts++;
         UpdateVBlankInterruptPending();
-      }
-
-      AdvancePeripherals(static_cast<u32>(std::max(cpu.cycles, 0)));
-      cycle_balance -= static_cast<s64>(std::max(cpu.cycles, 0));
-      return true;
+      return false;
     }
 
-    return false;
+    if (vector == IRQ_VECTOR_VBLANK)
+    {
+      if (IsVBlankIRQEdgeTriggered() || !vblank_active)
+        irq6_latched = false;
+      stats.vblank_interrupts++;
+      UpdateVBlankInterruptPending();
+    }
+
+    AdvancePeripherals(static_cast<u32>(std::max(cpu.cycles, 0)));
+    cycle_balance -= static_cast<s64>(std::max(cpu.cycles, 0));
+    return true;
   }
 
   void AdvanceTimer(u32 clocks)
