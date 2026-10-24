@@ -1,5 +1,6 @@
 #include "sh7014.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace Arcade
@@ -73,6 +74,8 @@ ArcadeDuck::SH2::CPU::Bus SH7014::MakeCPUBus()
 
 void SH7014::Reset(bool power_on)
 {
+  SyncPeripherals();
+  m_peripheral_next_event = 0;
   m_ccr = 0;
   m_sci0 = {};
   m_dmac = {};
@@ -90,6 +93,8 @@ void SH7014::Reset(bool power_on)
 
 void SH7014::ClearMemory()
 {
+  m_peripheral_pending_cycles = 0;
+  m_peripheral_next_event = 0;
   m_cram.fill(0);
   m_sram.fill(0);
   m_cache_ram.fill(0);
@@ -120,7 +125,7 @@ bool SH7014::LoadFirmware(const void* data, size_t size, uint32_t address)
 uint32_t SH7014::Step()
 {
   const uint32_t cycles = m_cpu.Step();
-  AdvancePeripherals(cycles);
+  AddPeripheralCycles(cycles);
   return cycles;
 }
 
@@ -178,6 +183,11 @@ void SH7014::SetExternalDMARequestLine(uint32_t channel, bool asserted)
 {
   if (channel >= m_dmac.channel.size())
     return;
+
+  // The ATAPI side changes DREQ between SH-2 instructions or from inside a DMA
+  // transfer; either way the DMAC must be current first and step again after.
+  BeginPeripheralAccess();
+  EndPeripheralWrite();
 
   auto& ch = m_dmac.channel[channel];
   ch.external_request_asserted = asserted;
@@ -809,6 +819,117 @@ void SH7014::AdvancePeripherals(uint32_t cycles)
   }
 }
 
+void SH7014::AddPeripheralCycles(uint32_t cycles)
+{
+  if (m_peripheral_pending_cycles + cycles < m_peripheral_next_event)
+  {
+    m_peripheral_pending_cycles += cycles;
+    return;
+  }
+
+  // Bring the peripherals up to the start of this instruction, which no event
+  // falls inside, then step this instruction's cycles on their own: an SCI0
+  // byte that ends here schedules a DMA request that the DMAC then counts down
+  // by these cycles only.
+  SyncPeripherals();
+  m_peripheral_sync_active = true;
+  AdvancePeripherals(cycles);
+  m_peripheral_sync_active = false;
+  m_peripheral_next_event = m_peripheral_step_forced ? 0 : NextPeripheralEvent();
+  m_peripheral_step_forced = false;
+}
+
+void SH7014::SyncPeripherals()
+{
+  if (m_peripheral_pending_cycles != 0)
+  {
+    m_peripheral_sync_active = true;
+    AdvancePeripherals(static_cast<uint32_t>(m_peripheral_pending_cycles));
+    m_peripheral_sync_active = false;
+    m_peripheral_pending_cycles = 0;
+  }
+  m_peripheral_next_event = m_peripheral_step_forced ? 0 : NextPeripheralEvent();
+  m_peripheral_step_forced = false;
+}
+
+void SH7014::BeginPeripheralAccess()
+{
+  if (!m_peripheral_sync_active)
+    SyncPeripherals();
+}
+
+void SH7014::EndPeripheralWrite()
+{
+  // The peripherals step at the end of the instruction that wrote them.
+  if (m_peripheral_sync_active)
+    m_peripheral_step_forced = true;
+  else
+    m_peripheral_next_event = 0;
+}
+
+bool SH7014::IsSCI0IdleStable() const
+{
+  // True when the idle SCI0 step would neither start a byte nor change the
+  // TXI request: no transmit to start, and UpdateSCI0TransmitRequest() would
+  // leave the TXI line and the DMA request as they are.
+  if ((m_sci0.scr & SCI_SCR_TE) != 0 && m_sci0.tx_tdr_pending && (m_sci0.ssr & SCI_SSR_TDRE) == 0)
+    return false;
+
+  const bool txi_asserted = m_internal_irq_pending[SCI0_TXI_VECTOR];
+  const bool request = (m_sci0.scr & (SCI_SCR_TIE | SCI_SCR_TE)) == (SCI_SCR_TIE | SCI_SCR_TE) &&
+                       (m_sci0.ssr & SCI_SSR_TDRE) != 0;
+  if (!request)
+    return !txi_asserted;
+
+  const auto& ch = m_dmac.channel[0];
+  if (IsDMAChannelReady(0) && ((ch.chcr >> 8) & 0x0Fu) == DMA_REQUEST_SCI_TXI0)
+    return ch.pending_request_source != DMA_REQUEST_NONE && !txi_asserted;
+
+  return txi_asserted;
+}
+
+uint64_t SH7014::NextPeripheralEvent() const
+{
+  // Bound the batch so the cycle count stays well inside 32 bits.
+  uint64_t next = UINT64_C(1) << 24;
+
+  for (uint32_t channel = 0; channel < 3; channel++)
+  {
+    const auto& ch = m_mtu.channel[channel];
+    if (!ch.enabled)
+      continue;
+
+    static constexpr uint32_t dividers[3][8] = {
+      {1, 4, 16, 64, 0, 0, 0, 0},
+      {1, 4, 16, 64, 0, 0, 256, 0},
+      {1, 4, 16, 64, 0, 0, 0, 1024},
+    };
+    const uint32_t divider = dividers[channel][ch.tcr & 0x07u];
+    if (divider == 0)
+      continue;
+
+    // Cycles until TCNT reaches TGRA, the only MTU event modelled.
+    uint32_t distance = (static_cast<uint32_t>(ch.tgr[0]) - ch.tcnt) & 0xFFFFu;
+    if (distance == 0)
+      distance = 0x10000u;
+    const uint64_t cycles = static_cast<uint64_t>(distance) * divider;
+    next = std::min<uint64_t>(next, (cycles > ch.prescale_accum) ? (cycles - ch.prescale_accum) : 0);
+  }
+
+  if (m_sci0.tx_active)
+    next = std::min<uint64_t>(next, m_sci0.tx_cycles_remaining);
+  else if (!IsSCI0IdleStable())
+    return 0;
+
+  for (const auto& ch : m_dmac.channel)
+  {
+    if (ch.pending_request_source != DMA_REQUEST_NONE)
+      next = std::min<uint64_t>(next, ch.request_cycles_remaining);
+  }
+
+  return next;
+}
+
 uint16_t SH7014::ReadBSCRegister(uint32_t address) const
 {
   switch (address)
@@ -1271,7 +1392,79 @@ bool SH7014::WriteInternal8(uint32_t address, uint8_t value)
   return false;
 }
 
-uint8_t SH7014::Read8(uint32_t address) const
+namespace
+{
+// SCI0, MTU, INTC, ports, BSC and DMAC.
+constexpr uint32_t PERIPHERAL_BASE = 0xFFFF8000u;
+constexpr uint32_t PERIPHERAL_END = 0xFFFF8800u;
+
+bool TouchesPeripherals(uint32_t address, uint32_t size)
+{
+  return address < PERIPHERAL_END && (address + size) > PERIPHERAL_BASE;
+}
+} // namespace
+
+uint8_t SH7014::Read8(uint32_t address)
+{
+  if (TouchesPeripherals(address, 1))
+    BeginPeripheralAccess();
+  return ReadBus8(address);
+}
+
+uint16_t SH7014::Read16(uint32_t address)
+{
+  if (TouchesPeripherals(address, 2))
+    BeginPeripheralAccess();
+  return ReadBus16(address);
+}
+
+uint32_t SH7014::Read32(uint32_t address)
+{
+  if (TouchesPeripherals(address, 4))
+    BeginPeripheralAccess();
+  return ReadBus32(address);
+}
+
+void SH7014::Write8(uint32_t address, uint8_t value)
+{
+  if (!TouchesPeripherals(address, 1))
+  {
+    WriteBus8(address, value);
+    return;
+  }
+
+  BeginPeripheralAccess();
+  WriteBus8(address, value);
+  EndPeripheralWrite();
+}
+
+void SH7014::Write16(uint32_t address, uint16_t value)
+{
+  if (!TouchesPeripherals(address, 2))
+  {
+    WriteBus16(address, value);
+    return;
+  }
+
+  BeginPeripheralAccess();
+  WriteBus16(address, value);
+  EndPeripheralWrite();
+}
+
+void SH7014::Write32(uint32_t address, uint32_t value)
+{
+  if (!TouchesPeripherals(address, 4))
+  {
+    WriteBus32(address, value);
+    return;
+  }
+
+  BeginPeripheralAccess();
+  WriteBus32(address, value);
+  EndPeripheralWrite();
+}
+
+uint8_t SH7014::ReadBus8(uint32_t address) const
 {
   uint8_t value = 0;
   if (ReadInternal8(address, value))
@@ -1279,7 +1472,7 @@ uint8_t SH7014::Read8(uint32_t address) const
   return m_external_bus.read8 ? m_external_bus.read8(address) : UINT8_C(0xFF);
 }
 
-uint16_t SH7014::Read16(uint32_t address) const
+uint16_t SH7014::ReadBus16(uint32_t address) const
 {
   // Instruction fetches overwhelmingly target on-chip CRAM. Avoid the generic
   // peripheral decoder and byte-at-a-time internal lookup on this hot path.
@@ -1310,10 +1503,10 @@ uint16_t SH7014::Read16(uint32_t address) const
     return static_cast<uint16_t>((static_cast<uint16_t>(hi) << 8) | lo);
   if (m_external_bus.read16)
     return m_external_bus.read16(address);
-  return static_cast<uint16_t>((static_cast<uint16_t>(Read8(address)) << 8) | Read8(address + 1u));
+  return static_cast<uint16_t>((static_cast<uint16_t>(ReadBus8(address)) << 8) | ReadBus8(address + 1u));
 }
 
-uint32_t SH7014::Read32(uint32_t address) const
+uint32_t SH7014::ReadBus32(uint32_t address) const
 {
   if (address < CRAM_BASE + CRAM_SIZE - 3u)
   {
@@ -1352,16 +1545,16 @@ uint32_t SH7014::Read32(uint32_t address) const
   }
   if (m_external_bus.read32)
     return m_external_bus.read32(address);
-  return (static_cast<uint32_t>(Read16(address)) << 16) | Read16(address + 2u);
+  return (static_cast<uint32_t>(ReadBus16(address)) << 16) | ReadBus16(address + 2u);
 }
 
-void SH7014::Write8(uint32_t address, uint8_t value)
+void SH7014::WriteBus8(uint32_t address, uint8_t value)
 {
   if (!WriteInternal8(address, value) && m_external_bus.write8)
     m_external_bus.write8(address, value);
 }
 
-void SH7014::Write16(uint32_t address, uint16_t value)
+void SH7014::WriteBus16(uint32_t address, uint16_t value)
 {
   if (WritePeripheral16(address, value))
     return;
@@ -1373,12 +1566,12 @@ void SH7014::Write16(uint32_t address, uint16_t value)
     m_external_bus.write16(address, value);
   else
   {
-    Write8(address, static_cast<uint8_t>(value >> 8));
-    Write8(address + 1u, static_cast<uint8_t>(value));
+    WriteBus8(address, static_cast<uint8_t>(value >> 8));
+    WriteBus8(address + 1u, static_cast<uint8_t>(value));
   }
 }
 
-void SH7014::Write32(uint32_t address, uint32_t value)
+void SH7014::WriteBus32(uint32_t address, uint32_t value)
 {
   const bool internal = WriteInternal8(address, static_cast<uint8_t>(value >> 24)) &&
                         WriteInternal8(address + 1u, static_cast<uint8_t>(value >> 16)) &&
@@ -1390,8 +1583,8 @@ void SH7014::Write32(uint32_t address, uint32_t value)
     m_external_bus.write32(address, value);
   else
   {
-    Write16(address, static_cast<uint16_t>(value >> 16));
-    Write16(address + 2u, static_cast<uint16_t>(value));
+    WriteBus16(address, static_cast<uint16_t>(value >> 16));
+    WriteBus16(address + 2u, static_cast<uint16_t>(value));
   }
 }
 } // namespace Arcade

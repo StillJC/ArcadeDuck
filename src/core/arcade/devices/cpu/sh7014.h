@@ -181,6 +181,12 @@ private:
   uint16_t ReadMTURegister16(uint32_t address) const;
   void WriteMTURegister16(uint32_t address, uint16_t value);
   void AdvancePeripherals(uint32_t cycles);
+  void AddPeripheralCycles(uint32_t cycles);
+  void SyncPeripherals();
+  void BeginPeripheralAccess();
+  void EndPeripheralWrite();
+  uint64_t NextPeripheralEvent() const;
+  bool IsSCI0IdleStable() const;
   void AdvanceMTU(uint32_t cycles);
   void UpdateInterruptLine();
   void SetInternalInterrupt(uint8_t vector, bool asserted);
@@ -192,12 +198,18 @@ private:
   uint16_t ReadINTCRegister(uint32_t address) const;
   void WriteINTCRegister(uint32_t address, uint16_t value);
 
-  uint8_t Read8(uint32_t address) const;
-  uint16_t Read16(uint32_t address) const;
-  uint32_t Read32(uint32_t address) const;
+  uint8_t Read8(uint32_t address);
+  uint16_t Read16(uint32_t address);
+  uint32_t Read32(uint32_t address);
   void Write8(uint32_t address, uint8_t value);
   void Write16(uint32_t address, uint16_t value);
   void Write32(uint32_t address, uint32_t value);
+  uint8_t ReadBus8(uint32_t address) const;
+  uint16_t ReadBus16(uint32_t address) const;
+  uint32_t ReadBus32(uint32_t address) const;
+  void WriteBus8(uint32_t address, uint8_t value);
+  void WriteBus16(uint32_t address, uint16_t value);
+  void WriteBus32(uint32_t address, uint32_t value);
 
   std::array<uint8_t, CRAM_SIZE> m_cram{};
   std::array<uint8_t, SRAM_SIZE> m_sram{};
@@ -213,6 +225,13 @@ private:
   BSCState m_bsc{};
   PortState m_ports{};
   INTCState m_intc{};
+
+  // Cycles the MTU, SCI0 and DMAC have not been advanced through yet, and how
+  // many may pass before one of them has work to do.
+  uint64_t m_peripheral_pending_cycles = 0;
+  uint64_t m_peripheral_next_event = 0;
+  bool m_peripheral_sync_active = false;
+  bool m_peripheral_step_forced = false;
 
   SCI0TransmitCallback m_sci0_transmit_callback = nullptr;
   void* m_sci0_transmit_opaque = nullptr;
