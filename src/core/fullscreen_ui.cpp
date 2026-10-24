@@ -9,7 +9,7 @@
 #include "arcade/arcade_control_registry.h"
 #include "arcade/arcade_database.h"
 #include "arcade/arcade_machine_handler.h"
-#include "cheats.h"
+#include "arcade/arcade_rom_loader.h"
 #include "game_list.h"
 #include "gpu.h"
 #include "host.h"
@@ -175,6 +175,7 @@ enum class MainWindowType
   GameList,
   Settings,
   PauseMenu,
+  Cheats,
   Achievements,
   Leaderboards,
 };
@@ -230,6 +231,7 @@ static void DrawLandingTemplate(ImVec2* menu_pos, ImVec2* menu_size);
 static void DrawLandingWindow();
 static void DrawExitWindow();
 static void DrawPauseMenu();
+static void DrawCheatsWindow();
 static void ExitFullscreenAndOpenURL(std::string_view url);
 static void CopyTextToClipboard(std::string title, std::string_view text);
 static void DrawAboutWindow();
@@ -260,7 +262,8 @@ static std::shared_ptr<GPUTexture> s_fallback_arcade_texture;
 // Landing
 //////////////////////////////////////////////////////////////////////////
 static void SwitchToLanding();
-static void DoStartPath(std::string path, std::string state = std::string());
+static void DoStartPath(std::string path, std::string state = std::string(),
+                        std::string arcade_game_id = std::string());
 static void DoResume();
 static void DoToggleFastForward();
 static void RequestShutdown(bool save_state);
@@ -699,6 +702,21 @@ void FullscreenUI::OpenPauseMenu()
   FixStateIfPaused();
 }
 
+void FullscreenUI::OpenCheatMenu()
+{
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  if (!Initialize() || s_current_main_window != MainWindowType::None)
+    return;
+
+  PauseForMenuOpen(false);
+  s_current_main_window = MainWindowType::Cheats;
+  QueueResetFocus(FocusResetType::ViewChanged);
+  ForceKeyNavEnabled();
+  FixStateIfPaused();
+}
+
 void FullscreenUI::FixStateIfPaused()
 {
   if (!System::IsValid() || System::IsRunning())
@@ -787,6 +805,9 @@ void FullscreenUI::Render()
       break;
     case MainWindowType::PauseMenu:
       DrawPauseMenu();
+      break;
+    case MainWindowType::Cheats:
+      DrawCheatsWindow();
       break;
     case MainWindowType::Achievements:
       Achievements::DrawAchievementsWindow();
@@ -909,7 +930,7 @@ void FullscreenUI::DestroyResources()
 // Utility
 //////////////////////////////////////////////////////////////////////////
 
-void FullscreenUI::DoStartPath(std::string path, std::string state)
+void FullscreenUI::DoStartPath(std::string path, std::string state, std::string arcade_game_id)
 {
   if (System::IsValid())
     return;
@@ -922,6 +943,7 @@ void FullscreenUI::DoStartPath(std::string path, std::string state)
 
   SystemBootParameters params;
   params.filename = std::move(path);
+  params.arcade_game_id = std::move(arcade_game_id);
   params.save_state = std::move(state);
   params.boot_intent = SystemBootIntent::PublicArcade;
   Host::RunOnCPUThread([params = std::move(params)]() {
@@ -986,11 +1008,137 @@ void FullscreenUI::DoToggleFastForward()
 
 void FullscreenUI::DoCheatsMenu()
 {
-  Host::AddKeyedOSDMessage(
-    "CheatsUnderInvestigation",
-    FSUI_STR("Cheats are still under investigation and are not implemented yet. MAME cheat package compatibility is planned for a future update."),
-    8.0f);
-  ReturnToPreviousWindow();
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  s_current_main_window = MainWindowType::Cheats;
+  QueueResetFocus(FocusResetType::ViewChanged);
+}
+
+void FullscreenUI::DrawCheatsWindow()
+{
+  ImGuiIO& io = ImGui::GetIO();
+  const ImVec2 heading_size =
+    ImVec2(io.DisplaySize.x, LayoutScale(LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY) +
+                               (LayoutScale(LAYOUT_MENU_BUTTON_Y_PADDING) * 2.0f) + LayoutScale(2.0f));
+
+  if (BeginFullscreenWindow(ImVec2(0.0f, 0.0f), heading_size, "cheat_list_heading", UIPrimaryColor))
+  {
+    BeginNavBar();
+    if (NavButton(ICON_FA_BACKWARD, true, true))
+      ReturnToPreviousWindow();
+    NavTitle(FSUI_CSTR("Cheat List"));
+    EndNavBar();
+  }
+  EndFullscreenWindow();
+
+  if (!BeginFullscreenWindow(
+        ImVec2(0.0f, heading_size.y),
+        ImVec2(io.DisplaySize.x, io.DisplaySize.y - heading_size.y - LayoutScale(LAYOUT_FOOTER_HEIGHT)), "cheat_list",
+        UIBackgroundColor))
+  {
+    EndFullscreenWindow();
+    return;
+  }
+
+  if (ImGui::IsWindowFocused() && WantsToCloseMenu())
+    ReturnToPreviousWindow();
+
+  ResetFocusHere();
+  BeginMenuButtons();
+
+  const std::vector<System::MAMECheatInfo> cheats = System::GetMAMECheatInfo();
+  if (cheats.empty())
+  {
+    ActiveButton(FSUI_CSTR("No MAME cheats are available for this arcade set."), false, false,
+                 LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY, g_large_font);
+  }
+  else
+  {
+    for (const System::MAMECheatInfo& cheat : cheats)
+    {
+      if (cheat.type == System::MAMECheatType::TextOnly)
+      {
+        // MAME uses text-only entries as menu headings and separators.
+        const bool blank = std::all_of(cheat.description.begin(), cheat.description.end(),
+                                       [](char ch) { return std::isspace(static_cast<unsigned char>(ch)); });
+        if (blank)
+          ImGui::Separator();
+        else
+          ActiveButton(cheat.description.c_str(), false, false, LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY, g_large_font);
+        continue;
+      }
+
+      SmallString label;
+      label.format("{}##mame_cheat_{}", cheat.description, cheat.index);
+      const char* const summary = !cheat.error.empty() ? cheat.error.c_str() : cheat.comment.c_str();
+      const bool clicked = MenuButtonWithValue(label.c_str(), summary, cheat.value.c_str(), cheat.valid);
+      const bool focused = ImGui::IsItemFocused();
+      const bool previous =
+        focused && cheat.can_previous &&
+        (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, true) ||
+         ImGui::IsKeyPressed(ImGuiKey_NavGamepadTweakSlow, true) || ImGui::IsKeyPressed(ImGuiKey_LeftArrow, true));
+      const bool next =
+        focused && cheat.can_next &&
+        (ImGui::IsKeyPressed(ImGuiKey_GamepadDpadRight, true) ||
+         ImGui::IsKeyPressed(ImGuiKey_NavGamepadTweakFast, true) || ImGui::IsKeyPressed(ImGuiKey_RightArrow, true));
+
+      if (previous)
+      {
+        Host::RunOnCPUThread([index = cheat.index]() { System::SelectPreviousMAMECheatState(index); });
+      }
+      else if (next)
+      {
+        Host::RunOnCPUThread([index = cheat.index]() { System::SelectNextMAMECheatState(index); });
+      }
+      else if (clicked)
+      {
+        switch (cheat.type)
+        {
+          case System::MAMECheatType::OneShot:
+            Host::RunOnCPUThread([index = cheat.index]() { System::ActivateMAMECheat(index); });
+            break;
+
+          case System::MAMECheatType::OnOff:
+            if (cheat.active)
+              Host::RunOnCPUThread([index = cheat.index]() { System::SelectPreviousMAMECheatState(index); });
+            else
+              Host::RunOnCPUThread([index = cheat.index]() { System::SelectNextMAMECheatState(index); });
+            break;
+
+          case System::MAMECheatType::OneShotParameter:
+            if (cheat.active)
+              Host::RunOnCPUThread([index = cheat.index]() { System::ActivateMAMECheat(index); });
+            else
+              Host::RunOnCPUThread([index = cheat.index]() { System::SelectNextMAMECheatState(index); });
+            break;
+
+          default:
+            if (cheat.can_next)
+              Host::RunOnCPUThread([index = cheat.index]() { System::SelectNextMAMECheatState(index); });
+            break;
+        }
+      }
+    }
+  }
+
+  EndMenuButtons();
+  EndFullscreenWindow();
+
+  if (IsGamepadInputSource())
+  {
+    SetFullscreenFooterText(std::array{std::make_pair(ICON_PF_XBOX_DPAD_UP_DOWN, FSUI_VSTR("Change Selection")),
+                                       std::make_pair(ICON_PF_XBOX_DPAD_LEFT_RIGHT, FSUI_VSTR("Change Value")),
+                                       std::make_pair(ICON_PF_BUTTON_A, FSUI_VSTR("Select")),
+                                       std::make_pair(ICON_PF_BUTTON_B, FSUI_VSTR("Back"))});
+  }
+  else
+  {
+    SetFullscreenFooterText(std::array{
+      std::make_pair(ICON_PF_ARROW_UP ICON_PF_ARROW_DOWN, FSUI_VSTR("Change Selection")),
+      std::make_pair(ICON_PF_ARROW_LEFT ICON_PF_ARROW_RIGHT, FSUI_VSTR("Change Value")),
+      std::make_pair(ICON_PF_ENTER, FSUI_VSTR("Select")), std::make_pair(ICON_PF_ESC, FSUI_VSTR("Back"))});
+  }
 }
 
 void FullscreenUI::DoRequestExit()
@@ -3604,6 +3752,9 @@ void FullscreenUI::DrawHotkeySettingsPage()
   const HotkeyInfo* last_category = nullptr;
   for (const HotkeyInfo* hotkey : s_hotkey_list_cache)
   {
+    if (!hotkey->visible_in_ui)
+      continue;
+
     if (!last_category || std::strcmp(hotkey->category, last_category->category) != 0)
     {
       MenuHeading(Host::TranslateToCString("Hotkeys", hotkey->category));
@@ -4531,7 +4682,7 @@ void FullscreenUI::DrawAudioSettingsPage()
     bsi, FSUI_CSTR("Arcade Gain Adjustment"),
     FSUI_CSTR("Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the "
               "normal level; use negative or positive trim for quieter or louder playback."),
-    "Audio", "ArcadeGainAdjustmentDB", 0, -6, 6, FSUI_CSTR("%d dB"));
+    "Audio", "ArcadeGainAdjustmentDB", 0, -30, 12, FSUI_CSTR("%d dB"));
   DrawToggleSetting(bsi, FSUI_CSTR("Mute All Sound"),
                     FSUI_CSTR("Prevents the emulator from producing any audible sound."), "Audio", "OutputMuted",
                     false);
@@ -4936,9 +5087,9 @@ void FullscreenUI::DrawPauseMenu()
           if (OpenSaveStateSelector(false))
             s_current_main_window = MainWindowType::None;
         }
-        if (ActiveButton(FSUI_ICONSTR(ICON_FA_FROWN_OPEN, "Cheat List"), false, has_game))
+        if (ActiveButton(FSUI_ICONSTR(ICON_FA_FROWN_OPEN, "Cheat List"), false,
+                         has_game && !Achievements::IsHardcoreModeActive()))
         {
-          s_current_main_window = MainWindowType::None;
           DoCheatsMenu();
         }
 
@@ -6239,7 +6390,7 @@ void FullscreenUI::HandleGameListActivate(const GameList::Entry* entry)
   }
 
   if (!OpenLoadStateSelectorForGameResume(entry))
-    DoStartPath(entry->path);
+    DoStartPath(entry->path, {}, entry->serial);
 }
 
 void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
@@ -6249,19 +6400,53 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
     return;
   const bool supports_save_states = ArcadeGameSupportsSaveStates(game);
 
+  struct CloneLaunchOption
+  {
+    std::string path;
+    std::string game_id;
+  };
+
+  std::vector<CloneLaunchOption> clone_launch_options;
   ImGuiFullscreen::ChoiceDialogOptions options = {
     {FSUI_ICONSTR(ICON_FA_WRENCH, "Set Properties"), false},
     {FSUI_ICONSTR(ICON_FA_FOLDER_OPEN, "Open Containing Directory"), false},
     {FSUI_ICONSTR(ICON_FA_PLAY, "Resume Arcade Set"), false},
     {FSUI_ICONSTR(ICON_FA_UNDO, "Load State"), false},
     {FSUI_ICONSTR(ICON_FA_PLAY_CIRCLE, "Start Arcade Set"), false},
-    {FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Play Time"), false},
-    {FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close Menu"), false},
   };
+
+  const Arcade::Database::SystemDefinition* const system = Arcade::Database::GetSystem(game->system_id);
+  if (game->parent.empty() && system && Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
+  {
+    for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(game->id))
+    {
+      std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+      if (clone_path.empty())
+        clone_path = entry->path;
+      if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+        continue;
+
+      std::string label = fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, clone->title);
+      if (!clone->region.empty())
+        label.append(fmt::format(" - {}", clone->region));
+      if (!clone->revision.empty())
+        label.append(fmt::format(" - {}", clone->revision));
+      label.append(fmt::format(" [{}]", clone->id));
+      options.emplace_back(std::move(label), false);
+      clone_launch_options.push_back({std::move(clone_path), clone->id});
+    }
+  }
+
+  const s32 reset_play_time_index = static_cast<s32>(options.size());
+  options.emplace_back(FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Play Time"), false);
+  const s32 close_menu_index = static_cast<s32>(options.size());
+  options.emplace_back(FSUI_ICONSTR(ICON_FA_WINDOW_CLOSE, "Close Menu"), false);
 
   OpenChoiceDialog(
     game->title.c_str(), false, std::move(options),
-    [entry_path = entry->path, set_name = game->id, supports_save_states](s32 index, const std::string&, bool) {
+    [entry_path = entry->path, set_name = game->id, supports_save_states,
+     clone_launch_options = std::move(clone_launch_options), reset_play_time_index,
+     close_menu_index](s32 index, const std::string&, bool) mutable {
       switch (index)
       {
         case 0:
@@ -6272,7 +6457,7 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
           break;
         case 2:
           if (supports_save_states)
-            DoStartPath(entry_path, System::GetGameSaveStateFileName(set_name, -1));
+            DoStartPath(entry_path, System::GetGameSaveStateFileName(set_name, -1), set_name);
           else
             ShowToast({}, System::GetSaveStateUnsupportedMessage());
           break;
@@ -6280,12 +6465,22 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
           OpenLoadStateSelectorForGame(entry_path);
           break;
         case 4:
-          DoStartPath(entry_path);
-          break;
-        case 5:
-          GameList::ClearPlayedTimeForSerial(set_name);
+          DoStartPath(entry_path, {}, set_name);
           break;
         default:
+          if (index >= 5 && index < reset_play_time_index)
+          {
+            CloneLaunchOption& clone = clone_launch_options[static_cast<size_t>(index - 5)];
+            DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+          }
+          else if (index == reset_play_time_index)
+          {
+            GameList::ClearPlayedTimeForSerial(set_name);
+          }
+          else if (index != close_menu_index)
+          {
+            return;
+          }
           break;
       }
 
@@ -6299,11 +6494,11 @@ void FullscreenUI::DrawGameListSettingsPage()
 
   BeginMenuButtons();
 
-  MenuHeading(FSUI_CSTR("Search Directories"));
-  if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Search Directory"),
-                 FSUI_CSTR("Adds a new directory to the game search list.")))
+  MenuHeading(FSUI_CSTR("Content Directories"));
+  if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Content Directory"),
+                 FSUI_CSTR("Adds a directory containing arcade games or supporting media.")))
   {
-    OpenFileSelector(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Search Directory"), true, [](const std::string& dir) {
+    OpenFileSelector(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Add Content Directory"), true, [](const std::string& dir) {
       if (!dir.empty())
       {
         auto lock = Host::GetSettingsLock();
@@ -6685,9 +6880,9 @@ TRANSLATE_NOOP("FullscreenUI", "Achievement Notifications");
 TRANSLATE_NOOP("FullscreenUI", "Achievements");
 TRANSLATE_NOOP("FullscreenUI", "Achievements are not enabled.");
 TRANSLATE_NOOP("FullscreenUI", "Active Profile: {}");
-TRANSLATE_NOOP("FullscreenUI", "Add Search Directory");
+TRANSLATE_NOOP("FullscreenUI", "Add Content Directory");
 TRANSLATE_NOOP("FullscreenUI", "Add Shader");
-TRANSLATE_NOOP("FullscreenUI", "Adds a new directory to the game search list.");
+TRANSLATE_NOOP("FullscreenUI", "Adds a directory containing arcade games or supporting media.");
 TRANSLATE_NOOP("FullscreenUI", "Adds a new shader to the chain.");
 TRANSLATE_NOOP("FullscreenUI", "Adjusts arcade playback level relative to ArcadeDuck's cabinet-normalized default. 0 dB is the normal level; use negative or positive trim for quieter or louder playback.");
 TRANSLATE_NOOP("FullscreenUI", "Adjusts emulation speed so the arcade display refresh rate matches the host when VSync is enabled.");
@@ -6742,10 +6937,11 @@ TRANSLATE_NOOP("FullscreenUI", "Cancel");
 TRANSLATE_NOOP("FullscreenUI", "Capture");
 TRANSLATE_NOOP("FullscreenUI", "Change Page");
 TRANSLATE_NOOP("FullscreenUI", "Change Selection");
+TRANSLATE_NOOP("FullscreenUI", "Change Value");
 TRANSLATE_NOOP("FullscreenUI", "Change View");
 TRANSLATE_NOOP("FullscreenUI", "Changes settings for the application.");
 TRANSLATE_NOOP("FullscreenUI", "Cheat List");
-TRANSLATE_NOOP("FullscreenUI", "Cheats are still under investigation and are not implemented yet. MAME cheat package compatibility is planned for a future update.");
+TRANSLATE_NOOP("FullscreenUI", "No MAME cheats are available for this arcade set.");
 TRANSLATE_NOOP("FullscreenUI", "Chooses the language used for UI elements.");
 TRANSLATE_NOOP("FullscreenUI", "Clean Boot");
 TRANSLATE_NOOP("FullscreenUI", "Clear Settings");
@@ -7113,7 +7309,7 @@ TRANSLATE_NOOP("FullscreenUI", "Screenshot Size");
 TRANSLATE_NOOP("FullscreenUI", "Screenshots Directory");
 TRANSLATE_NOOP("FullscreenUI", "Search");
 TRANSLATE_NOOP("FullscreenUI", "Search Arcade Sets");
-TRANSLATE_NOOP("FullscreenUI", "Search Directories");
+TRANSLATE_NOOP("FullscreenUI", "Content Directories");
 TRANSLATE_NOOP("FullscreenUI", "Search by title, set name, system, manufacturer, year, genre, region, or controls.");
 TRANSLATE_NOOP("FullscreenUI", "Select");
 TRANSLATE_NOOP("FullscreenUI", "Select Game");

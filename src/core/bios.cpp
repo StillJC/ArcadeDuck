@@ -9,15 +9,14 @@
 #include "host.h"
 #include "mips_encoder.h"
 #include "settings.h"
+#include "core/arcade/arcade_rom_loader.h"
 
 #include "common/assert.h"
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/md5_digest.h"
-#include "common/minizip_helpers.h"
 #include "common/path.h"
-#include "common/sha1_digest.h"
 #include "common/string_util.h"
 
 #include <algorithm>
@@ -167,21 +166,10 @@ static constexpr const char s_openbios_signature[] = {'O', 'p', 'e', 'n', 'B', '
 static constexpr u32 s_openbios_signature_offset = 0x78;
 
 static constexpr const char s_konami_gv_archive_name[] = "konamigv.zip";
+static constexpr const char s_konami_gv_7z_archive_name[] = "konamigv.7z";
 static constexpr const char s_konami_gv_member_name[] = "999a01.7e";
 static constexpr u32 s_konami_gv_member_crc32 = 0xad498d2d;
-static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> s_konami_gv_member_sha1 = {
-  0x02, 0xa8, 0x2a, 0x2f, 0xe1, 0xfb, 0xa0, 0x40, 0x45, 0x17,
-  0xc3, 0x60, 0x23, 0x24, 0xbf, 0xa6, 0x4e, 0x23, 0xe4, 0x78,
-};
-static constexpr const char s_konami_gv_member_sha1_string[] = "02a82a2fe1fba0404517c3602324bfa64e23e478";
-
-static constexpr const char s_konami_gq_member_name[] = "420b03.27p";
-static constexpr u32 s_konami_gq_member_crc32 = 0xaab391b1;
-static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> s_konami_gq_member_sha1 = {
-  0xbf, 0x9d, 0xc7, 0xc0, 0xc8, 0x16, 0x8c, 0x22, 0xa4, 0xbe,
-  0x26, 0x6f, 0xe6, 0xa6, 0x6d, 0x37, 0x38, 0xdf, 0x91, 0x6b,
-};
-static constexpr const char s_konami_gq_member_sha1_string[] = "bf9dc7c0c8168c22a4be266fe6a66d3738df916b";
+static constexpr const char s_konami_gv_member_sha1[] = "02a82a2fe1fba0404517c3602324bfa64e23e478";
 
 } // namespace BIOS
 
@@ -237,235 +225,75 @@ std::optional<BIOS::Image> BIOS::LoadKonamiGVImageFromDirectory(const char* dire
                                          FILESYSTEM_FIND_RELATIVE_PATHS,
                         &files);
 
-  const auto archive_iter = std::find_if(files.begin(), files.end(), [](const FILESYSTEM_FIND_DATA& fd) {
+  auto archive_iter = std::find_if(files.begin(), files.end(), [](const FILESYSTEM_FIND_DATA& fd) {
     return StringUtil::EqualNoCase(fd.FileName, s_konami_gv_archive_name);
   });
   if (archive_iter == files.end())
   {
-    Error::SetStringFmt(error, "Konami GV BIOS archive '{}' was not found in '{}'.", s_konami_gv_archive_name,
-                        directory);
+    archive_iter = std::find_if(files.begin(), files.end(), [](const FILESYSTEM_FIND_DATA& fd) {
+      return StringUtil::EqualNoCase(fd.FileName, s_konami_gv_7z_archive_name);
+    });
+  }
+  if (archive_iter == files.end())
+  {
+    Error::SetStringFmt(error, "Konami GV BIOS archive '{}' or '{}' was not found in '{}'.",
+                        s_konami_gv_archive_name, s_konami_gv_7z_archive_name, directory);
     return std::nullopt;
   }
+
+  Arcade::Database::ROMDefinition rom;
+  rom.name = s_konami_gv_member_name;
+  rom.sha1 = s_konami_gv_member_sha1;
+  rom.crc32 = s_konami_gv_member_crc32;
+  rom.size = BIOS_SIZE;
+  rom.has_crc32 = true;
 
   const std::string archive_path(Path::Combine(directory, archive_iter->FileName));
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path.c_str());
-  if (!zf)
+  std::vector<u8> data;
+  if (!Arcade::LoadROMFromArchive(archive_path, rom, &data, error))
+    return std::nullopt;
+
+  Image image;
+  image.data.resize(BIOS_SIZE);
+  std::memcpy(image.data.data(), data.data(), data.size());
+  image.hash = MD5Digest::HashData(image.data);
+  image.info = nullptr;
+  INFO_LOG("Loaded Konami GV BIOS member '{}' from '{}'.", s_konami_gv_member_name, archive_path);
+  return image;
+}
+
+std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(
+  const char* archive_path, const Arcade::Database::GameDefinition& game, Error* error)
+{
+  std::vector<u8> data;
+  if (!Arcade::LoadGameROMByRole(archive_path, game, "bios", &data, error))
+    return std::nullopt;
+  if (data.size() != BIOS_SIZE)
   {
-    Error::SetStringFmt(error, "Failed to open Konami GV BIOS archive '{}'.", archive_path);
+    Error::SetStringFmt(error, "Konami GQ BIOS for '{}' has size {}, expected {} bytes.", game.id, data.size(),
+                        static_cast<u32>(BIOS_SIZE));
     return std::nullopt;
   }
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Konami GV BIOS archive '{}' is empty or unreadable.", archive_path);
-    return std::nullopt;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Konami GV BIOS archive '{}'.", archive_path);
-      return std::nullopt;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, s_konami_gv_member_name))
-    {
-      if (file_info.uncompressed_size != BIOS_SIZE)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GV BIOS member '{}' has size {}, expected {} bytes.",
-                            s_konami_gv_member_name, file_info.uncompressed_size, static_cast<u32>(BIOS_SIZE));
-        return std::nullopt;
-      }
-      if (static_cast<u32>(file_info.crc) != s_konami_gv_member_crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GV BIOS member '{}' has CRC32 {:08x}, expected {:08x}.",
-                            s_konami_gv_member_name, static_cast<u32>(file_info.crc), s_konami_gv_member_crc32);
-        return std::nullopt;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Konami GV BIOS member '{}' from '{}'.",
-                            s_konami_gv_member_name, archive_path);
-        return std::nullopt;
-      }
-
-      Image image;
-      image.data.resize(BIOS_SIZE);
-      size_t offset = 0;
-      while (offset < image.data.size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, image.data.data() + offset,
-                                                   static_cast<unsigned>(image.data.size() - offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading Konami GV BIOS member '{}' from '{}'.", s_konami_gv_member_name,
-                              archive_path);
-          return std::nullopt;
-        }
-        offset += static_cast<size_t>(bytes_read);
-      }
-
-      if (unzCloseCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "CRC validation failed for Konami GV BIOS member '{}' in '{}'.",
-                            s_konami_gv_member_name, archive_path);
-        return std::nullopt;
-      }
-      unzClose(zf);
-
-      auto sha1 = SHA1Digest::GetDigest(std::span<const u8>(image.data.data(), image.data.size()));
-      if (sha1 != s_konami_gv_member_sha1)
-      {
-        const std::string sha1_string = SHA1Digest::DigestToString(sha1);
-        Error::SetStringFmt(error, "Konami GV BIOS member '{}' has SHA-1 {}, expected {}.", s_konami_gv_member_name,
-                            sha1_string, s_konami_gv_member_sha1_string);
-        return std::nullopt;
-      }
-
-      image.hash = MD5Digest::HashData(image.data);
-      image.info = nullptr;
-      INFO_LOG("Loaded validated Konami GV BIOS member '{}' from '{}'.", s_konami_gv_member_name, archive_path);
-      return image;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Konami GV BIOS archive '{}'.", archive_path);
-      return std::nullopt;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Konami GV BIOS archive '{}' does not contain '{}'.", archive_path,
-                      s_konami_gv_member_name);
-  return std::nullopt;
+  Image image;
+  image.data.resize(BIOS_SIZE);
+  std::memcpy(image.data.data(), data.data(), data.size());
+  image.hash = MD5Digest::HashData(image.data);
+  image.info = nullptr;
+  INFO_LOG("Loaded Konami GQ BIOS for '{}' using archive anchor '{}'.", game.id, archive_path);
+  return image;
 }
 
 std::optional<BIOS::Image> BIOS::LoadKonamiGQImageFromArchive(const char* archive_path, Error* error)
 {
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path);
+  if (!game)
   {
-    Error::SetStringFmt(error, "Failed to open Konami GQ set archive '{}'.", archive_path);
+    Error::SetStringFmt(error, "Konami GQ content archive '{}' is not a recognized arcade set.", archive_path);
     return std::nullopt;
   }
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Konami GQ set archive '{}' is empty or unreadable.", archive_path);
-    return std::nullopt;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Konami GQ set archive '{}'.", archive_path);
-      return std::nullopt;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, s_konami_gq_member_name))
-    {
-      if (file_info.uncompressed_size != BIOS_SIZE)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GQ BIOS member '{}' has size {}, expected {} bytes.",
-                            s_konami_gq_member_name, file_info.uncompressed_size, static_cast<u32>(BIOS_SIZE));
-        return std::nullopt;
-      }
-      if (static_cast<u32>(file_info.crc) != s_konami_gq_member_crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Konami GQ BIOS member '{}' has CRC32 {:08x}, expected {:08x}.",
-                            s_konami_gq_member_name, static_cast<u32>(file_info.crc), s_konami_gq_member_crc32);
-        return std::nullopt;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress Konami GQ BIOS member '{}' from '{}'.",
-                            s_konami_gq_member_name, archive_path);
-        return std::nullopt;
-      }
-
-      Image image;
-      image.data.resize(BIOS_SIZE);
-      size_t offset = 0;
-      while (offset < image.data.size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, image.data.data() + offset,
-                                                  static_cast<unsigned>(image.data.size() - offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading Konami GQ BIOS member '{}' from '{}'.",
-                              s_konami_gq_member_name, archive_path);
-          return std::nullopt;
-        }
-        offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for Konami GQ BIOS member '{}' in '{}'.",
-                            s_konami_gq_member_name, archive_path);
-        return std::nullopt;
-      }
-
-      auto sha1 = SHA1Digest::GetDigest(std::span<const u8>(image.data.data(), image.data.size()));
-      if (sha1 != s_konami_gq_member_sha1)
-      {
-        const std::string sha1_string = SHA1Digest::DigestToString(sha1);
-        Error::SetStringFmt(error, "Konami GQ BIOS member '{}' has SHA-1 {}, expected {}.",
-                            s_konami_gq_member_name, sha1_string, s_konami_gq_member_sha1_string);
-        return std::nullopt;
-      }
-
-      image.hash = MD5Digest::HashData(image.data);
-      image.info = nullptr;
-      INFO_LOG("Loaded validated Konami GQ BIOS member '{}' from '{}'.", s_konami_gq_member_name, archive_path);
-      return image;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Konami GQ set archive '{}'.", archive_path);
-      return std::nullopt;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Konami GQ set archive '{}' does not contain '{}'.", archive_path,
-                      s_konami_gq_member_name);
-  return std::nullopt;
+  return LoadKonamiGQImageFromArchive(archive_path, *game, error);
 }
 
 const BIOS::ImageInfo* BIOS::GetInfoForHash(const std::span<u8> image, const ImageInfo::Hash& hash)
@@ -690,5 +518,7 @@ std::vector<std::pair<std::string, const BIOS::ImageInfo*>> BIOS::FindBIOSImages
 
 bool BIOS::HasValidKonamiGVBIOS(const char* directory)
 {
-  return LoadKonamiGVImageFromDirectory(directory, nullptr).has_value();
+  const bool valid = LoadKonamiGVImageFromDirectory(directory, nullptr).has_value();
+  Arcade::ClearROMArchiveCache();
+  return valid;
 }

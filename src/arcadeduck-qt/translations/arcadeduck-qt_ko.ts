@@ -2003,75 +2003,11 @@ QFile::exists: %2</translation>
     </message>
 </context>
 <context>
-    <name>CheatCodeEditorDialog</name>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="14"/>
-        <source>Cheat Code Editor</source>
-        <translation>치트 코드 편집기</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="23"/>
-        <source>Description:</source>
-        <translation>설명 :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="33"/>
-        <source>Group:</source>
-        <translation>그룹 :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="43"/>
-        <source>Type:</source>
-        <translation>유형 :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="53"/>
-        <source>Activation:</source>
-        <translation>인증 :</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Error</source>
-        <translation>오류</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <source>Description cannot be empty.</source>
-        <translation>설명은 비워둘 수 없습니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Instructions are invalid.</source>
-        <translation>지침이 올바르지 않습니다.</translation>
-    </message>
-</context>
-<context>
     <name>CheatManagerWindow</name>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="14"/>
         <source>Cheat Manager</source>
         <translation>치트 관리자</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="26"/>
-        <source>&amp;Add Group...</source>
-        <translation>그룹 &amp;추가...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="33"/>
-        <source>&amp;Add Code...</source>
-        <translation>코드 &amp;추가...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="40"/>
-        <source>&amp;Edit Code...</source>
-        <translation>코드 &amp;편집...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="50"/>
-        <source>&amp;Delete Code</source>
-        <translation>코드 &amp;삭제</translation>
     </message>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="60"/>
@@ -2082,26 +2018,6 @@ QFile::exists: %2</translation>
         <translation>활성화</translation>
     </message>
     <message>
-        <location filename="../cheatmanagerwindow.ui" line="67"/>
-        <source>Import...</source>
-        <translation>가져오기...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="77"/>
-        <source>Export...</source>
-        <translation>내보내기...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="84"/>
-        <source>Clear</source>
-        <translation>지우기</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="91"/>
-        <source>Reset</source>
-        <translation>초기화</translation>
-    </message>
-    <message>
         <location filename="../cheatmanagerwindow.ui" line="120"/>
         <source>Name</source>
         <translation>이름</translation>
@@ -2110,139 +2026,6 @@ QFile::exists: %2</translation>
         <location filename="../cheatmanagerwindow.ui" line="125"/>
         <source>Type</source>
         <translation>유형</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="130"/>
-        <source>Activation</source>
-        <translation>활성화 방식</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="135"/>
-        <source>Instructions</source>
-        <translation>명령</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="281"/>
-        <source>Toggle</source>
-        <translation>토글</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Add Group</source>
-        <translation>그룹 추가</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Group Name:</source>
-        <translation>그룹 이름:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Error</source>
-        <translation>오류</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <source>This group name already exists.</source>
-        <translation>이 그룹 이름은 이미 존재합니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="462"/>
-        <source>Delete Code</source>
-        <translation>코드 삭제</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="463"/>
-        <source>Are you sure you wish to delete the selected code? This action is not reversible.</source>
-        <translation>선택한 코드를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="490"/>
-        <source>From File...</source>
-        <translation>파일에서...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="491"/>
-        <source>From Text...</source>
-        <translation>텍스트에서...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="497"/>
-        <source>PCSXR/Libretro Cheat Files (*.cht *.txt);;All Files (*.*)</source>
-        <translation>PCSXR/리브레트로 치트 파일(*.cht *.txt);;모든 파일(*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="499"/>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Import Cheats</source>
-        <translation>치트 불러오기</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <source>Failed to parse cheat file. The log may contain more information.</source>
-        <translation>치트 파일을 구문 분석하지 못했습니다. 로그에 자세한 정보가 있을 수 있습니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Cheat File Text:</source>
-        <translation>치트 파일 텍스트 :</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="545"/>
-        <source>PCSXR Cheat Files (*.cht);;All Files (*.*)</source>
-        <translation>PCSXR 치트 파일 (*.cht);;모든 파일 (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="547"/>
-        <source>Export Cheats</source>
-        <translation>치트 내보내기</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Failed to save cheat file. The log may contain more information.</source>
-        <translation>치트 파일을 저장하지 못했습니다. 로그에 자세한 정보가 있을 수 있습니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="557"/>
-        <source>Confirm Clear</source>
-        <translation>전체 삭제 확인</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="558"/>
-        <source>Are you sure you want to remove all cheats? This is not reversible.</source>
-        <translation>모든 치트를 제거하시겠습니까? 이 작업은 되돌릴 수 없습니다.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="571"/>
-        <source>Confirm Reset</source>
-        <translation>초기화 확인</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="572"/>
-        <source>Are you sure you want to reset the cheat list? Any cheats not in the built-in cheat database WILL BE LOST.</source>
-        <translation>치트 목록을 초기화하시겠습니까? 내장 치트 데이터베이스에 없는 치트는 모두 사라집니다.</translation>
-    </message>
-</context>
-<context>
-    <name>Cheats</name>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2589"/>
-        <source>Gameshark</source>
-        <translation>게임샤크</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Manual</source>
-        <translation>수동</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Automatic (Frame End)</source>
-        <translation>자동(프레임 종단)</translation>
     </message>
 </context>
 <context>

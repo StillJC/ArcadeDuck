@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: (GPL-3.0 OR CC-BY-NC-ND-4.0)
 
 #include "memoryscannerwindow.h"
-#include "cheatcodeeditordialog.h"
 #include "common/assert.h"
 #include "common/string_util.h"
 #include "core/bus.h"
@@ -47,35 +46,6 @@ static QString formatHexAndDecValue(u32 value, u8 size, bool is_signed)
   }
   else
     return QStringLiteral("0x%1 (%2)").arg(static_cast<u32>(value), size, 16, QChar('0')).arg(static_cast<uint>(value));
-}
-
-static QString formatCheatCode(u32 address, u32 value, const MemoryAccessSize size)
-{
-
-  if (size == MemoryAccessSize::Byte && address <= 0x00200000)
-    return QStringLiteral("CHEAT CODE: %1 %2")
-      .arg(static_cast<u32>(address) + 0x30000000, 8, 16, QChar('0'))
-      .toUpper()
-      .arg(static_cast<u16>(value), 4, 16, QChar('0'))
-      .toUpper();
-  else if (size == MemoryAccessSize::HalfWord && address <= 0x001FFFFE)
-    return QStringLiteral("CHEAT CODE: %1 %2")
-      .arg(static_cast<u32>(address) + 0x80000000, 8, 16, QChar('0'))
-      .toUpper()
-      .arg(static_cast<u16>(value), 4, 16, QChar('0'))
-      .toUpper();
-  else if (size == MemoryAccessSize::Word && address <= 0x001FFFFC)
-    return QStringLiteral("CHEAT CODE: %1 %2")
-      .arg(static_cast<u32>(address) + 0x90000000, 8, 16, QChar('0'))
-      .toUpper()
-      .arg(static_cast<u32>(value), 8, 16, QChar('0'))
-      .toUpper();
-  else
-    return QStringLiteral("OUTSIDE RAM RANGE. POKE %1 with %2")
-      .arg(static_cast<u32>(address), 8, 16, QChar('0'))
-      .toUpper()
-      .arg(static_cast<u16>(value), 8, 16, QChar('0'))
-      .toUpper();
 }
 
 static QString formatValue(u32 value, bool is_signed)
@@ -528,7 +498,7 @@ void MemoryScannerWindow::updateWatch()
     {
       m_ui.watchTable->insertRow(row);
 
-      QTableWidgetItem* description_item = new QTableWidgetItem(formatCheatCode(res.address, res.value, res.size));
+      QTableWidgetItem* description_item = new QTableWidgetItem(QString::fromStdString(res.description));
       m_ui.watchTable->setItem(row, 0, description_item);
 
       QTableWidgetItem* address_item = new QTableWidgetItem(formatHexValue(res.address, 8));

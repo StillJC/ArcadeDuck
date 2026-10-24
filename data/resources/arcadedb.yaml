@@ -1,5 +1,6 @@
 # ArcadeDuck universal arcade database.
-# Game archives are always complete non-merged sets. Parent relationships are metadata only.
+# Game definitions describe complete logical sets; supported handlers can resolve those ROMs from non-merged,
+# split, or merged archive layouts. Parent relationships define clone lineage and ROM fallback where supported.
 # The title field keeps the canonical game/edition name; region, board revision, and set notes use dedicated fields.
 schemaVersion: 1
 
@@ -1091,10 +1092,10 @@ controlLayouts:
         displayName: "Button 2 — Secondary / ranged attack"
         kind: "button"
       - key: "Button3"
-        displayName: "Button 3 — Guard"
+        displayName: "Button 3 — Jump"
         kind: "button"
       - key: "Button4"
-        displayName: "Button 4 — Jump"
+        displayName: "Button 4 — Guard"
         kind: "button"
 
   tgmj:
@@ -2514,6 +2515,7 @@ games:
   susume:
     archive: "susume.zip"
     title: "Susume! Taisen Puzzle-Dama"
+    parent: "lacrazyc"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Puzzle"
@@ -2705,6 +2707,7 @@ games:
   tmoshspa:
     archive: "tmoshspa.zip"
     title: "Tokimeki Memorial Oshiete Your Heart Seal Version Plus"
+    parent: "tmoshsp"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Simulation"
@@ -2761,6 +2764,7 @@ games:
   naganoj:
     archive: "naganoj.zip"
     title: "Hyper Olympics in Nagano"
+    parent: "nagano98"
     system: "konami_gv"
     manufacturer: "Konami"
     genre: "Sports"
@@ -10120,6 +10124,7 @@ games:
     region: "Europe"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10174,6 +10179,7 @@ games:
     region: "US"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10228,6 +10234,7 @@ games:
     region: "Asia"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10282,6 +10289,7 @@ games:
     region: "Japan"
     revision: "971216"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10336,6 +10344,7 @@ games:
     region: "Japan"
     revision: "971117"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10389,6 +10398,7 @@ games:
     region: "Europe"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10438,6 +10448,7 @@ games:
     region: "US"
     revision: "980526"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10487,6 +10498,7 @@ games:
     region: "US"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10536,6 +10548,7 @@ games:
     region: "Asia"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10585,6 +10598,7 @@ games:
     region: "Hispanic"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10634,6 +10648,7 @@ games:
     region: "Japan"
     revision: "980312"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10682,6 +10697,7 @@ games:
     region: "US"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10732,6 +10748,7 @@ games:
     region: "Asia"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10782,6 +10799,7 @@ games:
     region: "Japan"
     revision: "980316"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10831,6 +10849,7 @@ games:
     region: "Japan"
     revision: "980710"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10876,6 +10895,7 @@ games:
     region: "Europe"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10927,6 +10947,7 @@ games:
     region: "US"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -10978,6 +10999,7 @@ games:
     region: "Asia"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11029,6 +11051,7 @@ games:
     region: "Japan"
     revision: "980914"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11079,6 +11102,7 @@ games:
     region: "Europe"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11130,6 +11154,7 @@ games:
     region: "US"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11181,6 +11206,7 @@ games:
     region: "Asia"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11232,6 +11258,7 @@ games:
     region: "Hispanic"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11283,6 +11310,7 @@ games:
     region: "Japan"
     revision: "990611"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
@@ -11333,14 +11361,14 @@ games:
     region: "Europe"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11395,14 +11423,14 @@ games:
     region: "US"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11457,14 +11485,14 @@ games:
     region: "Asia"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
@@ -11519,14 +11547,14 @@ games:
     region: "Japan"
     revision: "991213"
     hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
     setFormat: "non_merged"
     status: "working"
     minPlayers: 1
-    maxPlayers: 2
+    maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "strider2" }
         - { type: "arcade", joystick: "eight_way", layout: "strider2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }

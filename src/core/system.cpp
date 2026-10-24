@@ -9,7 +9,6 @@
 #include "bios.h"
 #include "bus.h"
 #include "cdrom.h"
-#include "cheats.h"
 #include "cpu_code_cache.h"
 #include "cpu_core.h"
 #include "cpu_pgxp.h"
@@ -26,10 +25,13 @@
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "legacy_pad_state.h"
+#include "mame_cheat_package.h"
+#include "mame_cheat_runtime.h"
 #include "mdec.h"
 #include "save_state_version.h"
 #include "sio.h"
@@ -73,6 +75,7 @@
 #include "imgui.h"
 #include "xxhash.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cinttypes>
 #include <cmath>
@@ -80,7 +83,9 @@
 #include <deque>
 #include <fstream>
 #include <limits>
+#include <string_view>
 #include <thread>
+#include <vector>
 #include <zlib.h>
 #include <zstd.h>
 #include <zstd_errors.h>
@@ -160,6 +165,8 @@ static bool SetBootMode(BootMode new_boot_mode, Error* error);
 static void InternalReset();
 static void ClearRunningGame();
 static void DestroySystem();
+static void LoadMAMECheats();
+static void ClearMAMECheats(bool execute_off_scripts);
 
 static bool CreateGPU(GPURenderer renderer, bool is_switching, Error* error);
 static bool RecreateGPU(GPURenderer renderer, bool force_recreate_device = false, bool update_display = true);
@@ -177,7 +184,8 @@ static void UpdateDisplayVSync();
 static void ResetPerformanceCounters();
 
 static bool UpdateGameSettingsLayer();
-static void UpdateRunningGame(const std::string_view path, CDImage* image, bool booting);
+static void UpdateRunningGame(const std::string_view path, CDImage* image, bool booting,
+                              const Arcade::Database::GameDefinition* arcade_game_override = nullptr);
 static bool CheckForSBIFile(CDImage* image, Error* error);
 
 /// Returns the maximum size of a save state, considering the current configuration.
@@ -312,7 +320,8 @@ static Common::Timer s_fps_timer;
 static Common::Timer s_frame_timer;
 static Threading::ThreadHandle s_cpu_thread_handle;
 
-static std::unique_ptr<CheatList> s_cheat_list;
+static MAMECheats::MainCPUMemoryAccess s_mame_cheat_memory;
+static std::unique_ptr<MAMECheats::RuntimeList> s_mame_cheat_runtime;
 static std::unique_ptr<MediaCapture> s_media_capture;
 
 // temporary save state, created when loading, used to undo load state
@@ -660,8 +669,20 @@ TickCount System::GetMaxSliceTicks()
 
 void System::UpdateOverclock()
 {
+  // Sony ZN daughterboards which derive time from the global CPU tick counter
+  // must settle/capture the old clock domain before g_ticks_per_second changes.
+  const bool sony_zn_active = SonyZN::IsActive();
+  if (sony_zn_active)
+    SonyZN::PrepareForCPUClockChange();
+
   g_ticks_per_second = ScaleTicksToOverclock(MASTER_CLOCK);
   s_max_slice_ticks = ScaleTicksToOverclock(MASTER_CLOCK / 10);
+
+  if (sony_zn_active)
+    SonyZN::CompleteCPUClockChange();
+
+  // CPUClockChanged() retires pending SPU sample ticks using the conversion
+  // state under which they were scheduled, then installs the new ratio.
   SPU::CPUClockChanged();
   CDROM::CPUClockChanged();
   g_gpu->CPUClockChanged();
@@ -1448,11 +1469,13 @@ void System::ResetSystem()
 
   if (Achievements::ResetHardcoreMode(false))
   {
-    // Make sure a pre-existing cheat file hasn't been loaded when resetting
-    // after enabling HC mode.
-    s_cheat_list.reset();
+    // Make sure pre-existing cheats aren't active after enabling HC mode.
+    ClearMAMECheats(true);
     ApplySettings(false);
   }
+
+  if (SonyZN::IsActive())
+    SonyZN::PrepareForTimingEpochReset();
 
   InternalReset();
 
@@ -1596,12 +1619,38 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     if (!real_path.empty())
       parameters.filename = real_path;
 
-    arcade_game = Arcade::Database::IdentifyArchive(parameters.filename);
-    if (!arcade_game)
+    const Arcade::Database::GameDefinition* const archive_game =
+      Arcade::Database::IdentifyArchive(parameters.filename);
+    if (!archive_game)
     {
       Error::SetStringFmt(error, "Archive '{}' is not a recognized ArcadeDuck set.",
                           Path::GetFileName(parameters.filename));
       return false;
+    }
+
+    arcade_game = archive_game;
+    if (!parameters.arcade_game_id.empty())
+    {
+      arcade_game = Arcade::Database::GetGame(parameters.arcade_game_id);
+      if (!arcade_game)
+      {
+        Error::SetStringFmt(error, "Arcade game '{}' is not present in arcadedb.yaml.", parameters.arcade_game_id);
+        return false;
+      }
+
+      const Arcade::Database::GameDefinition* current = arcade_game;
+      for (size_t depth = 0; current && current->id != archive_game->id && depth < Arcade::Database::GetGames().size();
+           depth++)
+      {
+        current = current->parent.empty() ? nullptr : Arcade::Database::GetGame(current->parent);
+      }
+
+      if (!current || current->id != archive_game->id)
+      {
+        Error::SetStringFmt(error, "Arcade game '{}' cannot be launched from archive '{}'.", arcade_game->id,
+                            Path::GetFileName(parameters.filename));
+        return false;
+      }
     }
   }
   else if (Arcade::Database::IsArchivePath(parameters.filename))
@@ -1651,7 +1700,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       return false;
     }
 
-    if (!arcade_machine_handler->Preflight(*arcade_boot_context, error))
+    Arcade::ClearROMArchiveCache();
+    const bool preflight_succeeded = arcade_machine_handler->Preflight(*arcade_boot_context, error);
+    Arcade::ClearROMArchiveCache();
+    if (!preflight_succeeded)
       return false;
   }
 
@@ -1722,7 +1774,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     INFO_LOG("Compatibility Region: {}", Settings::GetConsoleRegionName(s_region));
 
   // Update running game, this will apply settings as well.
-  UpdateRunningGame(disc ? disc->GetFileName().c_str() : parameters.filename.c_str(), disc.get(), true);
+  UpdateRunningGame(disc ? disc->GetFileName().c_str() : parameters.filename.c_str(), disc.get(), true, arcade_game);
 
   // Check for SBI.
   if (!CheckForSBIFile(disc.get(), error))
@@ -1769,7 +1821,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     }
   }
 
-  // Arcade boards supply and install their own validated BIOS after Bus initialization.
+  // Arcade boards supply and install their own BIOS after Bus initialization.
   if (parameters.boot_classification == SystemBootClassification::Standard && !SetBootMode(boot_mode, error))
   {
     s_state = State::Shutdown;
@@ -2029,6 +2081,7 @@ void System::DestroySystem()
   s_cpu_thread_usage = {};
 
   ClearMemorySaveStates();
+  ClearMAMECheats(false);
 
   TextureReplacements::Shutdown();
 
@@ -2069,7 +2122,6 @@ void System::DestroySystem()
   s_bios_hash = {};
   s_bios_image_info = nullptr;
   s_boot_mode = BootMode::None;
-  s_cheat_list.reset();
   ClearActiveVideoTiming();
 
   s_state = State::Shutdown;
@@ -2143,8 +2195,8 @@ void System::FrameDone()
   // TODO: when running ahead, we can skip this (and the flush above)
   SPU::GeneratePendingSamples();
 
-  if (s_cheat_list)
-    s_cheat_list->Apply();
+  if (s_mame_cheat_runtime && !Achievements::IsHardcoreModeActive())
+    s_mame_cheat_runtime->FrameUpdate();
 
   if (Achievements::IsActive())
     Achievements::FrameUpdate();
@@ -2163,6 +2215,7 @@ void System::FrameDone()
   if (SonyZN::BeginMainBoardReset())
   {
     INFO_LOG("Sony ZN full board reset requested by Taito MB3773.");
+    SonyZN::PrepareForTimingEpochReset();
     InternalReset();
     SonyZN::EndMainBoardReset();
     ResetPerformanceCounters();
@@ -2578,6 +2631,15 @@ bool System::DoState(StateWrapper& sw, GPUTexture** host_texture, bool update_di
   sw.Do(&cpu_overclock_active);
   sw.Do(&cpu_overclock_numerator);
   sw.Do(&cpu_overclock_denominator);
+
+  if (sw.IsReading() && sw.GetVersion() < 72)
+  {
+    // v71 and older predate the cached SPU clock-domain fields. Their pending
+    // TimingEvent timestamps belong to the ratio stored in this Overclock block,
+    // so reconstruct that saved domain before any transition to current settings.
+    SPU::RestoreLegacyClockDomainFromState(cpu_overclock_active, cpu_overclock_numerator,
+                                           cpu_overclock_denominator);
+  }
 
   if (sw.IsReading() && (cpu_overclock_active != g_settings.cpu_overclock_active ||
                          (cpu_overclock_active && (g_settings.cpu_overclock_numerator != cpu_overclock_numerator ||
@@ -3652,13 +3714,22 @@ void System::DoFrameStep()
 
 void System::DoToggleCheats()
 {
-  if (!System::IsValid())
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
     return;
 
-  Host::AddKeyedOSDMessage(
-    "CheatsUnderInvestigation",
-    TRANSLATE_STR("OSDMessage", "Cheats are still under investigation and are not implemented yet. MAME cheat package compatibility is planned for a future update."),
-    8.0f);
+  if (!s_mame_cheat_runtime)
+  {
+    Host::AddKeyedOSDMessage("CheatsToggle", TRANSLATE_STR("OSDMessage", "No MAME cheats are available for this game."),
+                             Host::OSD_INFO_DURATION);
+    return;
+  }
+
+  const bool enabled = !s_mame_cheat_runtime->IsEnabled();
+  s_mame_cheat_runtime->SetEnabled(enabled);
+  Host::AddKeyedOSDMessage("CheatsToggle",
+                           enabled ? TRANSLATE_STR("OSDMessage", "Cheats enabled.") :
+                                     TRANSLATE_STR("OSDMessage", "Cheats disabled."),
+                           Host::OSD_INFO_DURATION);
 }
 
 #if 0
@@ -3719,7 +3790,8 @@ bool System::DumpSPURAM(const char* filename)
   return FileSystem::WriteBinaryFile(filename, SPU::GetRAM().data(), SPU::RAM_SIZE);
 }
 
-void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool booting)
+void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool booting,
+                               const Arcade::Database::GameDefinition* arcade_game_override)
 {
   if (!booting && s_running_game_path == path)
     return;
@@ -3744,8 +3816,9 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
       (!image || image->GetTrack(1).mode != CDImage::TrackMode::Audio);
     if (should_resolve_game_identity)
     {
-      if (const Arcade::Database::GameDefinition* const arcade_game =
-            Arcade::Database::IdentifyArchive(s_running_game_path))
+      const Arcade::Database::GameDefinition* const arcade_game =
+        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyArchive(s_running_game_path);
+      if (arcade_game)
       {
         s_running_game_serial = arcade_game->id;
         if (s_running_game_title.empty())
@@ -3811,9 +3884,8 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
   UpdateGameSettingsLayer();
   ApplySettings(true);
 
-  s_cheat_list.reset();
-  if (g_settings.enable_cheats)
-    LoadCheatList();
+  ClearMAMECheats(!booting);
+  LoadMAMECheats();
 
   if (s_running_game_serial != prev_serial)
     UpdateSessionTime(prev_serial);
@@ -3826,6 +3898,337 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
   UpdateRichPresence(booting);
 
   Host::OnGameChanged(s_running_game_path, s_running_game_serial, s_running_game_title);
+}
+
+template<typename T>
+static bool AppendMAMECheatOutputValue(std::string* text, const std::string& format, T value)
+{
+  char local_buffer[128];
+  const int length = std::snprintf(local_buffer, sizeof(local_buffer), format.c_str(), value);
+  if (length < 0)
+    return false;
+
+  if (static_cast<size_t>(length) < sizeof(local_buffer))
+  {
+    text->append(local_buffer, static_cast<size_t>(length));
+    return true;
+  }
+
+  std::vector<char> buffer(static_cast<size_t>(length) + 1);
+  if (std::snprintf(buffer.data(), buffer.size(), format.c_str(), value) != length)
+    return false;
+
+  text->append(buffer.data(), static_cast<size_t>(length));
+  return true;
+}
+
+// The XML parser has already validated MAME's integer-only printf subset; format one argument at a time
+// so host printf width differences cannot consume the following cheat arguments.
+static bool FormatMAMECheatOutput(const MAMECheats::RuntimeOutput& output, std::string* text)
+{
+  text->clear();
+  text->reserve(output.format.size() + 32);
+
+  static constexpr std::string_view FORMAT_ATTRIBUTES = "lh0123456789.-+ #";
+
+  size_t source_position = 0;
+  u32 argument_index = 0;
+  while (source_position < output.format.size())
+  {
+    const size_t specifier_start = output.format.find('%', source_position);
+    if (specifier_start == std::string::npos)
+    {
+      text->append(output.format, source_position, std::string::npos);
+      break;
+    }
+
+    text->append(output.format, source_position, specifier_start - source_position);
+
+    size_t type_position = specifier_start + 1;
+    while (type_position < output.format.size() &&
+           FORMAT_ATTRIBUTES.find(output.format[type_position]) != std::string_view::npos)
+    {
+      type_position++;
+    }
+    if (type_position >= output.format.size() || argument_index >= output.argument_count)
+      return false;
+
+    std::string specifier = output.format.substr(specifier_start, (type_position - specifier_start) + 1);
+    const char type = output.format[type_position];
+    const u64 value = output.arguments[argument_index++];
+    const bool long_long_value = (specifier.find("ll") != std::string::npos);
+    const bool long_value = !long_long_value && (specifier.find('l') != std::string::npos);
+    const bool char_value = (specifier.find("hh") != std::string::npos);
+    const bool short_value = !char_value && (specifier.find('h') != std::string::npos);
+
+    bool formatted = false;
+    switch (type)
+    {
+      case 'c':
+      {
+        specifier.erase(std::remove(specifier.begin(), specifier.end(), 'l'), specifier.end());
+        specifier.erase(std::remove(specifier.begin(), specifier.end(), 'h'), specifier.end());
+        formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<int>(static_cast<u8>(value)));
+        break;
+      }
+
+      case 'd':
+      case 'i':
+      {
+        if (long_long_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<long long>(value));
+        else if (long_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<long>(value));
+        else if (char_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<int>(static_cast<s8>(value)));
+        else if (short_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<int>(static_cast<s16>(value)));
+        else
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<s32>(value));
+        break;
+      }
+
+      case 'o':
+      case 'u':
+      case 'x':
+      case 'X':
+      {
+        if (long_long_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<unsigned long long>(value));
+        else if (long_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<unsigned long>(value));
+        else if (char_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<unsigned int>(static_cast<u8>(value)));
+        else if (short_value)
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<unsigned int>(static_cast<u16>(value)));
+        else
+          formatted = AppendMAMECheatOutputValue(text, specifier, static_cast<u32>(value));
+        break;
+      }
+
+      default:
+        return false;
+    }
+
+    if (!formatted)
+      return false;
+    source_position = type_position + 1;
+  }
+
+  return argument_index == output.argument_count;
+}
+
+void System::LoadMAMECheats()
+{
+  ClearMAMECheats(false);
+
+  if (Achievements::IsHardcoreModeActive() || s_running_game_serial.empty())
+    return;
+
+  const Arcade::Database::GameDefinition* const arcade_game = Arcade::Database::GetGame(s_running_game_serial);
+  if (!arcade_game)
+    return;
+
+  MAMECheats::List list;
+  MAMECheats::PackageLoadInfo load_info;
+  Error error;
+  const MAMECheats::PackageLoadStatus status =
+    MAMECheats::LoadForGame(EmuFolders::Cheats, arcade_game->id, arcade_game->parent, &list, &load_info, &error);
+  if (status == MAMECheats::PackageLoadStatus::NotFound)
+  {
+    VERBOSE_LOG("No MAME cheat package entry found for '{}'.", arcade_game->id);
+    return;
+  }
+  if (status == MAMECheats::PackageLoadStatus::Error)
+  {
+    ERROR_LOG("Failed to load MAME cheats for '{}': {}", arcade_game->id, error.GetDescription());
+    return;
+  }
+
+  s_mame_cheat_runtime = std::make_unique<MAMECheats::RuntimeList>();
+  s_mame_cheat_runtime->Initialize(list, &s_mame_cheat_memory);
+
+  u32 invalid_entries = 0;
+  for (u32 i = 0; i < s_mame_cheat_runtime->GetEntryCount(); i++)
+  {
+    const MAMECheats::RuntimeEntry& entry = s_mame_cheat_runtime->GetEntry(i);
+    if (entry.IsValid())
+      continue;
+
+    invalid_entries++;
+    WARNING_LOG("MAME cheat '{}' disabled: {}", entry.GetSource().description, entry.GetError());
+  }
+
+  INFO_LOG("Loaded {} MAME cheat entries for '{}' from '{}'{}.", s_mame_cheat_runtime->GetEntryCount(),
+           arcade_game->id, load_info.source_path, load_info.used_parent ? " using parent fallback" : "");
+  if (invalid_entries > 0)
+    WARNING_LOG("{} MAME cheat entries were disabled because they use unsupported expressions or memory spaces.",
+                invalid_entries);
+}
+
+void System::ClearMAMECheats(bool execute_off_scripts)
+{
+  if (!s_mame_cheat_runtime)
+    return;
+
+  if (execute_off_scripts)
+    s_mame_cheat_runtime->SetEnabled(false);
+  s_mame_cheat_runtime.reset();
+}
+
+std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
+{
+  std::vector<MAMECheatInfo> result;
+  if (!s_mame_cheat_runtime || Achievements::IsHardcoreModeActive())
+    return result;
+
+  const u32 count = s_mame_cheat_runtime->GetEntryCount();
+  result.reserve(count);
+  for (u32 i = 0; i < count; i++)
+  {
+    const MAMECheats::RuntimeEntry& entry = s_mame_cheat_runtime->GetEntry(i);
+    const MAMECheats::Entry& source = entry.GetSource();
+
+    MAMECheatInfo info;
+    info.index = i;
+    info.description = source.description;
+    info.comment = source.comment;
+    info.error = entry.GetError();
+    info.valid = entry.IsValid();
+    info.active = (entry.GetState() != MAMECheats::ScriptState::Off);
+
+    if (source.IsTextOnly())
+    {
+      info.type = MAMECheatType::TextOnly;
+    }
+    else if (source.IsOneShot())
+    {
+      info.type = MAMECheatType::OneShot;
+      info.value = "Ready";
+    }
+    else if (source.IsOneShotParameter())
+    {
+      info.type = MAMECheatType::OneShotParameter;
+    }
+    else if (source.IsOnOff())
+    {
+      info.type = MAMECheatType::OnOff;
+      info.value = info.active ? "On" : "Off";
+    }
+    else if (source.IsItemListParameter())
+    {
+      info.type = MAMECheatType::ItemListParameter;
+    }
+    else
+    {
+      info.type = MAMECheatType::ValueParameter;
+    }
+
+    if (entry.HasParameter())
+    {
+      if (!info.active)
+      {
+        info.value = "Off";
+      }
+      else if (const char* item_text = entry.GetParameterItemText())
+      {
+        info.value = item_text;
+      }
+      else
+      {
+        const MAMECheats::NumberFormat format = source.parameter->minimum.format;
+        if (format == MAMECheats::NumberFormat::HexDollar)
+          info.value = fmt::format("${:X}", entry.GetParameterValue());
+        else if (format == MAMECheats::NumberFormat::HexC)
+          info.value = fmt::format("0x{:X}", entry.GetParameterValue());
+        else
+          info.value = fmt::format("{}", entry.GetParameterValue());
+      }
+    }
+
+    if (!info.valid)
+    {
+      info.value = "Unsupported";
+    }
+    else
+    {
+      info.can_activate = source.IsOneShot() || (source.IsOneShotParameter() && info.active);
+      info.can_previous = !source.IsOneShot() && info.active;
+      info.can_next =
+        source.IsOnOff() ? !info.active :
+        (entry.HasParameter() && (!info.active || !entry.IsParameterMaximum()));
+    }
+
+    result.push_back(std::move(info));
+  }
+
+  return result;
+}
+
+std::vector<System::MAMECheatOutputInfo> System::GetMAMECheatOutputs()
+{
+  std::vector<MAMECheatOutputInfo> result;
+  if (!s_mame_cheat_runtime || Achievements::IsHardcoreModeActive())
+    return result;
+
+  const std::vector<MAMECheats::RuntimeOutput>& outputs = s_mame_cheat_runtime->GetOutputs();
+  result.reserve(outputs.size());
+  for (const MAMECheats::RuntimeOutput& output : outputs)
+  {
+    MAMECheatOutputInfo info;
+    if (!FormatMAMECheatOutput(output, &info.text))
+      continue;
+
+    info.line = output.line;
+    switch (output.alignment)
+    {
+      case MAMECheats::OutputAlignment::Center:
+        info.alignment = MAMECheatOutputAlignment::Center;
+        break;
+      case MAMECheats::OutputAlignment::Right:
+        info.alignment = MAMECheatOutputAlignment::Right;
+        break;
+      default:
+        info.alignment = MAMECheatOutputAlignment::Left;
+        break;
+    }
+    result.push_back(std::move(info));
+  }
+
+  return result;
+}
+
+bool System::ActivateMAMECheat(u32 index)
+{
+  if (!s_mame_cheat_runtime || Achievements::IsHardcoreModeActive() ||
+      index >= s_mame_cheat_runtime->GetEntryCount())
+  {
+    return false;
+  }
+
+  return s_mame_cheat_runtime->GetEntry(index).Activate();
+}
+
+bool System::SelectPreviousMAMECheatState(u32 index)
+{
+  if (!s_mame_cheat_runtime || Achievements::IsHardcoreModeActive() ||
+      index >= s_mame_cheat_runtime->GetEntryCount())
+  {
+    return false;
+  }
+
+  return s_mame_cheat_runtime->GetEntry(index).SelectPreviousState();
+}
+
+bool System::SelectNextMAMECheatState(u32 index)
+{
+  if (!s_mame_cheat_runtime || Achievements::IsHardcoreModeActive() ||
+      index >= s_mame_cheat_runtime->GetEntryCount())
+  {
+    return false;
+  }
+
+  return s_mame_cheat_runtime->GetEntry(index).SelectNextState();
 }
 
 bool System::CheckForSBIFile(CDImage* image, Error* error)
@@ -3859,40 +4262,6 @@ bool System::CheckForSBIFile(CDImage* image, Error* error)
     s_running_game_serial, s_running_game_title);
 
   return false;
-}
-
-bool System::HasCheatList()
-{
-  return static_cast<bool>(s_cheat_list);
-}
-
-CheatList* System::GetCheatList()
-{
-  return s_cheat_list.get();
-}
-
-void System::ApplyCheatCode(const CheatCode& code)
-{
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
-  return;
-}
-
-void System::SetCheatList(std::unique_ptr<CheatList> cheats)
-{
-  Assert(!IsShutdown());
-  s_cheat_list = std::move(cheats);
-
-  if (s_cheat_list && s_cheat_list->GetEnabledCodeCount() > 0)
-  {
-    Host::AddIconOSDMessage("CheatsLoadWarning", ICON_FA_EXCLAMATION_TRIANGLE,
-                            TRANSLATE_PLURAL_STR("System", "%n cheat(s) are enabled. This may crash games.", "",
-                                                 s_cheat_list->GetEnabledCodeCount()),
-                            Host::OSD_WARNING_DURATION);
-  }
-  else
-  {
-    Host::RemoveKeyedOSDMessage("CheatsLoadWarning");
-  }
 }
 
 void System::CheckForSettingsChanges(const Settings& old_settings)
@@ -3998,14 +4367,6 @@ void System::CheckForSettingsChanges(const Settings& old_settings)
              g_settings.bios_tty_logging != old_settings.bios_tty_logging)
     {
       CPU::UpdateDebugDispatcherFlag();
-    }
-
-    if (g_settings.enable_cheats != old_settings.enable_cheats)
-    {
-      if (g_settings.enable_cheats)
-        LoadCheatList();
-      else
-        SetCheatList(nullptr);
     }
 
     UpdateVolume();
@@ -5027,104 +5388,6 @@ std::string System::GetMostRecentResumeSaveStatePath()
   }
 
   return std::move(most_recent->FileName);
-}
-
-std::string System::GetCheatFileName()
-{
-  std::string ret;
-
-  const std::string& title = System::GetGameTitle();
-  if (!title.empty())
-    ret = Path::Combine(EmuFolders::Cheats, fmt::format("{}.cht", title.c_str()));
-
-  return ret;
-}
-
-bool System::LoadCheatList()
-{
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
-  s_cheat_list.reset();
-  return false;
-}
-
-bool System::LoadCheatListFromDatabase()
-{
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
-  s_cheat_list.reset();
-  return false;
-}
-
-bool System::SaveCheatList()
-{
-  if (!System::IsValid() || !System::HasCheatList())
-    return false;
-
-  const std::string filename(GetCheatFileName());
-  if (filename.empty())
-    return false;
-
-  if (!System::GetCheatList()->SaveToPCSXRFile(filename.c_str()))
-  {
-    Host::AddIconOSDMessage(
-      "cheat_save_error", ICON_FA_EXCLAMATION_TRIANGLE,
-      fmt::format(TRANSLATE_FS("System", "Failed to save cheat list to '{}'."), Path::GetFileName(filename)),
-      Host::OSD_ERROR_DURATION);
-  }
-
-  return true;
-}
-
-bool System::DeleteCheatList()
-{
-  if (!System::IsValid())
-    return false;
-
-  const std::string filename(GetCheatFileName());
-  if (!filename.empty())
-  {
-    if (!FileSystem::DeleteFile(filename.c_str()))
-      return false;
-
-    Host::AddIconOSDMessage(
-      "cheat_delete", ICON_FA_EXCLAMATION_TRIANGLE,
-      fmt::format(TRANSLATE_FS("System", "Deleted cheat list '{}'."), Path::GetFileName(filename)),
-      Host::OSD_INFO_DURATION);
-  }
-
-  System::SetCheatList(nullptr);
-  return true;
-}
-
-void System::ClearCheatList(bool save_to_file)
-{
-  if (!System::IsValid())
-    return;
-
-  CheatList* cl = System::GetCheatList();
-  if (!cl)
-    return;
-
-  while (cl->GetCodeCount() > 0)
-    cl->RemoveCode(cl->GetCodeCount() - 1);
-
-  if (save_to_file)
-    SaveCheatList();
-}
-
-void System::SetCheatCodeState(u32 index, bool enabled)
-{
-  Host::AddKeyedOSDMessage(
-    "CheatsUnderInvestigation",
-    TRANSLATE_STR("OSDMessage", "Cheats are still under investigation and are not implemented yet. MAME cheat package compatibility is planned for a future update."),
-    8.0f);
-}
-
-void System::ApplyCheatCode(u32 index)
-{
-  Host::AddKeyedOSDMessage(
-    "CheatsUnderInvestigation",
-    TRANSLATE_STR("OSDMessage", "Cheats are still under investigation and are not implemented yet. MAME cheat package compatibility is planned for a future update."),
-    8.0f);
 }
 
 void System::ToggleWidescreen()

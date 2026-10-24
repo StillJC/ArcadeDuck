@@ -26,6 +26,7 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/game_list.h"
 #include "core/fullscreen_ui.h"
 #include "core/host.h"
@@ -112,7 +113,7 @@ static void ConstrainWindowSizingRectTo16By9(RECT* rect, WPARAM edge, LONG extra
 
 Log_SetChannel(MainWindow);
 
-static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip)");
+static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip *.7z)");
 
 MainWindow* g_main_window = nullptr;
 
@@ -1111,17 +1112,26 @@ void MainWindow::populateSaveStateMenu(const char* game_serial, QMenu* menu)
 
 void MainWindow::updateCheatActionsVisibility()
 {
-  // ArcadeDuck cheat support is intentionally gated until MAME cheat-package compatibility is implemented.
   m_ui.actionCheats->setVisible(true);
   m_ui.actionCheatsToolbar->setVisible(true);
-  m_ui.menuCheats->menuAction()->setVisible(false);
+  m_ui.menuCheats->menuAction()->setVisible(true);
 }
+
 void MainWindow::onCheatsActionTriggered()
 {
-  QMessageBox::information(
-    this, tr("Cheats Under Investigation"),
-    tr("ArcadeDuck cheat support is still under investigation and is not implemented yet.\n\n"
-       "MAME cheat package compatibility is planned for a future update."));
+  if (!System::IsValid() || Achievements::IsHardcoreModeActive())
+    return;
+
+  if (!m_cheat_manager_window)
+  {
+    m_cheat_manager_window = new CheatManagerWindow();
+    connect(m_cheat_manager_window, &CheatManagerWindow::closed, this, [this]() {
+      m_cheat_manager_window->deleteLater();
+      m_cheat_manager_window = nullptr;
+    });
+  }
+
+  QtUtils::ShowOrRaiseWindow(m_cheat_manager_window);
 }
 
 void MainWindow::onCheatsMenuAboutToShow()
@@ -1129,19 +1139,18 @@ void MainWindow::onCheatsMenuAboutToShow()
   m_ui.menuCheats->clear();
   connect(m_ui.menuCheats->addAction(tr("Cheat Manager")), &QAction::triggered, this,
           &MainWindow::onCheatsActionTriggered);
-  m_ui.menuCheats->addSeparator();
-  populateCheatsMenu(m_ui.menuCheats);
 }
 
 void MainWindow::populateCheatsMenu(QMenu* menu)
 {
-  QAction* placeholder_action = menu->addAction(tr("Cheats Under Investigation"));
-  connect(placeholder_action, &QAction::triggered, this, &MainWindow::onCheatsActionTriggered);
+  Q_UNUSED(menu);
 }
 
-std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file)
+std::shared_ptr<SystemBootParameters> MainWindow::getSystemBootParameters(std::string file,
+                                                                          std::string arcade_game_id)
 {
   std::shared_ptr<SystemBootParameters> ret = std::make_shared<SystemBootParameters>(std::move(file));
+  ret->arcade_game_id = std::move(arcade_game_id);
   ret->boot_intent = SystemBootIntent::PublicArcade;
   ret->start_media_capture = m_ui.actionMediaCapture->isChecked();
   return ret;
@@ -1436,6 +1445,82 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
       connect(menu.addAction(tr("Start")), &QAction::triggered,
               [this, entry]() { g_emu_thread->bootSystem(getSystemBootParameters(entry->path)); });
 
+      const Arcade::Database::GameDefinition* const parent_game = GetArcadeGameForEntry(entry);
+      const Arcade::Database::GameDefinition* const archive_game = Arcade::Database::IdentifyArchive(entry->path);
+      if (parent_game && archive_game && parent_game != archive_game)
+      {
+        WARNING_LOG("Arcade game-list identity mismatch for '{}': cached game '{}' differs from archive game '{}'.",
+                    entry->path, parent_game->id, archive_game->id);
+      }
+
+      const Arcade::Database::SystemDefinition* const parent_system =
+        parent_game ? Arcade::Database::GetSystem(parent_game->system_id) : nullptr;
+      if (!parent_game)
+      {
+        INFO_LOG("Clone launch unavailable for '{}' (serial '{}'): entry is not present in the arcade database.",
+                 entry->path, entry->serial);
+      }
+      else if (!parent_game->parent.empty())
+      {
+        INFO_LOG("Clone launch unavailable for '{}': database game '{}' is a clone of '{}'.", entry->path,
+                 parent_game->id, parent_game->parent);
+      }
+      else if (!parent_system)
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': arcade system '{}' was not found.", parent_game->id,
+                 parent_game->system_id);
+      }
+      else if (!Arcade::MachineHandlerSupportsSplitMergedSets(parent_system->machine_handler))
+      {
+        INFO_LOG("Clone launch unavailable for parent '{}': machine handler '{}' does not support split/merged sets.",
+                 parent_game->id, parent_system->machine_handler);
+      }
+      else
+      {
+        const auto clones = Arcade::Database::GetClones(parent_game->id);
+        if (clones.empty())
+          INFO_LOG("Clone launch unavailable for parent '{}': no clones are defined in the arcade database.",
+                   parent_game->id);
+
+        QMenu* clone_menu = nullptr;
+        for (const Arcade::Database::GameDefinition* const clone : clones)
+        {
+          std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+          if (clone_path.empty())
+            clone_path = entry->path;
+          if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+          {
+            INFO_LOG("Clone '{}' suppressed for parent '{}': required ROMs could not be resolved using archive anchor "
+                     "'{}'.",
+                     clone->id, parent_game->id, clone_path);
+            continue;
+          }
+
+          if (!clone_menu)
+            clone_menu = menu.addMenu(tr("Start Clone"));
+
+          QString label = QString::fromStdString(clone->title);
+          if (!clone->region.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->region));
+          if (!clone->revision.empty())
+            label += tr(" - %1").arg(QString::fromStdString(clone->revision));
+          label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_action = clone_menu->addAction(label);
+          connect(clone_action, &QAction::triggered,
+                  [this, clone_path = std::move(clone_path), clone_id = clone->id]() mutable {
+                    g_emu_thread->bootSystem(getSystemBootParameters(std::move(clone_path), std::move(clone_id)));
+                  });
+        }
+
+        if (!clone_menu && !clones.empty())
+        {
+          INFO_LOG("Start Clone menu suppressed for parent '{}': none of {} database clone(s) could resolve their "
+                   "required ROMs.",
+                   parent_game->id, clones.size());
+        }
+      }
+
       if (m_ui.menuDebug->menuAction()->isVisible() && !Achievements::IsHardcoreModeActive())
       {
         connect(menu.addAction(tr("Start and Debug")), &QAction::triggered, [this, entry]() {
@@ -1459,7 +1544,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
 
   menu.addSeparator();
 
-  connect(menu.addAction(tr("Add Search Directory...")), &QAction::triggered,
+  connect(menu.addAction(tr("Add Content Directory...")), &QAction::triggered,
           [this]() { getSettingsWindow()->getGameListSettingsWidget()->addSearchDirectory(this); });
 
   menu.exec(point);
@@ -1813,10 +1898,10 @@ void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevo
   m_ui.actionPowerOffWithoutSaving->setDisabled(starting || !running);
   m_ui.actionReset->setDisabled(starting || !running);
   m_ui.actionPause->setDisabled(starting || !running);
-  m_ui.actionCheats->setDisabled(cheevos_challenge_mode);
-  m_ui.actionCheatsToolbar->setDisabled(cheevos_challenge_mode);
+  m_ui.actionCheats->setDisabled(starting || !running || cheevos_challenge_mode);
+  m_ui.actionCheatsToolbar->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionScreenshot->setDisabled(starting || !running);
-  m_ui.menuCheats->setDisabled(cheevos_challenge_mode);
+  m_ui.menuCheats->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionCPUDebugger->setDisabled(cheevos_challenge_mode);
   m_ui.actionMemoryScanner->setDisabled(cheevos_challenge_mode);
   m_ui.actionDumpRAM->setDisabled(starting || !running || cheevos_challenge_mode);

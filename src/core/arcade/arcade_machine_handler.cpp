@@ -34,11 +34,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GV game definition.");
+      return false;
+    }
+
     m_bios = BIOS::LoadKonamiGVImageFromDirectory(EmuFolders::Bios.c_str(), error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGVContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGVContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -73,11 +79,17 @@ public:
 
   bool Preflight(const BootContext& context, Error* error) override
   {
-    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), error);
+    if (!context.game_definition)
+    {
+      Error::SetStringView(error, "Missing Konami GQ game definition.");
+      return false;
+    }
+
+    m_bios = BIOS::LoadKonamiGQImageFromArchive(context.archive_path.c_str(), *context.game_definition, error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = Konami::LoadGQContent(context.archive_path.c_str(), error);
+    m_content = Konami::LoadGQContent(context.archive_path.c_str(), *context.game_definition, error);
     return m_content.has_value();
   }
 
@@ -127,7 +139,7 @@ public:
       return false;
     }
 
-    // MAME maps Tekken and the older Tekken 2 revisions to COH-100/CXD8538Q.
+    // Tekken and the older Tekken 2 revisions use COH-100/CXD8538Q.
     // Later System 11 profiles use COH-110/CXD8561Q; both boards have 2 MiB VRAM.
     m_coh100 = (context.game_definition->hardware_profile == "tekken" ||
                 context.game_definition->hardware_profile == "tekken2o");
@@ -195,8 +207,8 @@ public:
       return false;
     }
 
-    // MAME uses the same Capcom ZN-1 machine around both board populations:
-    // COH-1000C has 1 MiB VRAM, while COH-1002C has the second 1 MiB VRAM populated.
+    // Capcom ZN-1 spans two board populations: COH-1000C has 1 MiB VRAM,
+    // while COH-1002C has the second 1 MiB VRAM populated.
     const bool supported_coh1000c =
       context.canonical_game_id == "ts2" || context.canonical_game_id == "ts2u" ||
       context.canonical_game_id == "ts2ua" || context.canonical_game_id == "ts2j" ||
@@ -216,7 +228,7 @@ public:
     {
       Error::SetStringFmt(
         error,
-        "Capcom ZN-1 bring-up supports TS2/Star Gladiator/Gallop Racer on COH-1000C and "
+        "Capcom ZN-1 supports TS2/Star Gladiator/Gallop Racer on COH-1000C and "
         "Street Fighter EX/EX Plus on COH-1002C; requested '{}' with profile '{}'.",
         context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
@@ -227,13 +239,13 @@ public:
     const std::string firmware_archive_path =
       Path::Combine(EmuFolders::Bios, context.firmware_definition->archive_name);
 
-    // MAME's COH-1000C BIOS definition selects the Japanese mask ROM as the default BIOS.
-    // Keep that explicit during bring-up rather than silently inferring a BIOS from game region.
+    // COH-1000C uses the Japanese mask ROM as the default BIOS. Keep that
+    // selection explicit rather than inferring a BIOS from the game region.
     m_bios = SonyZN::LoadFirmwareBIOS(firmware_archive_path.c_str(), *context.firmware_definition, "j", error);
     if (!m_bios.has_value())
       return false;
 
-    m_content = SonyZN::LoadCapcomZN1Content(context.archive_path.c_str(), *context.game_definition,
+    m_content = SonyZN::LoadCapcomZNContent(context.archive_path.c_str(), *context.game_definition,
                                             firmware_archive_path.c_str(), *context.firmware_definition, error);
     return m_content.has_value();
   }
@@ -256,7 +268,7 @@ public:
     }
 
     const std::string persistence_directory = GetContextPersistenceDirectory(context);
-    if (!SonyZN::InitializeCapcomZN1(*m_bios, std::move(*m_content), persistence_directory, error))
+    if (!SonyZN::InitializeCapcomZN(*m_bios, std::move(*m_content), persistence_directory, error))
       return false;
 
     VERBOSE_LOG("SonyZN.Loader dispatch_ready canonical_set='{}' profile='{}'", context.canonical_game_id,
@@ -272,7 +284,75 @@ public:
 private:
   bool m_use_2mb_vram = false;
   std::optional<BIOS::Image> m_bios;
-  std::optional<SonyZN::CapcomZN1Content> m_content;
+  std::optional<SonyZN::CapcomZNContent> m_content;
+};
+
+class CapcomZN2Handler final : public MachineHandler
+{
+public:
+  VideoTimingStandard GetVideoTiming() const override { return VideoTimingStandard::NTSCDerived; }
+
+  bool Preflight(const BootContext& context, Error* error) override
+  {
+    if (!context.game_definition || !context.firmware_definition)
+    {
+      Error::SetStringView(error, "Missing Capcom ZN-2 game or firmware definition.");
+      return false;
+    }
+
+    if (context.game_definition->hardware_profile != "coh3002c")
+    {
+      Error::SetStringFmt(error, "Capcom ZN-2 handler requires COH-3002C; requested '{}' with profile '{}'.",
+                          context.canonical_game_id, context.game_definition->hardware_profile);
+      return false;
+    }
+
+    const std::string firmware_archive_path =
+      Path::Combine(EmuFolders::Bios, context.firmware_definition->archive_name);
+
+    m_bios = SonyZN::LoadFirmwareBIOS(firmware_archive_path.c_str(), *context.firmware_definition, "", error);
+    if (!m_bios.has_value())
+      return false;
+
+    m_content = SonyZN::LoadCapcomZNContent(context.archive_path.c_str(), *context.game_definition,
+                                           firmware_archive_path.c_str(), *context.firmware_definition, error);
+    return m_content.has_value();
+  }
+
+  std::optional<u32> GetRAMSizeOverride() const override { return Bus::RAM_4MB_SIZE; }
+
+  void PrepareSharedHardware() const override
+  {
+    // COH-3002C uses the ZN-2 CXD8654Q-class GPU with the full 2 MiB VRAM population.
+    // ArcadeDuck's existing CXD8561Q/type-2 mode supplies the required 2 MiB PSX GPU-visible aperture.
+    GPU::SetCXD8561QMode(true);
+  }
+
+  bool Initialize(const BootContext& context, Error* error) override
+  {
+    if (!m_bios.has_value() || !m_content.has_value() || !m_content->is_zn2)
+    {
+      Error::SetStringView(error, "Invalid Capcom ZN-2 boot content.");
+      return false;
+    }
+
+    const std::string persistence_directory = GetContextPersistenceDirectory(context);
+    if (!SonyZN::InitializeCapcomZN(*m_bios, std::move(*m_content), persistence_directory, error))
+      return false;
+
+    VERBOSE_LOG("SonyZN.Loader dispatch_ready canonical_set='{}' profile='{}' family='capcom_zn2'",
+                context.canonical_game_id, context.game_definition->hardware_profile);
+    return true;
+  }
+
+  const BIOS::Image* GetBIOSImageForSystemIdentity() const override
+  {
+    return m_bios.has_value() ? &m_bios.value() : nullptr;
+  }
+
+private:
+  std::optional<BIOS::Image> m_bios;
+  std::optional<SonyZN::CapcomZNContent> m_content;
 };
 
 class VideoSystemZN1Handler final : public MachineHandler
@@ -671,7 +751,7 @@ public:
       return false;
     }
 
-    // Ordinary COH-1002M is validated. CBAJ uses the same base board plus its separate Z80/YMZ/FIFO sound board.
+    // Ordinary COH-1002M uses the base board path. CBAJ adds its separate Z80/YMZ/FIFO sound board.
     // Brave Blade is the documented hybrid: COH-1002M/MG01 motherboard BIOS and security with the
     // Eighting/Raizing PS9805 game/sound board and Raizing bank select.
     m_use_eighting_hybrid = false;
@@ -827,7 +907,7 @@ public:
     {
       Error::SetStringFmt(
         error,
-        "Taito FX-1 support covers the validated FX-1A families on COH-1000TA; RayStorm and Fighters' Impact "
+        "Taito FX-1 support covers the FX-1A families on COH-1000TA; RayStorm and Fighters' Impact "
         "families on COH-1000TB; and G-Darius on COH-1002TB; requested '{}' with profile '{}'.",
         context.canonical_game_id, context.game_definition->hardware_profile);
       return false;
@@ -959,6 +1039,8 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
     return std::make_unique<NamcoSystem11Handler>();
   if (id == "capcom_zn1")
     return std::make_unique<CapcomZN1Handler>();
+  if (id == "capcom_zn2")
+    return std::make_unique<CapcomZN2Handler>();
   if (id == "video_system_zn1")
     return std::make_unique<VideoSystemZN1Handler>();
   if (id == "atlus_zn1")
@@ -981,6 +1063,13 @@ bool MachineHandlerSupportsSaveStates(std::string_view id)
 {
   const std::unique_ptr<MachineHandler> handler = CreateMachineHandler(id);
   return handler && handler->SupportsSaveStates();
+}
+
+bool MachineHandlerSupportsSplitMergedSets(std::string_view id)
+{
+  // Every registered arcade handler is required to resolve logical game content from non-merged, split, and merged
+  // archive layouts. Keep this tied to handler registration so new systems cannot silently omit clone launching.
+  return CreateMachineHandler(id) != nullptr;
 }
 
 } // namespace Arcade

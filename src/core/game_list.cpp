@@ -7,6 +7,7 @@
 #include "game_list.h"
 #include "host.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_machine_handler.h"
 #include "settings.h"
 
 #include "util/http_downloader.h"
@@ -40,7 +41,7 @@ namespace {
 enum : u32
 {
   GAME_LIST_CACHE_SIGNATURE = 0x45434C48,
-  GAME_LIST_CACHE_VERSION = 40,
+  GAME_LIST_CACHE_VERSION = 41,
 
   PLAYED_TIME_SERIAL_LENGTH = 32,
   PLAYED_TIME_LAST_TIME_LENGTH = 20,  // uint64
@@ -174,6 +175,19 @@ bool GameList::LoadEntriesFromCache(BinaryFileReader& reader)
     return false;
   }
 
+  std::string database_fingerprint;
+  if (!reader.ReadSizePrefixedString(&database_fingerprint))
+  {
+    WARNING_LOG("Game list cache header is corrupted");
+    return false;
+  }
+
+  if (database_fingerprint != Arcade::Database::GetContentFingerprint())
+  {
+    INFO_LOG("Arcade database changed; rebuilding game list cache.");
+    return false;
+  }
+
   while (!reader.IsAtEnd())
   {
     std::string path;
@@ -243,6 +257,7 @@ bool GameList::LoadOrInitializeCache(std::FILE* fp, bool invalidate_cache)
   BinaryFileWriter writer(fp);
   writer.WriteU32(GAME_LIST_CACHE_SIGNATURE);
   writer.WriteU32((GAME_LIST_CACHE_VERSION));
+  writer.WriteSizePrefixedString(Arcade::Database::GetContentFingerprint());
   if (!writer.Flush(&error))
   {
     ERROR_LOG("Failed to write game list cache header: {}", error.GetDescription());
@@ -257,6 +272,35 @@ static bool IsPathExcluded(const std::vector<std::string>& excluded_paths, const
   return std::find_if(excluded_paths.begin(), excluded_paths.end(),
                       [&path](const std::string& entry) { return path.starts_with(entry); }) != excluded_paths.end();
 }
+
+namespace GameList {
+
+static void CollapseArcadeCloneEntries()
+{
+  std::unique_lock lock(s_mutex);
+  std::vector<std::string_view> visible_parent_ids;
+  for (const Entry& entry : s_entries)
+  {
+    const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
+    const Arcade::Database::SystemDefinition* const system =
+      game ? Arcade::Database::GetSystem(game->system_id) : nullptr;
+    if (game && game->parent.empty() && system &&
+        Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
+    {
+      visible_parent_ids.push_back(game->id);
+    }
+  }
+
+  s_entries.erase(std::remove_if(s_entries.begin(), s_entries.end(), [&visible_parent_ids](const Entry& entry) {
+                    const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
+                    return game && !game->parent.empty() &&
+                           std::find(visible_parent_ids.begin(), visible_parent_ids.end(),
+                                     std::string_view(game->parent)) != visible_parent_ids.end();
+                  }),
+                  s_entries.end());
+}
+
+} // namespace GameList
 
 void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
                              const std::vector<std::string>& excluded_paths, const PlayedTimeMap& played_time_map,
@@ -284,17 +328,22 @@ void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
   {
     files_scanned++;
 
-    if (progress->IsCancelled() || !GameList::IsScannableFilename(ffd.FileName) ||
-        IsPathExcluded(excluded_paths, ffd.FileName))
-    {
+    if (progress->IsCancelled())
       continue;
-    }
+
+    if (recursive)
+      Arcade::Database::IndexCompanionMediaPath(ffd.FileName);
+
+    if (!GameList::IsScannableFilename(ffd.FileName) || IsPathExcluded(excluded_paths, ffd.FileName))
+      continue;
 
     if (!Arcade::Database::IdentifyArchive(ffd.FileName))
     {
       INFO_LOG("ArcadeDatabase.GameList ignored_unknown_archive archive='{}'", Path::GetFileName(ffd.FileName));
       continue;
     }
+
+    Arcade::Database::IndexArchivePath(ffd.FileName);
 
     std::unique_lock lock(s_mutex);
     if (GetEntryForPath(ffd.FileName) ||
@@ -517,6 +566,9 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   INISettingsInterface custom_attributes_ini(GetCustomPropertiesFile());
   custom_attributes_ini.Load();
 
+  Arcade::Database::ClearArchivePathIndex();
+  Arcade::Database::ClearCompanionMediaIndex();
+
   if (!dirs.empty() || !recursive_dirs.empty())
   {
     progress->SetProgressRange(static_cast<u32>(dirs.size() + recursive_dirs.size()));
@@ -543,6 +595,8 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
       progress->SetProgressValue(++directory_counter);
     }
   }
+
+  CollapseArcadeCloneEntries();
 
   // don't need unused cache entries
   s_cache_map.clear();

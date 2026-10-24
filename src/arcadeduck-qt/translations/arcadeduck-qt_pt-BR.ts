@@ -2011,75 +2011,11 @@ QFile::exists: %2</translation>
     </message>
 </context>
 <context>
-    <name>CheatCodeEditorDialog</name>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="14"/>
-        <source>Cheat Code Editor</source>
-        <translation>Editor de trapaças</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="23"/>
-        <source>Description:</source>
-        <translation>Descrição:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="33"/>
-        <source>Group:</source>
-        <translation>Grupo:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="43"/>
-        <source>Type:</source>
-        <translation>Tipo:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.ui" line="53"/>
-        <source>Activation:</source>
-        <translation>Ativação:</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Error</source>
-        <translation>Erro</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="23"/>
-        <source>Description cannot be empty.</source>
-        <translation>A descrição não pode ser Vazia.</translation>
-    </message>
-    <message>
-        <location filename="../cheatcodeeditordialog.cpp" line="29"/>
-        <source>Instructions are invalid.</source>
-        <translation>Instruções inválidas.</translation>
-    </message>
-</context>
-<context>
     <name>CheatManagerWindow</name>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="14"/>
         <source>Cheat Manager</source>
         <translation>Gerenciador de trapaças</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="26"/>
-        <source>&amp;Add Group...</source>
-        <translation>&amp;Adicionar grupo...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="33"/>
-        <source>&amp;Add Code...</source>
-        <translation>&amp;Adicionar código...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="40"/>
-        <source>&amp;Edit Code...</source>
-        <translation>&amp;Editar código...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="50"/>
-        <source>&amp;Delete Code</source>
-        <translation>&amp;Apagar código</translation>
     </message>
     <message>
         <location filename="../cheatmanagerwindow.ui" line="60"/>
@@ -2090,26 +2026,6 @@ QFile::exists: %2</translation>
         <translation>Ativar</translation>
     </message>
     <message>
-        <location filename="../cheatmanagerwindow.ui" line="67"/>
-        <source>Import...</source>
-        <translation>Importar...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="77"/>
-        <source>Export...</source>
-        <translation>Exportar...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="84"/>
-        <source>Clear</source>
-        <translation>Limpar</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="91"/>
-        <source>Reset</source>
-        <translation>Redefinir</translation>
-    </message>
-    <message>
         <location filename="../cheatmanagerwindow.ui" line="120"/>
         <source>Name</source>
         <translation>Nome</translation>
@@ -2118,139 +2034,6 @@ QFile::exists: %2</translation>
         <location filename="../cheatmanagerwindow.ui" line="125"/>
         <source>Type</source>
         <translation>Tipo</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="130"/>
-        <source>Activation</source>
-        <translation>Ativação</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.ui" line="135"/>
-        <source>Instructions</source>
-        <translation>Instruções</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="281"/>
-        <source>Toggle</source>
-        <translation>Alternar</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Add Group</source>
-        <translation>Adicionar grupo</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="365"/>
-        <source>Group Name:</source>
-        <translation>Nome do grupo:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Error</source>
-        <translation>Erro</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="371"/>
-        <source>This group name already exists.</source>
-        <translation>Nome do grupo já existe.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="462"/>
-        <source>Delete Code</source>
-        <translation>Apagar código</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="463"/>
-        <source>Are you sure you wish to delete the selected code? This action is not reversible.</source>
-        <translation>Apagar o código. selecionado? Esta ação não poderá ser desfeita.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="490"/>
-        <source>From File...</source>
-        <translation>Do arquivo...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="491"/>
-        <source>From Text...</source>
-        <translation>Do texto...</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="497"/>
-        <source>PCSXR/Libretro Cheat Files (*.cht *.txt);;All Files (*.*)</source>
-        <translation>PCSXR/Libretro arquivos de trapaça (*.cht);;Todos os arquivos (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="499"/>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Import Cheats</source>
-        <translation>Importar trapaças</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="506"/>
-        <location filename="../cheatmanagerwindow.cpp" line="529"/>
-        <source>Failed to parse cheat file. The log may contain more information.</source>
-        <translation>Falha ao analisar arquivo de trapaça. O registro pode conter mais informações.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="522"/>
-        <source>Cheat File Text:</source>
-        <translation>Texto da trapaça:</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="545"/>
-        <source>PCSXR Cheat Files (*.cht);;All Files (*.*)</source>
-        <translation>Arquivos suportados (*.cht *.txt);;Todos os tipos de arquivo (*.*)</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="547"/>
-        <source>Export Cheats</source>
-        <translation>Exportar trapaças</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="552"/>
-        <source>Failed to save cheat file. The log may contain more information.</source>
-        <translation>Falha ao salvar arquivo de trapaça. o registro pode conter mais informações.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="557"/>
-        <source>Confirm Clear</source>
-        <translation>Confirmar limpeza</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="558"/>
-        <source>Are you sure you want to remove all cheats? This is not reversible.</source>
-        <translation>Tem certeza de que quer remover todas as trapaças? esta ação não poderá ser desfeita.</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="571"/>
-        <source>Confirm Reset</source>
-        <translation>Confirmar reinicio</translation>
-    </message>
-    <message>
-        <location filename="../cheatmanagerwindow.cpp" line="572"/>
-        <source>Are you sure you want to reset the cheat list? Any cheats not in the built-in cheat database WILL BE LOST.</source>
-        <translation>Tem certeza de que deseja redefinir a lista de trapaças? Qualquer trapaça que não esteja no banco de dados interno SERÁ PERDIDA.</translation>
-    </message>
-</context>
-<context>
-    <name>Cheats</name>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2589"/>
-        <source>Gameshark</source>
-        <translation>Gameshark</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Manual</source>
-        <translation>Manual</translation>
-    </message>
-    <message>
-        <location filename="../../core/cheats.cpp" line="2614"/>
-        <source>Automatic (Frame End)</source>
-        <translation>Automático (quadro final)</translation>
     </message>
 </context>
 <context>

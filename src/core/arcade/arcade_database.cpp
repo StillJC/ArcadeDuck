@@ -8,6 +8,7 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/path.h"
+#include "common/sha1_digest.h"
 #include "common/string_util.h"
 
 #include "ryml.hpp"
@@ -17,6 +18,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -30,9 +32,14 @@ constexpr u32 SUPPORTED_SCHEMA_VERSION = 1;
 
 bool s_load_attempted = false;
 bool s_loaded = false;
+std::string s_content_fingerprint;
 std::vector<SystemDefinition> s_systems;
 std::vector<GameDefinition> s_games;
 std::vector<ControlLayoutDefinition> s_control_layouts;
+std::unordered_map<std::string, std::vector<std::string>> s_archive_path_index;
+std::mutex s_archive_path_index_mutex;
+std::unordered_map<std::string, std::string> s_companion_media_index;
+std::mutex s_companion_media_index_mutex;
 std::unordered_map<std::string, u32> s_system_lookup;
 std::unordered_map<std::string, u32> s_game_lookup;
 std::unordered_map<std::string, u32> s_archive_lookup;
@@ -54,6 +61,56 @@ std::string NormalizeKey(std::string_view value)
   std::transform(result.begin(), result.end(), result.begin(),
                  [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
   return result;
+}
+
+std::string GetArchiveLookupKey(std::string_view archive_name)
+{
+  return NormalizeKey(Path::GetFileTitle(archive_name));
+}
+
+std::vector<std::string> FindIndexedArchivePaths(std::string_view archive_name)
+{
+  const std::string key = GetArchiveLookupKey(archive_name);
+  std::vector<std::string> paths;
+  {
+    std::lock_guard lock(s_archive_path_index_mutex);
+    const auto iter = s_archive_path_index.find(key);
+    if (iter == s_archive_path_index.end())
+      return {};
+    paths = iter->second;
+  }
+
+  paths.erase(std::remove_if(paths.begin(), paths.end(), [](const std::string& path) {
+                return !FileSystem::FileExists(path.c_str());
+              }),
+              paths.end());
+  return paths;
+}
+
+std::string FindIndexedArchivePath(std::string_view archive_name)
+{
+  std::vector<std::string> paths = FindIndexedArchivePaths(archive_name);
+  return paths.empty() ? std::string() : std::move(paths.front());
+}
+
+std::string MakeCompanionMediaIndexKey(std::string_view set_name, std::string_view filename)
+{
+  return NormalizeKey(Path::Combine(set_name, filename));
+}
+
+std::string FindIndexedCompanionMediaPath(std::string_view set_name, std::string_view filename)
+{
+  const std::string key = MakeCompanionMediaIndexKey(set_name, filename);
+  std::string path;
+  {
+    std::lock_guard lock(s_companion_media_index_mutex);
+    const auto iter = s_companion_media_index.find(key);
+    if (iter == s_companion_media_index.end())
+      return {};
+    path = iter->second;
+  }
+
+  return FileSystem::FileExists(path.c_str()) ? path : std::string();
 }
 
 bool IsValidSHA1(std::string_view value)
@@ -951,7 +1008,7 @@ bool ParseGame(const ryml::ConstNodeRef& node)
   ParseProperties(node, &game.properties);
 
   const std::string game_key = NormalizeKey(game.id);
-  const std::string archive_key = NormalizeKey(game.archive_name);
+  const std::string archive_key = GetArchiveLookupKey(game.archive_name);
   if (s_game_lookup.contains(game_key) || s_archive_lookup.contains(archive_key))
   {
     ERROR_LOG("Duplicate arcade game id or archive for '{}'.", game.id);
@@ -1201,6 +1258,9 @@ bool LoadDatabase()
   if (!valid)
     return false;
 
+  auto database_digest = SHA1Digest::GetDigest(data->data(), data->size());
+  s_content_fingerprint = SHA1Digest::DigestToString(database_digest);
+
   INFO_LOG("Loaded universal arcade database: {} systems, {} games, {} control layouts.", s_systems.size(),
            s_games.size(), s_control_layouts.size());
   size_t firmware_count = 0;
@@ -1236,9 +1296,12 @@ bool EnsureLoaded()
 
 void Unload()
 {
+  s_content_fingerprint.clear();
   s_systems.clear();
   s_games.clear();
   s_control_layouts.clear();
+  ClearArchivePathIndex();
+  ClearCompanionMediaIndex();
   s_system_lookup.clear();
   s_game_lookup.clear();
   s_archive_lookup.clear();
@@ -1250,6 +1313,11 @@ void Unload()
 bool IsLoaded()
 {
   return s_loaded;
+}
+
+std::string_view GetContentFingerprint()
+{
+  return EnsureLoaded() ? std::string_view(s_content_fingerprint) : std::string_view();
 }
 
 std::span<const SystemDefinition> GetSystems()
@@ -1284,6 +1352,20 @@ const GameDefinition* GetGame(std::string_view id)
   return (iterator != s_game_lookup.end()) ? &s_games[iterator->second] : nullptr;
 }
 
+std::vector<const GameDefinition*> GetClones(std::string_view parent_id)
+{
+  EnsureLoaded();
+
+  std::vector<const GameDefinition*> clones;
+  for (const GameDefinition& game : s_games)
+  {
+    if (StringUtil::EqualNoCase(game.parent, parent_id))
+      clones.push_back(&game);
+  }
+
+  return clones;
+}
+
 const ControlLayoutDefinition* GetControlLayout(std::string_view id)
 {
   EnsureLoaded();
@@ -1308,7 +1390,8 @@ const FirmwareDefinition* ResolveFirmwareProfile(const SystemDefinition& system)
 
 bool IsArchivePath(std::string_view path)
 {
-  return StringUtil::EqualNoCase(Path::GetExtension(path), "zip");
+  const std::string_view extension = Path::GetExtension(path);
+  return StringUtil::EqualNoCase(extension, "zip") || StringUtil::EqualNoCase(extension, "7z");
 }
 
 std::string_view GetSetNameFromArchivePath(std::string_view path)
@@ -1322,7 +1405,7 @@ const GameDefinition* IdentifyArchive(std::string_view path)
     return nullptr;
 
   EnsureLoaded();
-  const auto iterator = s_archive_lookup.find(NormalizeKey(Path::GetFileName(path)));
+  const auto iterator = s_archive_lookup.find(GetArchiveLookupKey(path));
   return (iterator != s_archive_lookup.end()) ? &s_games[iterator->second] : nullptr;
 }
 
@@ -1346,6 +1429,81 @@ const MediaDefinition* GetMediaByRole(const GameDefinition& game, std::string_vi
   return nullptr;
 }
 
+void ClearArchivePathIndex()
+{
+  std::lock_guard lock(s_archive_path_index_mutex);
+  s_archive_path_index.clear();
+}
+
+void IndexArchivePath(std::string_view path)
+{
+  const GameDefinition* const game = IdentifyArchive(path);
+  if (!game)
+    return;
+
+  const std::string key = GetArchiveLookupKey(game->archive_name);
+  std::lock_guard lock(s_archive_path_index_mutex);
+  std::vector<std::string>& paths = s_archive_path_index[key];
+  if (std::none_of(paths.begin(), paths.end(),
+                   [&path](const std::string& existing) { return StringUtil::EqualNoCase(existing, path); }))
+  {
+    paths.emplace_back(path);
+  }
+}
+
+std::string GetIndexedArchivePath(std::string_view archive_name)
+{
+  return FindIndexedArchivePath(archive_name);
+}
+
+std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game)
+{
+  std::vector<std::string> paths;
+  const auto add_path = [&paths](std::string path) {
+    if (path.empty() || !FileSystem::FileExists(path.c_str()))
+      return false;
+
+    const bool duplicate = std::any_of(paths.begin(), paths.end(), [&path](const std::string& existing) {
+      return StringUtil::EqualNoCase(existing, path);
+    });
+    if (!duplicate)
+      paths.push_back(std::move(path));
+    return true;
+  };
+
+  add_path(std::string(archive_path));
+  const std::string archive_directory(Path::GetDirectory(archive_path));
+  const bool prefer_seven_zip = StringUtil::EqualNoCase(Path::GetExtension(archive_path), "7z");
+  const std::string_view preferred_extension = prefer_seven_zip ? "7z" : "zip";
+  const std::string_view alternate_extension = prefer_seven_zip ? "zip" : "7z";
+  const auto add_archive_variants = [&](std::string_view archive_name) {
+    const std::string_view archive_title = Path::GetFileTitle(archive_name);
+    std::string filename(archive_title);
+    filename.append(".").append(preferred_extension);
+    add_path(Path::Combine(archive_directory, filename));
+
+    filename.assign(archive_title);
+    filename.append(".").append(alternate_extension);
+    add_path(Path::Combine(archive_directory, filename));
+
+    for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
+      add_path(std::move(indexed_path));
+  };
+
+  const GameDefinition* current = &game;
+  std::unordered_set<std::string> visited;
+  while (current && visited.emplace(NormalizeKey(current->id)).second)
+  {
+    add_archive_variants(current->archive_name);
+
+    if (current->parent.empty())
+      break;
+    current = GetGame(current->parent);
+  }
+
+  return paths;
+}
+
 std::string GetMediaFilename(const MediaDefinition& media)
 {
   if (media.type == MediaType::CHDCDROM || media.type == MediaType::CHDHardDisk)
@@ -1357,20 +1515,100 @@ std::string GetMediaFilename(const MediaDefinition& media)
   return media.name;
 }
 
+void ClearCompanionMediaIndex()
+{
+  std::lock_guard lock(s_companion_media_index_mutex);
+  s_companion_media_index.clear();
+}
+
+void IndexCompanionMediaPath(std::string_view path)
+{
+  const std::string_view filename = Path::GetFileName(path);
+  const std::string directory(Path::GetDirectory(path));
+  const std::string_view set_name = Path::GetFileName(directory);
+  if (filename.empty() || set_name.empty())
+    return;
+
+  const std::string key = MakeCompanionMediaIndexKey(set_name, filename);
+  std::lock_guard lock(s_companion_media_index_mutex);
+  s_companion_media_index.try_emplace(key, path);
+}
+
+std::string GetCompanionMediaPath(std::string_view archive_path, std::string_view set_name,
+                                  std::string_view parent_set_name, std::string_view filename)
+{
+  const std::string archive_directory(Path::GetDirectory(archive_path));
+  const std::string local_path = Path::Combine(Path::Combine(archive_directory, set_name), filename);
+  if (FileSystem::FileExists(local_path.c_str()))
+    return local_path;
+
+  std::vector<std::string> content_paths = Host::GetBaseStringListSetting("GameList", "Paths");
+  const std::vector<std::string> recursive_paths =
+    Host::GetBaseStringListSetting("GameList", "RecursivePaths");
+  content_paths.insert(content_paths.end(), recursive_paths.begin(), recursive_paths.end());
+
+  for (const std::string& content_path : content_paths)
+  {
+    const std::string path = Path::Combine(Path::Combine(content_path, set_name), filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  for (const std::string& content_path : content_paths)
+  {
+    if (!StringUtil::EqualNoCase(Path::GetFileName(content_path), set_name))
+      continue;
+
+    const std::string path = Path::Combine(content_path, filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  if (std::string indexed_path = FindIndexedCompanionMediaPath(set_name, filename); !indexed_path.empty())
+    return indexed_path;
+
+  for (const std::string& content_path : content_paths)
+  {
+    const std::string path = Path::Combine(content_path, filename);
+    if (FileSystem::FileExists(path.c_str()))
+      return path;
+  }
+
+  if (!parent_set_name.empty())
+  {
+    const std::string parent_path =
+      Path::Combine(Path::Combine(archive_directory, parent_set_name), filename);
+    if (FileSystem::FileExists(parent_path.c_str()))
+      return parent_path;
+
+    for (const std::string& content_path : content_paths)
+    {
+      const std::string path = Path::Combine(Path::Combine(content_path, parent_set_name), filename);
+      if (FileSystem::FileExists(path.c_str()))
+        return path;
+    }
+
+    for (const std::string& content_path : content_paths)
+    {
+      if (!StringUtil::EqualNoCase(Path::GetFileName(content_path), parent_set_name))
+        continue;
+
+      const std::string path = Path::Combine(content_path, filename);
+      if (FileSystem::FileExists(path.c_str()))
+        return path;
+    }
+
+    if (std::string indexed_path = FindIndexedCompanionMediaPath(parent_set_name, filename); !indexed_path.empty())
+      return indexed_path;
+  }
+
+  return local_path;
+}
+
 std::string GetCompanionMediaPath(std::string_view archive_path, const GameDefinition& game,
                                   const MediaDefinition& media)
 {
-  const std::string filename = GetMediaFilename(media);
-  std::string path = Path::Combine(Path::Combine(Path::GetDirectory(archive_path), game.id), filename);
-  if (game.parent.empty() || FileSystem::FileExists(path.c_str()))
-    return path;
-
-  // Clone sets commonly share companion media with their parent archive. Prefer
-  // a clone-local copy when present, otherwise inherit the parent's companion
-  // directory without adding per-game path exceptions in machine handlers.
-  const std::string parent_path =
-    Path::Combine(Path::Combine(Path::GetDirectory(archive_path), game.parent), filename);
-  return FileSystem::FileExists(parent_path.c_str()) ? parent_path : path;
+  return GetCompanionMediaPath(archive_path, game.id, game.parent, GetMediaFilename(media));
 }
 
 const char* GetWorkingStatusName(WorkingStatus status)

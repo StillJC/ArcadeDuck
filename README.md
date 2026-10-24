@@ -38,6 +38,57 @@ ArcadeDuck is not intended to replace DuckStation as a retail PlayStation emulat
 
 > Please refer to [our website](https://stilljc.github.io/ArcadeDuck-Site/) for setup, supported hardware, compatibility, and documentation.
 
+## Command-Line Launching
+
+ArcadeDuck can launch recognized arcade ZIP archives directly from the command line. This is useful for cabinet frontends, shortcuts, scripts, and other launchers.
+
+```powershell
+# Launch a set directly
+ArcadeDuck.exe "D:\Arcade\roms\tekken.zip"
+
+# Launch without the main ArcadeDuck window and enter fullscreen
+ArcadeDuck.exe -nogui -fullscreen "D:\Arcade\roms\tekken.zip"
+```
+
+### Launching clones from merged ROM sets
+
+For hardware with split/merged-set support, a clone stored inside a merged parent archive is launched by passing the parent ZIP as the boot file and selecting the logical clone with `-arcadegame <id>`.
+
+```powershell
+ArcadeDuck.exe -nogui -fullscreen "D:\Arcade\roms\tekken.zip" -arcadegame tekkenac
+```
+
+In this example, `tekken.zip` is the physical parent archive and `tekkenac` is the ArcadeDuck game ID for the clone to boot. With a normal non-merged set, launch the clone ZIP directly instead.
+
+Run `ArcadeDuck.exe -help` for the built-in option list. See the [Command-Line Launching guide](https://stilljc.github.io/ArcadeDuck-Site/docs/command-line/) for split/merged ROM-set details, supported hardware, and the complete option reference.
+
+## MAME Cheats
+
+ArcadeDuck supports native **MAME XML cheats**. Cheat files are not bundled with ArcadeDuck; supply your own compatible MAME-format files in the `cheats` folder beside ArcadeDuck.
+
+Use either the standard MAME cheat package:
+
+```text
+ArcadeDuck/
+    cheats/
+        cheat.7z
+```
+
+or loose XML files named with the game's **MAME shortname**:
+
+```text
+ArcadeDuck/
+    cheats/
+        cryptklr.xml
+        tekken.xml
+```
+
+With a game running, open **Cheats > Cheat Manager** in the normal Qt interface or **Cheat List** from the fullscreen/pause menu. Clone sets can fall back to their parent's cheat definition when an exact set definition is unavailable.
+
+Legacy `.cht`/GameShark-style cheat files and the old Cheat Code Editor are no longer supported. Memory Scanner and Memory Watch remain separate features.
+
+See the [MAME Cheats guide](https://stilljc.github.io/ArcadeDuck-Site/docs/cheats/) for setup, supported MAME cheat features, lookup behavior, and troubleshooting.
+
 ## Building from Source
 
 ArcadeDuck currently supports building on **Windows x64**.

@@ -16,16 +16,11 @@ namespace {
 
 static constexpr u32 WINDOW_BASE_OFFSET = 0x300000;
 static constexpr u32 WINDOW_END_OFFSET = 0x5fffff;
-static constexpr u32 LAST_ACTIVE_OFFSET = WINDOW_END_OFFSET - 1;
 
 struct State
 {
   std::array<u8, RAM_SIZE> ram = {};
   bool active = false;
-  bool first_access_logged = false;
-  bool first_read_logged = false;
-  bool write_sweep_started = false;
-  bool write_sweep_completed = false;
   u32 active_byte_writes = 0;
   u32 active_byte_reads = 0;
 };
@@ -47,16 +42,6 @@ static u32 GetRAMIndex(u32 offset)
   return (offset - WINDOW_BASE_OFFSET) >> 1;
 }
 
-static void LogFirstAccess(u32 width, u32 offset, bool write)
-{
-  if (s_state.first_access_logged)
-    return;
-
-  s_state.first_access_logged = true;
-  DEV_LOG("KonamiGQ.PCMRAM first_access operation='{}' width={} offset=0x{:06X}", write ? "write" : "read",
-           width, offset);
-}
-
 static u8 ReadWindowByte(u32 offset)
 {
   if (!IsActiveByteOffset(offset))
@@ -74,21 +59,9 @@ static void WriteByte(u32 offset, u8 value)
   if (index >= s_state.ram.size())
     return;
 
-  if (!s_state.write_sweep_started)
-  {
-    s_state.write_sweep_started = true;
-    DEV_LOG("KonamiGQ.PCMRAM write_sweep_started offset=0x{:06X} ram_index=0x{:06X}", offset, index);
-  }
-
   s_state.ram[index] = value;
   s_state.active_byte_writes++;
 
-  if (!s_state.write_sweep_completed && offset == LAST_ACTIVE_OFFSET)
-  {
-    s_state.write_sweep_completed = true;
-    DEV_LOG("KonamiGQ.PCMRAM write_sweep_completed active_byte_writes={} size={}", s_state.active_byte_writes,
-             static_cast<u32>(s_state.ram.size()));
-  }
 }
 
 } // namespace
@@ -107,10 +80,6 @@ void Reset()
     return;
 
   std::fill(s_state.ram.begin(), s_state.ram.end(), u8{0});
-  s_state.first_access_logged = false;
-  s_state.first_read_logged = false;
-  s_state.write_sweep_started = false;
-  s_state.write_sweep_completed = false;
   s_state.active_byte_writes = 0;
   s_state.active_byte_reads = 0;
   VERBOSE_LOG("KonamiGQ.PCMRAM reset size={}", static_cast<u32>(s_state.ram.size()));
@@ -126,10 +95,6 @@ void Shutdown()
 
   std::fill(s_state.ram.begin(), s_state.ram.end(), u8{0});
   s_state.active = false;
-  s_state.first_access_logged = false;
-  s_state.first_read_logged = false;
-  s_state.write_sweep_started = false;
-  s_state.write_sweep_completed = false;
   s_state.active_byte_writes = 0;
   s_state.active_byte_reads = 0;
 }
@@ -143,14 +108,6 @@ u32 Read(u32 width, u32 offset)
 {
   if (!s_state.active || !IsWindowOffset(offset))
     return UINT32_C(0xffffffff);
-
-  LogFirstAccess(width, offset, false);
-  if (!s_state.first_read_logged)
-  {
-    s_state.first_read_logged = true;
-    DEV_LOG("KonamiGQ.PCMRAM first_read width={} offset=0x{:06X} ram_index=0x{:06X}", width, offset,
-             IsActiveByteOffset(offset) ? GetRAMIndex(offset) : UINT32_C(0xffffffff));
-  }
 
   switch (width)
   {
@@ -173,8 +130,6 @@ void Write(u32 width, u32 offset, u32 value)
 {
   if (!s_state.active || !IsWindowOffset(offset))
     return;
-
-  LogFirstAccess(width, offset, true);
 
   switch (width)
   {

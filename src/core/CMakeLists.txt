@@ -13,6 +13,8 @@ add_library(core
   arcade/arcade_input.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
+  arcade/arcade_rom_loader.cpp
+  arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
   arcade/arcade_output.h
   arcade/arcade_output_network.cpp
@@ -28,8 +30,16 @@ add_library(core
   cdrom.h
   cdrom_async_reader.cpp
   cdrom_async_reader.h
-  cheats.cpp
-  cheats.h
+  memory_scanner.cpp
+  memory_scanner.h
+  mame_cheats.cpp
+  mame_cheats.h
+  mame_cheat_expression.cpp
+  mame_cheat_expression.h
+  mame_cheat_package.cpp
+  mame_cheat_package.h
+  mame_cheat_runtime.cpp
+  mame_cheat_runtime.h
   cpu_code_cache.cpp
   cpu_code_cache.h
   cpu_code_cache_private.h
@@ -137,6 +147,8 @@ add_library(core
   arcade/devices/storage/ncr53cf96.h
   arcade/systems/konami/konami.cpp
   arcade/systems/konami/konami.h
+  arcade/systems/konami/gq/konami_gq.cpp
+  arcade/systems/konami/gq/konami_gq.h
   arcade/systems/konami/gq/konami_gq_eeprom.cpp
   arcade/systems/konami/gq/konami_gq_eeprom.h
   arcade/systems/konami/gq/konami_gq_hdd.cpp
@@ -153,23 +165,25 @@ add_library(core
   arcade/systems/konami/gq/konami_gq_tms57002.h
   arcade/systems/konami/gq/konami_gq_tms57002.hxx
   arcade/systems/konami/gq/konami_gq_tms57002_ops.cpp
-  m37710/m37710.cpp
-  m37710/m37710.h
-  m37710/m37710cm.h
-  m37710/m37710il.h
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
-  m37710/m37710op.h
-  musashi/m68k.h
-  musashi/m68k_bus.cpp
-  musashi/m68k_bus.h
-  musashi/m68kconf.h
-  musashi/m68kcpu.c
-  musashi/m68kcpu.h
-  musashi/m68kops.c
-  musashi/m68kops.h
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710.h
+  arcade/third_party/m37710/m37710cm.h
+  arcade/third_party/m37710/m37710il.h
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710op.h
+  arcade/third_party/musashi/m68k.h
+  arcade/third_party/musashi/m68k_bus.cpp
+  arcade/third_party/musashi/m68k_bus.h
+  arcade/third_party/musashi/m68kconf.h
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kcpu.h
+  arcade/third_party/musashi/m68kops.c
+  arcade/third_party/musashi/m68kops.h
+  arcade/systems/konami/gv/konami_gv.cpp
+  arcade/systems/konami/gv/konami_gv.h
   arcade/systems/konami/gv/konami_gv_cdrom.cpp
   arcade/systems/konami/gv/konami_gv_cdrom.h
   arcade/systems/konami/gv/konami_gv_scsi.cpp
@@ -219,14 +233,14 @@ set(NEWREC_SOURCES
 target_precompile_headers(core PRIVATE "pch.h")
 set_property(TARGET core PROPERTY C_STANDARD 11)
 set_source_files_properties(
-  m37710/m37710.cpp
-  m37710/m37710o0.cpp
-  m37710/m37710o1.cpp
-  m37710/m37710o2.cpp
-  m37710/m37710o3.cpp
+  arcade/third_party/m37710/m37710.cpp
+  arcade/third_party/m37710/m37710o0.cpp
+  arcade/third_party/m37710/m37710o1.cpp
+  arcade/third_party/m37710/m37710o2.cpp
+  arcade/third_party/m37710/m37710o3.cpp
   arcade/third_party/adsp2181/adsp2181_core.c
-  musashi/m68kcpu.c
-  musashi/m68kops.c
+  arcade/third_party/musashi/m68kcpu.c
+  arcade/third_party/musashi/m68kops.c
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
 )
 # ArcadeDuck reviewed imported/adapted core warning isolation (MSVC only).
@@ -261,24 +275,24 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   )
 
   set_source_files_properties(
-    m37710/m37710.cpp
-    m37710/m37710o0.cpp
-    m37710/m37710o1.cpp
-    m37710/m37710o2.cpp
-    m37710/m37710o3.cpp
+    arcade/third_party/m37710/m37710.cpp
+    arcade/third_party/m37710/m37710o0.cpp
+    arcade/third_party/m37710/m37710o1.cpp
+    arcade/third_party/m37710/m37710o2.cpp
+    arcade/third_party/m37710/m37710o3.cpp
     PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244"
   )
 
   set_source_files_properties(
-    musashi/m68kcpu.c
-    musashi/m68kops.c
+    arcade/third_party/musashi/m68kcpu.c
+    arcade/third_party/musashi/m68kops.c
     PROPERTIES COMPILE_OPTIONS "/wd4101;/wd4189;/wd4244;/wd4245;/wd4702"
   )
 endif()
 target_include_directories(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_include_directories(core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(core PUBLIC Threads::Threads common util)
-target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr)
+target_link_libraries(core PRIVATE xxhash imgui minizip rapidyaml rcheevos cpuinfo::cpuinfo ZLIB::ZLIB Zstd::Zstd libchdr lzma)
 
 if(CPU_ARCH_X64)
   target_compile_definitions(core PUBLIC "ENABLE_RECOMPILER=1" "ENABLE_NEWREC=1" "ENABLE_MMAP_FASTMEM=1")

@@ -32,9 +32,6 @@ set(SRCS
   autoupdaterdialog.cpp
   autoupdaterdialog.h
   autoupdaterdialog.ui
-  cheatcodeeditordialog.cpp
-  cheatcodeeditordialog.h
-  cheatcodeeditordialog.ui
   cheatmanagerwindow.cpp
   cheatmanagerwindow.h
   cheatmanagerwindow.ui
