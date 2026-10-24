@@ -3723,8 +3723,8 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   // 0x1F788002 once normal rendering begins. The base System 12 map has no
   // write-side state for this location, so consume this known no-op here
   // instead of falling through to the generic EXP1 warning path.
-  if (runtime.content.machine_config == "golgo13" &&
-      offset == UINT32_C(0x788002) && value == UINT32_C(0))
+  if (offset == UINT32_C(0x788002) && value == UINT32_C(0) &&
+      runtime.content.machine_config == "golgo13")
   {
     return true;
   }
