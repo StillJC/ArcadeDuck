@@ -239,6 +239,7 @@ struct RuntimeState
   bool h8_jvs_rts = false;
   Arcade::JVS::Bus h8_jvs_bus;
   Arcade::JVS::NamcoCyberLead h8_cyberlead;
+  u64 h8_cyberlead_deferred_clocks = 0;
   Arcade::JVS::NamcoFCA10 h8_fca10;
   Arcade::JVS::Chain h8_jvs_chain;
   Arcade::JVS::NamcoEMIO102 h8_emio102;
@@ -1230,6 +1231,18 @@ void ResetH8JVSProtocol(RuntimeState& runtime)
 
 void H8JVSTransmitByte(RuntimeState& runtime, u8 value);
 
+// The LED C77 and the I/O C77 link state machine run in their own clock
+// domain; the main H8 only reaches them through JVS packets. Bring them up to
+// date before a packet or reset, and at the end of each H8 slice.
+void FlushCyberLeadLED(RuntimeState& runtime)
+{
+  if (runtime.h8_cyberlead_deferred_clocks == 0)
+    return;
+
+  runtime.h8_cyberlead.AdvanceLED(static_cast<u32>(runtime.h8_cyberlead_deferred_clocks), H8_CLOCK_HZ);
+  runtime.h8_cyberlead_deferred_clocks = 0;
+}
+
 bool H8SCI0CyberLeadPacing(const RuntimeState& runtime)
 {
   return runtime.h8_jvs.profile == JVSProfile::CyberLead;
@@ -1487,6 +1500,7 @@ void ServiceH8JVSSCI0Receive(RuntimeState& runtime)
 
 void ProcessH8JVSPacket(RuntimeState& runtime)
 {
+  FlushCyberLeadLED(runtime);
   JVSState& jvs = runtime.h8_jvs;
   const std::span<const u8> packet = runtime.h8_jvs_bus.GetPacket();
 
@@ -2569,7 +2583,7 @@ void H8AdvanceClockedDevices(RuntimeState& runtime, u32 h8_clocks, bool advance_
   H8SCI0CyberLeadAdvance(runtime, h8_clocks);
   H8SCI1Advance(runtime, h8_clocks);
   if (runtime.h8_jvs.profile == JVSProfile::CyberLead)
-    runtime.h8_cyberlead.AdvanceLED(h8_clocks, H8_CLOCK_HZ);
+    runtime.h8_cyberlead_deferred_clocks += h8_clocks;
 
   if (advance_c352)
     runtime.c352.AdvanceH8Clocks(h8_clocks, std::span<const u8>(runtime.content.c352_samples));
@@ -2714,6 +2728,8 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
     runtime.h8_c352_deferred_clocks = 0;
   }
 
+  FlushCyberLeadLED(runtime);
+
   if (h8.error_code != H8_DEBUG_NO_ERROR && !runtime.h8_fault_logged)
   {
     runtime.h8_fault_logged = true;
@@ -2734,6 +2750,8 @@ void ResetH8(RuntimeState& runtime)
 {
   if (!runtime.h8_cpu)
     return;
+
+  FlushCyberLeadLED(runtime);
 
   if (runtime.h8_timing_event)
   {
@@ -3414,6 +3432,7 @@ void Shutdown()
   if (s_runtime)
   {
     SaveEEPROM(*s_runtime);
+    FlushCyberLeadLED(*s_runtime);
     SaveCyberLeadFlash(*s_runtime);
   }
 
