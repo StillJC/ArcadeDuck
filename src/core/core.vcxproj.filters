@@ -74,6 +74,7 @@
       <ClCompile Include="arcade\systems\namco\system10\namco_system10_memn.cpp" />
       <ClCompile Include="arcade\systems\namco\system10\namco_system10_memp3.cpp" />
       <ClCompile Include="arcade\systems\namco\system10\namco_system10_protection.cpp" />
+      <ClCompile Include="arcade\systems\namco\system10\namco_system10_punchpad.cpp" />
       <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
       <ClCompile Include="arcade\third_party\h8_300h\emu.c" />
       <ClCompile Include="arcade\third_party\h8_300h\h8_arcadeduck_stubs.c" />
@@ -223,6 +224,7 @@
       <ClInclude Include="arcade\systems\namco\system10\namco_system10_memn.h" />
       <ClInclude Include="arcade\systems\namco\system10\namco_system10_memp3.h" />
       <ClInclude Include="arcade\systems\namco\system10\namco_system10_protection.h" />
+      <ClInclude Include="arcade\systems\namco\system10\namco_system10_punchpad.h" />
       <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />
       <ClInclude Include="arcade\third_party\h8_300h\config.h" />
       <ClInclude Include="arcade\third_party\h8_300h\device.h" />

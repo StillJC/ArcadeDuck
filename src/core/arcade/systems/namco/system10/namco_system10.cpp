@@ -16,6 +16,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memp3.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
+#include "core/arcade/systems/namco/system10/namco_system10_punchpad.h"
 
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/devices/storage/atapi_cdrom.h"
@@ -278,6 +279,10 @@ struct RuntimeState
   MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
 
+  // MEM(IO) punch pad and the punch buttons' previous state, hardest first.
+  PunchPad punch_pad;
+  std::array<bool, 3> punch_was_pressed{};
+
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
   // NFL trackball controller: command frame collected from EXIO serial channel 0.
   std::array<u8, 10> trackball_command{};
@@ -526,6 +531,8 @@ void ResetBaseboardInputState(RuntimeState& runtime)
 {
   runtime.test_switch_was_pressed = false;
   runtime.test_switch_latched = false;
+  runtime.punch_pad.Reset();
+  runtime.punch_was_pressed = {};
   runtime.exio_ident_bit = 0;
   runtime.exio_ident_byte = 0;
   runtime.exio_ident_trace_events = 0;
@@ -604,6 +611,12 @@ enum class CabinetSerial : u8
   Trackballs, // NFL Classic Football trackball controller on EXIO serial channel 0
 };
 
+enum class CabinetMechanism : u8
+{
+  None,
+  PunchPad, // MEM(IO) punch pad: speed, safety and human sensors on IN1
+};
+
 enum class CabinetAnalog : u8
 {
   None,
@@ -627,6 +640,7 @@ struct CabinetInputs
   CabinetAnalog analog;
   CabinetSerial serial0 = CabinetSerial::None;
   std::span<const OutputBit> exio_outputs = {};
+  CabinetMechanism mechanism = CabinetMechanism::None;
 };
 
 constexpr std::array<InputBit, 22> DEFAULT_IN1 = {{
@@ -691,11 +705,8 @@ constexpr std::array<InputBit, 10> SQUIZCHS_IN1 = {{
 
 constexpr std::array<InputBit, 4> PTBLANK3_IN1 = {{{4, 0, "Trigger"}, {7, 0, "Start"}, {12, 1, "Trigger"}, {15, 1, "Start"}}};
 
-constexpr std::array<InputBit, 10> IPPO2_IN1 = {{
-  {1, 0, "Button1"}, {2, 0, "Button2", true}, {3, 0, "Button3", true}, {4, 0, "Button7", true},
-  {7, 0, "Start"}, {12, 0, "Button4", true}, {13, 0, "Button5", true}, {14, 0, "Button6", true},
-  {15, 0, "Select"}, {27, 0, "Sensor"},
-}};
+// The punch pad sensors come from the PunchPad mechanism.
+constexpr std::array<InputBit, 3> IPPO2_IN1 = {{{7, 0, "Start"}, {15, 0, "Select"}, {27, 0, "Sensor"}}};
 
 // EXIO output latch wiring, from each game's lamp test. The names follow MAME's Namco
 // gun I/F (System 12) and its generic lampN convention.
@@ -725,7 +736,7 @@ constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"nicetsuk", NICETSUK_IN1, {}, CabinetAnalog::None},
   {"squizchs", SQUIZCHS_IN1, {}, CabinetAnalog::None},
   {"ptblank3", PTBLANK3_IN1, {}, CabinetAnalog::None, CabinetSerial::None, GUN_OUTPUTS},
-  {"ippo2", IPPO2_IN1, {}, CabinetAnalog::None},
+  {"ippo2", IPPO2_IN1, {}, CabinetAnalog::None, CabinetSerial::None, {}, CabinetMechanism::PunchPad},
 }};
 
 const CabinetInputs& FindCabinetInputs(std::string_view set_name)
@@ -778,6 +789,20 @@ u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
 
   clear_if_pressed(runtime.test_switch_latched, 30);
   clear_if_pressed(ArcadeInput::IsOperatorPressed("Service"), 31);
+
+  if (runtime.cabinet_inputs->mechanism == CabinetMechanism::PunchPad)
+  {
+    static constexpr std::array<std::string_view, 3> PUNCH_KEYS = {"Punch", "PunchMedium", "PunchLight"};
+    static constexpr std::array<float, 3> PUNCH_STRENGTH = {1.0f, 0.5f, 0.0f};
+    for (size_t i = 0; i < PUNCH_KEYS.size(); i++)
+    {
+      const bool pressed = ArcadeInput::IsDigitalPressed(0, PUNCH_KEYS[i]);
+      if (pressed && !runtime.punch_was_pressed[i])
+        runtime.punch_pad.Punch(PUNCH_STRENGTH[i]);
+      runtime.punch_was_pressed[i] = pressed;
+    }
+    value = (value & ~PunchPad::SENSOR_MASK) | runtime.punch_pad.ReadSensors();
+  }
 
   return value;
 }
@@ -3237,6 +3262,8 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
     }};
     for (const OutputBit& output : MEMIO_OUTPUTS)
       Arcade::Output::SetValue(output.name, (value >> output.bit) & 1, "Namco System 10 MEM(IO)");
+    if (runtime.cabinet_inputs && runtime.cabinet_inputs->mechanism == CabinetMechanism::PunchPad)
+      runtime.punch_pad.SetSolenoid((value & 1) != 0);
     return true;
   }
 
