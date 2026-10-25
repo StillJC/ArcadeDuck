@@ -26,7 +26,8 @@ public:
 
   void SetSolenoid(bool on);
 
-  // Knocks the raised pad down. Strength runs from 0 (lightest) to 1 (hardest).
+  // Knocks the raised pad down. Strength 0 is the lightest punch and 1 the hardest the games
+  // accept as valid; higher strengths fall faster than a valid reading.
   void Punch(float strength);
 
   // True while the pad is latched upright, ready to be punched.
@@ -57,7 +58,7 @@ private:
   bool m_solenoid = false;
 };
 
-// Single Punch button. Taps while the pad is up set the strength from the smoothed tap rate;
+// Single Punch button. Taps while the pad is up set the strength from the burst's tap rate;
 // the punch lands when tapping pauses for one slow-tap interval, or on the eighth tap. A lone
 // press gives the lightest punch.
 class PunchButton
@@ -73,14 +74,13 @@ public:
   // True once tapping has paused long enough to throw the punch.
   bool Paused(u64 now) const;
 
-  // 0 at or below the slowest counted tap rate, 1 at or above the fastest.
+  // 0 at or below the slowest counted tap rate, 1 at the fastest valid rate, above 1 beyond it.
   float Strength() const;
 
 private:
+  u64 m_first_tap = 0;
   u64 m_last_tap = 0;
   u32 m_taps = 0;
-  // Smoothed interval between taps, in emulated ticks.
-  float m_interval = 0.0f;
 };
 
 } // namespace NamcoSystem10

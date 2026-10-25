@@ -20,16 +20,20 @@ constexpr float DOWN_BEGIN = 0.95f;
 constexpr u64 RISE_MS = 400;
 // A released pad that never latched drops back on its own weight.
 constexpr u64 DROP_MS = 300;
-// Full fall time for the hardest and lightest punch. Ippo 2 reads the MID-to-DOWN interval as
-// about 850 and 100 kgw; it treats 1000 kgw or more as a sensor fault.
-constexpr float HARD_FALL_MS = 61.0f;
-constexpr float LIGHT_FALL_MS = 177.0f;
+// Full fall time for strength 1 and 0. Ippo 2 reads the MID-to-DOWN interval as about 990 and
+// 56.5 kgw. It treats 999.999 kgw or more as a sensor fault, which its jitter of up to 2 kgw
+// reaches below 416 sampler ticks, so strength 1 lands at 417. A reading must exceed 56 kgw to
+// score.
+constexpr float HARD_FALL_MS = 58.0f;
+constexpr float LIGHT_FALL_MS = 243.0f;
 
-// Tap rates (taps per second) mapped to the lightest and hardest punch, and the weight of each
-// new interval in the smoothed rate.
+// Tap rates (taps per second) mapped to strength 0 and 1. Faster tapping keeps raising the
+// strength and knocks the pad down faster than the games accept: Ippo 2 reports a sensor fault,
+// the original Ippo shows its 999.999 kgw maximum.
+// Host input arrives once per frame, so an eight-tap burst at 16 taps/s spans 26 frames and
+// measures 16.13; the next shorter burst (25 frames, 16.8 taps/s) is the first that faults.
 constexpr float SLOW_TAPS_PER_SECOND = 3.0f;
-constexpr float FAST_TAPS_PER_SECOND = 11.0f;
-constexpr float TAP_SMOOTHING = 0.5f;
+constexpr float FAST_TAPS_PER_SECOND = 16.13f;
 constexpr u32 MAX_TAPS = 8;
 // Presses closer together than this are switch bounce.
 constexpr float TAP_DEBOUNCE_MS = 30.0f;
@@ -109,8 +113,8 @@ void PunchPad::Punch(float strength)
   if (m_motion != Motion::Up)
     return;
 
-  // Strength scales the pad speed.
-  strength = std::clamp(strength, 0.0f, 1.0f);
+  // Strength scales the pad speed; above 1 the pad falls faster than the games accept.
+  strength = std::max(strength, 0.0f);
   const float speed = (1.0f / LIGHT_FALL_MS) + ((1.0f / HARD_FALL_MS) - (1.0f / LIGHT_FALL_MS)) * strength;
   StartMotion(Motion::Falling, 0.0f, MillisecondsToTicks(1.0f / speed), now);
 }
@@ -141,22 +145,17 @@ u32 PunchPad::ReadSensors()
 
 void PunchButton::Reset()
 {
+  m_first_tap = 0;
   m_last_tap = 0;
   m_taps = 0;
-  m_interval = 0.0f;
 }
 
 bool PunchButton::Tap(u64 now)
 {
-  if (m_taps != 0)
-  {
-    const u64 interval = now - m_last_tap;
-    if (interval < MillisecondsToTicks(TAP_DEBOUNCE_MS))
-      return false;
-
-    m_interval = (m_taps == 1) ? static_cast<float>(interval) :
-                                 m_interval + (static_cast<float>(interval) - m_interval) * TAP_SMOOTHING;
-  }
+  if (m_taps == 0)
+    m_first_tap = now;
+  else if ((now - m_last_tap) < MillisecondsToTicks(TAP_DEBOUNCE_MS))
+    return false;
 
   m_last_tap = now;
   m_taps++;
@@ -173,8 +172,11 @@ float PunchButton::Strength() const
   if (m_taps < 2)
     return 0.0f;
 
-  const float rate = static_cast<float>(System::GetTicksPerSecond()) / m_interval;
-  return std::clamp((rate - SLOW_TAPS_PER_SECOND) / (FAST_TAPS_PER_SECOND - SLOW_TAPS_PER_SECOND), 0.0f, 1.0f);
+  // Mean interval over the burst. Host input arrives once per frame, so a steady rate between
+  // two frame multiples alternates between them; the mean recovers it.
+  const float rate = static_cast<float>(System::GetTicksPerSecond()) * static_cast<float>(m_taps - 1) /
+                     static_cast<float>(m_last_tap - m_first_tap);
+  return std::max((rate - SLOW_TAPS_PER_SECOND) / (FAST_TAPS_PER_SECOND - SLOW_TAPS_PER_SECOND), 0.0f);
 }
 
 } // namespace NamcoSystem10
