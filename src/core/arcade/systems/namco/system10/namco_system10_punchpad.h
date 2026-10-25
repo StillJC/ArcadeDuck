@@ -29,6 +29,9 @@ public:
   // Knocks the raised pad down. Strength runs from 0 (lightest) to 1 (hardest).
   void Punch(float strength);
 
+  // True while the pad is latched upright, ready to be punched.
+  bool IsUp();
+
   // Speed, safety and human sensor bits of IN1. The player is always in front of the cabinet.
   u32 ReadSensors();
 
@@ -52,6 +55,32 @@ private:
   u64 m_start = 0;
   u64 m_duration = 1;
   bool m_solenoid = false;
+};
+
+// Single Punch button. Taps while the pad is up set the strength from the smoothed tap rate;
+// the punch lands when tapping pauses for one slow-tap interval, or on the eighth tap. A lone
+// press gives the lightest punch.
+class PunchButton
+{
+public:
+  void Reset();
+
+  // Records a press at emulated tick `now`. Returns true when this tap throws the punch.
+  bool Tap(u64 now);
+
+  bool Pending() const { return m_taps != 0; }
+
+  // True once tapping has paused long enough to throw the punch.
+  bool Paused(u64 now) const;
+
+  // 0 at or below the slowest counted tap rate, 1 at or above the fastest.
+  float Strength() const;
+
+private:
+  u64 m_last_tap = 0;
+  u32 m_taps = 0;
+  // Smoothed interval between taps, in emulated ticks.
+  float m_interval = 0.0f;
 };
 
 } // namespace NamcoSystem10

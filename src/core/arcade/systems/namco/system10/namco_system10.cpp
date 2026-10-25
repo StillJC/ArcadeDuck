@@ -279,9 +279,10 @@ struct RuntimeState
   MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
 
-  // MEM(IO) punch pad and the punch buttons' previous state, hardest first.
+  // MEM(IO) punch pad and its Punch button.
   PunchPad punch_pad;
-  std::array<bool, 3> punch_was_pressed{};
+  PunchButton punch_button;
+  bool punch_was_pressed = false;
 
   // Cabinet JVS I/O on the EXIO serial channel 1 (RS-485) link.
   // NFL trackball controller: command frame collected from EXIO serial channel 0.
@@ -532,7 +533,8 @@ void ResetBaseboardInputState(RuntimeState& runtime)
   runtime.test_switch_was_pressed = false;
   runtime.test_switch_latched = false;
   runtime.punch_pad.Reset();
-  runtime.punch_was_pressed = {};
+  runtime.punch_button.Reset();
+  runtime.punch_was_pressed = false;
   runtime.exio_ident_bit = 0;
   runtime.exio_ident_byte = 0;
   runtime.exio_ident_trace_events = 0;
@@ -792,15 +794,25 @@ u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
 
   if (runtime.cabinet_inputs->mechanism == CabinetMechanism::PunchPad)
   {
-    static constexpr std::array<std::string_view, 3> PUNCH_KEYS = {"Punch", "PunchMedium", "PunchLight"};
-    static constexpr std::array<float, 3> PUNCH_STRENGTH = {1.0f, 0.5f, 0.0f};
-    for (size_t i = 0; i < PUNCH_KEYS.size(); i++)
+    const u64 now = System::GetGlobalTickCounter();
+    const bool pressed = ArcadeInput::IsDigitalPressed(0, "Punch");
+    bool throw_punch = false;
+    if (pressed && !runtime.punch_was_pressed && runtime.punch_pad.IsUp())
+      throw_punch = runtime.punch_button.Tap(now);
+    runtime.punch_was_pressed = pressed;
+
+    if (runtime.punch_button.Pending())
     {
-      const bool pressed = ArcadeInput::IsDigitalPressed(0, PUNCH_KEYS[i]);
-      if (pressed && !runtime.punch_was_pressed[i])
-        runtime.punch_pad.Punch(PUNCH_STRENGTH[i]);
-      runtime.punch_was_pressed[i] = pressed;
+      // Taps only count while the pad waits upright for the punch.
+      if (!runtime.punch_pad.IsUp())
+        runtime.punch_button.Reset();
+      else if (throw_punch || runtime.punch_button.Paused(now))
+      {
+        runtime.punch_pad.Punch(runtime.punch_button.Strength());
+        runtime.punch_button.Reset();
+      }
     }
+
     value = (value & ~PunchPad::SENSOR_MASK) | runtime.punch_pad.ReadSensors();
   }
 

@@ -21,9 +21,18 @@ constexpr u64 RISE_MS = 400;
 // A released pad that never latched drops back on its own weight.
 constexpr u64 DROP_MS = 300;
 // Full fall time for the hardest and lightest punch. Ippo 2 reads the MID-to-DOWN interval as
-// about 600 and 100 kgw; it treats 1000 kgw or more as a sensor fault.
-constexpr float HARD_FALL_MS = 72.0f;
+// about 850 and 100 kgw; it treats 1000 kgw or more as a sensor fault.
+constexpr float HARD_FALL_MS = 61.0f;
 constexpr float LIGHT_FALL_MS = 177.0f;
+
+// Tap rates (taps per second) mapped to the lightest and hardest punch, and the weight of each
+// new interval in the smoothed rate.
+constexpr float SLOW_TAPS_PER_SECOND = 3.0f;
+constexpr float FAST_TAPS_PER_SECOND = 11.0f;
+constexpr float TAP_SMOOTHING = 0.5f;
+constexpr u32 MAX_TAPS = 8;
+// Presses closer together than this are switch bounce.
+constexpr float TAP_DEBOUNCE_MS = 30.0f;
 
 u64 MillisecondsToTicks(float ms)
 {
@@ -106,6 +115,12 @@ void PunchPad::Punch(float strength)
   StartMotion(Motion::Falling, 0.0f, MillisecondsToTicks(1.0f / speed), now);
 }
 
+bool PunchPad::IsUp()
+{
+  Update(Now());
+  return m_motion == Motion::Up;
+}
+
 u32 PunchPad::ReadSensors()
 {
   const u64 now = Now();
@@ -122,6 +137,44 @@ u32 PunchPad::ReadSensors()
   else
     bits |= SENSOR_SAFETY; // the lowered pad blocks the safety beam
   return bits;
+}
+
+void PunchButton::Reset()
+{
+  m_last_tap = 0;
+  m_taps = 0;
+  m_interval = 0.0f;
+}
+
+bool PunchButton::Tap(u64 now)
+{
+  if (m_taps != 0)
+  {
+    const u64 interval = now - m_last_tap;
+    if (interval < MillisecondsToTicks(TAP_DEBOUNCE_MS))
+      return false;
+
+    m_interval = (m_taps == 1) ? static_cast<float>(interval) :
+                                 m_interval + (static_cast<float>(interval) - m_interval) * TAP_SMOOTHING;
+  }
+
+  m_last_tap = now;
+  m_taps++;
+  return m_taps >= MAX_TAPS;
+}
+
+bool PunchButton::Paused(u64 now) const
+{
+  return (now - m_last_tap) >= MillisecondsToTicks(1000.0f / SLOW_TAPS_PER_SECOND);
+}
+
+float PunchButton::Strength() const
+{
+  if (m_taps < 2)
+    return 0.0f;
+
+  const float rate = static_cast<float>(System::GetTicksPerSecond()) / m_interval;
+  return std::clamp((rate - SLOW_TAPS_PER_SECOND) / (FAST_TAPS_PER_SECOND - SLOW_TAPS_PER_SECOND), 0.0f, 1.0f);
 }
 
 } // namespace NamcoSystem10
