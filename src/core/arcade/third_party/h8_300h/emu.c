@@ -1548,6 +1548,29 @@ void bild(h8_system_t *system, h8_byte_t val, unsigned bit)
   system->cpu.ccr.flags.c = val.u & (1 << (bit & B00000111)) ? 0 : 1;
 }
 
+/* BOR/BIOR (op 4), BXOR/BIXOR (op 5), BAND/BIAND (op 6); field bit 3 selects the inverted form. */
+static void bit_logic(h8_system_t *system, h8_byte_t val, unsigned field, unsigned op)
+{
+  unsigned bit = (val.u >> (field & B00000111)) & 1;
+
+  if (field & B1000)
+    bit ^= 1;
+  switch (op)
+  {
+  case 0x4:
+    system->cpu.ccr.flags.c |= bit;
+    break;
+  case 0x5:
+    system->cpu.ccr.flags.c ^= bit;
+    break;
+  case 0x6:
+    system->cpu.ccr.flags.c &= bit;
+    break;
+  default:
+    H8_ERROR(H8_DEBUG_MALFORMED_OPCODE)
+  }
+}
+
 void bsr(h8_system_t *system, signed offset)
 {
 #if H8_SAFETY
@@ -2943,6 +2966,24 @@ H8_OP(op73)
   btst(system, rd_b(system, system->dbus.bl), system->dbus.bh);
 }
 
+H8_OP(op74)
+{
+  /** BOR/BIOR #xx:3, Rd */
+  bit_logic(system, *rd_b(system, system->dbus.bl), system->dbus.bh, 0x4);
+}
+
+H8_OP(op75)
+{
+  /** BXOR/BIXOR #xx:3, Rd */
+  bit_logic(system, *rd_b(system, system->dbus.bl), system->dbus.bh, 0x5);
+}
+
+H8_OP(op76)
+{
+  /** BAND/BIAND #xx:3, Rd */
+  bit_logic(system, *rd_b(system, system->dbus.bl), system->dbus.bh, 0x6);
+}
+
 H8_OP(op77)
 {
   if (system->dbus.bh & B1000)
@@ -3084,6 +3125,46 @@ H8_OP(op7a)
   }
 }
 
+H8_OP(op7c)
+{
+  h8_word_t func = system->dbus.bits;
+  h8_byte_t value;
+
+  h8_fetch(system);
+  value = h8_read_b(system, er(system, func.l.h));
+  if (system->dbus.ah == 0x6 && system->dbus.al == 0x3)
+    /** BTST Rs, @ERd */
+    btst(system, &value, rd_b(system, system->dbus.bh)->u);
+  else if (system->dbus.ah == 0x7)
+  {
+    switch (system->dbus.al)
+    {
+    case 0x3:
+      /** BTST #xx:3, @ERd */
+      btst(system, &value, system->dbus.bh);
+      break;
+    case 0x4:
+    case 0x5:
+    case 0x6:
+      /** BOR/BXOR/BAND and inverted forms, #xx:3, @ERd */
+      bit_logic(system, value, system->dbus.bh, system->dbus.al);
+      break;
+    case 0x7:
+      if (system->dbus.bh & B1000)
+        /** BILD #xx:3, @ERd */
+        bild(system, value, system->dbus.bh);
+      else
+        /** BLD #xx:3, @ERd */
+        bld(system, value, system->dbus.bh);
+      break;
+    default:
+      H8_ERROR(H8_DEBUG_MALFORMED_OPCODE)
+    }
+  }
+  else
+    H8_ERROR(H8_DEBUG_MALFORMED_OPCODE)
+}
+
 H8_OP(op7d)
 {
   h8_word_t func = system->dbus.bits;
@@ -3180,7 +3261,8 @@ H8_OP(op7e)
     case 0x4:
     case 0x5:
     case 0x6:
-      H8_ERROR(H8_DEBUG_UNIMPLEMENTED_OPCODE)
+      /** BOR/BXOR/BAND and inverted forms, #xx:3, @aa:8 */
+      bit_logic(system, h8_read_b(system, aa8(func.l)), system->dbus.bh, system->dbus.al);
       break;
     case 0x7:
       if (system->dbus.bh & B1000)
@@ -3381,8 +3463,8 @@ static H8_OP_T funcs[256] =
   op58, op59, op5a, op5b, op5c, op5d, op5e, NULL,
   op60, op61, op62, op63, op64, op65, op66, op67,
   op68, op69, op6a, op6b, op6c, op6d, op6e, op6f,
-  op70, op71, op72, op73, NULL, NULL, NULL, op77,
-  op78, op79, op7a, NULL, NULL, op7d, op7e, op7f,
+  op70, op71, op72, op73, op74, op75, op76, op77,
+  op78, op79, op7a, NULL, op7c, op7d, op7e, op7f,
   op80, op81, op82, op83, op84, op85, op86, op87,
   op88, op89, op8a, op8b, op8c, op8d, op8e, op8f,
   op90, op91, op92, op93, op94, op95, op96, op97,
