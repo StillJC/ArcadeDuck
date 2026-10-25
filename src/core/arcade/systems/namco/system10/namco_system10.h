@@ -81,6 +81,9 @@ bool IsActive();
 /// Advances the board watchdog by one frame. Returns true when it expires and the system must be reset.
 bool ProcessFrame();
 
+/// Scales the onboard SPU output to the main board's speaker route.
+void ApplySPUOutputGain(s32* left, s32* right);
+
 /// One 44.1 kHz frame of board audio outside the SPU (MEM(P3) MP3 decoder).
 void GenerateAudioFrame(s32* left, s32* right);
 

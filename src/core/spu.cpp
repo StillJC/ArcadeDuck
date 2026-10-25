@@ -2635,6 +2635,7 @@ void SPU::Execute(void* param, TickCount ticks, TickCount ticks_late)
       // Apply the active Sony ZN board's onboard-SPU route before adding its
       // independent manufacturer sound-board output.
       SonyZN::ApplySPUOutputGain(&output_left, &output_right);
+      NamcoSystem10::ApplySPUOutputGain(&output_left, &output_right);
 
       // Konami GV mixes the PlayStation SPU/056602 path with the CD-ROM
       // analog CN8 path after the SPU main-volume stage. Apply the fleet

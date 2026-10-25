@@ -3000,6 +3000,17 @@ bool IsActive()
   return s_runtime.has_value();
 }
 
+void ApplySPUOutputGain(s32* left, s32* right)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  // The main board routes the SPU at 0.75 (MAME namcos10); the MEM(P3) MP3 decoder is mixed
+  // separately at unity.
+  *left = (*left * 3) / 4;
+  *right = (*right * 3) / 4;
+}
+
 void GenerateAudioFrame(s32* left, s32* right)
 {
   *left = 0;
