@@ -804,7 +804,7 @@ constexpr std::array s_memn_profiles = {
               &GJSPACE_TYPE2},
   MemNProfile{"ns10_kd2001",
               MemNBoard::MemN,
-              ExpansionBoard::None,
+              ExpansionBoard::EXIO,
               UINT16_C(0xaaaa),
               {12, 15, 14, 13, 9, 8, 11, 10, 6, 5, 4, 7, 2, 3, 0, 1},
               &KD2001_TYPE2},

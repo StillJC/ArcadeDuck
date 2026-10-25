@@ -32,6 +32,7 @@ struct MemNLoadedContent
   const MemNProfile* profile = nullptr;
   std::vector<std::vector<u8>> nands;
   std::vector<u8> nonlinear_table;
+  std::vector<u8> pdrive_firmware;
   std::string cdrom_path;
 };
 

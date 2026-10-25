@@ -232,9 +232,11 @@ add_library(core
   arcade/systems/namco/system10/namco_system10_memn.cpp
   arcade/systems/namco/system10/namco_system10_memp3.cpp
   arcade/systems/namco/system10/namco_system10_pdrive.cpp
+  arcade/systems/namco/system10/namco_system10_kd2001.cpp
   arcade/systems/namco/system10/namco_system10_memn.h
   arcade/systems/namco/system10/namco_system10_memp3.h
   arcade/systems/namco/system10/namco_system10_pdrive.h
+  arcade/systems/namco/system10/namco_system10_kd2001.h
   arcade/systems/namco/system10/namco_system10_protection.cpp
   arcade/systems/namco/system10/namco_system10_punchpad.cpp
   arcade/systems/namco/system10/namco_system10_protection.h

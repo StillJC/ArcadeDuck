@@ -202,6 +202,7 @@
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_memn.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_memp3.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_pdrive.cpp" />
+    <ClCompile Include="arcade\systems\namco\system10\namco_system10_kd2001.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_protection.cpp" />
     <ClCompile Include="arcade\systems\namco\system10\namco_system10_punchpad.cpp" />
     <ClCompile Include="arcade\systems\namco\system11\namco_system11.cpp" />
@@ -447,6 +448,7 @@
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_memn.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_memp3.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_pdrive.h" />
+    <ClInclude Include="arcade\systems\namco\system10\namco_system10_kd2001.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_protection.h" />
     <ClInclude Include="arcade\systems\namco\system10\namco_system10_punchpad.h" />
     <ClInclude Include="arcade\systems\namco\system11\namco_system11.h" />

@@ -15,6 +15,8 @@
 #include "core/arcade/systems/namco/system10/namco_system10_mgexio.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
 #include "core/arcade/systems/namco/system10/namco_system10_memp3.h"
+#include "core/arcade/systems/namco/system10/namco_system10_kd2001.h"
+#include "core/arcade/systems/namco/system10/namco_system10_pdrive.h"
 #include "core/arcade/systems/namco/system10/namco_system10_protection.h"
 #include "core/arcade/systems/namco/system10/namco_system10_punchpad.h"
 
@@ -278,6 +280,12 @@ struct RuntimeState
   std::unique_ptr<MGEXIOBoard> mgexio;
   MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
+
+  // Knock Down 2001 P-DRIVE PCB on the EXIO JVS link.
+  std::vector<u8> pdrive_firmware;
+  std::unique_ptr<PDriveBoard> pdrive;
+  KnockDownCarriage kd_carriage;
+  u16 pdrive_outputs = 0;
 
   // MEM(IO) punch pad and its Punch button.
   PunchPad punch_pad;
@@ -616,7 +624,8 @@ enum class CabinetSerial : u8
 enum class CabinetMechanism : u8
 {
   None,
-  PunchPad, // MEM(IO) punch pad: speed, safety and human sensors on IN1
+  PunchPad,       // MEM(IO) punch pad: speed, safety and human sensors on IN1
+  PunchCarriage,  // P-DRIVE punch-pad carriage
 };
 
 enum class CabinetAnalog : u8
@@ -710,6 +719,11 @@ constexpr std::array<InputBit, 4> PTBLANK3_IN1 = {{{4, 0, "Trigger"}, {7, 0, "St
 // The punch pad sensors come from the PunchPad mechanism.
 constexpr std::array<InputBit, 3> IPPO2_IN1 = {{{7, 0, "Start"}, {15, 0, "Select"}, {27, 0, "Sensor"}}};
 
+// Operator SELECT/ENTER and the panel LEFT/RIGHT switches; the punch pad is on the P-DRIVE PCB.
+constexpr std::array<InputBit, 5> KD2001_IN1 = {{
+  {2, 0, "SelectDown"}, {3, 0, "SelectUp"}, {4, 0, "Enter"}, {7, 0, "Left"}, {15, 0, "Right"},
+}};
+
 // EXIO output latch wiring, from each game's lamp test. The names follow MAME's Namco
 // gun I/F (System 12) and its generic lampN convention.
 constexpr std::array<OutputBit, 4> GUN_OUTPUTS = {{
@@ -718,12 +732,17 @@ constexpr std::array<OutputBit, 4> GUN_OUTPUTS = {{
 
 constexpr std::array<OutputBit, 2> GAHAHA_OUTPUTS = {{{0, "P1_Start_lamp"}, {1, "P2_Start_lamp"}}};
 
+// P-DRIVE output word bits named by the LAMP & MOTOR TEST.
+constexpr std::array<OutputBit, 5> KD2001_OUTPUTS = {{
+  {5, "Left_lamp"}, {4, "Right_lamp"}, {13, "Upper_lamp1"}, {14, "Upper_lamp2"}, {15, "Upper_lamp3"},
+}};
+
 // LAMP TEST lamps 0-5; lamps 1 and 2 are on swapped latch bits.
 constexpr std::array<OutputBit, 6> TAIKO_OUTPUTS = {{
   {0, "lamp0"}, {2, "lamp1"}, {1, "lamp2"}, {3, "lamp3"}, {4, "lamp4"}, {5, "lamp5"},
 }};
 
-constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
+constexpr std::array<CabinetInputs, 16> CABINET_INPUTS = {{
   {"namcos10", DEFAULT_IN1, {}, CabinetAnalog::None},
   {"mrdrilr2", DEFAULT_IN1, {}, CabinetAnalog::None},
   {"gamshara", THREE_BUTTON_IN1, {}, CabinetAnalog::None},
@@ -739,6 +758,7 @@ constexpr std::array<CabinetInputs, 15> CABINET_INPUTS = {{
   {"squizchs", SQUIZCHS_IN1, {}, CabinetAnalog::None},
   {"ptblank3", PTBLANK3_IN1, {}, CabinetAnalog::None, CabinetSerial::None, GUN_OUTPUTS},
   {"ippo2", IPPO2_IN1, {}, CabinetAnalog::None, CabinetSerial::None, {}, CabinetMechanism::PunchPad},
+  {"kd2001", KD2001_IN1, {}, CabinetAnalog::None, CabinetSerial::None, {}, CabinetMechanism::PunchCarriage},
 }};
 
 const CabinetInputs& FindCabinetInputs(std::string_view set_name)
@@ -769,6 +789,34 @@ u32 ReadInputBits(std::span<const InputBit> bits)
   return value;
 }
 
+// Feeds Punch presses to the cadence helper while the mechanism waits for a punch. Returns the
+// strength once the punch lands.
+std::optional<float> PollPunchButton(RuntimeState& runtime, bool ready)
+{
+  const u64 now = System::GetGlobalTickCounter();
+  const bool pressed = ArcadeInput::IsDigitalPressed(0, "Punch");
+  bool throw_punch = false;
+  if (pressed && !runtime.punch_was_pressed && ready)
+    throw_punch = runtime.punch_button.Tap(now);
+  runtime.punch_was_pressed = pressed;
+
+  if (!runtime.punch_button.Pending())
+    return std::nullopt;
+
+  // Taps only count while the mechanism is ready.
+  if (!ready)
+  {
+    runtime.punch_button.Reset();
+    return std::nullopt;
+  }
+  if (!throw_punch && !runtime.punch_button.Paused(now))
+    return std::nullopt;
+
+  const float strength = runtime.punch_button.Strength();
+  runtime.punch_button.Reset();
+  return strength;
+}
+
 u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
 {
   u32 value = ReadInputBits(runtime.cabinet_inputs->in1);
@@ -794,26 +842,18 @@ u32 ReadBaseboardPlayerInputs(RuntimeState& runtime)
 
   if (runtime.cabinet_inputs->mechanism == CabinetMechanism::PunchPad)
   {
-    const u64 now = System::GetGlobalTickCounter();
-    const bool pressed = ArcadeInput::IsDigitalPressed(0, "Punch");
-    bool throw_punch = false;
-    if (pressed && !runtime.punch_was_pressed && runtime.punch_pad.IsUp())
-      throw_punch = runtime.punch_button.Tap(now);
-    runtime.punch_was_pressed = pressed;
-
-    if (runtime.punch_button.Pending())
-    {
-      // Taps only count while the pad waits upright for the punch.
-      if (!runtime.punch_pad.IsUp())
-        runtime.punch_button.Reset();
-      else if (throw_punch || runtime.punch_button.Paused(now))
-      {
-        runtime.punch_pad.Punch(runtime.punch_button.Strength());
-        runtime.punch_button.Reset();
-      }
-    }
-
+    if (const std::optional<float> strength = PollPunchButton(runtime, runtime.punch_pad.IsUp()))
+      runtime.punch_pad.Punch(*strength);
     value = (value & ~PunchPad::SENSOR_MASK) | runtime.punch_pad.ReadSensors();
+  }
+  else if (runtime.cabinet_inputs->mechanism == CabinetMechanism::PunchCarriage && runtime.pdrive)
+  {
+    const u64 clock = runtime.pdrive->Now();
+    if (const std::optional<float> strength = PollPunchButton(runtime, runtime.kd_carriage.IsReady(clock)))
+    {
+      runtime.kd_carriage.Punch(*strength, clock);
+      runtime.pdrive->SensorsChanged();
+    }
   }
 
   return value;
@@ -996,6 +1036,12 @@ void EXIOSerialTransmit(void*, u32 channel, u8 value)
     return;
   }
 
+  if (channel == 1 && runtime.pdrive)
+  {
+    runtime.pdrive->ReceiveSerial(value);
+    return;
+  }
+
   if (channel != 1 || !runtime.cyberlead_cabinet)
     return;
 
@@ -1028,9 +1074,52 @@ void WriteEXIOOutputs(void*, u16 value)
     Arcade::Output::SetValue(output.name, (value >> output.bit) & 1, "Namco System 10 EXIO");
 }
 
+u8 ReadPDriveSensors(void*, u64 clock)
+{
+  return s_runtime.has_value() ? s_runtime->kd_carriage.Sensors(clock) : 0x0F;
+}
+
+u64 NextPDriveSensorChange(void*, u64 clock)
+{
+  return s_runtime.has_value() ? s_runtime->kd_carriage.NextChange(clock) : UINT64_MAX;
+}
+
+u8 ReadPDriveSwitches(void*, u64 clock)
+{
+  return s_runtime.has_value() ? s_runtime->kd_carriage.Switches(clock) : 0xFF;
+}
+
+void SetPDriveMotor(void*, double steps_per_second, u64 clock)
+{
+  if (s_runtime.has_value())
+    s_runtime->kd_carriage.SetMotor(steps_per_second, clock);
+}
+
+void SetPDriveOutputs(void*, u16 value)
+{
+  if (!s_runtime.has_value())
+    return;
+  const u16 changed = value ^ s_runtime->pdrive_outputs;
+  s_runtime->pdrive_outputs = value;
+  for (const OutputBit& output : KD2001_OUTPUTS)
+  {
+    if ((changed >> output.bit) & 1)
+      Arcade::Output::SetValue(output.name, (value >> output.bit) & 1, "Namco System 10 P-DRIVE");
+  }
+}
+
+void PDriveTransmit(void*, u8 value)
+{
+  if (s_runtime.has_value() && s_runtime->exio)
+    s_runtime->exio->ReceiveSerial(1, value);
+}
+
 u16 ReadJVSSense(void*)
 {
-  // A JVS device holds sense at 2.5 V until it has an address, then pulls it to 0 V.
+  // A JVS device holds sense at 2.5 V until it has an address, then pulls it to 0 V. The
+  // P-DRIVE firmware drives no sense output; as the only node it reads as pulled low.
+  if (s_runtime.has_value() && s_runtime->pdrive)
+    return 0x000;
   if (!s_runtime.has_value() || !s_runtime->cyberlead_cabinet)
     return 0x3ff;
   return s_runtime->jvs_addressed ? 0x000 : 0x200;
@@ -1153,6 +1242,20 @@ void CreateExpansionBoard(RuntimeState& runtime)
   cabinet.output = &WriteEXIOOutputs;
   runtime.exio = std::make_unique<EXIOBoard>(type, cabinet);
   runtime.exio->Reset();
+
+  runtime.pdrive.reset();
+  if (!runtime.pdrive_firmware.empty())
+  {
+    runtime.kd_carriage.Reset();
+    PDriveBoard::Cabinet pdrive;
+    pdrive.sensors = &ReadPDriveSensors;
+    pdrive.next_sensor_change = &NextPDriveSensorChange;
+    pdrive.switches = &ReadPDriveSwitches;
+    pdrive.motor = &SetPDriveMotor;
+    pdrive.outputs = &SetPDriveOutputs;
+    pdrive.transmit = &PDriveTransmit;
+    runtime.pdrive = std::make_unique<PDriveBoard>(std::span<const u8>(runtime.pdrive_firmware), pdrive);
+  }
 }
 
 void ResetBaseboardInterruptState(RuntimeState& runtime, bool schedule_event)
@@ -2598,12 +2701,18 @@ std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const
   std::array<const Arcade::Database::ROMDefinition*, MAX_MEMN_NANDS> nand_roms = {};
   size_t nand_region_count = 0;
   const Arcade::Database::ROMDefinition* nonlinear_rom = nullptr;
+  const Arcade::Database::ROMDefinition* pdrive_rom = nullptr;
 
   for (const Arcade::Database::ROMDefinition& rom : game.roms)
   {
     if (rom.region == "decrypter:nonlinear_table")
     {
       nonlinear_rom = &rom;
+      continue;
+    }
+    if (rom.region == "pdrivecpu")
+    {
+      pdrive_rom = &rom;
       continue;
     }
 
@@ -2668,6 +2777,13 @@ std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const
 
     content.nonlinear_table.resize(nonlinear_rom->size);
     if (!LoadSimpleROMMember(archive_path, *nonlinear_rom, std::span<u8>(content.nonlinear_table), error))
+      return std::nullopt;
+  }
+
+  if (pdrive_rom)
+  {
+    content.pdrive_firmware.resize(pdrive_rom->size);
+    if (!LoadSimpleROMMember(archive_path, *pdrive_rom, std::span<u8>(content.pdrive_firmware), error))
       return std::nullopt;
   }
 
@@ -2810,6 +2926,7 @@ bool InitializeMemN(MemNLoadedContent content, Error* error)
   runtime.memn_profile = content.profile;
   runtime.data_xor = content.profile ? content.profile->data_xor : UINT16_C(0xaaaa);
   runtime.type2_nonlinear_table = std::move(content.nonlinear_table);
+  runtime.pdrive_firmware = std::move(content.pdrive_firmware);
 
   if (content.nands.size() < 2)
   {
@@ -2945,6 +3062,8 @@ void Reset()
 
   if (runtime.exio)
     runtime.exio->Reset();
+  if (runtime.pdrive)
+    runtime.pdrive->Reset();
   if (runtime.cdrom)
     runtime.cdrom->Reset();
   runtime.cdrom_dma = false;

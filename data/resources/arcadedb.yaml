@@ -802,6 +802,21 @@ controlLayouts:
         displayName: "Select"
         kind: "button"
 
+  kd2001:
+    displayName: "Knock Down 2001 punch pad"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Punch"
+        displayName: "Punch — tap faster for a harder punch"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+
   kdeadeye:
     displayName: "Dead Eye"
     controllerType: "lightgun"
@@ -14559,10 +14574,13 @@ games:
     boardCode: "KD11"
     hardwareProfile: "ns10_kd2001"
     setFormat: "non_merged"
-    status: "not_working"
+    status: "preliminary"
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "kd2001" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14577,7 +14595,7 @@ games:
     properties:
       sourceDriver: "namcos10_master_20260803.cpp"
       machineConfig: "ns10_kd2001"
-      inputProfile: "namcos10"
+      inputProfile: "kd2001"
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND | MACHINE_UNEMULATED_PROTECTION"
       mameDescription: "Knock Down 2001 (Japan, KD11 Ver. B)"
