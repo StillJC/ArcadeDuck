@@ -2537,21 +2537,14 @@ bool QtHost::ParseCommandLineParametersAndInitializeConfig(QApplication& app,
         qApp->translate("QtHost", "File '%1' does not exist.").arg(QString::fromStdString(autoboot->filename)));
       return false;
     }
-    if (!Arcade::Database::IsArchivePath(autoboot->filename))
-    {
-      report_command_line_error(qApp->translate("QtHost", "File '%1' is not a supported ArcadeDuck arcade archive.")
-                                  .arg(QString::fromStdString(autoboot->filename)));
-      return false;
-    }
-
     const std::string real_path(Path::RealPath(autoboot->filename));
     if (!real_path.empty())
       autoboot->filename = real_path;
 
-    command_line_game = Arcade::Database::IdentifyArchive(autoboot->filename);
+    command_line_game = Arcade::Database::IdentifyGamePath(autoboot->filename);
     if (!command_line_game)
     {
-      report_command_line_error(qApp->translate("QtHost", "Archive '%1' is not a recognized ArcadeDuck set.")
+      report_command_line_error(qApp->translate("QtHost", "File '%1' is not a recognized ArcadeDuck archive or G-Net CHD.")
                                   .arg(QtUtils::StringViewToQString(Path::GetFileName(autoboot->filename))));
       return false;
     }

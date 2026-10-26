@@ -33,6 +33,7 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/path.h"
+#include "common/string_util.h"
 #include "common/md5_digest.h"
 
 #include "libchdr/chd.h"
@@ -4637,7 +4638,8 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
     Error::SetStringView(error, "Taito G-Net definition is missing required protected PC Card hard-disk media.");
     return std::nullopt;
   }
-  content.pccard_path = Arcade::Database::GetCompanionMediaPath(archive_path, game, *media);
+  content.pccard_path = StringUtil::EqualNoCase(Path::GetExtension(archive_path), "chd") ?
+                         std::string(archive_path) : Arcade::Database::GetCompanionMediaPath(archive_path, game, *media);
 
   VERBOSE_LOG(
     "SonyZN G-Net content validated set='{}' u30={} bytes f35={} bytes pccard='{}' cat702_keys=2 card='protected ATA'",
@@ -5924,7 +5926,7 @@ void ApplySPUOutputGain(s32* left, s32* right)
   if (!s_runtime)
     return;
 
-  // Base ZN routes the onboard SPU at 0.35, while G-Net uses 0.30.
+  // Base ZN routes the onboard SPU at 0.35; G-Net uses a boosted 0.50 route.
   // Bust-A-Move 2, Atlus ZN-1, and Taito FX-1B use unity gain.
   u32 gain_per_thousand = 350;
   if (s_runtime->board_type == BoardType::BustAMove2ZN1)
@@ -5934,7 +5936,7 @@ void ApplySPUOutputGain(s32* left, s32* right)
   else if (s_runtime->board_type == BoardType::TaitoFX1B)
     gain_per_thousand = 1000;
   else if (s_runtime->board_type == BoardType::TaitoGNet)
-    gain_per_thousand = 300;
+    gain_per_thousand = 500;
 
   *left = (*left * static_cast<s32>(gain_per_thousand)) / 1000;
   *right = (*right * static_cast<s32>(gain_per_thousand)) / 1000;
