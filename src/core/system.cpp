@@ -4116,7 +4116,7 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
     else if (source.IsOneShot())
     {
       info.type = MAMECheatType::OneShot;
-      info.value = "Ready";
+      info.value = "Activate";
     }
     else if (source.IsOneShotParameter())
     {
@@ -4138,9 +4138,13 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
 
     if (entry.HasParameter())
     {
-      if (!info.active)
+      if (!info.active && !source.IsOneShotParameter())
       {
         info.value = "Off";
+      }
+      else if (!info.active && source.IsOneShotParameter() && source.parameter->HasItemList())
+      {
+        info.value = source.parameter->items.front().text;
       }
       else if (const char* item_text = entry.GetParameterItemText())
       {
@@ -4148,13 +4152,24 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
       }
       else
       {
+        const u64 parameter_value = !info.active && source.IsOneShotParameter() ?
+                                      source.parameter->minimum.value : entry.GetParameterValue();
         const MAMECheats::NumberFormat format = source.parameter->minimum.format;
         if (format == MAMECheats::NumberFormat::HexDollar)
-          info.value = fmt::format("${:X}", entry.GetParameterValue());
+          info.value = fmt::format("${:X}", parameter_value);
         else if (format == MAMECheats::NumberFormat::HexC)
-          info.value = fmt::format("0x{:X}", entry.GetParameterValue());
+          info.value = fmt::format("0x{:X}", parameter_value);
         else
-          info.value = fmt::format("{}", entry.GetParameterValue());
+          info.value = fmt::format("{}", parameter_value);
+      }
+    }
+
+    if (source.IsOneShot() || source.IsOneShotParameter())
+    {
+      const MAMECheats::ActivationResult activation_result = entry.GetActivationResult();
+      if (activation_result != MAMECheats::ActivationResult::None)
+      {
+        info.value = source.IsOneShot() ? "Activated" : fmt::format("{} (Activated)", info.value);
       }
     }
 
@@ -4164,7 +4179,7 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
     }
     else
     {
-      info.can_activate = source.IsOneShot() || (source.IsOneShotParameter() && info.active);
+      info.can_activate = source.IsOneShot() || source.IsOneShotParameter();
       info.can_previous = !source.IsOneShot() && info.active;
       info.can_next =
         source.IsOnOff() ? !info.active :

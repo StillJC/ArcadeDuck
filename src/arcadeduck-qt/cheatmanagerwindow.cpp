@@ -64,6 +64,7 @@ CheatManagerWindow::~CheatManagerWindow() = default;
 void CheatManagerWindow::connectUi()
 {
   connect(m_ui.cheatList, &QTreeWidget::currentItemChanged, this, &CheatManagerWindow::cheatListCurrentItemChanged);
+  connect(m_ui.cheatList, &QTreeWidget::itemSelectionChanged, this, &CheatManagerWindow::updateSelectedCheatUi);
   connect(m_ui.cheatList, &QTreeWidget::itemActivated, this, &CheatManagerWindow::cheatListItemActivated);
   connect(m_ui.cheatListPrevious, &QPushButton::clicked, this, &CheatManagerWindow::previousStateClicked);
   connect(m_ui.cheatListNext, &QPushButton::clicked, this, &CheatManagerWindow::nextStateClicked);
@@ -220,7 +221,8 @@ void CheatManagerWindow::cheatListItemActivated(QTreeWidgetItem* item)
 
   const System::MAMECheatType type =
     static_cast<System::MAMECheatType>(item->data(0, CheatTypeRole).toUInt());
-  if (item->data(0, CanActivateRole).toBool())
+  if (type == System::MAMECheatType::OneShot || type == System::MAMECheatType::OneShotParameter ||
+      item->data(0, CanActivateRole).toBool())
   {
     activateClicked();
   }

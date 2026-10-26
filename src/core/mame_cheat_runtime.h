@@ -36,6 +36,13 @@ struct RuntimeOutput
 
 class RuntimeList;
 
+enum class ActivationResult : u8
+{
+  None,
+  Executed,
+  NotApplied,
+};
+
 class RuntimeEntry
 {
 public:
@@ -46,6 +53,7 @@ public:
 
   const Entry& GetSource() const;
   ScriptState GetState() const;
+  ActivationResult GetActivationResult() const;
   bool IsValid() const;
   const std::string& GetError() const;
 
