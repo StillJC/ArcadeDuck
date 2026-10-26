@@ -23,6 +23,7 @@
 #include "imgui_overlays.h"
 #include "interrupt_controller.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/arcade_rom_loader.h"
@@ -2235,6 +2236,9 @@ void System::FrameDone()
     InterruptExecution();
     return;
   }
+
+  if (SonyZN::IsMawasundaActive() || NamcoSystem11::IsFamilyBowlActive())
+    ArcadeInput::Update();
 
   if (SonyZN::IsActive())
     SonyZN::ProcessFrame();

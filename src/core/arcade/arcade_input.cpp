@@ -8,6 +8,7 @@
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "core/settings.h"
+#include "core/system.h"
 
 #include "common/path.h"
 #include "common/settings_interface.h"
@@ -51,6 +52,13 @@ enum class OperatorControl : u8
   Count
 };
 
+struct TrackballButtonAxis
+{
+  std::array<u32, 2> pressed_counts{};
+  float held_seconds = 0.0f;
+  float remainder = 0.0f;
+};
+
 struct PortState
 {
   Arcade::ArcadeControllerType type = Arcade::ArcadeControllerType::None;
@@ -71,6 +79,8 @@ struct PortState
   bool lightgun_offscreen = false;
   float axis_x = 0.0f;
   float axis_y = 0.0f;
+  bool trackball_buttons_as_axis = false;
+  std::array<TrackballButtonAxis, 2> trackball_button_axes{};
   float steering = 0.5f;
   float steering_axis = 0.5f;
   std::array<u32, 2> steering_button_counts = {};
@@ -329,6 +339,48 @@ void OnOperatorDigital(OperatorControl control, s32 value)
   }
 }
 
+s32 GetTrackballButtonDirection(const TrackballButtonAxis& axis)
+{
+  return static_cast<s32>(axis.pressed_counts[1] != 0) - static_cast<s32>(axis.pressed_counts[0] != 0);
+}
+
+void OnTrackballButton(u32 port_index, bool x_axis, bool positive, s32 value)
+{
+  std::lock_guard<std::mutex> lock(s_mutex);
+  TrackballButtonAxis& axis = s_ports[port_index].trackball_button_axes[x_axis ? 0 : 1];
+  const s32 previous_direction = GetTrackballButtonDirection(axis);
+  u32& count = axis.pressed_counts[positive ? 1 : 0];
+  if (value > 0)
+    count++;
+  else if (count > 0)
+    count--;
+
+  if (GetTrackballButtonDirection(axis) != previous_direction)
+  {
+    axis.held_seconds = 0.0f;
+    axis.remainder = 0.0f;
+  }
+}
+
+s32 GetTrackballButtonDelta(TrackballButtonAxis& axis, float sensitivity, bool invert, float frame_seconds)
+{
+  const s32 direction = GetTrackballButtonDirection(axis);
+  if (direction == 0)
+  {
+    axis.held_seconds = 0.0f;
+    axis.remainder = 0.0f;
+    return 0;
+  }
+
+  // Reach full trackball speed after holding a direction for 1 second.
+  const float speed = 2.0f + 126.0f * std::min(axis.held_seconds / 1.0f, 1.0f);
+  axis.held_seconds = std::min(axis.held_seconds + frame_seconds, 1.0f);
+  axis.remainder += static_cast<float>(direction) * speed * sensitivity * (invert ? -1.0f : 1.0f);
+  const s32 delta = static_cast<s32>(axis.remainder);
+  axis.remainder -= static_cast<float>(delta);
+  return delta;
+}
+
 void OnAxis(u32 port_index, bool x_axis, float value)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
@@ -554,6 +606,16 @@ void AddAxisBindings(SettingsInterface& si, const std::string& section, u32 port
     InputManager::AddBinding(binding, InputAxisEventHandler{[port, x_axis](float value) { OnAxis(port, x_axis, value); }});
 }
 
+void AddTrackballButtonBindings(SettingsInterface& si, const std::string& section, u32 port,
+                               const char* key, bool x_axis, bool positive)
+{
+  for (const std::string& binding : si.GetStringList(section.c_str(), key))
+  {
+    InputManager::AddBinding(binding, InputButtonEventHandler{
+      [port, x_axis, positive](s32 value) { OnTrackballButton(port, x_axis, positive, value); }});
+  }
+}
+
 void AddDrivingAxisBindings(SettingsInterface& si, const std::string& section, u32 port, std::string_view key,
                             DrivingAxis axis)
 {
@@ -686,8 +748,20 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
     }
     if (state.type == Arcade::ArcadeControllerType::Trackball)
     {
-      AddAxisBindings(si, section, port, "TrackballX", true);
-      AddAxisBindings(si, section, port, "TrackballY", false);
+      state.trackball_buttons_as_axis = state.input_mode != "NativeRawInputDevice" &&
+                                        si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false);
+      if (state.trackball_buttons_as_axis)
+      {
+        AddTrackballButtonBindings(si, section, port, "TrackballLeft", true, false);
+        AddTrackballButtonBindings(si, section, port, "TrackballRight", true, true);
+        AddTrackballButtonBindings(si, section, port, "TrackballUp", false, false);
+        AddTrackballButtonBindings(si, section, port, "TrackballDown", false, true);
+      }
+      else
+      {
+        AddAxisBindings(si, section, port, "TrackballX", true);
+        AddAxisBindings(si, section, port, "TrackballY", false);
+      }
     }
     else if (state.type == Arcade::ArcadeControllerType::Lightgun)
     {
@@ -821,9 +895,12 @@ void Update()
     PortState& state = s_ports[port];
     if (state.type == Arcade::ArcadeControllerType::Trackball && state.input_mode != "NativeRawInputDevice" && port < 2)
     {
-      const s32 delta_x =
+      const float frame_seconds = 1.0f / std::max(System::GetThrottleFrequency(), 1.0f);
+      const s32 delta_x = state.trackball_buttons_as_axis ?
+        GetTrackballButtonDelta(state.trackball_button_axes[0], state.x_sensitivity, state.invert_x, frame_seconds) :
         static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
-      const s32 delta_y =
+      const s32 delta_y = state.trackball_buttons_as_axis ?
+        GetTrackballButtonDelta(state.trackball_button_axes[1], state.y_sensitivity, state.invert_y, frame_seconds) :
         static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
       if (SonyZN::IsMawasundaActive())
         SonyZN::AddMawasundaHandleDelta(port, delta_x);

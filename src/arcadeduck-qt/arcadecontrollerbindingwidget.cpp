@@ -153,7 +153,8 @@ bool IsGenericPointerName(const QString& name)
 
 constexpr const char* ARCADE_BINDING_KEYS[] = {
   "Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4", "Button5", "Button6",
-  "Coin", "Start", "TrackballX", "TrackballY", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
+  "Coin", "Start", "TrackballX", "TrackballY", "TrackballLeft", "TrackballRight",
+  "TrackballUp", "TrackballDown", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
   "GSRDecrease", "Steering", "SteeringLeft", "SteeringRight", "Accelerator", "Brake", "Clutch",
   "GearUp", "GearDown", "Handbrake",
   "View", "Horn", "MusicNext", "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft",
@@ -324,7 +325,8 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
   const Arcade::ArcadeControlLayoutInfo* layout_info = getLayoutInfo();
   const std::string section = getConfigSection();
   const bool use_buttons_as_axis =
-    type == Arcade::ArcadeControllerType::Driving &&
+    (type == Arcade::ArcadeControllerType::Driving ||
+     (type == Arcade::ArcadeControllerType::Trackball && !usesNativeDevice())) &&
     m_dialog->getBoolValue(section.c_str(), "UseButtonsAsAxis", false);
 
   QFormLayout* form = new QFormLayout();
@@ -332,6 +334,20 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
   bool has_start_binding = false;
   QString driving_coin_label;
   QString driving_start_label;
+
+  const auto add_trackball_axis = [&](const char* key, const QString& name, bool x_axis) {
+    if (use_buttons_as_axis)
+    {
+      addBinding(form, x_axis ? "TrackballLeft" : "TrackballUp",
+                 tr("%1 %2").arg(name, x_axis ? tr("Left") : tr("Up")), InputBindingInfo::Type::Button);
+      addBinding(form, x_axis ? "TrackballRight" : "TrackballDown",
+                 tr("%1 %2").arg(name, x_axis ? tr("Right") : tr("Down")), InputBindingInfo::Type::Button);
+    }
+    else
+    {
+      addBinding(form, key, name, InputBindingInfo::Type::Axis);
+    }
+  };
 
   const auto add_layout_bindings = [&]() {
     if (!layout_info || layout_info->controller_type != type)
@@ -367,7 +383,12 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
       const InputBindingInfo::Type binding_type =
         binding.kind == Arcade::ArcadeControlBindingKind::Axis ? InputBindingInfo::Type::Axis :
                                                                  InputBindingInfo::Type::Button;
-      if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Steering")
+      if (type == Arcade::ArcadeControllerType::Trackball &&
+          (binding.binding_key == "TrackballX" || binding.binding_key == "TrackballY"))
+      {
+        add_trackball_axis(binding.binding_key.data(), binding_name, binding.binding_key == "TrackballX");
+      }
+      else if (type == Arcade::ArcadeControllerType::Driving && binding.binding_key == "Steering")
       {
         addBinding(form, binding.binding_key.data(), binding_name, binding_type);
         if (use_buttons_as_axis)
@@ -401,8 +422,8 @@ void ArcadeControllerBindingWidget::addBindingsPage(QVBoxLayout* layout)
     {
       if (!usesNativeDevice())
       {
-        addBinding(form, "TrackballX", tr("Trackball X fallback"), InputBindingInfo::Type::Axis);
-        addBinding(form, "TrackballY", tr("Trackball Y fallback"), InputBindingInfo::Type::Axis);
+        add_trackball_axis("TrackballX", tr("Trackball X"), true);
+        add_trackball_axis("TrackballY", tr("Trackball Y"), false);
       }
       addBinding(form, "Button1", tr("Left Action / Select"), InputBindingInfo::Type::Button);
       addBinding(form, "Button2", tr("Right Action / Select"), InputBindingInfo::Type::Button);
@@ -526,6 +547,19 @@ void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
       queueRebuild();
     });
     form->addRow(tr("Input Mode"), mode);
+
+    if (type == Arcade::ArcadeControllerType::Trackball && !native_input)
+    {
+      QCheckBox* buttons = new QCheckBox(group);
+      buttons->setChecked(m_dialog->getBoolValue(section.c_str(), "UseButtonsAsAxis", false));
+      buttons->setToolTip(tr("Hold a direction to accelerate from slow movement to full speed over 1 second. "
+                             "Release to stop; reversing starts slowly in the new direction."));
+      connect(buttons, &QCheckBox::toggled, this, [this](bool enabled) {
+        setBoolValue("UseButtonsAsAxis", enabled);
+        queueRebuild();
+      });
+      form->addRow(tr("Use Buttons as Axis"), buttons);
+    }
 
     if (native_input)
     {
