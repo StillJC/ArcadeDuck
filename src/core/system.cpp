@@ -1601,7 +1601,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
   {
     if (parameters.filename.empty())
     {
-      Error::SetStringView(error, "An ArcadeDuck arcade set archive is required for a public launch.");
+      Error::SetStringView(error, "An ArcadeDuck arcade set archive or G-Net CHD is required for a public launch.");
       return false;
     }
     if (!FileSystem::FileExists(parameters.filename.c_str()))
@@ -1609,9 +1609,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       Error::SetStringFmt(error, "Arcade launch path '{}' does not exist.", parameters.filename);
       return false;
     }
-    if (!Arcade::Database::IsArchivePath(parameters.filename))
+    if (!Arcade::Database::IsArchivePath(parameters.filename) &&
+        !StringUtil::EqualNoCase(Path::GetExtension(parameters.filename), "chd"))
     {
-      Error::SetStringFmt(error, "File '{}' is not a supported ArcadeDuck arcade archive.", parameters.filename);
+      Error::SetStringFmt(error, "File '{}' is not a supported ArcadeDuck arcade archive or G-Net CHD.", parameters.filename);
       return false;
     }
 
@@ -1620,10 +1621,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       parameters.filename = real_path;
 
     const Arcade::Database::GameDefinition* const archive_game =
-      Arcade::Database::IdentifyArchive(parameters.filename);
+      Arcade::Database::IdentifyGamePath(parameters.filename);
     if (!archive_game)
     {
-      Error::SetStringFmt(error, "Archive '{}' is not a recognized ArcadeDuck set.",
+      Error::SetStringFmt(error, "File '{}' is not a recognized ArcadeDuck archive or G-Net CHD.",
                           Path::GetFileName(parameters.filename));
       return false;
     }
@@ -1635,6 +1636,13 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       if (!arcade_game)
       {
         Error::SetStringFmt(error, "Arcade game '{}' is not present in arcadedb.yaml.", parameters.arcade_game_id);
+        return false;
+      }
+
+      if (!Arcade::Database::IsArchivePath(parameters.filename) && arcade_game != archive_game)
+      {
+        Error::SetStringFmt(error, "G-Net CHD '{}' belongs to '{}', not '{}'.",
+                            Path::GetFileName(parameters.filename), archive_game->id, arcade_game->id);
         return false;
       }
 
@@ -1662,6 +1670,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
                           Path::GetFileName(parameters.filename));
       return false;
     }
+  }
+  else if (const auto* game = Arcade::Database::IdentifyGNetCHD(parameters.filename))
+  {
+    arcade_game = game;
   }
 
   if (arcade_game)
@@ -3817,7 +3829,7 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
     if (should_resolve_game_identity)
     {
       const Arcade::Database::GameDefinition* const arcade_game =
-        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyArchive(s_running_game_path);
+        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyGamePath(s_running_game_path);
       if (arcade_game)
       {
         s_running_game_serial = arcade_game->id;

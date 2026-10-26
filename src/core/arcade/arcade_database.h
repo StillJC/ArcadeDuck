@@ -235,6 +235,8 @@ const FirmwareDefinition* ResolveFirmwareProfile(const SystemDefinition& system)
 bool IsArchivePath(std::string_view path);
 std::string_view GetSetNameFromArchivePath(std::string_view path);
 const GameDefinition* IdentifyArchive(std::string_view path);
+const GameDefinition* IdentifyGNetCHD(std::string_view path);
+const GameDefinition* IdentifyGamePath(std::string_view path);
 void ClearArchivePathIndex();
 void IndexArchivePath(std::string_view path);
 std::string GetIndexedArchivePath(std::string_view archive_name);

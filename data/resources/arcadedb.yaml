@@ -10789,7 +10789,7 @@ games:
       ports:
         - { type: "mahjong", joystick: "none", layout: "mahjngoh" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "mahjngoh", sha1: "ee97ba75282223afa41f21b1d38a6ed1d26962cd", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "mahjngoh", sha1: "3ef1110d15582d7c0187438d7ad61765dd121cff", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10844,7 +10844,7 @@ games:
       ports:
         - { type: "driving", joystick: "none", layout: "gobyrc" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "rcdego", sha1: "b70effc7a01e6b5e51cc2d5bc8e4afab583cc635", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "rcdego", sha1: "9e177f2a3954cfea0c8c5a288e116324d10f5dd1", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10872,7 +10872,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "raycris" }
         - { type: "arcade", joystick: "eight_way", layout: "raycris" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycris", sha1: "55ac36114df79ad9711799eca66d352c8cd64af0", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycris", sha1: "9d255710c87c3286542d357820d828807cc6ca07", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10899,7 +10899,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
         - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheat", sha1: "4ec3afdf2df487fabd20c330087c2387cb31eaec", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheat", sha1: "c13b7d7025eee05f1f696d108801c7bafb3f1356", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10927,7 +10927,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
         - { type: "arcade", joystick: "eight_way", layout: "chaoshea" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheatj", sha1: "5d6d5c5da9000ebecf5955add344f891a6848064", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "chaosheatj", sha1: "2f211ac08675ea8ec33c7659a13951db94eaa627", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10955,7 +10955,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "raycris" }
         - { type: "arcade", joystick: "eight_way", layout: "raycris" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycrisj", sha1: "83c4bd9a8096d1939a241b34a7e5f53403a58e15", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "raycrisj", sha1: "015cb0e6c4421cc38809de28c4793b4491386aee", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -10982,7 +10982,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
         - { type: "arcade", joystick: "eight_way", layout: "flipmaze" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "flipmaze", sha1: "1a97b2614c29df0294fcb96e856f431ed92a9217", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "flipmaze", sha1: "423b6c06f4f2d9a608ce20b61a3ac11687d22c40", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11009,7 +11009,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
         - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigam", sha1: "be7858990f0260a1666328033dc46a4ec36dd7c0", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigam", sha1: "fa49a0bc47f5cb7c30d7e49e2c3696b21bafb840", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11037,7 +11037,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
         - { type: "arcade", joystick: "eight_way", layout: "shikigam" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigama", sha1: "6aee63d4cacb210b011be3dfef54f88152da36c3", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shikigama", sha1: "a6fe194c86730963301be9710782ca4ac1bf3e8d", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11064,7 +11064,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
         - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "sianniv", sha1: "b857d227f47b566ac9aed48f4d9209536f674197", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "sianniv", sha1: "1e08b813190a9e1baf29bc16884172d6c8da7ae3", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11091,7 +11091,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "kollon" }
         - { type: "arcade", joystick: "eight_way", layout: "kollon" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollon", sha1: "37efcd5333ca7dd10cde480bd31c6b3c21f06b9f", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "kollon", sha1: "d8ea5b5b0ee99004b16ef89883e23de6c7ddd7ce", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11174,7 +11174,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
         - { type: "arcade", joystick: "eight_way", layout: "otenamih" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamih", sha1: "b50055c5d3cb338fa322f66396b2f2ca9eb2acda", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenamih", sha1: "b3babe3a1876c43745616ee1e7d87276ce7dad0b", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11201,7 +11201,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvaria", sha1: "06998a0903e8575909ff4778c89d19ccd364f78f", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvaria", sha1: "3c7fca5180356190a8bf94b22a847fdd2e6a4e13", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11229,7 +11229,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarij", sha1: "238023e73d99cb76d6495352f9786bb8fb880c63", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarij", sha1: "b981a42a10069322b77f7a268beae1d409b4156d", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11256,7 +11256,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
         - { type: "arcade", joystick: "eight_way", layout: "psyvaria" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarrv", sha1: "da493715637011883d673046582cc2b2fe8e80c4", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "psyvarrv", sha1: "277c4f52502bcd7acc1889840962ec80d56465f3", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11283,7 +11283,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
         - { type: "arcade", joystick: "eight_way", layout: "taitogn3b" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zokuotena", sha1: "e067c45578acde0039ed6ed480265d2814296e22", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zokuotena", sha1: "5ce13db00518f96af64935176c71ec68d2a51938", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11310,7 +11310,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "zooo" }
         - { type: "arcade", joystick: "eight_way", layout: "zooo" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zooo", sha1: "12945dc6fd1230d28aa15360838a9bf3f2b9890b", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "zooo", sha1: "e275b3141b2bc49142990e6b497a5394a314a30b", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11337,7 +11337,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
         - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghss", sha1: "9140cd7e9dc509093065dacfb7b189812917aa6d", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghss", sha1: "7964f71ec5c81d2120d83b63a82f97fbad5a8e6d", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11364,7 +11364,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
         - { type: "arcade", joystick: "eight_way", layout: "soutenry" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "soutenry", sha1: "511732c56dcfd57518227247999d81271775aa9c", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "soutenry", sha1: "9204d0be833d29f37b8cd3fbdf09da69b622254b", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11391,7 +11391,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
         - { type: "arcade", joystick: "eight_way", layout: "shanghai_gnet" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghaito", sha1: "50f25d20a2a2da87645cf4bd00088ad2c96ce10b", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "shanghaito", sha1: "9901db5a9aae77e3af4157aa2c601eaab5b7ca85", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11418,7 +11418,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
         - { type: "arcade", joystick: "eight_way", layout: "nightrai" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "nightrai", sha1: "21452da5aefd701b666c495bd391ec9ab90b5a41", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "nightrai", sha1: "74d0458f851cbcf10453c5cc4c47bb4388244cdf", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11445,7 +11445,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "otenki" }
         - { type: "arcade", joystick: "eight_way", layout: "otenki" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenki", sha1: "93a618be8056d56106dfdf254b686a41e783b34b", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "otenki", sha1: "7e745ca4c4570215f452fd09cdd56a42c39caeba", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"
@@ -11472,7 +11472,7 @@ games:
         - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
         - { type: "arcade", joystick: "eight_way", layout: "xiistag" }
     media:
-      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "xiistag", sha1: "ca1b87a29e8d5ff8c67aee68cdb1c42fd237f92c", required: true, readOnly: true, companion: true }
+      - { role: "pccard:ata:0:hdd_001", type: "chd_hard_disk", name: "xiistag", sha1: "586e37c8d926293b2bd928e5f0d693910cfb05a2", required: true, readOnly: true, companion: true }
     properties:
       sourceDriver: "taitogn.cpp"
       machineConfig: "taitogn"

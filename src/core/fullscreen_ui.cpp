@@ -935,7 +935,7 @@ void FullscreenUI::DoStartPath(std::string path, std::string state, std::string 
   if (System::IsValid())
     return;
 
-  if (state.empty() && !Arcade::Database::IdentifyArchive(path))
+  if (state.empty() && !Arcade::Database::IdentifyGamePath(path))
   {
     ShowToast({}, FSUI_CSTR("The selected file is not a recognized ArcadeDuck set."));
     return;
@@ -2413,7 +2413,7 @@ void FullscreenUI::SwitchToGameSettingsForPath(const std::string& path)
 {
   auto lock = GameList::GetLock();
   const GameList::Entry* entry = GameList::GetEntryForPath(path);
-  if (entry && Arcade::Database::IdentifyArchive(path))
+  if (entry && Arcade::Database::IdentifyGamePath(path))
     SwitchToGameSettings(entry);
 }
 
@@ -2421,7 +2421,7 @@ void FullscreenUI::SwitchToGameSettings(const GameList::Entry* entry)
 {
   const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(entry->serial);
   if (!game)
-    game = Arcade::Database::IdentifyArchive(entry->path);
+    game = Arcade::Database::IdentifyGamePath(entry->path);
   if (!game)
     return;
 
@@ -2540,7 +2540,7 @@ void FullscreenUI::DrawSettingsWindow()
     {
       arcade_game = Arcade::Database::GetGame(s_game_settings_entry->serial);
       if (!arcade_game)
-        arcade_game = Arcade::Database::IdentifyArchive(s_game_settings_entry->path);
+        arcade_game = Arcade::Database::IdentifyGamePath(s_game_settings_entry->path);
     }
     const bool supports_system_link = arcade_game && arcade_game->supports_system_link;
 
@@ -2721,7 +2721,7 @@ static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameL
 
   if (const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(entry->serial))
     return game;
-  return Arcade::Database::IdentifyArchive(entry->path);
+  return Arcade::Database::IdentifyGamePath(entry->path);
 }
 
 static bool ArcadeGameSupportsSaveStates(const Arcade::Database::GameDefinition* game)
