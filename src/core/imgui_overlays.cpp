@@ -119,6 +119,8 @@ void Host::DisplayLoadingScreen(const char* message, int progress_min /*= -1*/, 
   const float logo_width = 260.0f * scale;
   const float logo_height = 260.0f * scale;
 
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   ImGui::SetNextWindowSize(ImVec2(logo_width, logo_height), ImGuiCond_Always);
   ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, (io.DisplaySize.y * 0.5f) - (50.0f * scale)),
                           ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -130,9 +132,18 @@ void Host::DisplayLoadingScreen(const char* message, int progress_min /*= -1*/, 
   {
     GPUTexture* tex = ImGuiFullscreen::GetCachedTexture("images/duck.png");
     if (tex)
-      ImGui::Image(tex, ImVec2(logo_width, logo_height));
+    {
+      const ImRect image_rect = ImGuiFullscreen::CenterImage(
+        ImVec2(logo_width, logo_height), ImVec2(static_cast<float>(tex->GetWidth()), static_cast<float>(tex->GetHeight())));
+      const double phase = std::fmod(Common::Timer::ConvertValueToSeconds(Common::Timer::GetCurrentValue()), 2.5);
+      const float alpha = static_cast<float>(0.5 + 0.5 * std::cos(phase * (6.283185307179586 / 2.5)));
+      ImGui::SetCursorPos(image_rect.Min);
+      ImGui::Image(tex, image_rect.GetSize(), ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f),
+                   ImVec4(1.0f, 1.0f, 1.0f, alpha));
+    }
   }
   ImGui::End();
+  ImGui::PopStyleVar(2);
 
   const float padding_and_rounding = 18.0f * scale;
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, padding_and_rounding);
