@@ -153,7 +153,7 @@ class ShaderCompileProgressTracker
 public:
   ShaderCompileProgressTracker(std::string title, u32 total)
     : m_title(std::move(title)), m_min_time(Common::Timer::ConvertSecondsToValue(1.0)),
-      m_update_interval(Common::Timer::ConvertSecondsToValue(0.1)), m_start_time(Common::Timer::GetCurrentValue()),
+      m_update_interval(Common::Timer::ConvertSecondsToValue(1.0 / 30.0)), m_start_time(Common::Timer::GetCurrentValue()),
       m_last_update_time(0), m_progress(0), m_total(total)
   {
   }
