@@ -378,6 +378,7 @@ struct RuntimeEntry::Impl
       return false;
 
     state = new_state;
+    activation_result = ActivationResult::None;
     if (new_state == ScriptState::Off)
       ExecuteScript(ScriptState::Off);
     else if (new_state == ScriptState::On || new_state == ScriptState::Run)
@@ -393,6 +394,7 @@ struct RuntimeEntry::Impl
   u64 parameter_value;
   u64 argindex;
   ScriptState state = ScriptState::Off;
+  ActivationResult activation_result = ActivationResult::None;
   bool valid = false;
   std::string compile_error;
   std::string runtime_error;
@@ -412,6 +414,11 @@ const Entry& RuntimeEntry::GetSource() const
 ScriptState RuntimeEntry::GetState() const
 {
   return m_impl->state;
+}
+
+ActivationResult RuntimeEntry::GetActivationResult() const
+{
+  return m_impl->activation_result;
 }
 
 bool RuntimeEntry::IsValid() const
@@ -463,14 +470,18 @@ bool RuntimeEntry::Activate()
 
   if (m_impl->source.IsOneShot())
   {
-    m_impl->ExecuteScript(ScriptState::On);
-    return true;
+    const bool executed = m_impl->ExecuteScript(ScriptState::On);
+    m_impl->activation_result = executed ? ActivationResult::Executed : ActivationResult::NotApplied;
+    return executed;
   }
 
-  if (m_impl->source.IsOneShotParameter() && m_impl->state != ScriptState::Off)
+  if (m_impl->source.IsOneShotParameter())
   {
-    m_impl->ExecuteScript(ScriptState::Change);
-    return true;
+    if (m_impl->state == ScriptState::Off)
+      SelectNextState();
+    const bool executed = m_impl->ExecuteScript(ScriptState::Change);
+    m_impl->activation_result = executed ? ActivationResult::Executed : ActivationResult::NotApplied;
+    return executed;
   }
 
   return false;
@@ -501,6 +512,7 @@ bool RuntimeEntry::SelectPreviousState()
   if (changed)
   {
     m_impl->SetState(ScriptState::Run);
+    m_impl->activation_result = ActivationResult::None;
     if (!m_impl->source.IsOneShotParameter())
       m_impl->ExecuteScript(ScriptState::Change);
   }
@@ -529,8 +541,12 @@ bool RuntimeEntry::SelectNextState()
     changed = m_impl->SetNextParameter();
   }
 
-  if (changed && !m_impl->source.IsOneShotParameter())
-    m_impl->ExecuteScript(ScriptState::Change);
+  if (changed)
+  {
+    m_impl->activation_result = ActivationResult::None;
+    if (!m_impl->source.IsOneShotParameter())
+      m_impl->ExecuteScript(ScriptState::Change);
+  }
   return changed;
 }
 

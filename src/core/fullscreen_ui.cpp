@@ -1107,10 +1107,7 @@ void FullscreenUI::DrawCheatsWindow()
             break;
 
           case System::MAMECheatType::OneShotParameter:
-            if (cheat.active)
-              Host::RunOnCPUThread([index = cheat.index]() { System::ActivateMAMECheat(index); });
-            else
-              Host::RunOnCPUThread([index = cheat.index]() { System::SelectNextMAMECheatState(index); });
+            Host::RunOnCPUThread([index = cheat.index]() { System::ActivateMAMECheat(index); });
             break;
 
           default:
