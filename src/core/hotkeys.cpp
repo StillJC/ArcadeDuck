@@ -230,6 +230,12 @@ DEFINE_HOTKEY("PowerOff", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("
                   Host::RequestSystemShutdown(true, g_settings.save_state_on_exit);
               })
 
+DEFINE_HOTKEY("ExitApplication", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Exit ArcadeDuck"),
+              [](s32 pressed) {
+                if (!pressed)
+                  Host::RequestExitApplication(true);
+              })
+
 DEFINE_HOTKEY("Reset", TRANSLATE_NOOP("Hotkeys", "General"), TRANSLATE_NOOP("Hotkeys", "Reboot System"),
               [](s32 pressed) {
                 if (!pressed)
