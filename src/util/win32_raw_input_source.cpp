@@ -110,7 +110,7 @@ std::vector<std::pair<std::string, std::string>> Win32RawInputSource::EnumerateD
 {
   std::vector<std::pair<std::string, std::string>> ret;
   for (const MouseState& mouse : m_mice)
-    ret.emplace_back(GetRawMouseDeviceName(mouse.raw_mouse_slot), mouse.display_name);
+    ret.emplace_back(GetButtonDeviceName(mouse.button_device_index), mouse.display_name);
 
   return ret;
 }
@@ -145,35 +145,112 @@ void Win32RawInputSource::UpdateMotorState(InputBindingKey large_key, InputBindi
 {
 }
 
+std::optional<u32> Win32RawInputSource::GetButtonDeviceIndex(std::string_view identifier)
+{
+  const auto it = std::find(m_button_devices.begin(), m_button_devices.end(), identifier);
+  if (it != m_button_devices.end())
+    return static_cast<u32>(it - m_button_devices.begin());
+
+  // InputBindingKey reserves eight bits for the device index.
+  if (m_button_devices.size() >= 256)
+  {
+    ERROR_LOG("Too many Raw Input button device identities");
+    return std::nullopt;
+  }
+  const u32 index = static_cast<u32>(m_button_devices.size());
+  m_button_devices.emplace_back(identifier);
+  return index;
+}
+
+std::string Win32RawInputSource::GetButtonDeviceName(u32 index) const
+{
+  if (index >= m_button_devices.size())
+    return {};
+
+  // Hex encoding keeps device paths clear of binding '/' and chord '&' separators.
+  static constexpr char digits[] = "0123456789abcdef";
+  std::string name = "RawInput-";
+  for (const unsigned char byte : m_button_devices[index])
+  {
+    name.push_back(digits[byte >> 4]);
+    name.push_back(digits[byte & 15]);
+  }
+  return name;
+}
+
 std::optional<InputBindingKey> Win32RawInputSource::ParseKeyString(std::string_view device, std::string_view binding)
 {
-  if (!device.starts_with("RawMouse-") || !binding.starts_with("Button"))
+  if (!binding.starts_with("Button"))
     return std::nullopt;
-
-  const std::optional<u32> slot = StringUtil::FromChars<u32>(device.substr(9));
   const std::optional<u32> button = StringUtil::FromChars<u32>(binding.substr(6));
-  if (!slot.has_value() || !button.has_value())
+  if (!button.has_value() || button.value() >= 5)
     return std::nullopt;
 
-  InputBindingKey key = {};
-  key.source_type = InputSourceType::RawInput;
-  key.source_subtype = InputSubclass::ControllerButton;
-  key.source_index = slot.value();
-  key.data = button.value();
-  return key;
+  std::optional<u32> index;
+  if (device.starts_with("RawInput-"))
+  {
+    const std::string_view encoded = device.substr(9);
+    if (encoded.empty() || (encoded.size() & 1) != 0 || encoded.size() > 65536)
+      return std::nullopt;
+    const auto hex_digit = [](char c) -> int {
+      if (c >= '0' && c <= '9') return c - '0';
+      if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+      return -1;
+    };
+    std::string identifier;
+    identifier.reserve(encoded.size() / 2);
+    for (size_t i = 0; i < encoded.size(); i += 2)
+    {
+      const int high = hex_digit(encoded[i]);
+      const int low = hex_digit(encoded[i + 1]);
+      if (high < 0 || low < 0 || (high == 0 && low == 0))
+        return std::nullopt;
+      identifier.push_back(static_cast<char>((high << 4) | low));
+    }
+    if (!identifier.starts_with("RawInput:"))
+      return std::nullopt;
+    index = GetButtonDeviceIndex(identifier);
+  }
+  else if (device.starts_with("RawMouse-"))
+  {
+    const std::optional<u32> slot = StringUtil::FromChars<u32>(device.substr(9));
+    if (!slot.has_value())
+      return std::nullopt;
+    const auto it = std::find_if(m_mice.begin(), m_mice.end(), [slot](const MouseState& mouse) {
+      return mouse.raw_mouse_slot == slot.value();
+    });
+    if (it != m_mice.end())
+      index = it->button_device_index;
+  }
+  if (!index.has_value())
+    return std::nullopt;
+  return MakeRawMouseButtonKey(index.value(), button.value());
 }
 
 TinyString Win32RawInputSource::ConvertKeyToString(InputBindingKey key)
 {
   TinyString ret;
-  if (key.source_type == InputSourceType::RawInput && key.source_subtype == InputSubclass::ControllerButton)
-    ret.format("RawMouse-{}/Button{}", u32{key.source_index}, key.data);
+  if (key.source_type == InputSourceType::RawInput && key.source_subtype == InputSubclass::ControllerButton &&
+      key.source_index < m_button_devices.size() && key.data < 5)
+  {
+    ret.format("{}/Button{}", GetButtonDeviceName(key.source_index), key.data);
+  }
   return ret;
 }
 
 TinyString Win32RawInputSource::ConvertKeyToIcon(InputBindingKey key)
 {
-  return {};
+  TinyString ret;
+  if (key.source_type != InputSourceType::RawInput || key.source_subtype != InputSubclass::ControllerButton ||
+      key.source_index >= m_button_devices.size() || key.data >= 5)
+    return ret;
+  const auto it = std::find_if(m_mice.begin(), m_mice.end(), [key](const MouseState& mouse) {
+    return mouse.button_device_index == key.source_index;
+  });
+  ret.format("Button {} - {}", key.data + 1,
+             it != m_mice.end() ? it->display_name.c_str() : "Disconnected Raw Input device");
+  return ret;
 }
 
 std::vector<InputBindingKey> Win32RawInputSource::EnumerateMotors()
@@ -184,11 +261,6 @@ std::vector<InputBindingKey> Win32RawInputSource::EnumerateMotors()
 bool Win32RawInputSource::GetGenericBindingMapping(std::string_view device, GenericInputBindingMapping* mapping)
 {
   return {};
-}
-
-std::string Win32RawInputSource::GetRawMouseDeviceName(u32 slot)
-{
-  return fmt::format("RawMouse-{}", slot);
 }
 
 bool Win32RawInputSource::RegisterDummyClass()
@@ -453,6 +525,17 @@ std::vector<Win32RawInputSource::MouseState> Win32RawInputSource::EnumerateRawIn
 bool Win32RawInputSource::OpenDevices()
 {
   std::vector<MouseState> mice = EnumerateRawInputMice();
+  for (auto it = mice.begin(); it != mice.end();)
+  {
+    const std::optional<u32> index = GetButtonDeviceIndex(it->identifier);
+    if (!index.has_value())
+      it = mice.erase(it);
+    else
+    {
+      it->button_device_index = index.value();
+      ++it;
+    }
+  }
   std::vector<bool> old_matched(m_mice.size(), false);
   std::vector<bool> slot_assigned(mice.size(), false);
   std::vector<bool> slot_used;
@@ -495,8 +578,8 @@ bool Win32RawInputSource::OpenDevices()
   for (u32 i = 0; i < static_cast<u32>(m_mice.size()); i++)
   {
     if (!old_matched[i])
-      InputManager::OnInputDeviceDisconnected(MakeRawMouseButtonKey(m_mice[i].raw_mouse_slot, 0),
-                                              GetRawMouseDeviceName(m_mice[i].raw_mouse_slot));
+      InputManager::OnInputDeviceDisconnected(MakeRawMouseButtonKey(m_mice[i].button_device_index, 0),
+                                              GetButtonDeviceName(m_mice[i].button_device_index));
   }
   for (const MouseState& mouse : mice)
   {
@@ -504,7 +587,7 @@ bool Win32RawInputSource::OpenDevices()
       return old_mouse.identifier == mouse.identifier;
     });
     if (!existing)
-      InputManager::OnInputDeviceConnected(GetRawMouseDeviceName(mouse.raw_mouse_slot), mouse.display_name);
+      InputManager::OnInputDeviceConnected(GetButtonDeviceName(mouse.button_device_index), mouse.display_name);
   }
 
   m_mice = std::move(mice);
@@ -522,8 +605,8 @@ bool Win32RawInputSource::OpenDevices()
 void Win32RawInputSource::CloseDevices()
 {
   for (const MouseState& mouse : m_mice)
-    InputManager::OnInputDeviceDisconnected(MakeRawMouseButtonKey(mouse.raw_mouse_slot, 0),
-                                            GetRawMouseDeviceName(mouse.raw_mouse_slot));
+    InputManager::OnInputDeviceDisconnected(MakeRawMouseButtonKey(mouse.button_device_index, 0),
+                                            GetButtonDeviceName(mouse.button_device_index));
 
   m_mice.clear();
   m_handle_to_mouse_index.clear();
@@ -594,7 +677,7 @@ bool Win32RawInputSource::ProcessRawInputEvent(const RAWINPUT* event)
 
     const u32 button_number = bit_index >> 1;
     const bool button_pressed = (bit_index & 1u) == 0;
-    InputManager::InvokeEvents(MakeRawMouseButtonKey(state.raw_mouse_slot, button_number),
+    InputManager::InvokeEvents(MakeRawMouseButtonKey(state.button_device_index, button_number),
                                static_cast<float>(button_pressed), GenericInputBinding::Unknown);
 
     button_mask &= ~(1u << bit_index);

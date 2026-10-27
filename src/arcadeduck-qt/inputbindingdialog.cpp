@@ -8,6 +8,7 @@
 #include "qtutils.h"
 
 #include "common/bitutils.h"
+#include "common/small_string.h"
 
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
@@ -212,8 +213,8 @@ void InputBindingDialog::addNewBinding()
     if (std::find(m_bindings.begin(), m_bindings.end(), new_binding) != m_bindings.end())
       return;
 
-    m_ui.bindingList->addItem(QString::fromStdString(new_binding));
     m_bindings.push_back(std::move(new_binding));
+    updateList();
     saveListToSettings();
   }
 }
@@ -248,7 +249,13 @@ void InputBindingDialog::updateList()
 {
   m_ui.bindingList->clear();
   for (const std::string& binding : m_bindings)
-    m_ui.bindingList->addItem(QString::fromStdString(binding));
+  {
+    SmallString display_binding(binding.c_str());
+    if (binding.find("RawInput-") != std::string::npos)
+      InputManager::PrettifyInputBinding(display_binding);
+    auto* item = new QListWidgetItem(QString::fromUtf8(display_binding.c_str()), m_ui.bindingList);
+    item->setToolTip(QString::fromStdString(binding));
+  }
 }
 
 void InputBindingDialog::saveListToSettings()

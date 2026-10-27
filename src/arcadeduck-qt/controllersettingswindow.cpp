@@ -672,6 +672,28 @@ void ControllerSettingsWindow::setStringValue(const char* section, const char* k
   markSettingsChanged();
 }
 
+void ControllerSettingsWindow::ensureRawInputEnabled()
+{
+#ifdef _WIN32
+  const bool enable_source = !Host::GetBaseBoolSettingValue("InputSources", "RawInput", false);
+  if (enable_source)
+  {
+    Host::SetBaseBoolSettingValue("InputSources", "RawInput", true);
+    Host::CommitBaseSettingChanges();
+  }
+
+  // A profile may override the base source setting.
+  const bool enable_profile_source = m_editing_settings_interface &&
+    !m_editing_settings_interface->GetBoolValue("InputSources", "RawInput", true);
+  if (enable_profile_source)
+  {
+    setBoolValue("InputSources", "RawInput", true);
+  }
+  if (enable_source || enable_profile_source)
+    g_emu_thread->applySettings();
+#endif
+}
+
 void ControllerSettingsWindow::beginSettingsBatch()
 {
   m_settings_batch_depth++;

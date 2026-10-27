@@ -540,9 +540,13 @@ void ArcadeControllerBindingWidget::addSettingsPage(QVBoxLayout* layout)
     mode->addItem(tr("Native Raw Input Device"), "NativeRawInputDevice");
     mode->addItem(tr("Mapped Axis"), "BoundAxis");
     const bool native_input = usesNativeDevice();
+    if (native_input)
+      m_dialog->ensureRawInputEnabled();
     mode->setCurrentIndex(mode->findData(native_input ? QStringLiteral("NativeRawInputDevice") :
                                                         QStringLiteral("BoundAxis")));
     connect(mode, &QComboBox::currentIndexChanged, this, [this, mode](int) {
+      if (mode->currentData().toString() == QStringLiteral("NativeRawInputDevice"))
+        m_dialog->ensureRawInputEnabled();
       setStringValue("InputMode", mode->currentData().toString().toUtf8().constData());
       queueRebuild();
     });

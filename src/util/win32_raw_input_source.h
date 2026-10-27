@@ -48,6 +48,7 @@ private:
     std::string identifier;
     std::string display_name;
     u32 raw_mouse_slot;
+    u32 button_device_index = 0;
     u32 button_state;
     s32 last_x;
     s32 last_y;
@@ -58,11 +59,12 @@ private:
 
   static std::vector<MouseState> EnumerateRawInputMice();
   static std::string GetMouseDeviceName(std::string_view device_path);
-  static std::string GetRawMouseDeviceName(u32 slot);
 
   bool CreateDummyWindow();
   void DestroyDummyWindow();
   bool SetRawInputCaptureEnabled(bool enabled);
+  std::optional<u32> GetButtonDeviceIndex(std::string_view identifier);
+  std::string GetButtonDeviceName(u32 index) const;
   bool OpenDevices();
   void CloseDevices();
 
@@ -72,6 +74,8 @@ private:
   bool m_raw_input_capture_enabled = false;
   bool m_device_reload_pending = false;
 
+  // Retain disconnected identities so their bindings cannot move to another mouse.
+  std::vector<std::string> m_button_devices;
   std::vector<MouseState> m_mice;
   std::unordered_map<HANDLE, u32> m_handle_to_mouse_index;
 };
