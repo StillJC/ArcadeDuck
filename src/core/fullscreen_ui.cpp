@@ -5120,7 +5120,7 @@ void FullscreenUI::DrawPauseMenu()
   {
     static constexpr u32 submenu_item_count[] = {
       10, // None
-      4,  // Exit
+      5,  // Exit
       3,  // Achievements
     };
 
@@ -5213,6 +5213,9 @@ void FullscreenUI::DrawPauseMenu()
 
         if (DefaultActiveButton(FSUI_ICONSTR(ICON_FA_POWER_OFF, "Power Off Without Saving"), false))
           RequestShutdown(false);
+
+        if (ActiveButton(FSUI_ICONSTR(ICON_FA_POWER_OFF, "Exit ArcadeDuck"), false))
+          DoRequestExit();
       }
       break;
 
