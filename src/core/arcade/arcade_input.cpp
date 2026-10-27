@@ -77,6 +77,7 @@ struct PortState
   float lightgun_x = 0.5f;
   float lightgun_y = 0.5f;
   bool lightgun_offscreen = false;
+  std::array<bool, 2> controller_bound_axes{};
   float axis_x = 0.0f;
   float axis_y = 0.0f;
   bool trackball_buttons_as_axis = false;
@@ -381,17 +382,31 @@ s32 GetTrackballButtonDelta(TrackballButtonAxis& axis, float sensitivity, bool i
   return delta;
 }
 
-void OnAxis(u32 port_index, bool x_axis, float value)
+void OnAxis(u32 port_index, bool x_axis, float value, bool controller_axis)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
   PortState& port = s_ports[port_index];
+  port.controller_bound_axes[x_axis ? 0 : 1] = controller_axis;
   (x_axis ? port.axis_x : port.axis_y) = std::clamp(value, -1.0f, 1.0f);
   const u32 lightgun_port_count = Konami::IsGQActive() ? 3U : 2U;
   if (port.type == Arcade::ArcadeControllerType::Lightgun && port.input_mode == "BoundAxis" &&
       port_index < lightgun_port_count)
   {
-    const float x = 0.5f + port.axis_x * 0.5f * (port.invert_x ? -1.0f : 1.0f);
-    const float y = 0.5f + port.axis_y * 0.5f * (port.invert_y ? -1.0f : 1.0f);
+    float aim_x = port.axis_x;
+    float aim_y = port.axis_y;
+    if (port.controller_bound_axes[0] && port.controller_bound_axes[1])
+    {
+      // Expand a circular stick gate to the rectangular aiming area.
+      const float extent = std::max(std::abs(aim_x), std::abs(aim_y));
+      if (extent > 0.0f)
+      {
+        const float scale = std::min(std::sqrt(aim_x * aim_x + aim_y * aim_y), 1.0f) / extent;
+        aim_x *= scale;
+        aim_y *= scale;
+      }
+    }
+    const float x = 0.5f + aim_x * 0.5f * (port.invert_x ? -1.0f : 1.0f);
+    const float y = 0.5f + aim_y * 0.5f * (port.invert_y ? -1.0f : 1.0f);
     port.lightgun_x = std::clamp(x, 0.0f, 1.0f);
     port.lightgun_y = std::clamp(y, 0.0f, 1.0f);
     port.lightgun_offscreen = false;
@@ -603,7 +618,14 @@ std::string NormalizeCenteredControllerAxisBinding(std::string_view binding)
 void AddAxisBindings(SettingsInterface& si, const std::string& section, u32 port, std::string_view key, bool x_axis)
 {
   for (const std::string& binding : si.GetStringList(section.c_str(), key.data()))
-    InputManager::AddBinding(binding, InputAxisEventHandler{[port, x_axis](float value) { OnAxis(port, x_axis, value); }});
+  {
+    const bool controller_axis = IsSingleControllerAxisBinding(binding);
+    const std::string normalized_binding = controller_axis ? NormalizeCenteredControllerAxisBinding(binding) : binding;
+    InputManager::AddBinding(normalized_binding, InputAxisEventHandler{[port, x_axis, controller_axis](float value) {
+      // Controller full axes arrive as 0..1; trackballs and lightguns expect -1..1.
+      OnAxis(port, x_axis, controller_axis ? (value * 2.0f - 1.0f) : value, controller_axis);
+    }});
+  }
 }
 
 void AddTrackballButtonBindings(SettingsInterface& si, const std::string& section, u32 port,
@@ -898,10 +920,10 @@ void Update()
       const float frame_seconds = 1.0f / std::max(System::GetThrottleFrequency(), 1.0f);
       const s32 delta_x = state.trackball_buttons_as_axis ?
         GetTrackballButtonDelta(state.trackball_button_axes[0], state.x_sensitivity, state.invert_x, frame_seconds) :
-        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
+        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -128.0f : 128.0f));
       const s32 delta_y = state.trackball_buttons_as_axis ?
         GetTrackballButtonDelta(state.trackball_button_axes[1], state.y_sensitivity, state.invert_y, frame_seconds) :
-        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
+        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -128.0f : 128.0f));
       if (SonyZN::IsMawasundaActive())
         SonyZN::AddMawasundaHandleDelta(port, delta_x);
       else if (NamcoSystem11::IsFamilyBowlActive())
