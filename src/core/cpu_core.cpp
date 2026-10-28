@@ -3428,7 +3428,7 @@ void* CPU::GetDirectReadMemoryPointer(VirtualMemoryAddress address, MemoryAccess
     return &g_state.scratchpad[paddr & SCRATCHPAD_OFFSET_MASK];
   }
 
-  if (paddr >= BIOS_BASE && paddr < (BIOS_BASE + BIOS_SIZE))
+  if (paddr >= BIOS_BASE && paddr < (BIOS_BASE + BIOS_SIZE) && !IsBIOSWindowBoardBacked())
   {
     if (read_ticks)
       *read_ticks = g_bios_access_time[static_cast<u32>(size)];

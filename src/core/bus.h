@@ -164,6 +164,10 @@ void SetExpansionROM(std::vector<u8> data);
 /// Returns false when no active arcade board owns the requested BIOS-mirror address.
 bool ReadBIOSInstructionWord(PhysicalMemoryAddress address, u32* value);
 
+/// Returns true when an active arcade board serves the BIOS window through the read handler
+/// instead of g_bios, so the window cannot be read directly.
+bool IsBIOSWindowBoardBacked();
+
 /// Returns the current PSX Expansion 1 base register. System 12 later loaders
 /// use this bus state to select motherboard program ROM as the DMA5 source.
 u32 GetEXP1Base();

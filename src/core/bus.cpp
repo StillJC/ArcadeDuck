@@ -981,6 +981,11 @@ bool Bus::ReadBIOSInstructionWord(PhysicalMemoryAddress address, u32* value)
   return false;
 }
 
+bool Bus::IsBIOSWindowBoardBacked()
+{
+  return NamcoSystem10::IsActive();
+}
+
 u32 Bus::GetEXP1Base()
 {
   return s_MEMCTRL.exp1_base;
