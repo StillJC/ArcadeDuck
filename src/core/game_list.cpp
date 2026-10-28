@@ -118,6 +118,13 @@ bool GameList::GetArcadeListEntry(const std::string& path, Entry* entry)
     return false;
   }
 
+  if (game->status == Arcade::Database::WorkingStatus::NotWorking)
+  {
+    INFO_LOG("ArcadeDatabase.GameList ignored_not_working set='{}' archive='{}'", game->id,
+             Path::GetFileName(path));
+    return false;
+  }
+
   entry->path = path;
   // This legacy-named field is the canonical arcade set ID.
   entry->serial = game->id;

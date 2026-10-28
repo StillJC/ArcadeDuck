@@ -638,7 +638,7 @@ controlLayouts:
         kind: "axis"
 
   nflclsfb:
-    displayName: "NFL Classic Football"
+    displayName: "NFL Classic Football - Player 1"
     controllerType: "trackball"
     joystickMode: "none"
     bindings:
@@ -648,48 +648,78 @@ controlLayouts:
       - key: "TrackballY"
         displayName: "Trackball Y — Move cursor / player"
         kind: "axis"
-      - key: "TrackballLeft"
-        displayName: "Trackball left"
-        kind: "button"
-      - key: "TrackballRight"
-        displayName: "Trackball right"
-        kind: "button"
-      - key: "TrackballUp"
-        displayName: "Trackball up"
-        kind: "button"
-      - key: "TrackballDown"
-        displayName: "Trackball down"
-        kind: "button"
       - key: "Button1"
         displayName: "Button 1 — Play select / action"
         kind: "button"
       - key: "Button2"
         displayName: "Button 2 — Play select / action"
         kind: "button"
-      - key: "Start"
-        displayName: "Start"
-        kind: "button"
       - key: "Button3"
-        displayName: "Button 3 — Side panel (1P and 3P only)"
+        displayName: "Side panel button"
         kind: "button"
       - key: "SelectLeft"
-        displayName: "Select left — Side panel (1P and 3P only)"
+        displayName: "Side panel left"
         kind: "button"
       - key: "SelectRight"
-        displayName: "Select right — Side panel (1P and 3P only)"
+        displayName: "Side panel right"
         kind: "button"
       - key: "SelectUp"
-        displayName: "Select up — Test menu (1P only)"
+        displayName: "Test menu up"
         kind: "button"
       - key: "SelectDown"
-        displayName: "Select down — Test menu (1P only)"
+        displayName: "Test menu down"
         kind: "button"
       - key: "Enter"
-        displayName: "Enter — Test menu (1P only)"
+        displayName: "Test menu enter"
+        kind: "button"
+
+  nflclsfb_p2:
+    displayName: "NFL Classic Football - Player 2 / 4"
+    controllerType: "trackball"
+    joystickMode: "none"
+    bindings:
+      - key: "TrackballX"
+        displayName: "Trackball X — Move cursor / player"
+        kind: "axis"
+      - key: "TrackballY"
+        displayName: "Trackball Y — Move cursor / player"
+        kind: "axis"
+      - key: "Button1"
+        displayName: "Button 1 — Play select / action"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Play select / action"
+        kind: "button"
+
+  nflclsfb_p3:
+    displayName: "NFL Classic Football - Player 3"
+    controllerType: "trackball"
+    joystickMode: "none"
+    bindings:
+      - key: "TrackballX"
+        displayName: "Trackball X — Move cursor / player"
+        kind: "axis"
+      - key: "TrackballY"
+        displayName: "Trackball Y — Move cursor / player"
+        kind: "axis"
+      - key: "Button1"
+        displayName: "Button 1 — Play select / action"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Play select / action"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Side panel button"
+        kind: "button"
+      - key: "SelectLeft"
+        displayName: "Side panel left"
+        kind: "button"
+      - key: "SelectRight"
+        displayName: "Side panel right"
         kind: "button"
 
   gahaha:
-    displayName: "Gahaha Ippatsudou"
+    displayName: "Gahaha Ippatsudou - Player 1"
     controllerType: "arcade"
     joystickMode: "none"
     bindings:
@@ -711,17 +741,38 @@ controlLayouts:
       - key: "Button2"
         displayName: "Button 2"
         kind: "button"
-      - key: "Start"
-        displayName: "Start"
-        kind: "button"
       - key: "SelectUp"
-        displayName: "Select up — Test menu (1P only)"
+        displayName: "Select up — Test menu"
         kind: "button"
       - key: "SelectDown"
-        displayName: "Select down — Test menu (1P only)"
+        displayName: "Select down — Test menu"
         kind: "button"
       - key: "Enter"
-        displayName: "Enter — Test menu (1P only)"
+        displayName: "Enter — Test menu"
+        kind: "button"
+
+  gahaha_p2:
+    displayName: "Gahaha Ippatsudou - Player 2"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "LeftStickX"
+        displayName: "Left stick X"
+        kind: "axis"
+      - key: "LeftStickY"
+        displayName: "Left stick Y"
+        kind: "axis"
+      - key: "RightStickX"
+        displayName: "Right stick X"
+        kind: "axis"
+      - key: "RightStickY"
+        displayName: "Right stick Y"
+        kind: "axis"
+      - key: "Button1"
+        displayName: "Button 1"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2"
         kind: "button"
 
   taiko:
@@ -1996,26 +2047,26 @@ controlLayouts:
     controllerType: "lightgun"
     joystickMode: "none"
     bindings:
+      - key: "GunX"
+        displayName: "Gun X — Aim"
+        kind: "axis"
+      - key: "GunY"
+        displayName: "Gun Y — Aim"
+        kind: "axis"
+      - key: "Trigger"
+        displayName: "Trigger — Fire"
+        kind: "button"
+      - key: "Sensor"
+        displayName: "Scope Sensor"
+        kind: "button"
+      - key: "SelectUp"
+        displayName: "Select Up — Move menu selection up"
+        kind: "button"
       - key: "SelectDown"
         displayName: "Select Down — Move menu selection down"
         kind: "button"
       - key: "Enter"
         displayName: "Enter / Confirm — Confirm"
-        kind: "button"
-      - key: "GunX"
-        displayName: "Gun X — Aim through the rifle scope"
-        kind: "axis"
-      - key: "GunY"
-        displayName: "Gun Y — Aim through the rifle scope"
-        kind: "axis"
-      - key: "Sensor"
-        displayName: "Sensor — Cabinet/rifle sensor input"
-        kind: "button"
-      - key: "Trigger"
-        displayName: "Trigger — Fire"
-        kind: "button"
-      - key: "SelectUp"
-        displayName: "Select Up — Move menu selection up"
         kind: "button"
 
   kartduel:
@@ -2114,10 +2165,7 @@ controlLayouts:
         displayName: "Right"
         kind: "button"
       - key: "Button1"
-        displayName: "Button 1 — Drill / break the adjacent block"
-        kind: "button"
-      - key: "Button2"
-        displayName: "Button 2 — Duplicate of B1 / not a separate action"
+        displayName: "Drill"
         kind: "button"
 
   sws:
@@ -3073,6 +3121,125 @@ controlLayouts:
       - { key: "Button2", displayName: "Button 2 - Move Line Right", kind: "button" }
       - { key: "Button3", displayName: "Button 3 - Bomb / Activate", kind: "button" }
       - { key: "Coin", displayName: "Coin", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  gjspace:
+    displayName: "GekiToride-Jong Space"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "A — Fire Tile / Confirm", kind: "button" }
+      - { key: "Button2", displayName: "B — Swap Tile / Rotate", kind: "button" }
+      - { key: "Button3", displayName: "C — Use Item", kind: "button" }
+
+  gamshara:
+    displayName: "Gamshara"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "A — Shot", kind: "button" }
+      - { key: "Button2", displayName: "B — Jump / Dodge", kind: "button" }
+      - { key: "Button3", displayName: "C — Gamshara", kind: "button" }
+
+  knpuzzle:
+    displayName: "Kotoba no Puzzle Mojipittan"
+    controllerType: "arcade"
+    joystickMode: "four_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "A — Select", kind: "button" }
+      - { key: "Button2", displayName: "B — Cancel", kind: "button" }
+      - { key: "Button3", displayName: "C — Undo", kind: "button" }
+
+  chocovdr:
+    displayName: "Uchuu Daisakusen: Chocovader Contactee"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Action", kind: "button" }
+
+  panikuru:
+    displayName: "Panikuru Panekuru"
+    controllerType: "arcade"
+    joystickMode: "four_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Action", kind: "button" }
+
+  startrgn:
+    displayName: "Star Trigon"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - { key: "Button1", displayName: "Action", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+
+  konotako:
+    displayName: "Kono e Tako"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Left", displayName: "Left", kind: "button" }
+      - { key: "Right", displayName: "Right", kind: "button" }
+      - { key: "Button1", displayName: "Suck", kind: "button" }
+      - { key: "Button2", displayName: "Spit", kind: "button" }
+
+  medalnt:
+    displayName: "Medal no Tatsujin"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - { key: "Coin", displayName: "Medal Entry", kind: "button" }
+      - { key: "Start", displayName: "Start", kind: "button" }
+      - { key: "SelectUp", displayName: "Select Up", kind: "button" }
+      - { key: "SelectDown", displayName: "Select Down", kind: "button" }
+      - { key: "Enter", displayName: "Enter", kind: "button" }
+
+  nicetsuk:
+    displayName: "Tsukkomi Yousei Gips Nice Tsukkomi"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - { key: "Up", displayName: "Up", kind: "button" }
+      - { key: "Down", displayName: "Down", kind: "button" }
+      - { key: "Button1", displayName: "Forehead / Odeko", kind: "button" }
+      - { key: "Button2", displayName: "Chest / Mune", kind: "button" }
+      - { key: "Button3", displayName: "Back of Head / Toubu", kind: "button" }
+      - { key: "Button4", displayName: "Pedal", kind: "button" }
+      - { key: "Start", displayName: "Choose / Start", kind: "button" }
+      - { key: "SelectUp", displayName: "Select Up — Operator Menu", kind: "button" }
+      - { key: "SelectDown", displayName: "Select Down — Operator Menu", kind: "button" }
+      - { key: "Enter", displayName: "Enter — Operator Menu", kind: "button" }
+
+  squizchs:
+    displayName: "Seishun-Quiz Colorful High School"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - { key: "Button1", displayName: "Answer 1", kind: "button" }
+      - { key: "Button2", displayName: "Answer 2", kind: "button" }
+      - { key: "Button3", displayName: "Answer 3", kind: "button" }
+      - { key: "Button4", displayName: "Answer 4", kind: "button" }
       - { key: "Start", displayName: "Start", kind: "button" }
 
   arcade_generic:
@@ -14285,6 +14452,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand", size: 0x800000, width: 32, endianness: "little" }
@@ -14320,6 +14491,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand", size: 0x800000, width: 32, endianness: "little" }
@@ -14355,6 +14530,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand", size: 0x800000, width: 32, endianness: "little" }
@@ -14392,7 +14571,7 @@ games:
     controls:
       ports:
         - { type: "arcade", joystick: "none", layout: "gahaha" }
-        - { type: "arcade", joystick: "none", layout: "gahaha" }
+        - { type: "arcade", joystick: "none", layout: "gahaha_p2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14507,7 +14686,7 @@ games:
     controls:
       ports:
         - { type: "arcade", joystick: "none", layout: "gahaha" }
-        - { type: "arcade", joystick: "none", layout: "gahaha" }
+        - { type: "arcade", joystick: "none", layout: "gahaha_p2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14542,6 +14721,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "gjspace" }
+        - { type: "arcade", joystick: "eight_way", layout: "gjspace" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14615,6 +14798,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "knpuzzle" }
+        - { type: "arcade", joystick: "four_way", layout: "knpuzzle" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14650,6 +14837,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
+        - { type: "arcade", joystick: "four_way", layout: "mrdrillr" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14685,6 +14876,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "chocovdr" }
+        - { type: "arcade", joystick: "eight_way", layout: "chocovdr" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14724,6 +14919,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "gamshara" }
+        - { type: "arcade", joystick: "eight_way", layout: "gamshara" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14757,6 +14956,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "gamshara" }
+        - { type: "arcade", joystick: "eight_way", layout: "gamshara" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14789,6 +14992,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "four_way", layout: "panikuru" }
+        - { type: "arcade", joystick: "four_way", layout: "panikuru" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -14897,6 +15104,9 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "startrgn" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15039,6 +15249,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "konotako" }
+        - { type: "arcade", joystick: "eight_way", layout: "konotako" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 16, endianness: "little" }
@@ -15074,9 +15288,9 @@ games:
     controls:
       ports:
         - { type: "trackball", joystick: "none", layout: "nflclsfb" }
-        - { type: "trackball", joystick: "none", layout: "nflclsfb" }
-        - { type: "trackball", joystick: "none", layout: "nflclsfb" }
-        - { type: "trackball", joystick: "none", layout: "nflclsfb" }
+        - { type: "trackball", joystick: "none", layout: "nflclsfb_p2" }
+        - { type: "trackball", joystick: "none", layout: "nflclsfb_p3" }
+        - { type: "trackball", joystick: "none", layout: "nflclsfb_p2" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15331,6 +15545,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15364,6 +15582,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15470,6 +15692,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
+        - { type: "arcade", joystick: "none", layout: "medalnt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x2100000, width: 32, endianness: "little" }
@@ -15785,6 +16011,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "nicetsuk" }
+        - { type: "arcade", joystick: "none", layout: "nicetsuk" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
@@ -15829,6 +16059,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "squizchs" }
+        - { type: "arcade", joystick: "none", layout: "squizchs" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "nand0", size: 0x1080000, width: 32, endianness: "little" }
