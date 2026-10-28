@@ -67,6 +67,13 @@ enum class OperatorControl : u8
   Count
 };
 
+struct TrackballButtonAxis
+{
+  s32 direction = 0;
+  float held_seconds = 0.0f;
+  float remainder = 0.0f;
+};
+
 struct PortState
 {
   Arcade::ArcadeControllerType type = Arcade::ArcadeControllerType::None;
@@ -89,6 +96,8 @@ struct PortState
   float axis_y = 0.0f;
   s32 trackball_x = 0;
   s32 trackball_y = 0;
+  bool trackball_buttons_as_axis = false;
+  std::array<TrackballButtonAxis, 2> trackball_button_axes{};
   std::array<float, static_cast<size_t>(StickAxis::Count)> stick_axes = {0.5f, 0.5f, 0.5f, 0.5f};
   float steering = 0.5f;
   float steering_axis = 0.5f;
@@ -363,6 +372,28 @@ void OnOperatorDigital(OperatorControl control, s32 value)
   {
     Konami::SetGVArcadeButton(0, GetGVOperatorMask(control), pressed);
   }
+}
+
+s32 GetTrackballButtonDelta(TrackballButtonAxis& axis, s32 direction, float sensitivity, bool invert,
+                            float frame_seconds)
+{
+  if (direction != axis.direction)
+  {
+    axis.direction = direction;
+    axis.held_seconds = 0.0f;
+    axis.remainder = 0.0f;
+  }
+
+  if (direction == 0)
+    return 0;
+
+  // Reach full trackball speed after holding a direction for 1 second.
+  const float speed = 2.0f + 126.0f * std::min(axis.held_seconds, 1.0f);
+  axis.held_seconds = std::min(axis.held_seconds + frame_seconds, 1.0f);
+  axis.remainder += static_cast<float>(direction) * speed * sensitivity * (invert ? -1.0f : 1.0f);
+  const s32 delta = static_cast<s32>(axis.remainder);
+  axis.remainder -= static_cast<float>(delta);
+  return delta;
 }
 
 void OnAxis(u32 port_index, bool x_axis, float value)
@@ -759,8 +790,13 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
     }
     if (state.type == Arcade::ArcadeControllerType::Trackball)
     {
-      AddAxisBindings(si, section, port, "TrackballX", true);
-      AddAxisBindings(si, section, port, "TrackballY", false);
+      state.trackball_buttons_as_axis = state.input_mode != "NativeRawInputDevice" &&
+                                        si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false);
+      if (!state.trackball_buttons_as_axis)
+      {
+        AddAxisBindings(si, section, port, "TrackballX", true);
+        AddAxisBindings(si, section, port, "TrackballY", false);
+      }
     }
     else if (state.type == Arcade::ArcadeControllerType::Lightgun)
     {
@@ -916,15 +952,19 @@ void Update()
     PortState& state = s_ports[port];
     if (state.type == Arcade::ArcadeControllerType::Trackball && state.input_mode != "NativeRawInputDevice")
     {
-      // Analog axes and the digital trackball directions both become relative motion.
-      const float digital_x = static_cast<float>((IsPressed(state, Control::TrackballRight) ? 1 : 0) -
-                                                 (IsPressed(state, Control::TrackballLeft) ? 1 : 0));
-      const float digital_y = static_cast<float>((IsPressed(state, Control::TrackballDown) ? 1 : 0) -
-                                                 (IsPressed(state, Control::TrackballUp) ? 1 : 0));
-      const float x = std::clamp(state.axis_x + digital_x, -1.0f, 1.0f);
-      const float y = std::clamp(state.axis_y + digital_y, -1.0f, 1.0f);
-      const s32 delta_x = static_cast<s32>(x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
-      const s32 delta_y = static_cast<s32>(y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
+      const float frame_seconds = 1.0f / std::max(System::GetThrottleFrequency(), 1.0f);
+      const s32 digital_x = static_cast<s32>(IsPressed(state, Control::TrackballRight)) -
+                            static_cast<s32>(IsPressed(state, Control::TrackballLeft));
+      const s32 digital_y = static_cast<s32>(IsPressed(state, Control::TrackballDown)) -
+                            static_cast<s32>(IsPressed(state, Control::TrackballUp));
+      const s32 delta_x = state.trackball_buttons_as_axis ?
+        GetTrackballButtonDelta(state.trackball_button_axes[0], digital_x, state.x_sensitivity, state.invert_x,
+                                frame_seconds) :
+        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -8.0f : 8.0f));
+      const s32 delta_y = state.trackball_buttons_as_axis ?
+        GetTrackballButtonDelta(state.trackball_button_axes[1], digital_y, state.y_sensitivity, state.invert_y,
+                                frame_seconds) :
+        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -8.0f : 8.0f));
       state.trackball_x += delta_x;
       state.trackball_y += delta_y;
       if (port < 2)
