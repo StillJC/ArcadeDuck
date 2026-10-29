@@ -672,6 +672,28 @@ void ControllerSettingsWindow::setStringValue(const char* section, const char* k
   markSettingsChanged();
 }
 
+void ControllerSettingsWindow::ensureRawInputEnabled()
+{
+#ifdef _WIN32
+  const bool enable_source = !Host::GetBaseBoolSettingValue("InputSources", "RawInput", false);
+  if (enable_source)
+  {
+    Host::SetBaseBoolSettingValue("InputSources", "RawInput", true);
+    Host::CommitBaseSettingChanges();
+  }
+
+  // A profile may override the base source setting.
+  const bool enable_profile_source = m_editing_settings_interface &&
+    !m_editing_settings_interface->GetBoolValue("InputSources", "RawInput", true);
+  if (enable_profile_source)
+  {
+    setBoolValue("InputSources", "RawInput", true);
+  }
+  if (enable_source || enable_profile_source)
+    g_emu_thread->applySettings();
+#endif
+}
+
 void ControllerSettingsWindow::beginSettingsBatch()
 {
   m_settings_batch_depth++;
@@ -831,9 +853,10 @@ void ControllerSettingsWindow::clearCurrentArcadeMapping()
 void ControllerSettingsWindow::copyArcadeControllerConfiguration(
   SettingsInterface* dest_si, const SettingsInterface& src_si, const Arcade::ArcadeGameControlProfile* target_profile)
 {
-  static constexpr std::array<const char*, 40> binding_keys = {{
+  static constexpr std::array<const char*, 44> binding_keys = {{
     "Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4", "Button5", "Button6",
-    "Coin", "Start", "TrackballX", "TrackballY", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
+    "Coin", "Start", "TrackballX", "TrackballY", "TrackballLeft", "TrackballRight",
+    "TrackballUp", "TrackballDown", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
     "GSRDecrease", "Steering", "SteeringLeft", "SteeringRight", "Accelerator", "Brake", "Clutch", "GearUp",
     "GearDown", "Handbrake",
     "View", "Horn", "MusicNext", "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft",
@@ -953,10 +976,16 @@ void ControllerSettingsWindow::copyArcadeControllerConfiguration(
           copy_value(key);
         }
 
+        copy_value("UseButtonsAsAxis");
         if (src_si.GetStringValue(section.c_str(), "InputMode", "") != "NativeRawInputDevice")
         {
           copy_binding("TrackballX");
           copy_binding("TrackballY");
+          if (src_si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false))
+          {
+            for (const char* key : {"TrackballLeft", "TrackballRight", "TrackballUp", "TrackballDown"})
+              copy_binding(key);
+          }
         }
         break;
       }

@@ -41,7 +41,7 @@ namespace {
 enum : u32
 {
   GAME_LIST_CACHE_SIGNATURE = 0x45434C48,
-  GAME_LIST_CACHE_VERSION = 41,
+  GAME_LIST_CACHE_VERSION = 42,
 
   PLAYED_TIME_SERIAL_LENGTH = 32,
   PLAYED_TIME_LAST_TIME_LENGTH = 20,  // uint64
@@ -106,12 +106,12 @@ bool GameList::IsGameListLoaded()
 
 bool GameList::IsScannableFilename(std::string_view path)
 {
-  return Arcade::Database::IsArchivePath(path);
+  return Arcade::Database::IsArchivePath(path) || StringUtil::EqualNoCase(Path::GetExtension(path), "chd");
 }
 
 bool GameList::GetArcadeListEntry(const std::string& path, Entry* entry)
 {
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(path);
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyGamePath(path);
   if (!game)
   {
     INFO_LOG("ArcadeDatabase.GameList ignored_unknown_archive archive='{}'", Path::GetFileName(path));
@@ -149,7 +149,7 @@ bool GameList::GetArcadeListEntry(const std::string& path, Entry* entry)
 
 bool GameList::PopulateEntryFromPath(const std::string& path, Entry* entry)
 {
-  return Arcade::Database::IsArchivePath(path) && GetArcadeListEntry(path, entry);
+  return IsScannableFilename(path) && GetArcadeListEntry(path, entry);
 }
 
 bool GameList::GetGameListEntryFromCache(const std::string& path, Entry* entry,
@@ -284,7 +284,7 @@ static void CollapseArcadeCloneEntries()
     const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
     const Arcade::Database::SystemDefinition* const system =
       game ? Arcade::Database::GetSystem(game->system_id) : nullptr;
-    if (game && game->parent.empty() && system &&
+    if (game && game->parent.empty() && system && Arcade::Database::IsArchivePath(entry.path) &&
         Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
     {
       visible_parent_ids.push_back(game->id);
@@ -293,7 +293,7 @@ static void CollapseArcadeCloneEntries()
 
   s_entries.erase(std::remove_if(s_entries.begin(), s_entries.end(), [&visible_parent_ids](const Entry& entry) {
                     const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
-                    return game && !game->parent.empty() &&
+                    return Arcade::Database::IsArchivePath(entry.path) && game && !game->parent.empty() &&
                            std::find(visible_parent_ids.begin(), visible_parent_ids.end(),
                                      std::string_view(game->parent)) != visible_parent_ids.end();
                   }),
@@ -337,7 +337,7 @@ void GameList::ScanDirectory(const char* path, bool recursive, bool only_cache,
     if (!GameList::IsScannableFilename(ffd.FileName) || IsPathExcluded(excluded_paths, ffd.FileName))
       continue;
 
-    if (!Arcade::Database::IdentifyArchive(ffd.FileName))
+    if (!Arcade::Database::IdentifyGamePath(ffd.FileName))
     {
       INFO_LOG("ArcadeDatabase.GameList ignored_unknown_archive archive='{}'", Path::GetFileName(ffd.FileName));
       continue;
@@ -593,6 +593,37 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
       ScanDirectory(dir.c_str(), true, only_cache, excluded_paths, played_time, custom_attributes_ini, cache_writer,
                     progress);
       progress->SetProgressValue(++directory_counter);
+    }
+  }
+
+  {
+    std::unique_lock lock(s_mutex);
+    std::unordered_map<std::string, size_t> gnet_entries;
+    for (size_t i = 0; i < s_entries.size();)
+    {
+      const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(s_entries[i].serial);
+      const Arcade::Database::SystemDefinition* const system =
+        game ? Arcade::Database::GetSystem(game->system_id) : nullptr;
+      if (!system || system->machine_handler != "taito_gnet")
+      {
+        i++;
+        continue;
+      }
+
+      const auto [it, inserted] = gnet_entries.emplace(game->id, i);
+      if (inserted)
+      {
+        i++;
+        continue;
+      }
+
+      // Prefer the CHD entry when both the disk and a redundant game archive are present.
+      if (Arcade::Database::IsArchivePath(s_entries[it->second].path) &&
+          !Arcade::Database::IsArchivePath(s_entries[i].path))
+      {
+        s_entries[it->second] = std::move(s_entries[i]);
+      }
+      s_entries.erase(s_entries.begin() + i);
     }
   }
 

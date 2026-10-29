@@ -13,6 +13,7 @@
 #include "core/host.h"
 
 #include "common/bitutils.h"
+#include "common/small_string.h"
 
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
@@ -88,7 +89,14 @@ void InputBindingWidget::updateText()
   else
   {
     QString binding_text(QString::fromStdString(m_bindings[0]));
-    setToolTip(binding_text);
+    const QString saved_binding = binding_text;
+    if (m_bindings[0].find("RawInput-") != std::string::npos)
+    {
+      SmallString display_binding(m_bindings[0].c_str());
+      if (InputManager::PrettifyInputBinding(display_binding))
+        binding_text = QString::fromUtf8(display_binding.c_str());
+    }
+    setToolTip(binding_text == saved_binding ? saved_binding : binding_text + QStringLiteral("\n") + saved_binding);
 
     // fix up accelerators, and if it's too long, ellipsise it
     if (binding_text.contains('&'))
