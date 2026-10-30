@@ -92,6 +92,7 @@ static PlayedTimeEntry UpdatePlayedTimeFile(const std::string& path, const std::
 static std::string GetCustomPropertiesFile();
 
 static EntryList s_entries;
+static std::unordered_map<std::string, std::string> s_gnet_game_paths;
 static std::recursive_mutex s_mutex;
 static CacheMap s_cache_map;
 
@@ -279,12 +280,18 @@ static void CollapseArcadeCloneEntries()
 {
   std::unique_lock lock(s_mutex);
   std::vector<std::string_view> visible_parent_ids;
+  s_gnet_game_paths.clear();
   for (const Entry& entry : s_entries)
   {
     const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
     const Arcade::Database::SystemDefinition* const system =
       game ? Arcade::Database::GetSystem(game->system_id) : nullptr;
-    if (game && game->parent.empty() && system && Arcade::Database::IsArchivePath(entry.path) &&
+    const bool is_gnet = system && system->machine_handler == "taito_gnet";
+    if (is_gnet)
+      s_gnet_game_paths.emplace(game->id, entry.path);
+
+    if (game && game->parent.empty() && system &&
+        (is_gnet || Arcade::Database::IsArchivePath(entry.path)) &&
         Arcade::MachineHandlerSupportsSplitMergedSets(system->machine_handler))
     {
       visible_parent_ids.push_back(game->id);
@@ -293,7 +300,9 @@ static void CollapseArcadeCloneEntries()
 
   s_entries.erase(std::remove_if(s_entries.begin(), s_entries.end(), [&visible_parent_ids](const Entry& entry) {
                     const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(entry.serial);
-                    return Arcade::Database::IsArchivePath(entry.path) && game && !game->parent.empty() &&
+                    return (Arcade::Database::IsArchivePath(entry.path) ||
+                            s_gnet_game_paths.find(entry.serial) != s_gnet_game_paths.end()) &&
+                           game && !game->parent.empty() &&
                            std::find(visible_parent_ids.begin(), visible_parent_ids.end(),
                                      std::string_view(game->parent)) != visible_parent_ids.end();
                   }),
@@ -557,6 +566,7 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   {
     std::unique_lock lock(s_mutex);
     old_entries.swap(s_entries);
+    s_gnet_game_paths.clear();
   }
 
   const std::vector<std::string> excluded_paths(Host::GetBaseStringListSetting("GameList", "ExcludedPaths"));
@@ -632,6 +642,13 @@ void GameList::Refresh(bool invalidate_cache, bool only_cache, ProgressCallback*
   // don't need unused cache entries
   s_cache_map.clear();
 
+}
+
+std::string GameList::GetGNetGamePath(std::string_view serial)
+{
+  std::unique_lock lock(s_mutex);
+  const auto it = s_gnet_game_paths.find(std::string(serial));
+  return (it != s_gnet_game_paths.end()) ? it->second : std::string();
 }
 
 GameList::EntryList GameList::TakeEntryList()

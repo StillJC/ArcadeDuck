@@ -1478,10 +1478,14 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
         QMenu* clone_properties_menu = nullptr;
         for (const Arcade::Database::GameDefinition* const clone : clones)
         {
-          std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+          const bool is_gnet = parent_system->machine_handler == "taito_gnet";
+          std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) :
+                                            Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+          if (is_gnet && clone_path.empty())
+            continue;
           if (clone_path.empty())
             clone_path = entry->path;
-          if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+          if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone))
           {
             INFO_LOG("Clone '{}' suppressed for parent '{}': required ROMs could not be resolved using archive anchor "
                      "'{}'.",

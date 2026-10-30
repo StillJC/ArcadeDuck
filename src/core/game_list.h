@@ -71,6 +71,9 @@ const Entry* GetEntryForPath(std::string_view path);
 const Entry* GetEntryBySerial(std::string_view serial);
 u32 GetEntryCount();
 
+// Includes scanned G-Net clones hidden under their parent entry.
+std::string GetGNetGamePath(std::string_view serial);
+
 bool IsGameListLoaded();
 
 /// Populates the game list with files in the configured directories.
