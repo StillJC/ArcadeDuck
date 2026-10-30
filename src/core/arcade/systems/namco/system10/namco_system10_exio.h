@@ -12,6 +12,8 @@
 
 class TimingEvent;
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // EXIO expansion boards mapped at 0x1FE00000. Full EXIO carries a TMP95C061
@@ -20,6 +22,8 @@ namespace NamcoSystem10 {
 class EXIOBoard
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   struct Cabinet
   {
     void* context = nullptr;

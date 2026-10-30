@@ -11,6 +11,8 @@
 
 class Error;
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // Raw Samsung K9F2808U0B image used by MEM(N).
@@ -21,6 +23,10 @@ namespace NamcoSystem10 {
 class MemNRawNAND
 {
 public:
+  // Command state only; the array contents are NVRAM matched by fingerprint. Program and erase complete
+  // immediately, so a restored command mode only affects later writes.
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 DATA_BYTES_PER_PAGE = 0x200;
   static constexpr u32 SPARE_BYTES_PER_PAGE = 0x10;
   static constexpr u32 RAW_PAGE_SIZE = DATA_BYTES_PER_PAGE + SPARE_BYTES_PER_PAGE;

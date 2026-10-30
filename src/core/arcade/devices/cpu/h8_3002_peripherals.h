@@ -5,11 +5,15 @@
 #include <array>
 #include <optional>
 
+class StateWrapper;
+
 namespace Arcade::H8 {
 
 class H83002Peripherals
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 ADC_VECTOR = 60;
   static constexpr u32 WATCHDOG_VECTOR = 20;
 

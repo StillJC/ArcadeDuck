@@ -147,12 +147,15 @@ std::vector<u8> NamcoCyberLead::LoadFactoryLEDFirmware()
 bool NamcoCyberLead::InitializeLEDFlash(std::span<const u8> factory_firmware, std::string flash_path)
 {
   m_led_flash_path = std::move(flash_path);
+  m_led_flash_file.SetPath(m_led_flash_path);
   if (factory_firmware.empty())
     return false;
 
   if (!m_led_flash_path.empty() && FileSystem::FileExists(m_led_flash_path.c_str()))
   {
     const std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(m_led_flash_path.c_str());
+    if (data)
+      m_led_flash_file.RecordDiskContents(data->cspan());
     if (data && data->size() == LED_FIRMWARE_SIZE && SetLEDFirmware(data->cspan()))
     {
       INFO_LOG("CyberLead LED flash loaded path='{}'", m_led_flash_path);
@@ -160,6 +163,10 @@ bool NamcoCyberLead::InitializeLEDFlash(std::span<const u8> factory_firmware, st
     }
 
     WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", m_led_flash_path);
+  }
+  else
+  {
+    m_led_flash_file.RecordDiskAbsent();
   }
 
   if (!SetLEDFirmware(factory_firmware))
@@ -173,7 +180,7 @@ bool NamcoCyberLead::InitializeLEDFlash(std::span<const u8> factory_firmware, st
 
 void NamcoCyberLead::SaveLEDFlash()
 {
-  if (m_led_flash_path.empty() || !m_led_device.IsFlashModified())
+  if (m_led_flash_path.empty() || !m_led_device.IsFlashModified() || SaveState::IsRestoring())
     return;
 
   const std::span<const u8> flash = m_led_device.GetFlash();
@@ -184,8 +191,50 @@ void NamcoCyberLead::SaveLEDFlash()
     return;
   }
 
+  m_led_flash_file.RecordDiskContents(flash);
   m_led_device.ClearFlashModified();
   INFO_LOG("CyberLead LED flash saved path='{}'", m_led_flash_path);
+}
+
+std::string NamcoCyberLead::DescribeLinkDiagnostics() const
+{
+  std::string id;
+  for (const u8 value : m_link.profile_id)
+    id += fmt::format("{:02X}", value);
+  return fmt::format("txn={} profile_result={} transfer_result={} poll={} attempts={} profile_id={} "
+                     "handshake={} uploaded={} changed_since_handshake={} mode_since_change={} commits={} modes={} "
+                     "setup_closed={}",
+                     m_link.transaction_id, m_link.profile_result, m_link.transfer_result, m_link.poll_count,
+                     m_link.attempts, id, m_link.handshake_complete, m_link.initial_upload_complete,
+                     m_link.flash_changed_since_handshake, m_link.mode_since_last_change, m_link.commit_count,
+                     m_link.mode_count, m_link.setup_closed_since_query);
+}
+
+bool NamcoCyberLead::IsLEDSaveReady() const
+{
+  if (!m_led_device.HasFirmware())
+    return true;
+
+  // The LED data is in place once the game has switched the LED to display mode (71/08) after the last upload
+  // that changed the flash, or when every committed upload since the handshake rewrote identical data.
+  // An installed board can also report its data as present (profile result 1) without any upload or 71/08, and a
+  // game which ends setup with 71/04 after the query does not upload in that setup.
+  const bool data_settled =
+    m_link.mode_since_last_change ||
+    (!m_link.flash_changed_since_handshake &&
+     (m_link.initial_upload_complete || m_link.profile_result == UINT8_C(0x01) || m_link.setup_closed_since_query));
+  if (!m_link.handshake_complete || !data_settled)
+    return false;
+
+  // Every LED transaction can program the flash (71/08 display mode writes settings too), so saving waits for an
+  // idle link.
+  return m_link.state == LinkState::Idle && !m_led_device.IsFlashOperationActive();
+}
+
+void NamcoCyberLead::GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const
+{
+  if (!m_led_flash_path.empty() && m_led_device.HasFirmware())
+    components->push_back({"cyberlead_led", m_led_device.GetFlash(), &m_led_flash_file});
 }
 
 NamcoCyberLead* NamcoCyberLead::GetActive()
@@ -519,13 +568,23 @@ void NamcoCyberLead::EvaluateLinkState()
       else if (LEDReplyAccepted() && result != 0)
       {
         m_link.profile_result = result;
+        if (!m_link.handshake_complete)
+          m_link.upload_change_baseline = m_led_device.GetFlashContentChanges();
+        m_link.handshake_complete = true;
         m_link.state = LinkState::Idle;
       }
       break;
 
     case LinkState::Status:
-      if (++m_link.attempts >= 0x60 || LEDReplyAccepted())
+      if (++m_link.attempts >= 0x60)
+      {
         m_link.state = LinkState::Idle;
+      }
+      else if (LEDReplyAccepted())
+      {
+        m_link.setup_closed_since_query = m_link.handshake_complete;
+        m_link.state = LinkState::Idle;
+      }
       break;
 
     case LinkState::Block:
@@ -549,6 +608,15 @@ void NamcoCyberLead::EvaluateLinkState()
         else
         {
           m_link.transfer_result = result;
+          m_link.initial_upload_complete = true;
+          const u64 changes = m_led_device.GetFlashContentChanges();
+          m_link.commit_count++;
+          if (changes != m_link.upload_change_baseline)
+          {
+            m_link.flash_changed_since_handshake = true;
+            m_link.mode_since_last_change = false;
+          }
+          m_link.upload_change_baseline = changes;
           m_link.state = LinkState::Idle;
         }
       }
@@ -556,7 +624,13 @@ void NamcoCyberLead::EvaluateLinkState()
 
     case LinkState::Mode:
       if (LEDReplyAccepted())
+      {
+        // Display mode ends an installation. The LED stores its mode settings while handling 71/08, so those
+        // writes become part of the baseline rather than a change seen at the next commit.
+        m_link.mode_since_last_change = true;
+        m_link.upload_change_baseline = m_led_device.GetFlashContentChanges();
         m_link.state = LinkState::Idle;
+      }
       break;
 
     case LinkState::Idle:
@@ -923,6 +997,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
               m_link.poll_count = 0;
               m_link.attempts = 0;
               m_link.profile_result = 0;
+              m_link.setup_closed_since_query = false;
               m_link.idle_countdown = LINK_TRANSACTION_COUNTDOWN;
               SetLinkState(LinkState::Profile);
             }
@@ -995,6 +1070,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 
           case UINT8_C(0x08):
             m_link.idle_countdown = 0;
+            m_link.mode_count++;
             SetLinkState(LinkState::Mode);
             break;
 

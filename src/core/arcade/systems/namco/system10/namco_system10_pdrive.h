@@ -13,6 +13,8 @@
 class TimingEvent;
 struct h8_system_t;
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 class PDrivePeripherals;
@@ -25,6 +27,8 @@ struct PDriveBus;
 class PDriveBoard
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 CPU_CLOCK_HZ = 14'745'600;
 
   struct Cabinet

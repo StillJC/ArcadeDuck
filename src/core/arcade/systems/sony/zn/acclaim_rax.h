@@ -8,6 +8,7 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace SonyZN::AcclaimRAX {
 
@@ -18,5 +19,6 @@ bool IsActive();
 
 void WriteCommand(u16 value);
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::AcclaimRAX

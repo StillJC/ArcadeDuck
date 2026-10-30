@@ -96,6 +96,8 @@ enum
 
 
 // internal ROM region
+class StateWrapper;
+
 #define M37710_INTERNAL_ROM_REGION "internal"
 #define M37710_INTERNAL_ROM(_tag) (_tag ":" M37710_INTERNAL_ROM_REGION)
 
@@ -123,6 +125,8 @@ public:
 	bool uart_receive_byte(unsigned uart, uint8_t data);
 	void reset();
 	int execute(int cycles);
+	// ArcadeDuck save-state support: serializes every register, internal RAM and peripheral field.
+	bool do_state(StateWrapper& sw);
 	void set_input(int inputnum, bool asserted);
 	uint32_t program_counter() const { return m_pg | m_pc; }
 	uint8_t port_data_latch(unsigned port) const {

@@ -13,6 +13,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <deque>
@@ -525,6 +527,52 @@ void GenerateAudioFrame(s32* left, s32* right)
     else
       s_state.resample_b = s_state.resample_a;
   }
+}
+
+// Shared RAM belongs to the host board and is serialized there. Diagnostic counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !sw.DoMarker("FX1BZoom"))
+    return false;
+
+  sw.DoArray(s_state.mn_ram.data(), s_state.mn_ram.size());
+  sw.Do(&s_state.tms_ctrl);
+  sw.Do(&s_state.reg_address);
+  sw.Do(&s_state.gain_left);
+  sw.Do(&s_state.gain_right);
+  sw.Do(&s_state.last_global_ticks);
+  sw.Do(&s_state.cycle_fraction);
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.native_cycle_accumulator);
+
+  u32 queued = static_cast<u32>(s_state.native_queue.size());
+  sw.Do(&queued);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || queued > MAX_NATIVE_QUEUE_FRAMES)
+      return false;
+    s_state.native_queue.resize(queued);
+  }
+  for (StereoFrame& frame : s_state.native_queue)
+  {
+    sw.Do(&frame.left);
+    sw.Do(&frame.right);
+  }
+  sw.Do(&s_state.resample_a.left);
+  sw.Do(&s_state.resample_a.right);
+  sw.Do(&s_state.resample_b.left);
+  sw.Do(&s_state.resample_b.right);
+  sw.Do(&s_state.have_resample_a);
+  sw.Do(&s_state.have_resample_b);
+  sw.Do(&s_state.resample_phase);
+
+  if (!s_state.mn10200.DoState(sw) || !s_state.zsg2.DoState(sw) || !sw.DoMarker("FX1BTMS57002") ||
+      !s_state.tms57002.DoState(sw))
+  {
+    return false;
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace TaitoFX1BZoom

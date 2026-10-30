@@ -6,6 +6,7 @@
 // BSD-3-Clause namcos10.cpp (namcos10_memp3_state). See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/systems/namco/system10/namco_system10_memp3.h"
+#include "util/state_wrapper.h"
 
 #include "core/system.h"
 #include "core/timing_event.h"
@@ -326,6 +327,46 @@ u16 MemP3Board::MCUAnalogRead(void* context, u32 channel)
 {
   MemP3Board* self = static_cast<MemP3Board*>(context);
   return self->m_cabinet.analog ? (self->m_cabinet.analog(self->m_cabinet.context, channel) & 0x3ff) : 0;
+}
+
+// Deadlines are restored by TimingEvents; only activation is established here.
+static bool DoMemP3EventActivation(StateWrapper& sw, TimingEvent* event)
+{
+  bool active = event && event->IsActive();
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+  if (sw.HasError() || (active && !event))
+    return false;
+  if (event)
+  {
+    if (active)
+      event->Schedule(1);
+    else
+      event->Deactivate();
+  }
+  return true;
+}
+
+bool MemP3Board::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("S10MemP3"))
+    return false;
+
+  sw.Do(&m_state_fraction);
+  sw.DoBytes(m_ram.data(), m_ram.size());
+  sw.Do(&m_ram_bank);
+  sw.Do(&m_command_busy);
+  sw.Do(&m_status_value);
+  sw.Do(&m_control_value);
+  sw.Do(&m_mode_value);
+  sw.Do(&m_port7);
+  sw.Do(&m_porta);
+  sw.Do(&m_stream_available);
+  if (!DoMemP3EventActivation(sw, m_event.get()) || !m_mcu->DoState(sw) || !m_decoder.DoState(sw))
+    return false;
+
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

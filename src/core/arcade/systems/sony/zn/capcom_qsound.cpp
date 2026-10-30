@@ -4,12 +4,15 @@
 #include "core/arcade/systems/sony/zn/capcom_qsound.h"
 
 #include "core/arcade/third_party/qsound_hle/qsound.h"
+#include "core/arcade/devices/cpu/z80_state.h"
 #include "core/arcade/third_party/z80_superzazu/z80.h"
 #include "core/spu.h"
 #include "core/system.h"
 
 #include "common/error.h"
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 
 #include <array>
 #include <deque>
@@ -476,6 +479,155 @@ void GenerateAudioFrame(s32* left, s32* right)
 
   *left = s_state.last_output_left;
   *right = s_state.last_output_right;
+}
+
+static void DoQSoundDelay(StateWrapper& sw, qsound_delay& d)
+{
+  sw.Do(&d.delay);
+  sw.Do(&d.volume);
+  sw.Do(&d.write_pos);
+  sw.Do(&d.read_pos);
+  sw.DoArray(d.delay_line, std::size(d.delay_line));
+}
+
+static void DoQSoundFilter(StateWrapper& sw, qsound_fir& f)
+{
+  sw.Do(&f.tap_count);
+  sw.Do(&f.delay_pos);
+  sw.Do(&f.table_pos);
+  sw.DoArray(f.taps, std::size(f.taps));
+  sw.DoArray(f.delay_line, std::size(f.delay_line));
+}
+
+// The ROM pointer, pan tables and register map are set up by qsound_start() and are not machine state.
+static bool DoQSoundChipState(StateWrapper& sw, qsound_chip& q)
+{
+  sw.Do(&q.data_latch);
+  sw.DoArray(q.out, std::size(q.out));
+  for (qsound_voice& v : q.voice)
+  {
+    sw.Do(&v.bank);
+    sw.Do(&v.addr);
+    sw.Do(&v.phase);
+    sw.Do(&v.rate);
+    sw.Do(&v.loop_len);
+    sw.Do(&v.end_addr);
+    sw.Do(&v.volume);
+    sw.Do(&v.echo);
+  }
+  for (qsound_adpcm& a : q.adpcm)
+  {
+    sw.Do(&a.start_addr);
+    sw.Do(&a.end_addr);
+    sw.Do(&a.bank);
+    sw.Do(&a.volume);
+    sw.Do(&a.flag);
+    sw.Do(&a.cur_vol);
+    sw.Do(&a.step_size);
+    sw.Do(&a.cur_addr);
+  }
+  sw.DoArray(q.voice_pan, std::size(q.voice_pan));
+  sw.DoArray(q.voice_output, std::size(q.voice_output));
+  sw.Do(&q.echo.end_pos);
+  sw.Do(&q.echo.feedback);
+  sw.Do(&q.echo.length);
+  sw.Do(&q.echo.last_sample);
+  sw.DoArray(q.echo.delay_line, std::size(q.echo.delay_line));
+  sw.Do(&q.echo.delay_pos);
+  for (qsound_fir& f : q.filter)
+    DoQSoundFilter(sw, f);
+  for (qsound_fir& f : q.alt_filter)
+    DoQSoundFilter(sw, f);
+  for (qsound_delay& d : q.wet)
+    DoQSoundDelay(sw, d);
+  for (qsound_delay& d : q.dry)
+    DoQSoundDelay(sw, d);
+  sw.Do(&q.state);
+  sw.Do(&q.next_state);
+  sw.Do(&q.delay_update);
+  sw.Do(&q.state_counter);
+  sw.Do(&q.ready_flag);
+
+  if (sw.IsReading())
+  {
+    for (const qsound_fir* f : {&q.filter[0], &q.filter[1], &q.alt_filter[0], &q.alt_filter[1]})
+    {
+      if (f->tap_count < 0 || f->tap_count > static_cast<int>(std::size(f->taps)) || f->delay_pos < 0 ||
+          f->delay_pos >= static_cast<int>(std::size(f->delay_line)))
+      {
+        return false;
+      }
+    }
+    if (q.echo.delay_pos < 0 || q.echo.delay_pos >= static_cast<s16>(std::size(q.echo.delay_line)))
+      return false;
+    for (const qsound_delay* d : {&q.wet[0], &q.wet[1], &q.dry[0], &q.dry[1]})
+    {
+      if (d->write_pos < 0 || d->write_pos >= static_cast<s16>(std::size(d->delay_line)) || d->read_pos < 0 ||
+          d->read_pos >= static_cast<s16>(std::size(d->delay_line)))
+      {
+        return false;
+      }
+    }
+  }
+
+  return !sw.HasError();
+}
+
+// Diagnostic counters are excluded. Both sound-CPU clocks (audio and host) are kept; the host clock is anchored
+// to the restored global tick counter.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !sw.DoMarker("ZNQSound"))
+    return false;
+
+  if (!Arcade::Z80State::DoState(sw, s_state.cpu))
+    return false;
+  if (!DoQSoundChipState(sw, s_state.qsound))
+    return false;
+
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  sw.Do(&s_state.sound_bank);
+  sw.Do(&s_state.sound_latch);
+  sw.Do(&s_state.sound_latch_pending);
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.cycle_fraction);
+  sw.Do(&s_state.audio_target_cycles);
+  sw.Do(&s_state.host_target_cycles);
+  sw.Do(&s_state.scheduled_target_cycles);
+  sw.Do(&s_state.host_tick_fraction);
+  sw.Do(&s_state.last_host_sync_ticks);
+  sw.Do(&s_state.last_ticks_per_second);
+  sw.Do(&s_state.irq_cycle_phase);
+  sw.Do(&s_state.native_sample_phase);
+  sw.Do(&s_state.native_sample_rate);
+
+  u32 queued = static_cast<u32>(s_state.native_sample_queue.size());
+  sw.Do(&queued);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || queued > 65536)
+      return false;
+    s_state.native_sample_queue.clear();
+    for (u32 i = 0; i < queued; i++)
+    {
+      std::array<s32, 2> sample;
+      sw.DoArray(sample.data(), sample.size());
+      s_state.native_sample_queue.push_back(sample);
+    }
+  }
+  else
+  {
+    for (std::array<s32, 2>& sample : s_state.native_sample_queue)
+      sw.DoArray(sample.data(), sample.size());
+  }
+  sw.Do(&s_state.output_sample_phase);
+  sw.Do(&s_state.last_output_left);
+  sw.Do(&s_state.last_output_right);
+
+  if (sw.IsReading() && s_state.sound_bank > 0x0f)
+    return false;
+
+  return !sw.HasError();
 }
 
 } // namespace SonyZN::CapcomQSound

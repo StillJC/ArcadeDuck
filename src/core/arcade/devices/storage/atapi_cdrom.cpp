@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/devices/storage/atapi_cdrom.h"
+#include "util/state_wrapper.h"
 
 #include "core/system.h"
 #include "core/timing_event.h"
@@ -833,6 +834,65 @@ void ATAPICDROM::CommandReadSubChannel()
   }
   PutBE16(&data[2], static_cast<u32>(data.size() - 4));
   BeginDataIn(std::move(data), GetBE16(&m_packet[7]));
+}
+
+bool ATAPICDROM::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("ATAPICDROM"))
+    return false;
+
+  sw.Do(&m_phase);
+  sw.Do(&m_error);
+  sw.Do(&m_features);
+  sw.Do(&m_sector_count);
+  sw.Do(&m_lba_low);
+  sw.Do(&m_lba_mid);
+  sw.Do(&m_lba_high);
+  sw.Do(&m_device);
+  sw.Do(&m_status);
+  sw.Do(&m_device_control);
+  sw.Do(&m_irq);
+  sw.Do(&m_dma);
+  sw.Do(&m_dma_request);
+  sw.DoArray(m_packet.data(), m_packet.size());
+  sw.Do(&m_packet_size);
+  u32 data_size = static_cast<u32>(m_data.size());
+  sw.Do(&data_size);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || data_size > 0x1000000)
+      return false;
+    m_data.resize(data_size);
+  }
+  sw.DoBytes(m_data.data(), m_data.size());
+  u64 data_offset = m_data_offset, block_end = m_block_end;
+  sw.Do(&data_offset);
+  sw.Do(&block_end);
+  sw.Do(&m_byte_count_limit);
+  sw.Do(&m_unit_attention);
+  sw.Do(&m_sense_key);
+  sw.Do(&m_sense_asc);
+  sw.Do(&m_sense_ascq);
+
+  bool event_active = m_interrupt_event && m_interrupt_event->IsActive();
+  sw.Do(&event_active);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || m_phase > Phase::DataOut || data_offset > m_data.size() || block_end > m_data.size() ||
+        m_packet_size > m_packet.size() || (event_active && !m_interrupt_event))
+    {
+      return false;
+    }
+    m_data_offset = static_cast<size_t>(data_offset);
+    m_block_end = static_cast<size_t>(block_end);
+    // Deadlines are restored by TimingEvents; only activation is established here.
+    if (event_active)
+      m_interrupt_event->Schedule(1);
+    else if (m_interrupt_event)
+      m_interrupt_event->Deactivate();
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace Arcade

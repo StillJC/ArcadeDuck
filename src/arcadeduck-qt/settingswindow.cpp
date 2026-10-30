@@ -26,6 +26,7 @@
 #include "core/achievements.h"
 #include "core/arcade/arcade_control_registry.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/game_database.h"
 #include "core/host.h"
 #include "core/system.h"
@@ -272,12 +273,7 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
 
   const Arcade::Database::GameDefinition* arcade_game = Arcade::Database::GetGame(m_game_serial);
   const bool is_namco_system11 = arcade_game && arcade_game->system_id == "namco_system11";
-  const bool has_cyber_lead_led =
-    arcade_game && arcade_game->system_id == "namco_system12" &&
-    std::any_of(arcade_game->properties.begin(), arcade_game->properties.end(),
-                [](const Arcade::Database::Property& property) {
-                  return property.name == "ioBoard" && property.value == "cyberlead";
-                });
+  const bool has_cyber_lead_led = Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(m_game_serial);
   const bool is_bust_a_move_2 = m_game_serial == "bam2" || m_game_serial == "bam2a";
   const bool is_video_system_zn1 =
     arcade_game && arcade_game->system_id == "video_system_zn1";

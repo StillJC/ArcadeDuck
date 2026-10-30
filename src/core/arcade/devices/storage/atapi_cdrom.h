@@ -12,6 +12,7 @@
 
 class CDImage;
 class Error;
+class StateWrapper;
 class TimingEvent;
 
 namespace Arcade {
@@ -22,6 +23,9 @@ namespace Arcade {
 class ATAPICDROM
 {
 public:
+  // The CD image is host media read by random access.
+  bool DoState(StateWrapper& sw);
+
   struct Identity
   {
     std::string_view vendor;   // INQUIRY vendor, 8 characters

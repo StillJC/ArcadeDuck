@@ -275,6 +275,12 @@ private:
   std::shared_ptr<SystemBootParameters> getSystemBootParameters(std::string file,
                                                                std::string arcade_game_id = {});
   std::optional<bool> promptForResumeState(const std::string& save_state_path);
+
+  /// Shutdown resume state of the highlighted game list entry, if that game supports save states and one exists.
+  std::string getSelectedEntryResumeStatePath(std::string* game_path) const;
+
+  /// Idle toolbar Resume follows the highlighted game; while a game starts or runs the button is Power Off.
+  void updateResumeAction();
   void startFile(std::string path, std::optional<std::string> save_path);
   void startArcadeSet(const QString& path);
 
@@ -313,6 +319,7 @@ private:
   bool m_bezel_resize_correction_pending = false;
 #endif
   bool m_save_states_invalidated = false;
+  bool m_emulation_idle = true;
   bool m_was_paused_on_surface_loss = false;
   bool m_is_closing = false;
 

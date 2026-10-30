@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/systems/namco/system10/namco_system10_memn.h"
+#include "util/state_wrapper.h"
 
 #include "common/error.h"
 
@@ -309,6 +310,21 @@ std::span<const u8> MemNRawNAND::GetPageSpare(u32 page) const
 {
   const std::span<const u8> raw_page = GetRawPage(page);
   return raw_page.empty() ? std::span<const u8>() : raw_page.subspan(DATA_BYTES_PER_PAGE, SPARE_BYTES_PER_PAGE);
+}
+
+bool MemNRawNAND::DoState(StateWrapper& sw)
+{
+  sw.Do(&m_read_mode);
+  sw.Do(&m_pointer_command);
+  sw.Do(&m_column_address);
+  sw.Do(&m_page_address);
+  sw.Do(&m_serial_index);
+  sw.Do(&m_id_address_valid);
+  sw.Do(&m_write_mode);
+  sw.DoArray(m_program_buffer.data(), m_program_buffer.size());
+  if (sw.IsReading() && (m_read_mode > ReadMode::Status || m_write_mode > WriteMode::Erase))
+    return false;
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

@@ -6,6 +6,7 @@
 // See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/systems/namco/system10/namco_system10_medal.h"
+#include "util/state_wrapper.h"
 
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_output.h"
@@ -210,6 +211,27 @@ void MedalCabinet::WriteOutput(u32 index, u16 value)
     m_leds = (value != 0) ? static_cast<u8>(m_leds | bit) : static_cast<u8>(m_leds & ~bit);
     SetOutput(LATCH_OUTPUTS[index], value != 0);
   }
+}
+
+bool MedalCabinet::DoState(StateWrapper& sw)
+{
+  for (Hopper& hopper : m_hoppers)
+  {
+    sw.Do(&hopper.power);
+    sw.Do(&hopper.status);
+    sw.Do(&hopper.next_toggle);
+  }
+  sw.DoArray(m_medal_start.data(), m_medal_start.size());
+  for (bool& v : m_medal_pressed)
+    sw.Do(&v);
+  for (bool& v : m_divider)
+    sw.Do(&v);
+  for (bool& v : m_lockout)
+    sw.Do(&v);
+  sw.Do(&m_payout);
+  sw.Do(&m_win_lamp);
+  sw.Do(&m_leds);
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

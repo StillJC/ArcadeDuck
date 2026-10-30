@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // Knock Down 2001 punch-pad carriage on the P-DRIVE PCB. A stepper slides the pad between a back
@@ -18,6 +20,8 @@ namespace NamcoSystem10 {
 class KnockDownCarriage
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   void Reset();
 
   // Step rate from `clock` (positive = towards the front). The motor takes over from a punch.

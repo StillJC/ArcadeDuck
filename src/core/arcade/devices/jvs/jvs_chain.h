@@ -8,11 +8,15 @@
 #include <array>
 #include <span>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 class Node
 {
 public:
+  bool DoNodeState(StateWrapper& sw);
+
   struct PacketResult
   {
     std::array<u8, 256> response{};

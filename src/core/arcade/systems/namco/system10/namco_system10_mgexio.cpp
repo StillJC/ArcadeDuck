@@ -8,6 +8,8 @@
 // register map follows MAME's h83006.cpp. See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/systems/namco/system10/namco_system10_mgexio.h"
+#include "core/arcade/devices/cpu/h8_300h_state.h"
+#include "util/state_wrapper.h"
 
 #include "core/arcade/devices/cpu/h8_3002_intc.h"
 #include "core/system.h"
@@ -65,6 +67,46 @@ constexpr u32 TIMER8_PAIR_VECTOR_STRIDE = 4;
 class MGEXIOPeripherals
 {
 public:
+  bool DoState(StateWrapper& sw)
+  {
+    if (!m_intc.DoState(sw))
+      return false;
+    sw.DoArray(m_ddr.data(), m_ddr.size());
+    sw.DoArray(m_dr.data(), m_dr.size());
+    sw.DoArray(m_internal_ram.data(), m_internal_ram.size());
+    sw.DoArray(m_unknown.data(), m_unknown.size());
+    sw.Do(&m_syscr);
+    sw.Do(&m_rtmcsr);
+    sw.Do(&m_rtcnt);
+    sw.Do(&m_rtcor);
+    sw.Do(&m_refresh_clocks);
+    for (Timer8& t : m_timer8)
+    {
+      sw.Do(&t.tcr);
+      sw.Do(&t.tcsr);
+      sw.Do(&t.tcora);
+      sw.Do(&t.tcorb);
+      sw.Do(&t.tcnt);
+    }
+    sw.DoArray(m_timer8_clocks.data(), m_timer8_clocks.size());
+    sw.Do(&m_tstr);
+    for (Timer16& t : m_timer16)
+    {
+      sw.Do(&t.tcr);
+      sw.Do(&t.tior);
+      sw.Do(&t.tcnt);
+      sw.Do(&t.gra);
+      sw.Do(&t.grb);
+    }
+    sw.DoArray(m_timer16_clocks.data(), m_timer16_clocks.size());
+    sw.DoArray(m_tisr.data(), m_tisr.size());
+    sw.Do(&m_wdt_tcsr);
+    sw.Do(&m_wdt_tcnt);
+    sw.Do(&m_wdt_key);
+    sw.Do(&m_wdt_clocks);
+    return !sw.HasError();
+  }
+
   explicit MGEXIOPeripherals(MGEXIOBoard::Cabinet& cabinet) : m_cabinet(cabinet) { Reset(); }
 
   void Reset()
@@ -830,6 +872,50 @@ bool MGEXIOBoard::Write(u32 width, u32 offset, u32 value)
     default:
       return false;
   }
+}
+
+// Deadlines are restored by TimingEvents; only activation is established here.
+static bool DoMGEXIOEventActivation(StateWrapper& sw, TimingEvent* event)
+{
+  bool active = event && event->IsActive();
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+  if (sw.HasError() || (active && !event))
+    return false;
+  if (event)
+  {
+    if (active)
+      event->Schedule(1);
+    else
+      event->Deactivate();
+  }
+  return true;
+}
+
+// The battery-backed first 32 KiB of board RAM are NVRAM matched by fingerprint; the rest of the RAM is stored.
+bool MGEXIOBoard::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("S10MGEXIO"))
+    return false;
+
+  const size_t backup_size = GetBackupRAM().size();
+  if (m_ram.size() < backup_size)
+    return false;
+  sw.DoBytes(m_ram.data() + backup_size, m_ram.size() - backup_size);
+  sw.Do(&m_clock_fraction);
+  sw.Do(&m_clock_balance);
+  sw.Do(&m_ctrl);
+  sw.Do(&m_bus_req);
+  sw.Do(&m_running);
+  sw.Do(&m_active);
+  if (!DoMGEXIOEventActivation(sw, m_event.get()) || !DoMGEXIOEventActivation(sw, m_start_event.get()) ||
+      !Arcade::H8::DoCoreState(sw, *m_cpu) || !m_peripherals->DoState(sw))
+  {
+    return false;
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

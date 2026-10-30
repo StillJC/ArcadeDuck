@@ -13,6 +13,8 @@
 
 #include "common/assert.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 
 namespace Arcade
@@ -1070,5 +1072,95 @@ void TMP95C061::ControlWrite(void* context, u8 reg, unsigned size, u32 value)
       self->m_dma_count[channel] = static_cast<u16>(value);
     }
   }
+}
+
+static void DoTLCSStateBytes(void* context, void* data, size_t size)
+{
+  static_cast<StateWrapper*>(context)->DoBytes(data, size);
+}
+
+bool TMP95C061::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("TMP95C061"))
+    return false;
+
+  BindCore();
+  ArcadeDuckTLCS900HDoState(DoTLCSStateBytes, &sw);
+
+  sw.Do(&m_in_reset);
+  sw.Do(&m_irq_inhibit);
+  sw.Do(&m_state_balance);
+  sw.DoArray(m_port_latch.data(), m_port_latch.size());
+  sw.DoArray(m_port_control.data(), m_port_control.size());
+  sw.DoArray(m_port_function.data(), m_port_function.size());
+  sw.Do(&m_trun);
+  sw.DoArray(m_t8_reg.data(), m_t8_reg.size());
+  sw.DoArray(m_t8_count.data(), m_t8_count.size());
+  sw.DoArray(m_t8_pending.data(), m_t8_pending.size());
+  sw.DoArray(m_t8_mode.data(), m_t8_mode.size());
+  sw.Do(&m_tffcr);
+  sw.Do(&m_trdc);
+  sw.Do(&m_to1);
+  sw.Do(&m_to3);
+  sw.DoArray(m_t16_reg.data(), m_t16_reg.size());
+  sw.DoArray(m_t16_cap.data(), m_t16_cap.size());
+  sw.DoArray(m_t16_count.data(), m_t16_count.size());
+  sw.DoArray(m_t16_mode.data(), m_t16_mode.size());
+  sw.DoArray(m_t16_ffcr.data(), m_t16_ffcr.size());
+  sw.Do(&m_t45cr);
+  sw.Do(&m_prescaler);
+  sw.DoArray(m_pgreg.data(), m_pgreg.size());
+  sw.Do(&m_pg01cr);
+  sw.Do(&m_watchdog_mode);
+  sw.Do(&m_od_enable);
+  for (SerialChannel& ch : m_serial)
+  {
+    sw.Do(&ch.mode);
+    sw.Do(&ch.control);
+    sw.Do(&ch.baud_rate);
+    sw.Do(&ch.rx_buffer);
+    sw.Do(&ch.rx_full);
+    sw.Do(&ch.tx_shift);
+    sw.Do(&ch.tx_busy);
+    sw.Do(&ch.tx_ticks_left);
+    u32 queued = static_cast<u32>(ch.rx_queue.size());
+    sw.Do(&queued);
+    if (sw.IsReading())
+    {
+      if (sw.HasError() || queued > 0x10000)
+        return false;
+      ch.rx_queue.assign(queued, 0);
+    }
+    for (u8& value : ch.rx_queue)
+      sw.Do(&value);
+    sw.Do(&ch.rx_busy);
+    sw.Do(&ch.rx_ticks_left);
+  }
+  sw.DoArray(m_ad_result.data(), m_ad_result.size());
+  sw.Do(&m_ad_mode);
+  sw.Do(&m_ad_states_left);
+  sw.DoArray(m_int_reg.data(), m_int_reg.size());
+  sw.Do(&m_iimc);
+  for (bool& line : m_int_line)
+    sw.Do(&line);
+  sw.DoArray(m_dma_vector.data(), m_dma_vector.size());
+  for (IdleState* idle : {&m_irq_idle, &m_dma_idle})
+  {
+    sw.DoArray(idle->int_reg.data(), idle->int_reg.size());
+    sw.DoArray(idle->dma_vector.data(), idle->dma_vector.size());
+    sw.Do(&idle->iff);
+    sw.Do(&idle->valid);
+  }
+  sw.DoArray(m_dma_source.data(), m_dma_source.size());
+  sw.DoArray(m_dma_dest.data(), m_dma_dest.size());
+  sw.DoArray(m_dma_count.data(), m_dma_count.size());
+  sw.DoArray(m_dma_mode.data(), m_dma_mode.size());
+  sw.DoArray(m_block_cs.data(), m_block_cs.size());
+  sw.Do(&m_external_cs);
+  sw.DoArray(m_mem_start.data(), m_mem_start.size());
+  sw.DoArray(m_mem_mask.data(), m_mem_mask.size());
+  sw.Do(&m_dram_refresh);
+  sw.Do(&m_dram_access);
+  return !sw.HasError();
 }
 } // namespace Arcade

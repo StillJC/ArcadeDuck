@@ -21,12 +21,14 @@
 #include "core/arcade/systems/namco/system10/namco_system10_punchpad.h"
 
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_save_state.h"
 #include "core/arcade/devices/storage/atapi_cdrom.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_output.h"
 #include "core/cpu_core.h"
+#include "core/host.h"
 #include "core/interrupt_controller.h"
 #include "core/system.h"
 #include "core/timing_event.h"
@@ -39,6 +41,7 @@
 #include "common/sha1_digest.h"
 #include "util/cd_image.h"
 #include "common/string_util.h"
+#include "util/state_wrapper.h"
 
 #include <algorithm>
 #include <array>
@@ -233,6 +236,8 @@ struct RuntimeState
   const MemNProfile* memn_profile = nullptr;
   u16 data_xor = 0;
   std::vector<MemNRawNAND> nands;
+  std::vector<std::string> nand_ids;
+  std::vector<Arcade::SaveState::PersistentFile> nand_files;
   std::vector<u8> lookup_ram;
   u16 control_latch = 0;
   u16 nand_device = 0;
@@ -242,6 +247,7 @@ struct RuntimeState
   std::vector<u8> memm_data_rom;
   std::string memm_persistence_directory;
   std::string memm_flash_path;
+  Arcade::SaveState::PersistentFile memm_flash_file;
   bool memm_flash_dirty = false;
   u32 memm_bank = 0;
   bool memm_direct_access = false;
@@ -280,6 +286,7 @@ struct RuntimeState
   std::unique_ptr<MGEXIOBoard> mgexio;
   MedalCabinet medal_cabinet;
   std::string mgexio_backup_path;
+  Arcade::SaveState::PersistentFile mgexio_backup_file;
 
   // Knock Down 2001 P-DRIVE PCB on the EXIO JVS link.
   std::vector<u8> pdrive_firmware;
@@ -436,6 +443,15 @@ bool TakeI2CTraceSlot(RuntimeState& runtime)
 
   runtime.i2c.trace_events++;
   return true;
+}
+
+// A byte is received MSB first from bit 7 to 0; the acknowledge phases hold
+// the -1 completed-byte sentinel until the next byte restarts at bit 7.
+bool IsI2CBitValid(const I2CState& i2c)
+{
+  if (i2c.phase == I2CPhase::AckRise || i2c.phase == I2CPhase::AckFall)
+    return i2c.bit == -1;
+  return i2c.bit >= 0 && i2c.bit <= 7;
 }
 
 void UpdateI2CState(RuntimeState& runtime)
@@ -1170,8 +1186,11 @@ void CreateMGEXIOBoard(RuntimeState& runtime)
   runtime.mgexio_backup_path =
     Path::Combine(Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), runtime.set_name), "mgexio_ram");
   const std::span<u8> backup = runtime.mgexio->GetBackupRAM();
+  runtime.mgexio_backup_file.SetPath(runtime.mgexio_backup_path);
+  runtime.mgexio_backup_file.RecordDiskAbsent();
   if (std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(runtime.mgexio_backup_path.c_str()))
   {
+    runtime.mgexio_backup_file.RecordDiskContents(data->cspan());
     if (data->size() == backup.size())
       std::copy(data->begin(), data->end(), backup.begin());
     else
@@ -1183,13 +1202,18 @@ void CreateMGEXIOBoard(RuntimeState& runtime)
 
 void SaveMGEXIOBackup(RuntimeState& runtime)
 {
+  if (Arcade::SaveState::IsRestoring())
+    return;
+
   const std::span<u8> backup = runtime.mgexio->GetBackupRAM();
   const std::string directory(Path::GetDirectory(runtime.mgexio_backup_path));
   if (!FileSystem::EnsureDirectoryExists(directory.c_str(), true) ||
       !FileSystem::WriteBinaryFile(runtime.mgexio_backup_path.c_str(), backup.data(), backup.size()))
   {
     ERROR_LOG("System 10 MGEXIO backup RAM save failed path='{}'.", runtime.mgexio_backup_path);
+    return;
   }
+  runtime.mgexio_backup_file.RecordDiskContents(backup);
 }
 
 void CreateExpansionBoard(RuntimeState& runtime)
@@ -1423,6 +1447,8 @@ bool LoadMemMProgramFlashPersistence(RuntimeState& runtime, Error* error)
   runtime.memm_persistence_directory = Path::Combine(nvram_root, runtime.set_name);
   runtime.memm_flash_path = Path::Combine(runtime.memm_persistence_directory, "28f640j5");
   runtime.memm_flash_dirty = false;
+  runtime.memm_flash_file.SetPath(runtime.memm_flash_path);
+  runtime.memm_flash_file.RecordDiskAbsent();
 
   if (!FileSystem::FileExists(runtime.memm_flash_path.c_str()))
     return true;
@@ -1440,6 +1466,7 @@ bool LoadMemMProgramFlashPersistence(RuntimeState& runtime, Error* error)
   }
 
   std::copy(data->begin(), data->end(), runtime.memm_program_flash.begin());
+  runtime.memm_flash_file.RecordDiskContents(data->cspan());
   VERBOSE_LOG("System 10 MEM(M) flash loaded canonical_set='{}' path='{}'.",
               runtime.set_name, runtime.memm_flash_path);
   return true;
@@ -1447,7 +1474,7 @@ bool LoadMemMProgramFlashPersistence(RuntimeState& runtime, Error* error)
 
 void SaveMemMProgramFlashPersistence(RuntimeState& runtime)
 {
-  if (!runtime.memm_flash_dirty)
+  if (!runtime.memm_flash_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -1461,6 +1488,7 @@ void SaveMemMProgramFlashPersistence(RuntimeState& runtime)
     return;
   }
 
+  runtime.memm_flash_file.RecordDiskContents(runtime.memm_program_flash);
   runtime.memm_flash_dirty = false;
   VERBOSE_LOG("System 10 MEM(M) flash saved canonical_set='{}' path='{}'.",
               runtime.set_name, runtime.memm_flash_path);
@@ -1471,9 +1499,15 @@ bool LoadMemNPersistence(RuntimeState& runtime, Error* error)
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
   const std::string persistence_directory = Path::Combine(nvram_root, runtime.set_name);
 
+  runtime.nand_ids.clear();
+  runtime.nand_files.clear();
+  runtime.nand_files.resize(runtime.nands.size());
   for (size_t index = 0; index < runtime.nands.size(); index++)
   {
     const std::string path = Path::Combine(persistence_directory, std::string("nand") + std::to_string(index));
+    runtime.nand_ids.push_back(std::string("nand") + std::to_string(index));
+    runtime.nand_files[index].SetPath(path);
+    runtime.nand_files[index].RecordDiskAbsent();
     if (!FileSystem::FileExists(path.c_str()))
       continue;
 
@@ -1490,6 +1524,7 @@ bool LoadMemNPersistence(RuntimeState& runtime, Error* error)
       return false;
     }
 
+    runtime.nand_files[index].RecordDiskContents(data->cspan());
     std::vector<u8> raw_image(data->begin(), data->end());
     if (!runtime.nands[index].Load(std::move(raw_image), error))
       return false;
@@ -1507,7 +1542,7 @@ void SaveMemNPersistence(RuntimeState& runtime)
   for (const MemNRawNAND& nand : runtime.nands)
     has_dirty_nand |= nand.IsDirty();
 
-  if (!has_dirty_nand)
+  if (!has_dirty_nand || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -1535,6 +1570,8 @@ void SaveMemNPersistence(RuntimeState& runtime)
       continue;
     }
 
+    if (index < runtime.nand_files.size())
+      runtime.nand_files[index].RecordDiskContents(raw_image);
     nand.ClearDirty();
     VERBOSE_LOG("System 10 MEM(N) NAND saved canonical_set='{}' nand={} path='{}'.",
                 runtime.set_name, index, path);
@@ -3607,6 +3644,211 @@ bool WriteEXP3(u32 width, u32 offset, u32 value)
   }
 
   return false;
+}
+
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  RuntimeState& r = *s_runtime;
+  if (r.media_type == MediaType::MemM)
+    components->push_back({"28f640j5", r.memm_program_flash, &r.memm_flash_file});
+  for (size_t i = 0; i < r.nands.size() && i < r.nand_files.size(); i++)
+    components->push_back({r.nand_ids[i], r.nands[i].GetRawImage(), &r.nand_files[i]});
+  if (r.mgexio)
+    components->push_back({"mgexio_ram", r.mgexio->GetBackupRAM(), &r.mgexio_backup_file});
+  if (r.cyberlead_cabinet)
+    r.cyberlead.GetNVRAMComponents(components);
+}
+
+bool SupportsSaveStates(const Arcade::Database::GameDefinition& game)
+{
+  const std::optional<BoardProfile> profile = FindBoardProfile(game.hardware_profile);
+  return !profile.has_value() || !profile->memn_profile || profile->memn_profile->expansion != ExpansionBoard::MGEXIO;
+}
+
+size_t GetExtraStateSize()
+{
+  if (!s_runtime.has_value())
+    return 0;
+
+  // Board RAM stored in the board section, plus room for device state and the CD-ROM data buffer.
+  const RuntimeState& r = *s_runtime;
+  size_t size = r.lookup_ram.size() + (1u << 20);
+  if (r.memp3)
+    size += 0x800000;
+  if (r.mgexio)
+    size += r.mgexio->GetRAMSize();
+  if (r.cdrom)
+    size += 0x10000;
+  return size;
+}
+
+bool CanSaveState(Error* error)
+{
+  if (s_runtime.has_value() && s_runtime->cyberlead_cabinet && !s_runtime->cyberlead.IsLEDSaveReady())
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", "The Cyber Lead LED board is still initializing or programming "
+                                                       "its flash. Try saving again after it finishes."));
+    return false;
+  }
+
+  return true;
+}
+
+bool IsSaveReadinessPending(std::string* message)
+{
+  if (!s_runtime.has_value() || !s_runtime->cyberlead_cabinet || s_runtime->cyberlead.IsLEDSaveReady())
+    return false;
+
+  *message = TRANSLATE_STR("System", "The Cyber Lead LED board is busy. The state will be saved as soon as it "
+                                     "finishes (up to 30 seconds).");
+  return true;
+}
+
+void AppendStateIdentity(std::string* record)
+{
+  if (s_runtime.has_value() && s_runtime->cyberlead_cabinet)
+    *record += fmt::format("cyberlead_led={}\n", s_runtime->cyberlead.IsLEDPresent() ? "present" : "absent");
+}
+
+// Deadlines are restored by TimingEvents; only activation is established here.
+static bool DoBoardEventActivation(StateWrapper& sw, TimingEvent* event)
+{
+  bool active = event && event->IsActive();
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+  if (sw.HasError() || (active && !event))
+    return false;
+  if (event)
+  {
+    if (active)
+      event->Schedule(1);
+    else
+      event->Deactivate();
+  }
+  return true;
+}
+
+// Flash/NAND contents, MGEXIO backup RAM and the Cyber Lead LED flash are NVRAM matched by fingerprint; their
+// program and erase operations complete immediately. ROM contents, profiles and callbacks are configuration and
+// diagnostic trace counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_runtime.has_value() || !sw.DoMarker("S10Board"))
+    return false;
+
+  RuntimeState& r = *s_runtime;
+  u8 media = static_cast<u8>(r.media_type);
+  sw.Do(&media);
+  if (media != static_cast<u8>(r.media_type))
+    return false;
+
+  sw.Do(&r.control_latch);
+  sw.Do(&r.nand_device);
+  sw.DoBytes(r.lookup_ram.data(), r.lookup_ram.size());
+  for (MemNRawNAND& nand : r.nands)
+  {
+    if (!nand.DoState(sw))
+      return false;
+  }
+
+  sw.Do(&r.memm_bank);
+  sw.Do(&r.memm_direct_access);
+  Intel28F640J5State& f = r.memm_flash;
+  sw.Do(&f.mode);
+  sw.Do(&f.status);
+  sw.Do(&f.master_lock);
+  for (bool& locked : f.block_locked)
+    sw.Do(&locked);
+  sw.Do(&f.sts_configuration);
+  sw.Do(&f.setup_word_address);
+  sw.Do(&f.write_buffer_block_word);
+  sw.Do(&f.write_buffer_start_word);
+  sw.Do(&f.write_buffer_count);
+  sw.Do(&f.write_buffer_received);
+  sw.DoArray(f.write_buffer.data(), f.write_buffer.size());
+  sw.Do(&r.type1_enabled);
+  sw.Do(&r.type1_iv);
+  sw.Do(&r.type1_generation);
+  sw.Do(&r.type1_state.mask);
+  sw.Do(&r.type1_state.counter);
+  sw.Do(&r.type2_enabled);
+  sw.Do(&r.type2_iv);
+  sw.Do(&r.type2_generation);
+  sw.Do(&r.type2_state.previous_cipherwords);
+  sw.Do(&r.type2_state.previous_plainwords);
+  sw.Do(&r.type2_state.mask);
+  sw.Do(&r.type2_state.nonlinear_count);
+
+  I2CState& i2c = r.i2c;
+  sw.Do(&i2c.host_clock);
+  sw.Do(&i2c.host_data);
+  sw.Do(&i2c.device_clock);
+  sw.Do(&i2c.device_data);
+  sw.Do(&i2c.previous_clock);
+  sw.Do(&i2c.previous_data);
+  sw.Do(&i2c.phase);
+  sw.Do(&i2c.byte);
+  sw.Do(&i2c.bit);
+
+  sw.Do(&r.test_switch_was_pressed);
+  sw.Do(&r.test_switch_latched);
+  sw.Do(&r.watchdog_frames_remaining);
+  sw.Do(&r.cdrom_dma);
+  sw.Do(&r.pdrive_outputs);
+  sw.Do(&r.punch_was_pressed);
+  sw.DoArray(r.trackball_command.data(), r.trackball_command.size());
+  sw.Do(&r.trackball_command_length);
+  sw.Do(&r.jvs_addressed);
+  sw.Do(&r.exio_ident_bit);
+  sw.Do(&r.exio_ident_byte);
+  sw.Do(&r.baseboard_interrupt_status);
+
+  if (sw.IsReading() &&
+      (sw.HasError() || f.mode > Intel28F640J5Mode::WriteBufferConfirm ||
+       f.write_buffer_count > f.write_buffer.size() || f.write_buffer_received > f.write_buffer.size() ||
+       i2c.phase > I2CPhase::AckFall || !IsI2CBitValid(i2c) || r.exio_ident_bit < 0 || r.exio_ident_bit > 7 ||
+       r.trackball_command_length > r.trackball_command.size()))
+  {
+    return false;
+  }
+
+  if (!r.punch_pad.DoState(sw) || !r.punch_button.DoState(sw) || !r.kd_carriage.DoState(sw) ||
+      !r.medal_cabinet.DoState(sw) || !r.jvs_bus.DoState(sw) ||
+      !DoBoardEventActivation(sw, s_baseboard_io_event.get()) || !DoBoardEventActivation(sw, s_cabinet_io_event.get()))
+  {
+    return false;
+  }
+
+  // Expansion and media boards must match the running configuration.
+  u8 boards = static_cast<u8>((r.exio ? 1 : 0) | (r.cdrom ? 2 : 0) | (r.memp3 ? 4 : 0) | (r.mgexio ? 8 : 0) |
+                              (r.pdrive ? 16 : 0) | (r.cyberlead_cabinet ? 32 : 0));
+  const u8 expected = boards;
+  sw.Do(&boards);
+  if (boards != expected)
+    return false;
+
+  const auto board_failed = [](const char* name) {
+    ERROR_LOG("System 10 {} state failed.", name);
+    return false;
+  };
+  if (r.exio && !r.exio->DoState(sw))
+    return board_failed("EXIO");
+  if (r.cdrom && !r.cdrom->DoState(sw))
+    return board_failed("CD-ROM");
+  if (r.memp3 && !r.memp3->DoState(sw))
+    return board_failed("MEM(P3)");
+  if (r.mgexio && !r.mgexio->DoState(sw))
+    return board_failed("MGEXIO");
+  if (r.pdrive && !r.pdrive->DoState(sw))
+    return board_failed("P-DRIVE");
+  if (r.cyberlead_cabinet && !r.cyberlead.DoState(sw))
+    return board_failed("Cyber Lead");
+
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

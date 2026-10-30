@@ -3,6 +3,8 @@
 
 #include "core/arcade/devices/audio/k054539.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -1564,6 +1566,47 @@ void Chip::GenerateFrame(s32* left, s32* right, ChannelFrame* channel_output,
   // Preserve the complete chip mix until the final board output clamp.
   *left = static_cast<s32>(std::lrint(left_value));
   *right = static_cast<s32>(std::lrint(right_value));
+}
+
+bool Chip::DoState(StateWrapper& sw)
+{
+  sw.DoArray(m_registers.data(), m_registers.size());
+  for (std::array<u8, 3>& latch : m_position_latch)
+    sw.DoArray(latch.data(), latch.size());
+  for (Channel& ch : m_channels)
+  {
+    sw.Do(&ch.position);
+    sw.Do(&ch.position_fraction);
+    sw.Do(&ch.current_value);
+    sw.Do(&ch.previous_value);
+  }
+  sw.DoArray(m_reverb_ram.data(), m_reverb_ram.size());
+  sw.DoArray(m_aux_input.data(), m_aux_input.size());
+  sw.DoArray(m_gq_shadow_aux_input.data(), m_gq_shadow_aux_input.size());
+  sw.DoArray(m_gq_rvv_aux_input.data(), m_gq_rvv_aux_input.size());
+  sw.DoArray(m_gq_internal_ram_cpu_shadow.data(), m_gq_internal_ram_cpu_shadow.size());
+  sw.DoArray(m_gq_axdt_full_feedback.data(), m_gq_axdt_full_feedback.size());
+  sw.Do(&m_gq_axdt_full_feedback_valid);
+  sw.DoArray(m_gq_axdt_closed_loop_feedback.data(), m_gq_axdt_closed_loop_feedback.size());
+  sw.Do(&m_gq_axdt_closed_loop_feedback_valid);
+  sw.DoArray(m_gq_axdt_rvv_loop_feedback.data(), m_gq_axdt_rvv_loop_feedback.size());
+  sw.Do(&m_gq_axdt_rvv_loop_feedback_valid);
+  sw.DoArray(m_gq_axdt_signed_feedback.data(), m_gq_axdt_signed_feedback.size());
+  sw.Do(&m_gq_axdt_signed_feedback_valid);
+  sw.DoArray(m_gq_output_latches.data(), m_gq_output_latches.size());
+  sw.DoArray(m_gq_effect_feedback_p11.data(), m_gq_effect_feedback_p11.size());
+  sw.DoArray(m_gq_effect_feedback_p13.data(), m_gq_effect_feedback_p13.size());
+  sw.Do(&m_gq_effect_shadow.dlat_a);
+  sw.Do(&m_gq_effect_shadow.dlat_b);
+  sw.Do(&m_gq_effect_shadow.dlat_c);
+  sw.Do(&m_gq_effect_shadow.dlat_d);
+  sw.Do(&m_gq_effect_shadow.previous_mula_out);
+  sw.Do(&m_gq_effect_shadow.adde);
+  sw.Do(&m_gq_effect_shadow.mula_lat);
+  sw.Do(&m_reverb_position);
+  sw.Do(&m_data_pointer);
+  sw.Do(&m_data_bank);
+  return !sw.HasError() && (!sw.IsReading() || m_reverb_position < m_reverb_ram.size());
 }
 
 } // namespace K054539

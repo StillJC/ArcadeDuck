@@ -6,6 +6,7 @@
 // BSD-3-Clause lc82310.cpp. See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/devices/audio/lc82310.h"
+#include "util/state_wrapper.h"
 
 // The decoder holds a 4 KiB stream buffer, too small for minimp3's default of
 // ten consecutive frames when synchronising (as configured by MAME).
@@ -240,6 +241,49 @@ void LC82310::GenerateFrame(s32* left, s32* right)
     m_rate_phase -= OUTPUT_RATE;
     m_sample_index++;
   }
+}
+
+bool LC82310::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("LC82310"))
+    return false;
+
+  mp3dec_t& d = m_decoder->state;
+  sw.DoBytes(d.mdct_overlap, sizeof(d.mdct_overlap));
+  sw.DoBytes(d.qmf_state, sizeof(d.qmf_state));
+  sw.Do(&d.reserv);
+  sw.Do(&d.free_format_bytes);
+  sw.DoBytes(d.header, sizeof(d.header));
+  sw.DoBytes(d.reserv_buf, sizeof(d.reserv_buf));
+  sw.DoArray(m_buffer.data(), m_buffer.size());
+  sw.Do(&m_buffer_count);
+  sw.Do(&m_stream_found);
+  sw.Do(&m_frame_release);
+  sw.DoArray(m_samples.data(), m_samples.size());
+  sw.Do(&m_sample_count);
+  sw.Do(&m_sample_index);
+  sw.Do(&m_frame_rate);
+  sw.Do(&m_rate_phase);
+  sw.DoArray(m_gain.data(), m_gain.size());
+  sw.Do(&m_cs);
+  sw.Do(&m_clock);
+  sw.Do(&m_di);
+  sw.Do(&m_do);
+  sw.Do(&m_accepting_parameter);
+  sw.Do(&m_command);
+  sw.Do(&m_shift);
+  sw.Do(&m_bits);
+  sw.Do(&m_out_shift);
+  // m_sample_count and m_sample_index count stereo frames. At up to 48 kHz the
+  // index advances at most two frames per 44.1 kHz output frame, so a finished
+  // frame leaves it at most one past the count. m_bits counts serial bits 0..7.
+  if (sw.IsReading() &&
+      (m_buffer_count > BUFFER_SIZE || m_sample_count > MAX_FRAME_SAMPLES || m_sample_index > m_sample_count + 1 ||
+       m_bits >= 8 || d.reserv < 0 || d.reserv > static_cast<int>(sizeof(d.reserv_buf))))
+  {
+    return false;
+  }
+  return !sw.HasError();
 }
 
 } // namespace Arcade

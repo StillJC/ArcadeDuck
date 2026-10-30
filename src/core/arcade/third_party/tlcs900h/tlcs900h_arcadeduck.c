@@ -78,3 +78,28 @@ uint32 dmaLoadL(uint8 reg) { return s_callbacks.control_read(s_callbacks.context
 void dmaStoreB(uint8 reg, uint8 value) { s_callbacks.control_write(s_callbacks.context, reg, 1, value); }
 void dmaStoreW(uint8 reg, uint16 value) { s_callbacks.control_write(s_callbacks.context, reg, 2, value); }
 void dmaStoreL(uint8 reg, uint32 value) { s_callbacks.control_write(s_callbacks.context, reg, 4, value); }
+
+extern int32 cycles_extra;
+
+#define TLCS_STATE(value) callback(context, &(value), sizeof(value))
+void ArcadeDuckTLCS900HDoState(ArcadeDuckTLCS900HStateCallback callback, void* context)
+{
+  TLCS_STATE(pc);
+  TLCS_STATE(sr);
+  TLCS_STATE(f_dash);
+  TLCS_STATE(gprBank);
+  TLCS_STATE(gpr);
+  TLCS_STATE(rErr);
+  TLCS_STATE(statusRFP);
+  TLCS_STATE(s_halted);
+  TLCS_STATE(mem);
+  TLCS_STATE(size);
+  TLCS_STATE(first);
+  TLCS_STATE(second);
+  TLCS_STATE(R);
+  TLCS_STATE(brCode);
+  TLCS_STATE(rCode);
+  TLCS_STATE(cycles);
+  TLCS_STATE(cycles_extra);
+}
+#undef TLCS_STATE

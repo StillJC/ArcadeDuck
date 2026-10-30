@@ -1,5 +1,7 @@
 #include "sh7014.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cstring>
 
@@ -1580,5 +1582,93 @@ void SH7014::WriteBus32(uint32_t address, uint32_t value)
     WriteBus16(address, static_cast<uint16_t>(value >> 16));
     WriteBus16(address + 2u, static_cast<uint16_t>(value));
   }
+}
+
+// Callbacks, the external bus and the CPU's instruction-fetch regions are host configuration.
+bool SH7014::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("SH7014") || !m_cpu.DoState(sw))
+    return false;
+
+  sw.DoArray(m_cram.data(), m_cram.size());
+  sw.DoArray(m_sram.data(), m_sram.size());
+  sw.DoArray(m_cache_ram.data(), m_cache_ram.size());
+  sw.Do(&m_ccr);
+  sw.Do(&m_sci0.smr);
+  sw.Do(&m_sci0.brr);
+  sw.Do(&m_sci0.scr);
+  sw.Do(&m_sci0.tdr);
+  sw.Do(&m_sci0.ssr);
+  sw.Do(&m_sci0.rdr);
+  sw.Do(&m_sci0.tx_shift);
+  sw.Do(&m_sci0.tx_cycles_remaining);
+  sw.Do(&m_sci0.tx_active);
+  sw.Do(&m_sci0.tx_tdr_pending);
+  sw.Do(&m_sci0_tx_cycles_per_byte);
+  sw.Do(&m_sci0_tx_bytes_per_second);
+  sw.Do(&m_sci0_tx_cycle_remainder);
+  sw.Do(&m_dmac.dmaor);
+  for (DMACChannelState& c : m_dmac.channel)
+  {
+    sw.Do(&c.sar);
+    sw.Do(&c.dar);
+    sw.Do(&c.dmatcr);
+    sw.Do(&c.chcr);
+    sw.Do(&c.request_cycles_remaining);
+    sw.Do(&c.pending_request_source);
+    sw.Do(&c.external_request_asserted);
+  }
+  sw.Do(&m_mtu.tsyr);
+  for (MTUChannelState& c : m_mtu.channel)
+  {
+    sw.Do(&c.tcr);
+    sw.Do(&c.tmdr);
+    sw.Do(&c.tiorh);
+    sw.Do(&c.tiorl);
+    sw.Do(&c.tier);
+    sw.Do(&c.tsr);
+    sw.Do(&c.tcnt);
+    sw.DoArray(c.tgr.data(), c.tgr.size());
+    sw.Do(&c.prescale_accum);
+    sw.Do(&c.enabled);
+  }
+  for (bool& pending : m_internal_irq_pending)
+    sw.Do(&pending);
+  sw.Do(&m_bsc.bcr1);
+  sw.Do(&m_bsc.bcr2);
+  sw.Do(&m_bsc.wcr1);
+  sw.Do(&m_bsc.wcr2);
+  sw.Do(&m_bsc.dcr);
+  sw.Do(&m_bsc.rtcsr);
+  sw.Do(&m_bsc.rtcnt);
+  sw.Do(&m_bsc.rtcor);
+  sw.Do(&m_ports.padr);
+  sw.Do(&m_ports.paior);
+  sw.Do(&m_ports.pacr1);
+  sw.Do(&m_ports.pacr2);
+  sw.Do(&m_ports.pbdr);
+  sw.Do(&m_ports.pbior);
+  sw.Do(&m_ports.pbcr1);
+  sw.Do(&m_ports.pbcr2);
+  sw.Do(&m_ports.pedr);
+  sw.Do(&m_ports.peior);
+  sw.Do(&m_ports.pecr1);
+  sw.Do(&m_ports.pecr2);
+  sw.Do(&m_ports.pfdr);
+  sw.Do(&m_intc.ipra);
+  sw.Do(&m_intc.iprb);
+  sw.Do(&m_intc.iprc);
+  sw.Do(&m_intc.iprd);
+  sw.Do(&m_intc.ipre);
+  sw.Do(&m_intc.iprf);
+  sw.Do(&m_intc.iprg);
+  sw.Do(&m_intc.iprh);
+  sw.Do(&m_intc.icr);
+  sw.Do(&m_intc.isr);
+  sw.Do(&m_peripheral_pending_cycles);
+  sw.Do(&m_peripheral_next_event);
+  sw.Do(&m_peripheral_sync_active);
+  sw.Do(&m_peripheral_step_forced);
+  return !sw.HasError();
 }
 } // namespace Arcade

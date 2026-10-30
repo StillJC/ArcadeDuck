@@ -12,6 +12,8 @@
 #include "common/log.h"
 #include "common/thirdparty/SmallVector.h"
 
+#include <algorithm>
+
 Log_SetChannel(TimingEvents);
 
 namespace TimingEvents {
@@ -35,6 +37,8 @@ struct TimingEventsState
   GlobalTicks current_event_next_run_time = 0;
   GlobalTicks global_tick_counter = 0;
   GlobalTicks event_run_tick_counter = 0;
+  bool frame_host_work_pending = false;
+  bool inside_instruction_pair = false;
 };
 } // namespace
 
@@ -68,6 +72,8 @@ void TimingEvents::Reset()
 {
   s_state.global_tick_counter = 0;
   s_state.event_run_tick_counter = 0;
+  s_state.frame_host_work_pending = false;
+  s_state.inside_instruction_pair = false;
 }
 
 void TimingEvents::Shutdown()
@@ -378,6 +384,33 @@ void TimingEvents::RunEvents()
 
     UpdateCPUDowncount();
   } while (CPU::GetPendingTicks() >= CPU::g_state.downcount);
+
+  if (s_state.frame_host_work_pending) [[unlikely]]
+  {
+    if (s_state.inside_instruction_pair)
+    {
+      // Event deadlines are unchanged; this only ends the current block after the delay slot so the work runs at the
+      // next instruction boundary instead of after the next frame.
+      CPU::g_state.downcount = 0;
+    }
+    else
+    {
+      s_state.frame_host_work_pending = false;
+      System::RunFrameHostWork();
+    }
+  }
+}
+
+void TimingEvents::RunEventsInsideInstructionPair()
+{
+  s_state.inside_instruction_pair = true;
+  RunEvents();
+  s_state.inside_instruction_pair = false;
+}
+
+void TimingEvents::DeferFrameHostWork()
+{
+  s_state.frame_host_work_pending = true;
 }
 
 void TimingEvents::CommitLeftoverTicks()
@@ -395,7 +428,7 @@ void TimingEvents::CommitLeftoverTicks()
   UpdateCPUDowncount();
 }
 
-bool TimingEvents::DoState(StateWrapper& sw)
+bool TimingEvents::DoState(StateWrapper& sw, bool strict)
 {
   if (sw.GetVersion() < 71) [[unlikely]]
   {
@@ -463,6 +496,9 @@ bool TimingEvents::DoState(StateWrapper& sw)
       u32 event_count = 0;
       sw.Do(&event_count);
 
+      u32 matched_count = 0;
+      bool all_found = true;
+      llvm::SmallVector<TimingEvent*, 16> saved_order;
       for (u32 i = 0; i < event_count; i++)
       {
         TinyString event_name;
@@ -480,21 +516,77 @@ bool TimingEvents::DoState(StateWrapper& sw)
         if (!event)
         {
           WARNING_LOG("Save state has event '{}', but couldn't find this event when loading.", event_name);
+          all_found = false;
           continue;
+        }
+
+        if (strict && std::find(saved_order.begin(), saved_order.end(), event) != saved_order.end())
+        {
+          ERROR_LOG("Save state lists event '{}' more than once.", event_name);
+          return false;
+        }
+
+        // The event loop advances a recurring event by its interval after each callback; a non-positive interval
+        // never moves it past the current time unless the callback reschedules it.
+        if (strict && (period <= 0 || interval <= 0))
+        {
+          ERROR_LOG("Save state has invalid timing for event '{}': period {}, interval {}.", event_name, period,
+                    interval);
+          return false;
         }
 
         event->m_next_run_time = next_run_time;
         event->m_last_run_time = last_run_time;
         event->m_period = period;
         event->m_interval = interval;
+        saved_order.push_back(event);
+        matched_count++;
       }
 
       DEBUG_LOG("Loaded {} events from save state.", event_count);
 
+      if (strict && (!all_found || matched_count != s_state.active_event_count))
+      {
+        for (TimingEvent* event = s_state.active_events_head; event; event = event->next)
+          ERROR_LOG("Active event after restore: '{}'", event->GetName());
+        ERROR_LOG("Event set mismatch: {} saved, {} matched, {} active.", event_count, matched_count,
+                  s_state.active_event_count);
+        return false;
+      }
+
       // Even if we're actually running an event, we don't want to set it to a new counter.
       s_state.current_event = nullptr;
 
-      SortEvents();
+      if (strict)
+      {
+        // Execution order follows the list, and SortEvents() reverses ties. Relink exactly as saved, then move the
+        // event that was running at save time to its new position, as the event loop does once its callback returns.
+        s32 current_index = -1;
+        sw.Do(&current_index);
+        if (sw.HasError() || current_index < -1 || current_index >= static_cast<s32>(saved_order.size()))
+          return false;
+
+        TimingEvent* prev = nullptr;
+        for (TimingEvent* event : saved_order)
+        {
+          event->prev = prev;
+          event->next = nullptr;
+          if (prev)
+            prev->next = event;
+          else
+            s_state.active_events_head = event;
+          prev = event;
+        }
+        s_state.active_events_tail = prev;
+
+        if (current_index >= 0)
+          SortEvent(saved_order[current_index]);
+      }
+      else
+      {
+        SortEvents();
+      }
+
       UpdateCPUDowncount();
     }
     else
@@ -510,6 +602,20 @@ bool TimingEvents::DoState(StateWrapper& sw)
         sw.Do(&event->m_last_run_time);
         sw.Do(&event->m_period);
         sw.Do(&event->m_interval);
+      }
+
+      if (strict)
+      {
+        // Saves are taken inside an event callback. That event's new deadline is written above, but it still sits
+        // at its old list position until the loop re-sorts it after the callback; record which one it is.
+        s32 current_index = -1;
+        s32 index = 0;
+        for (TimingEvent* event = s_state.active_events_head; event; event = event->next, index++)
+        {
+          if (event == s_state.current_event)
+            current_index = index;
+        }
+        sw.Do(&current_index);
       }
 
       DEBUG_LOG("Wrote {} events to save state.", s_state.active_event_count);

@@ -8,6 +8,8 @@
 #include <array>
 #include <deque>
 
+class StateWrapper;
+
 namespace Arcade
 {
 // Toshiba TMP95C061 TLCS-900/H microcontroller: the CPU core plus the on-chip
@@ -75,6 +77,10 @@ public:
 
   // Runs for the given number of states. Overrun is carried into the next call.
   void Run(u32 states);
+
+  // Serializes the peripherals and, through the single global TLCS-900/H interpreter, the CPU. Callbacks
+  // and the direct-memory window are host configuration.
+  bool DoState(StateWrapper& sw);
 
   // Queues a frame for RXDn. Queued frames are shifted in at the channel's
   // programmed bit rate once the receiver is enabled.

@@ -8,11 +8,15 @@
 #include <array>
 #include <span>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 class Bus
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u8 Sync = UINT8_C(0xE0);
   static constexpr u8 Escape = UINT8_C(0xD0);
   static constexpr u8 BroadcastAddress = UINT8_C(0xFF);

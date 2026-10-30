@@ -8,6 +8,8 @@
 
 #include <array>
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // Medal pusher cabinet mechanics wired to the MGEXIO ports: medal entry
@@ -16,6 +18,8 @@ namespace NamcoSystem10 {
 class MedalCabinet
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   void Reset();
 
   u8 ReadPort(MGEXIOBoard::Port port);

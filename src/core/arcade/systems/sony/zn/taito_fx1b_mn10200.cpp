@@ -11,6 +11,8 @@
 #include "core/pch.h"
 #include "core/arcade/systems/sony/zn/taito_fx1b_mn10200.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -2052,5 +2054,66 @@ u8 Core::ReadInternalIO(u32 offset)
 }
 
 #undef MN10200_LOG
+
+// Bus and port callbacks are reconstructed by Initialize().
+bool Core::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("MN10200"))
+    return false;
+
+  sw.Do(&m_cycles);
+  sw.Do(&m_pc);
+  sw.DoArray(m_d.data(), m_d.size());
+  sw.DoArray(m_a.data(), m_a.size());
+  sw.Do(&m_psw);
+  sw.Do(&m_mdr);
+  sw.DoArray(m_icrl.data(), m_icrl.size());
+  sw.DoArray(m_icrh.data(), m_icrh.size());
+  sw.Do(&m_nmicr);
+  sw.Do(&m_iagr);
+  sw.Do(&m_extmdl);
+  sw.Do(&m_extmdh);
+  sw.Do(&m_possible_irq);
+  for (SimpleTimer& timer : m_simple_timer)
+  {
+    sw.Do(&timer.mode);
+    sw.Do(&timer.base);
+    sw.Do(&timer.cur);
+    sw.Do(&timer.cycles_until_tick);
+  }
+  for (Prescaler& prescaler : m_prescaler)
+  {
+    sw.Do(&prescaler.mode);
+    sw.Do(&prescaler.base);
+    sw.Do(&prescaler.cur);
+  }
+  for (DMAState& dma : m_dma)
+  {
+    sw.Do(&dma.adr);
+    sw.Do(&dma.count);
+    sw.Do(&dma.iadr);
+    sw.Do(&dma.ctrll);
+    sw.Do(&dma.ctrlh);
+    sw.Do(&dma.irq);
+  }
+  for (SerialState& serial : m_serial)
+  {
+    sw.Do(&serial.ctrll);
+    sw.Do(&serial.ctrlh);
+    sw.Do(&serial.buf);
+    sw.Do(&serial.recv);
+  }
+  sw.Do(&m_pplul);
+  sw.Do(&m_ppluh);
+  sw.Do(&m_p3md);
+  sw.Do(&m_p4);
+  for (PortState& port : m_port)
+  {
+    sw.Do(&port.out);
+    sw.Do(&port.dir);
+  }
+
+  return !sw.HasError();
+}
 
 } // namespace MN10200

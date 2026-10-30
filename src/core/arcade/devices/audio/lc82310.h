@@ -8,6 +8,8 @@
 #include <array>
 #include <memory>
 
+class StateWrapper;
+
 namespace Arcade {
 
 // Sanyo LC82310 MP3 decoder. A host CPU sends 8-bit commands (LSB first) over
@@ -16,6 +18,8 @@ namespace Arcade {
 class LC82310
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 OUTPUT_RATE = 44100;
 
   LC82310();

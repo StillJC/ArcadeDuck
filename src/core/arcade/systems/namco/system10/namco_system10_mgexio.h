@@ -13,6 +13,8 @@
 class TimingEvent;
 struct h8_system_t;
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 class MGEXIOPeripherals;
@@ -23,6 +25,8 @@ class MGEXIOPeripherals;
 class MGEXIOBoard
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   // H8/3007 I/O ports wired on the board.
   enum class Port : u8
   {
@@ -58,6 +62,7 @@ public:
   bool Read(u32 width, u32 offset, u32* value);
   bool Write(u32 width, u32 offset, u32 value);
 
+  size_t GetRAMSize() const { return m_ram.size(); }
   std::span<u8> GetBackupRAM() { return std::span<u8>(m_ram.data(), BACKUP_SIZE); }
 
 private:

@@ -7,11 +7,15 @@
 
 #include <array>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 class NamcoEMIO102 final : public Node
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   void Reset() override;
   Node::PacketResult ProcessAddressedPacket(std::span<const u8> packet) override;
 

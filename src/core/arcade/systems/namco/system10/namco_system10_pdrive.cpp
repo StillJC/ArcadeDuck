@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/systems/namco/system10/namco_system10_pdrive.h"
+#include "core/arcade/devices/cpu/h8_300h_state.h"
+#include "util/state_wrapper.h"
 
 #include "core/arcade/devices/cpu/h8_3002_intc.h"
 #include "core/system.h"
@@ -55,6 +57,63 @@ constexpr u8 TCR_PRESCALER_SHIFT[8] = {0, 1, 2, 3, 0, 0, 0, 0};
 class PDrivePeripherals
 {
 public:
+  bool DoState(StateWrapper& sw)
+  {
+    if (!m_intc.DoState(sw))
+      return false;
+    sw.DoArray(m_ddr.data(), m_ddr.size());
+    sw.DoArray(m_dr.data(), m_dr.size());
+    sw.Do(&m_syscr);
+    sw.Do(&m_smr);
+    sw.Do(&m_brr);
+    sw.Do(&m_scr);
+    sw.Do(&m_ssr);
+    sw.Do(&m_rdr);
+    sw.Do(&m_tdr);
+    sw.Do(&m_tdr_full);
+    sw.Do(&m_shifting);
+    sw.Do(&m_shift_byte);
+    sw.Do(&m_shift_end);
+    u32 queued = static_cast<u32>(m_rx.size());
+    sw.Do(&queued);
+    if (sw.IsReading())
+    {
+      if (sw.HasError() || queued > 0x10000)
+        return false;
+      m_rx.assign(queued, Received{});
+    }
+    for (Received& r : m_rx)
+    {
+      sw.Do(&r.value);
+      sw.Do(&r.arrival);
+    }
+    sw.Do(&m_tstr);
+    for (ITUChannel& c : m_itu)
+    {
+      sw.Do(&c.tcr);
+      sw.Do(&c.tior);
+      sw.Do(&c.tier);
+      sw.Do(&c.tsr);
+      sw.Do(&c.grb);
+      sw.Do(&c.stopped_count);
+    }
+    sw.Do(&m_tcnt1_origin);
+    sw.Do(&m_tcnt1_latch);
+    sw.Do(&m_next_overflow1);
+    sw.Do(&m_tcnt4_origin);
+    sw.Do(&m_tcnt4_base);
+    sw.Do(&m_tcnt4_latch);
+    sw.Do(&m_wdt_high);
+    sw.Do(&m_wdt_tcsr);
+    sw.Do(&m_wdt_tcnt);
+    sw.Do(&m_wdt_origin);
+    sw.Do(&m_sensors);
+    sw.Do(&m_next_sensor_change);
+    sw.Do(&m_motor_rate);
+    sw.Do(&m_outputs);
+    return !sw.HasError();
+  }
+
   explicit PDrivePeripherals(PDriveBoard& board) : m_board(board) { Reset(0); }
 
   void Reset(u64 clock)
@@ -660,6 +719,45 @@ void PDriveBoard::WriteByte(u32 address, u8 value)
   }
   if (address >= IO_BASE)
     m_peripherals->Write(address, value, m_clock);
+}
+
+// Deadlines are restored by TimingEvents; only activation is established here.
+static bool DoPDriveEventActivation(StateWrapper& sw, TimingEvent* event)
+{
+  bool active = event && event->IsActive();
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+  if (sw.HasError() || (active && !event))
+    return false;
+  if (event)
+  {
+    if (active)
+      event->Schedule(1);
+    else
+      event->Deactivate();
+  }
+  return true;
+}
+
+// The firmware ROM is content. Timestamps are on the board clock, which is stored.
+bool PDriveBoard::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("S10PDrive"))
+    return false;
+
+  sw.DoArray(m_ram.data(), m_ram.size());
+  sw.Do(&m_clock);
+  sw.Do(&m_clock_fraction);
+  sw.Do(&m_clock_balance);
+  sw.Do(&m_running);
+  if (!DoPDriveEventActivation(sw, m_event.get()) || !Arcade::H8::DoCoreState(sw, *m_cpu) ||
+      !m_peripherals->DoState(sw))
+  {
+    return false;
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

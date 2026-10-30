@@ -9,6 +9,7 @@
 #include "common/log.h"
 #include "common/timer.h"
 #include "util/cd_image.h"
+#include "util/state_wrapper.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1083,5 +1084,91 @@ void System12CDXA::SH2ExternalWrite32(uint32_t address, uint32_t value)
 {
   SH2ExternalWrite16(address, static_cast<uint16_t>(value >> 16));
   SH2ExternalWrite16(address + 2u, static_cast<uint16_t>(value));
+}
+
+// The CD image is host media (sector reads are random access). Diagnostic audio counters are excluded. The PS1
+// IRQ10 line level belongs to the interrupt controller state.
+bool System12CDXA::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("S12CDXA") || !m_sh2.DoState(sw))
+    return false;
+
+  sw.Do(&m_sh2_running);
+  sw.Do(&m_sram_selected);
+  sw.Do(&m_ide_sh2_enabled);
+  sw.Do(&m_ide_ps1_enabled);
+  sw.Do(&m_psx_int10_busy);
+  sw.Do(&m_boot_latch);
+  sw.Do(&m_unknown_6018);
+  sw.Do(&m_sh2_417000_latch);
+  sw.DoArray(m_volume_latch.data(), m_volume_latch.size());
+  sw.DoArray(m_volume_gain_q16.data(), m_volume_gain_q16.size());
+  sw.Do(&m_volume_control);
+  sw.Do(&m_volume_data);
+  sw.Do(&m_volume_write_phase);
+  sw.Do(&m_audio_word);
+  sw.Do(&m_audio_word_byte);
+  sw.Do(&m_audio_left_channel);
+  sw.Do(&m_audio_pending_left);
+  sw.Do(&m_audio_muted);
+  for (StereoFrame& frame : m_audio_queue)
+  {
+    sw.Do(&frame.left);
+    sw.Do(&frame.right);
+  }
+  u32 queue_read = static_cast<u32>(m_audio_queue_read), queue_write = static_cast<u32>(m_audio_queue_write);
+  u32 queue_count = static_cast<u32>(m_audio_queue_count);
+  sw.Do(&queue_read);
+  sw.Do(&queue_write);
+  sw.Do(&queue_count);
+  sw.Do(&m_audio_host_primed);
+  sw.Do(&m_audio_current.left);
+  sw.Do(&m_audio_current.right);
+  sw.Do(&m_audio_next.left);
+  sw.Do(&m_audio_next.right);
+  sw.Do(&m_audio_resample_phase);
+  sw.Do(&m_audio_sci_bytes);
+  sw.Do(&m_atapi_phase);
+  sw.Do(&m_ata_error);
+  sw.Do(&m_ata_features);
+  sw.Do(&m_ata_sector_count);
+  sw.Do(&m_ata_lba_mid);
+  sw.Do(&m_ata_lba_high);
+  sw.Do(&m_ata_device);
+  sw.Do(&m_ata_status);
+  sw.Do(&m_ata_device_control);
+  sw.Do(&m_atapi_media_change);
+  sw.Do(&m_atapi_sense_key);
+  sw.Do(&m_atapi_sense_asc);
+  sw.Do(&m_atapi_sense_ascq);
+  sw.DoArray(m_identify_words.data(), m_identify_words.size());
+  u32 identify_word = static_cast<u32>(m_identify_word), packet_size = static_cast<u32>(m_packet_size);
+  u32 data_size = static_cast<u32>(m_atapi_data_size), data_offset = static_cast<u32>(m_atapi_data_offset);
+  sw.Do(&identify_word);
+  sw.DoArray(m_packet.data(), m_packet.size());
+  sw.Do(&packet_size);
+  sw.Do(&data_size);
+  sw.Do(&data_offset);
+  sw.DoBytes(m_atapi_data.data(), data_size <= m_atapi_data.size() ? data_size : 0);
+
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || queue_read >= AUDIO_QUEUE_CAPACITY || queue_write >= AUDIO_QUEUE_CAPACITY ||
+        queue_count > AUDIO_QUEUE_CAPACITY || m_atapi_phase > ATAPIPhase::PacketDataIn ||
+        identify_word > m_identify_words.size() || packet_size > m_packet.size() || data_size > m_atapi_data.size() ||
+        data_offset > data_size)
+    {
+      return false;
+    }
+    m_audio_queue_read = queue_read;
+    m_audio_queue_write = queue_write;
+    m_audio_queue_count = queue_count;
+    m_identify_word = identify_word;
+    m_packet_size = packet_size;
+    m_atapi_data_size = data_size;
+    m_atapi_data_offset = data_offset;
+  }
+
+  return !sw.HasError();
 }
 } // namespace Arcade::Namco

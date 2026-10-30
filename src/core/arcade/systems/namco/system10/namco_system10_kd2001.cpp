@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/systems/namco/system10/namco_system10_kd2001.h"
+#include "util/state_wrapper.h"
 #include "core/arcade/systems/namco/system10/namco_system10_pdrive.h"
 
 #include <algorithm>
@@ -132,6 +133,15 @@ u64 KnockDownCarriage::NextChange(u64 clock) const
   if (!std::isfinite(next))
     return std::numeric_limits<u64>::max();
   return m_origin + static_cast<u64>(std::ceil(next * CLOCK_HZ)) + 1;
+}
+
+bool KnockDownCarriage::DoState(StateWrapper& sw)
+{
+  sw.Do(&m_position);
+  sw.Do(&m_rate);
+  sw.Do(&m_origin);
+  sw.Do(&m_punch_speed);
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

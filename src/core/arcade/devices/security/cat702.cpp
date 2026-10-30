@@ -3,6 +3,8 @@
 
 #include "core/arcade/devices/security/cat702.h"
 
+#include "util/state_wrapper.h"
+
 namespace CAT702 {
 
 namespace {
@@ -126,6 +128,18 @@ void Chip::ApplyKeyTransform(u32 selector)
     coefficients[bit] = ComputeCoefficient(selector, bit);
 
   m_state = ApplyTransform(m_state, coefficients);
+}
+
+bool Chip::DoState(StateWrapper& sw)
+{
+  sw.DoArray(m_key.data(), m_key.size());
+  sw.Do(&m_state);
+  sw.Do(&m_bit);
+  sw.Do(&m_select);
+  sw.Do(&m_clock);
+  sw.Do(&m_data_in);
+  sw.Do(&m_data_out);
+  return !sw.HasError() && (!sw.IsReading() || m_bit < 8);
 }
 
 } // namespace CAT702

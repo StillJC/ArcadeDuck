@@ -4,6 +4,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <limits>
 
@@ -547,5 +549,28 @@ void CPU::Execute(uint16_t op, uint32_t pc, uint32_t& cycles)
 
   m_illegal_instruction = true;
   RaiseException(InDelaySlot() ? 6 : 4, pc);
+}
+
+bool CPU::DoState(StateWrapper& sw)
+{
+  sw.DoArray(m_state.r, 16);
+  sw.Do(&m_state.pc);
+  sw.Do(&m_state.pr);
+  sw.Do(&m_state.gbr);
+  sw.Do(&m_state.vbr);
+  sw.Do(&m_state.mach);
+  sw.Do(&m_state.macl);
+  sw.Do(&m_state.sr);
+  sw.Do(&m_delay_pending);
+  sw.Do(&m_delay_target);
+  sw.Do(&m_executing_delay_slot);
+  sw.Do(&m_sleeping);
+  sw.Do(&m_illegal_instruction);
+  sw.Do(&m_irq_asserted);
+  sw.Do(&m_irq_level);
+  sw.Do(&m_irq_vector);
+  sw.Do(&m_last_opcode);
+  sw.Do(&m_last_pc);
+  return !sw.HasError();
 }
 } // namespace ArcadeDuck::SH2

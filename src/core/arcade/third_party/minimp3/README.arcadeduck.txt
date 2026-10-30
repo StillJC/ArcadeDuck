@@ -4,4 +4,6 @@ as distributed in MAME's 3rdparty/minimp3/minimp3.h (MAME commit
 
 License: CC0 1.0 (public domain dedication), see the header.
 
-No ArcadeDuck changes.
+ArcadeDuck change: mp3dec_decode_frame() zero-initializes its scratch buffer, because
+lanes of scratch.syn that no band writes were copied into qmf_state, making the decoder
+state depend on stack contents (observed as differing qmf_state between identical runs).

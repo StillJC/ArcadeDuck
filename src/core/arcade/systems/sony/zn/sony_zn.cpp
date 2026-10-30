@@ -7,6 +7,7 @@
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_output.h"
+#include "core/arcade/arcade_save_state.h"
 #include "core/arcade/devices/security/cat702.h"
 #include "core/arcade/devices/storage/chd_hard_disk.h"
 #include "core/arcade/systems/sony/zn/capcom_qsound.h"
@@ -35,6 +36,8 @@
 #include "common/path.h"
 #include "common/string_util.h"
 #include "common/md5_digest.h"
+
+#include "util/state_wrapper.h"
 
 #include "libchdr/chd.h"
 
@@ -436,6 +439,7 @@ struct RuntimeState
   u8 acclaim_gun_mux = 0;
   std::vector<u8> acclaim_rax_rom;
   std::string acclaim_nba_sram_path;
+  Arcade::SaveState::PersistentFile acclaim_nba_sram_file;
   bool acclaim_nba_sram_dirty = false;
   std::array<u8, ACCLAIM_NBA_SRAM_SIZE> acclaim_nba_sram{};
   u16 acclaim_rax_host_latch = 0xffff;
@@ -444,6 +448,7 @@ struct RuntimeState
   u16 zn2_spu_hack = 0;
   std::string persistence_directory;
   std::string at28_path;
+  Arcade::SaveState::PersistentFile at28_file;
   bool at28_dirty = false;
   bool at28_busy = false;
   u8 at28_last_write = 0xff;
@@ -615,9 +620,11 @@ struct RuntimeState
   // G-Net A3c3: mode 4 exposes the three 2 MiB TE28F160 sample flashes
   // as contiguous host windows: U56, U55, U29.
   GNetTE28F160FlashState gnet_wave_flash[GNET_WAVE_FLASH_COUNT];
+  std::array<Arcade::SaveState::PersistentFile, 5> gnet_fc_flash_files;
   bool gnet_fc_flash_dirty = false;
   bool gnet_zoom_flash_dirty = false;
   std::string taito_fx1b_fram_path;
+  Arcade::SaveState::PersistentFile taito_fx1b_fram_file;
   bool taito_fx1b_fram_dirty = false;
   std::array<u8, TAITO_FX1B_FRAM_SIZE> taito_fx1b_fram{};
   std::array<u8, TAITO_ZOOM_SHARED_SIZE> taito_zoom_shared_ram{};
@@ -851,6 +858,8 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
     std::memcpy(s_at28.data(), data->data(), data->size());
     if (data->size() == AT28_SIZE)
       runtime.at28_dirty = true;
+    runtime.at28_file.SetPath(runtime.at28_path);
+    runtime.at28_file.RecordDiskContents(std::span<const u8>(data->data(), data->size()));
   }
   else
   {
@@ -878,6 +887,8 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
       Error::AddPrefixFmt(error, "Failed to create Sony ZN AT28C16 persistence '{}': ", runtime.at28_path);
       return false;
     }
+    runtime.at28_file.SetPath(runtime.at28_path);
+    runtime.at28_file.RecordDiskContents(s_at28);
   }
 
   VERBOSE_LOG("SonyZN.AT28 {} set='{}' size={} factory_seed={} path='{}'",
@@ -889,7 +900,7 @@ static bool LoadAT28(RuntimeState& runtime, std::string_view persistence_directo
 
 static void SaveAT28(RuntimeState& runtime)
 {
-  if (!runtime.at28_dirty)
+  if (!runtime.at28_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   if (!EnsurePersistenceDirectories(runtime))
@@ -907,12 +918,13 @@ static void SaveAT28(RuntimeState& runtime)
     return;
   }
 
+  runtime.at28_file.RecordDiskContents(s_at28);
   runtime.at28_dirty = false;
   VERBOSE_LOG("SonyZN.AT28 saved atomically set='{}' path='{}'", runtime.content.set_name, runtime.at28_path);
 }
 
 static bool LoadGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, std::vector<u8>& storage,
-                                size_t expected_size, Error* error)
+                                size_t expected_size, Arcade::SaveState::PersistentFile& file, Error* error)
 {
   if (storage.size() != expected_size)
   {
@@ -948,6 +960,8 @@ static bool LoadGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, st
     }
   }
 
+  file.SetPath(path);
+  file.RecordDiskContents(storage);
   INFO_LOG("SonyZN.GNet FC flash {} chip='{}' size={} path='{}'",
            persistence_exists ? "loaded" : "initialized", chip_name, storage.size(), path);
   return true;
@@ -955,11 +969,12 @@ static bool LoadGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, st
 
 static bool LoadGNetFCFlash(RuntimeState& runtime, Error* error)
 {
-  if (!LoadGNetFCFlashFile(runtime, "u30", runtime.gnet_u30_flash, GNET_U30_SIZE, error) ||
-      !LoadGNetFCFlashFile(runtime, "u27", runtime.gnet_u27_flash, GNET_U27_SIZE, error) ||
-      !LoadGNetFCFlashFile(runtime, "u56", runtime.gnet_wave_flash[0].data, GNET_WAVE_FLASH_SIZE, error) ||
-      !LoadGNetFCFlashFile(runtime, "u55", runtime.gnet_wave_flash[1].data, GNET_WAVE_FLASH_SIZE, error) ||
-      !LoadGNetFCFlashFile(runtime, "u29", runtime.gnet_wave_flash[2].data, GNET_WAVE_FLASH_SIZE, error))
+  auto& files = runtime.gnet_fc_flash_files;
+  if (!LoadGNetFCFlashFile(runtime, "u30", runtime.gnet_u30_flash, GNET_U30_SIZE, files[0], error) ||
+      !LoadGNetFCFlashFile(runtime, "u27", runtime.gnet_u27_flash, GNET_U27_SIZE, files[1], error) ||
+      !LoadGNetFCFlashFile(runtime, "u56", runtime.gnet_wave_flash[0].data, GNET_WAVE_FLASH_SIZE, files[2], error) ||
+      !LoadGNetFCFlashFile(runtime, "u55", runtime.gnet_wave_flash[1].data, GNET_WAVE_FLASH_SIZE, files[3], error) ||
+      !LoadGNetFCFlashFile(runtime, "u29", runtime.gnet_wave_flash[2].data, GNET_WAVE_FLASH_SIZE, files[4], error))
   {
     return false;
   }
@@ -968,7 +983,8 @@ static bool LoadGNetFCFlash(RuntimeState& runtime, Error* error)
   return true;
 }
 
-static bool SaveGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, const std::vector<u8>& storage)
+static bool SaveGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, const std::vector<u8>& storage,
+                                Arcade::SaveState::PersistentFile& file)
 {
   const std::string path = Path::Combine(runtime.persistence_directory, chip_name);
   if (!EnsurePersistenceDirectories(runtime) ||
@@ -979,20 +995,22 @@ static bool SaveGNetFCFlashFile(RuntimeState& runtime, const char* chip_name, co
     return false;
   }
 
+  file.RecordDiskContents(storage);
   return true;
 }
 
 static void SaveGNetFCFlash(RuntimeState& runtime)
 {
-  if (!runtime.gnet_fc_flash_dirty)
+  if (!runtime.gnet_fc_flash_dirty || Arcade::SaveState::IsRestoring())
     return;
 
+  auto& files = runtime.gnet_fc_flash_files;
   bool success = true;
-  success = SaveGNetFCFlashFile(runtime, "u30", runtime.gnet_u30_flash) && success;
-  success = SaveGNetFCFlashFile(runtime, "u27", runtime.gnet_u27_flash) && success;
-  success = SaveGNetFCFlashFile(runtime, "u56", runtime.gnet_wave_flash[0].data) && success;
-  success = SaveGNetFCFlashFile(runtime, "u55", runtime.gnet_wave_flash[1].data) && success;
-  success = SaveGNetFCFlashFile(runtime, "u29", runtime.gnet_wave_flash[2].data) && success;
+  success = SaveGNetFCFlashFile(runtime, "u30", runtime.gnet_u30_flash, files[0]) && success;
+  success = SaveGNetFCFlashFile(runtime, "u27", runtime.gnet_u27_flash, files[1]) && success;
+  success = SaveGNetFCFlashFile(runtime, "u56", runtime.gnet_wave_flash[0].data, files[2]) && success;
+  success = SaveGNetFCFlashFile(runtime, "u55", runtime.gnet_wave_flash[1].data, files[3]) && success;
+  success = SaveGNetFCFlashFile(runtime, "u29", runtime.gnet_wave_flash[2].data, files[4]) && success;
 
   if (!success)
     return;
@@ -1034,6 +1052,9 @@ static bool LoadAcclaimNBASRAM(RuntimeState& runtime, Error* error)
     }
   }
 
+  runtime.acclaim_nba_sram_file.SetPath(runtime.acclaim_nba_sram_path);
+  runtime.acclaim_nba_sram_file.RecordDiskContents(runtime.acclaim_nba_sram);
+
   VERBOSE_LOG("SonyZN.Acclaim.SRAM {} set='{}' size={} path='{}'",
            persistence_exists ? "loaded" : "initialized", runtime.content.set_name,
            runtime.acclaim_nba_sram.size(), runtime.acclaim_nba_sram_path);
@@ -1042,7 +1063,7 @@ static bool LoadAcclaimNBASRAM(RuntimeState& runtime, Error* error)
 
 static void SaveAcclaimNBASRAM(RuntimeState& runtime)
 {
-  if (!runtime.acclaim_nba_sram_dirty)
+  if (!runtime.acclaim_nba_sram_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   if (!EnsurePersistenceDirectories(runtime) ||
@@ -1054,6 +1075,7 @@ static void SaveAcclaimNBASRAM(RuntimeState& runtime)
     return;
   }
 
+  runtime.acclaim_nba_sram_file.RecordDiskContents(runtime.acclaim_nba_sram);
   runtime.acclaim_nba_sram_dirty = false;
   VERBOSE_LOG("SonyZN.Acclaim.SRAM saved set='{}' path='{}'", runtime.content.set_name,
            runtime.acclaim_nba_sram_path);
@@ -1092,6 +1114,9 @@ static bool LoadTaitoFX1BFRAM(RuntimeState& runtime, Error* error)
     }
   }
 
+  runtime.taito_fx1b_fram_file.SetPath(runtime.taito_fx1b_fram_path);
+  runtime.taito_fx1b_fram_file.RecordDiskContents(runtime.taito_fx1b_fram);
+
   VERBOSE_LOG("SonyZN.FX1B.FRAM {} set='{}' size={} path='{}'",
            persistence_exists ? "loaded" : "initialized", runtime.content.set_name,
            runtime.taito_fx1b_fram.size(), runtime.taito_fx1b_fram_path);
@@ -1100,7 +1125,7 @@ static bool LoadTaitoFX1BFRAM(RuntimeState& runtime, Error* error)
 
 static void SaveTaitoFX1BFRAM(RuntimeState& runtime)
 {
-  if (!runtime.taito_fx1b_fram_dirty)
+  if (!runtime.taito_fx1b_fram_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   if (!EnsurePersistenceDirectories(runtime) ||
@@ -1112,6 +1137,7 @@ static void SaveTaitoFX1BFRAM(RuntimeState& runtime)
     return;
   }
 
+  runtime.taito_fx1b_fram_file.RecordDiskContents(runtime.taito_fx1b_fram);
   runtime.taito_fx1b_fram_dirty = false;
   VERBOSE_LOG("SonyZN.FX1B.FRAM saved set='{}' path='{}'", runtime.content.set_name, runtime.taito_fx1b_fram_path);
 }
@@ -8301,15 +8327,8 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
   return true;
 }
 
-static bool EnsureGNetZoomInitialized(RuntimeState& runtime)
+static bool InstallGNetZoom(RuntimeState& runtime)
 {
-  // G-Net FC bit 4 holds the ZOOM/MN10200 sound hardware in reset.
-  if ((runtime.gnet_fc_control & UINT8_C(0x10)) != 0)
-    return false;
-
-  if (TaitoFX1BZoom::IsActive())
-    return true;
-
   if (runtime.gnet_u27_flash.size() != GNET_U27_SIZE)
     return false;
 
@@ -8349,6 +8368,18 @@ static bool EnsureGNetZoomInitialized(RuntimeState& runtime)
     "host='1FB80000/02 + 1FBA/1FBC + M66220 1FBE0000-01FF'",
     runtime.gnet_u27_flash.size(), sample_rom.size(), runtime.taito_zoom_shared_ram.size());
   return true;
+}
+
+static bool EnsureGNetZoomInitialized(RuntimeState& runtime)
+{
+  // G-Net FC bit 4 holds the ZOOM/MN10200 sound hardware in reset.
+  if ((runtime.gnet_fc_control & UINT8_C(0x10)) != 0)
+    return false;
+
+  if (TaitoFX1BZoom::IsActive())
+    return true;
+
+  return InstallGNetZoom(runtime);
 }
 
 bool ReadEXP3InstructionWord(u32 offset, u32* value)
@@ -9221,6 +9252,377 @@ void GenerateAudioFrame(s32* left, s32* right)
   {
     CapcomQSound::GenerateAudioFrame(left, right);
   }
+}
+
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  components->push_back({"at28c16", s_at28, &s_runtime->at28_file});
+  if (s_runtime->board_type == BoardType::TaitoFX1B)
+    components->push_back({"fm1208s", s_runtime->taito_fx1b_fram, &s_runtime->taito_fx1b_fram_file});
+  if (s_runtime->board_type == BoardType::AcclaimZN1 && s_runtime->acclaim_game == AcclaimZN1Game::NBAJamExtreme)
+    components->push_back({"71256", s_runtime->acclaim_nba_sram, &s_runtime->acclaim_nba_sram_file});
+  if (s_runtime->board_type == BoardType::TaitoGNet)
+  {
+    RuntimeState& r = *s_runtime;
+    components->push_back({"u30", r.gnet_u30_flash, &r.gnet_fc_flash_files[0]});
+    components->push_back({"u27", r.gnet_u27_flash, &r.gnet_fc_flash_files[1]});
+    components->push_back({"u56", r.gnet_wave_flash[0].data, &r.gnet_fc_flash_files[2]});
+    components->push_back({"u55", r.gnet_wave_flash[1].data, &r.gnet_fc_flash_files[3]});
+    components->push_back({"u29", r.gnet_wave_flash[2].data, &r.gnet_fc_flash_files[4]});
+  }
+}
+
+bool CanSaveState(Error* error)
+{
+  if (s_runtime.has_value() && s_runtime->board_type == BoardType::TaitoGNet && s_runtime->gnet_zoom_flash_dirty)
+  {
+    Error::SetStringView(error, "The G-Net sound program is being installed. Save again after installation finishes.");
+    return false;
+  }
+
+  return true;
+}
+
+static bool DoEventActivation(StateWrapper& sw, TimingEvent* event, TickCount reschedule_ticks)
+{
+  bool exists = (event != nullptr);
+  bool active = exists && event->IsActive();
+  sw.Do(&exists);
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+
+  if (sw.HasError() || exists != (event != nullptr) || (active && !exists))
+    return false;
+
+  // Deadlines are restored by TimingEvents; only activation is established here.
+  if (event)
+  {
+    if (active)
+      event->Schedule(std::max<TickCount>(reschedule_ticks, 1));
+    else
+      event->Deactivate();
+  }
+
+  return true;
+}
+
+// AT28C16 contents are matched by fingerprint, not stored. A byte program changes the array immediately; the
+// restored busy window only affects data polling and further writes until its deadline (or rebased remainder).
+static bool DoGNetFlashCounters(StateWrapper& sw, GNetU30FlashMode* mode, u16* status, u32* erase_setup_offset,
+                                u32* program_word_count, u32* erase_block_count)
+{
+  sw.Do(mode);
+  sw.Do(status);
+  sw.Do(erase_setup_offset);
+  sw.Do(program_word_count);
+  sw.Do(erase_block_count);
+  return !sw.HasError() && *mode <= GNetU30FlashMode::EraseSetup;
+}
+
+// While DRQ is set, the data port indexes the sector buffer before checking for
+// the end of the sector, so the position must be inside it. Read and write
+// phases need the current sector remaining; the unlock sector needs a Type 2 card.
+static bool IsGNetATADataPhaseStateValid(const RuntimeState& r)
+{
+  if ((r.gnet_ata_status & GNET_ATA_STATUS_DRQ) == 0 || r.gnet_ata_transfer_mode == GNetATATransferMode::None)
+    return r.gnet_ata_data_position <= r.gnet_ata_data.size();
+
+  if (r.gnet_ata_data_position >= r.gnet_ata_data.size())
+    return false;
+
+  switch (r.gnet_ata_transfer_mode)
+  {
+    case GNetATATransferMode::Read:
+    case GNetATATransferMode::Write:
+      return r.gnet_ata_sectors_remaining != 0;
+    case GNetATATransferMode::Type2Unlock:
+      return r.gnet_pccard_type2;
+    default:
+      return true;
+  }
+}
+
+// FC flash program/erase operations complete immediately; only the command mode and status readback are stored.
+// Flash and PC Card contents are matched by fingerprint (flash) or stored as the in-memory write overlay (PC Card).
+static bool DoGNetState(StateWrapper& sw, RuntimeState& r, bool* zoom_active)
+{
+  if (!sw.DoMarker("ZNGNet"))
+    return false;
+
+  sw.Do(&r.gnet_bios_flash_jp1);
+  sw.Do(&r.gnet_type3_auto_handoff_armed);
+  sw.Do(&r.gnet_type3_auto_handoff_activity_count);
+  sw.Do(&r.gnet_type3_auto_handoff_last_activity_tick);
+  sw.Do(&r.gnet_pccard_type2_locked);
+  sw.Do(&r.gnet_pccard_type2_unlock_attempt_count);
+  sw.Do(&r.gnet_pccard_type3_locked);
+  sw.Do(&r.gnet_pccard_type3_unlock_attempt_count);
+  sw.Do(&r.gnet_pccard_type1_state);
+  sw.DoArray(r.gnet_pccard_unlock_bytes.data(), r.gnet_pccard_unlock_bytes.size());
+  sw.Do(&r.gnet_pccard_unlock_position);
+  sw.Do(&r.gnet_pccard_unlock_match);
+  sw.Do(&r.gnet_pccard_busy_reads_remaining);
+  sw.Do(&r.gnet_pccard_unlock_attempt_count);
+  sw.Do(&r.gnet_ata_error);
+  sw.Do(&r.gnet_ata_features);
+  sw.Do(&r.gnet_ata_sector_count);
+  sw.Do(&r.gnet_ata_lba_low);
+  sw.Do(&r.gnet_ata_lba_mid);
+  sw.Do(&r.gnet_ata_lba_high);
+  sw.Do(&r.gnet_ata_device_head);
+  sw.Do(&r.gnet_ata_status);
+  sw.Do(&r.gnet_ata_device_control);
+  sw.Do(&r.gnet_ata_transfer_mode);
+  sw.DoArray(r.gnet_ata_data.data(), r.gnet_ata_data.size());
+  sw.Do(&r.gnet_ata_data_position);
+  sw.Do(&r.gnet_ata_current_lba);
+  sw.Do(&r.gnet_ata_sectors_remaining);
+  sw.Do(&r.gnet_pccard_configuration_option);
+  sw.Do(&r.gnet_pccard_configuration_status);
+  sw.Do(&r.gnet_pccard_pin_replacement);
+  sw.DoArray(r.gnet_rf5c296_registers.data(), r.gnet_rf5c296_registers.size());
+  sw.Do(&r.gnet_rf5c296_selected_register);
+  sw.Do(&r.gnet_fc_control);
+  sw.Do(&r.gnet_control3);
+  sw.Do(&r.gnet_fc_access_latch);
+  sw.Do(&r.gnet_fc_mode_companion);
+  sw.Do(&r.gnet_bus_width_latch);
+  sw.Do(&r.gnet_config_id_present);
+  sw.DoArray(r.gnet_mawasunda_trackball.data(), r.gnet_mawasunda_trackball.size());
+  sw.DoArray(r.gnet_mawasunda_trackball_last.data(), r.gnet_mawasunda_trackball_last.size());
+  sw.DoArray(r.gnet_mawasunda_trackball_response.data(), r.gnet_mawasunda_trackball_response.size());
+  sw.Do(&r.gnet_mawasunda_weight_latch);
+  sw.Do(&r.gnet_mawasunda_lamp_latch);
+
+  // U27 uses its own mode enum with the same encoding as U30.
+  GNetU30FlashMode u27_mode = static_cast<GNetU30FlashMode>(r.gnet_u27_flash_mode);
+  if (!DoGNetFlashCounters(sw, &r.gnet_u30_flash_mode, &r.gnet_u30_flash_status, &r.gnet_u30_erase_setup_offset,
+                           &r.gnet_u30_program_word_count, &r.gnet_u30_erase_block_count) ||
+      !DoGNetFlashCounters(sw, &u27_mode, &r.gnet_u27_flash_status, &r.gnet_u27_erase_setup_offset,
+                           &r.gnet_u27_program_word_count, &r.gnet_u27_erase_block_count))
+  {
+    return false;
+  }
+  r.gnet_u27_flash_mode = static_cast<GNetU27FlashMode>(u27_mode);
+  for (GNetTE28F160FlashState& flash : r.gnet_wave_flash)
+  {
+    if (!DoGNetFlashCounters(sw, &flash.mode, &flash.status, &flash.erase_setup_offset, &flash.program_word_count,
+                             &flash.erase_block_count))
+    {
+      return false;
+    }
+  }
+
+  if (sw.IsReading() &&
+      (sw.HasError() || r.gnet_pccard_type1_state > GNetType1LockState::Unlocked ||
+       r.gnet_ata_transfer_mode > GNetATATransferMode::Type2Unlock || !IsGNetATADataPhaseStateValid(r) ||
+       r.gnet_pccard_unlock_position > r.gnet_pccard_unlock_bytes.size()))
+  {
+    return false;
+  }
+
+  if (!r.gnet_pccard_disk.DoWriteOverlayState(sw))
+    return false;
+
+  // ZOOM runs from a copy of U27/U56/U55/U29 taken when it was installed. Saving is refused while that copy is
+  // stale (gnet_zoom_flash_dirty), so on load the copy is rebuilt from the fingerprint-matched flash contents.
+  bool active = TaitoFX1BZoom::IsActive();
+  sw.Do(&active);
+  if (sw.IsReading())
+  {
+    if (sw.HasError())
+      return false;
+
+    if (!active)
+    {
+      TaitoFX1BZoom::Shutdown();
+    }
+    else if (!TaitoFX1BZoom::IsActive() || r.gnet_zoom_flash_dirty)
+    {
+      TaitoFX1BZoom::Shutdown();
+      if (!InstallGNetZoom(r))
+        return false;
+    }
+  }
+
+  *zoom_active = active;
+  return !sw.HasError();
+}
+
+// The mounted HDD/CD image, its FAT or ISO9660 file table and the PCM file extents are content and are not stored;
+// only the media type is checked. Sector caches are refilled from the read-only media on demand.
+static bool DoBustAMove2State(StateWrapper& sw, RuntimeState& r)
+{
+  if (!sw.DoMarker("ZNBAM2"))
+    return false;
+
+  u8 media = static_cast<u8>(r.bam2_media);
+  sw.Do(&media);
+  if (media != static_cast<u8>(r.bam2_media))
+    return false;
+
+  sw.DoArray(r.bam2_mcu_ports.data(), r.bam2_mcu_ports.size());
+  sw.Do(&r.bam2_h8_status);
+  sw.Do(&r.bam2_h8_opcode);
+  sw.Do(&r.bam2_h8_waiting_for_argument);
+  sw.Do(&r.bam2_h8_play_completion_frames);
+  sw.Do(&r.bam2_test_switch_latched);
+  sw.Do(&r.bam2_test_was_pressed);
+  sw.Do(&r.bam2_selected_track);
+  sw.Do(&r.bam2_tc9293_attenuation);
+  sw.Do(&r.bam2_pcm_playing);
+  sw.Do(&r.bam2_pcm_track_start_offset);
+  sw.Do(&r.bam2_pcm_track_end_offset);
+  sw.Do(&r.bam2_pcm_prefetch_offset);
+  sw.Do(&r.bam2_pcm_output_bytes);
+  sw.DoBytes(r.bam2_pcm_buffer.data(), r.bam2_pcm_buffer.size());
+  sw.Do(&r.bam2_pcm_buffer_read);
+  sw.Do(&r.bam2_pcm_buffer_write);
+  sw.Do(&r.bam2_pcm_buffered_bytes);
+  if (!sw.IsReading())
+    return !sw.HasError();
+
+  if (sw.HasError() || r.bam2_pcm_buffer_read >= BAM2_PCM_BUFFER_SIZE ||
+      r.bam2_pcm_buffer_write >= BAM2_PCM_BUFFER_SIZE || r.bam2_pcm_buffered_bytes > BAM2_PCM_BUFFER_SIZE ||
+      ((r.bam2_pcm_buffer_read + r.bam2_pcm_buffered_bytes) % BAM2_PCM_BUFFER_SIZE) != r.bam2_pcm_buffer_write ||
+      r.bam2_pcm_track_start_offset > r.bam2_pcm_prefetch_offset ||
+      r.bam2_pcm_prefetch_offset > r.bam2_pcm_track_end_offset ||
+      (r.bam2_selected_track != 0 && !IsBAM2TrackValid(r, r.bam2_selected_track)))
+  {
+    return false;
+  }
+
+  r.bam2_pcm_cached_lba = UINT32_MAX;
+  r.bam2_cd_cached_lba = UINT32_MAX;
+
+  // Republish every lamp from the next game write to MCU port 3.
+  r.bam2_outputs_initialized = false;
+  return true;
+}
+
+bool DoState(StateWrapper& sw)
+{
+  if (!s_runtime.has_value())
+    return false;
+
+  RuntimeState& r = *s_runtime;
+  u8 board_type = static_cast<u8>(r.board_type);
+  sw.Do(&board_type);
+  if (board_type != static_cast<u8>(r.board_type))
+    return false;
+
+  const bool capcom = (r.board_type == BoardType::CapcomZN1 || r.board_type == BoardType::CapcomZN2);
+  const bool taito = (r.board_type == BoardType::TaitoFX1A || r.board_type == BoardType::TaitoFX1B ||
+                      r.board_type == BoardType::TaitoGNet);
+  const bool other = (r.board_type == BoardType::VideoSystemZN1 || r.board_type == BoardType::AtlusZN1 ||
+                      r.board_type == BoardType::EightingRaizingZN1 || r.board_type == BoardType::BustAMove2ZN1 ||
+                      r.board_type == BoardType::TimeWarnerZN1 || r.board_type == BoardType::AcclaimZN1 ||
+                      (r.board_type == BoardType::TecmoTPS && !r.tecmo_gr2_link_enabled));
+  if (!capcom && !taito && !other)
+    return false;
+
+  if (!sw.DoMarker("ZNBoard") || !r.motherboard_cat702.DoState(sw) || !r.game_cat702.DoState(sw))
+    return false;
+
+  sw.Do(&r.bank);
+  sw.Do(&r.security_select);
+  sw.Do(&r.coin);
+  sw.Do(&r.zn2_spu_hack);
+  sw.Do(&r.at28_busy);
+  sw.Do(&r.at28_last_write);
+  sw.Do(&r.at28_busy_until);
+  sw.Do(&r.at28_timing_rebase_pending);
+  sw.Do(&r.at28_busy_remaining_ticks);
+  sw.Do(&r.at28_rebase_ticks_per_second);
+  sw.Do(&r.sio0_mode);
+  sw.Do(&r.sio0_control);
+  sw.Do(&r.sio0_baud);
+  sw.Do(&r.sio0_rx_data);
+  sw.Do(&r.sio0_tx_data);
+  sw.Do(&r.sio0_tx_shift);
+  sw.Do(&r.sio0_rx_full);
+  sw.Do(&r.sio0_tx_full);
+  sw.Do(&r.sio0_transfer_active);
+  sw.Do(&r.sio0_interrupt_pending);
+  sw.Do(&r.mcu_selected);
+  sw.Do(&r.mcu_dsr_active);
+  sw.Do(&r.mcu_byte_index);
+
+  if (!DoEventActivation(sw, s_mcu_dsr_assert_event.get(), 1) ||
+      !DoEventActivation(sw, s_mcu_dsr_release_event.get(), 1) ||
+      !DoEventActivation(sw, s_sio0_transfer_event.get(), 1) ||
+      !DoEventActivation(sw, s_taito_watchdog_event.get(), 1) ||
+      !DoEventActivation(sw, s_time_warner_watchdog_event.get(), 1))
+  {
+    return false;
+  }
+
+  if (capcom)
+    return CapcomQSound::DoState(sw) && !sw.HasError();
+  if (r.board_type == BoardType::VideoSystemZN1)
+    return !sw.HasError();
+  if (r.board_type == BoardType::AtlusZN1)
+    return AtlusZN1Sound::DoState(sw) && !sw.HasError();
+  if (r.board_type == BoardType::EightingRaizingZN1)
+    return EightingRaizingSound::DoState(sw) && !sw.HasError();
+  if (r.board_type == BoardType::BustAMove2ZN1)
+    return DoBustAMove2State(sw, r);
+  if (r.board_type == BoardType::AcclaimZN1)
+  {
+    // 71256 SRAM writes complete immediately; its contents are matched by fingerprint, not stored.
+    u8 game = static_cast<u8>(r.acclaim_game);
+    sw.Do(&game);
+    if (game != static_cast<u8>(r.acclaim_game))
+      return false;
+
+    sw.DoArray(r.acclaim_bank_registers.data(), r.acclaim_bank_registers.size());
+    sw.Do(&r.acclaim_gun_mux);
+    sw.Do(&r.acclaim_rax_host_latch);
+    if (r.acclaim_game == AcclaimZN1Game::JudgeDredd)
+      return AcclaimATA::DoState(sw) && !sw.HasError();
+    return AcclaimRAX::DoState(sw) && !sw.HasError();
+  }
+  if (r.board_type == BoardType::TimeWarnerZN1)
+  {
+    sw.Do(&r.time_warner_main_board_reset_pending);
+    return TimeWarnerATA::DoState(sw) && !sw.HasError();
+  }
+  if (r.board_type == BoardType::TecmoTPS)
+  {
+    bool cbaj_sound = r.tecmo_cbaj_sound_enabled;
+    sw.Do(&cbaj_sound);
+    if (cbaj_sound != r.tecmo_cbaj_sound_enabled)
+      return false;
+    return (!cbaj_sound || TecmoCBAJSound::DoState(sw)) && !sw.HasError();
+  }
+
+  // FM1208S FRAM writes complete immediately; its contents are matched by fingerprint, not stored.
+  if (!sw.DoMarker("ZNTaito"))
+    return false;
+
+  sw.Do(&r.taito_watchdog_ck);
+  sw.Do(&r.taito_watchdog_seen);
+  sw.Do(&r.taito_main_board_reset_pending);
+  if (r.board_type == BoardType::TaitoFX1A)
+    return TaitoFX1ASound::DoState(sw) && !sw.HasError();
+  if (r.board_type == BoardType::TaitoGNet)
+  {
+    bool zoom_active = false;
+    if (!DoGNetState(sw, r, &zoom_active))
+      return false;
+    if (!zoom_active)
+      return !sw.HasError();
+  }
+
+  sw.DoArray(r.taito_zoom_shared_ram.data(), r.taito_zoom_shared_ram.size());
+  sw.Do(&r.taito_zoom_reg_address);
+  sw.Do(&r.taito_zoom_gain_left);
+  sw.Do(&r.taito_zoom_gain_right);
+  return TaitoFX1BZoom::DoState(sw) && !sw.HasError();
 }
 
 } // namespace SonyZN

@@ -10,9 +10,13 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace Arcade::Database {
 struct GameDefinition;
+}
+namespace Arcade::SaveState {
+struct NVRAMComponent;
 }
 
 namespace NamcoSystem12 {
@@ -48,6 +52,17 @@ bool Initialize(LoadedContent content, Error* error);
 void Reset();
 void Shutdown();
 bool IsActive();
+
+/// Save states cover every configuration except the Kart Duel link board.
+bool SupportsSaveStates(const Arcade::Database::GameDefinition& game);
+bool DoState(StateWrapper& sw);
+bool CanSaveState(Error* error);
+
+/// The Cyber Lead LED board finishes its handshake, uploads and display-mode transactions on its own, so an
+/// interactive save may wait for it.
+bool IsSaveReadinessPending(std::string* message);
+void AppendStateIdentity(std::string* record);
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 void SetVBlank(bool state);
 bool BeginMainBoardReset();
 void EndMainBoardReset();

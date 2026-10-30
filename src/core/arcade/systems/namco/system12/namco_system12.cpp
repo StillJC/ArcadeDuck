@@ -32,6 +32,9 @@
 #include "fmt/format.h"
 #include "imgui.h"
 
+#include "core/arcade/arcade_save_state.h"
+#include "core/arcade/devices/cpu/h8_300h_state.h"
+
 extern "C" {
 #include "core/arcade/third_party/h8_300h/system.h"
 }
@@ -39,6 +42,8 @@ extern "C" {
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 #include "common/path.h"
 #include "common/minizip_helpers.h"
 #include "common/sha1_digest.h"
@@ -280,6 +285,7 @@ struct RuntimeState
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
+  Arcade::SaveState::PersistentFile eeprom_file;
   bool eeprom_dirty = false;
 
   Arcade::H8::H83002Timer16 h8_timer16;
@@ -434,6 +440,8 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
     std::memcpy(s_eeprom.data(), data->data(), data->size());
     if (data->size() == EEPROM_SIZE)
       runtime.eeprom_dirty = true;
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(data->cspan());
   }
   else
   {
@@ -447,6 +455,8 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
                 runtime.content.set_name, runtime.eeprom_path);
       return false;
     }
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(s_eeprom);
   }
 
   INFO_LOG("System12 AT28C16 {} set='{}' size={} path='{}'",
@@ -457,7 +467,7 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
 
 void SaveEEPROM(RuntimeState& runtime)
 {
-  if (!runtime.eeprom_dirty)
+  if (!runtime.eeprom_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -470,6 +480,7 @@ void SaveEEPROM(RuntimeState& runtime)
     return;
   }
 
+  runtime.eeprom_file.RecordDiskContents(s_eeprom);
   runtime.eeprom_dirty = false;
   INFO_LOG("System12 AT28C16 saved set='{}' path='{}'",
            runtime.content.set_name, runtime.eeprom_path);
@@ -3924,4 +3935,163 @@ void DMARead(u32* destination, u32 word_count)
   // Consume this ROM-board DREQ; the next source-latch write rearms it.
   DMA::SetRequest(DMA::Channel::PIO, false);
 }
+
+bool SupportsSaveStates(const Arcade::Database::GameDefinition& game)
+{
+  LoadedContent content;
+  const std::string* machine_config = FindGameProperty(game, "machineConfig");
+  const std::string* state_class = FindGameProperty(game, "stateClass");
+  content.machine_config = machine_config ? *machine_config : game.hardware_profile;
+  content.state_class = state_class ? *state_class : std::string();
+  return !HasLinkBoard(content);
+}
+
+bool CanSaveState(Error* error)
+{
+  if (s_runtime.has_value() && !s_runtime->h8_cyberlead.IsLEDSaveReady())
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", "The Cyber Lead LED board is still initializing or programming "
+                                                       "its flash. Try saving again after it finishes."));
+    return false;
+  }
+
+  return true;
+}
+
+bool IsSaveReadinessPending(std::string* message)
+{
+  if (!s_runtime.has_value() || s_runtime->h8_cyberlead.IsLEDSaveReady())
+    return false;
+
+  *message = TRANSLATE_STR("System", "The Cyber Lead LED board is busy. The state will be saved as soon as it "
+                                     "finishes (up to 30 seconds).");
+  return true;
+}
+
+void AppendStateIdentity(std::string* record)
+{
+  if (s_runtime.has_value() && s_runtime->content.io_board == "cyberlead")
+    *record += fmt::format("cyberlead_led={}\n", s_runtime->h8_cyberlead.IsLEDPresent() ? "present" : "absent");
+}
+
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  components->push_back({"at28c16", s_eeprom, &s_runtime->eeprom_file});
+  s_runtime->h8_cyberlead.GetNVRAMComponents(components);
+}
+
+// AT28C16 and Cyber Lead LED flash writes complete immediately; their contents are matched by fingerprint, not
+// stored. Host configuration (content, callbacks, JVS chain wiring) and diagnostic counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_runtime.has_value() || !s_runtime->h8_cpu || !s_runtime->h8_timing_event || s_runtime->hsc ||
+      !sw.DoMarker("S12Board"))
+  {
+    return false;
+  }
+
+  RuntimeState& r = *s_runtime;
+  sw.DoArray(r.shared_ram.data(), r.shared_ram.size());
+  sw.DoArray(r.board_control.data(), r.board_control.size());
+  sw.Do(&r.gun_output_latch);
+  sw.Do(&r.gun_output_latch_valid);
+  sw.Do(&r.bank);
+  sw.Do(&r.dma_source);
+  sw.Do(&r.dma_transfer_count);
+  sw.DoArray(r.m8f4_challenge.data(), r.m8f4_challenge.size());
+  sw.Do(&r.m8f4_challenge_count);
+  sw.Do(&r.m8f4_protected_source);
+  sw.Do(&r.m8f4_response);
+  sw.Do(&r.m8f4_nonce);
+  sw.Do(&r.m8f4_response_class);
+  sw.Do(&r.m8f4_challenge_active);
+  sw.Do(&r.m8f4_response_valid);
+  sw.Do(&r.m8f4_protected_dma_armed);
+  sw.Do(&r.m8f4_waiting_for_release);
+  sw.Do(&r.m8f4_ready);
+  sw.Do(&r.m8f4_transaction_count);
+  sw.Do(&r.m8f4_dma_count);
+  sw.Do(&r.mainboard_reset_pending);
+  sw.Do(&r.boot_warm_reset_completed);
+  sw.Do(&r.cold_boot_h8_released);
+  sw.DoArray(r.cold_boot_config_header.data(), r.cold_boot_config_header.size());
+  sw.Do(&r.cold_boot_config_feed_words);
+  sw.Do(&r.cold_boot_config_finalize_words);
+  sw.Do(&r.cold_boot_config_bulk_complete);
+  sw.Do(&r.ram_preserving_reset_count);
+  sw.Do(&r.test_switch_latched);
+  sw.Do(&r.test_switch_was_pressed);
+
+  if (!sw.DoMarker("S12H8") || !Arcade::H8::DoCoreState(sw, *r.h8_cpu))
+    return false;
+
+  sw.Do(&r.h8_scheduler_interval_ticks);
+  sw.Do(&r.h8_scheduler_rate_hz);
+  sw.Do(&r.h8_cycle_balance);
+  sw.Do(&r.h8_cycle_fraction);
+  sw.Do(&r.h8_rtc_scheduler_fraction);
+  sw.DoArray(r.h8_internal.data(), r.h8_internal.size());
+  // h8_scheduler_count only counts scheduler callbacks for the fault log; it is a diagnostic counter, not stored.
+  sw.Do(&r.h8_jvs_sense);
+  sw.Do(&r.h8_jvs_rts);
+  sw.Do(&r.h8_cyberlead_deferred_clocks);
+  sw.Do(&r.h8_jvs.initialize_sense_after_response);
+  sw.Do(&r.h8_sci0_ssr_read);
+  sw.Do(&r.h8_sci0_tx_busy);
+  sw.Do(&r.h8_sci0_tx_shift_byte);
+  sw.Do(&r.h8_sci0_tx_clocks_remaining);
+  sw.Do(&r.h8_sci0_rx_busy);
+  sw.Do(&r.h8_sci0_rx_clocks_remaining);
+  sw.Do(&r.h8_sci1_ssr_read);
+  sw.Do(&r.h8_sci1_rx_busy);
+  sw.Do(&r.h8_sci1_rx_clocks_remaining);
+  sw.Do(&r.h8_sub_porta);
+  sw.Do(&r.h8_sub_portb);
+  sw.Do(&r.h8_settings_ce);
+  sw.Do(&r.h8_settings_clk);
+  sw.Do(&r.h8_settings_data);
+  sw.Do(&r.h8_settings_address);
+  sw.Do(&r.h8_settings_value);
+  sw.Do(&r.h8_settings_bit);
+  sw.Do(&r.h8_rtc_ce);
+  sw.Do(&r.h8_rtc_clk);
+  sw.Do(&r.h8_rtc_data);
+  sw.Do(&r.h8_rtc_bit);
+  sw.DoArray(r.h8_rtc_regs.data(), r.h8_rtc_regs.size());
+  // The RTC runs from emulated time once seeded from the host clock at boot; the restored machine keeps its time.
+  s64 rtc_time = static_cast<s64>(r.h8_rtc_time);
+  sw.Do(&rtc_time);
+  r.h8_rtc_time = static_cast<std::time_t>(rtc_time);
+  sw.Do(&r.h8_rtc_millisecond_accumulator);
+  sw.Do(&r.h8_vblank);
+  sw.Do(&r.h8_c352_instruction_clocks);
+  sw.Do(&r.h8_c352_deferred_clocks);
+
+  if (!r.h8_timer16.DoState(sw) || !r.h8_peripherals.DoState(sw) || !r.h8_intc.DoState(sw) || !r.c352.DoState(sw) ||
+      !sw.DoMarker("S12JVS") || !r.h8_jvs_bus.DoState(sw) || !r.h8_fca10.DoState(sw) || !r.h8_emio102.DoState(sw) ||
+      !r.h8_empri101.DoState(sw) || !r.h8_cyberlead.DoState(sw))
+  {
+    return false;
+  }
+
+  bool has_cdxa = static_cast<bool>(r.cdxa);
+  sw.Do(&has_cdxa);
+  if (has_cdxa != static_cast<bool>(r.cdxa))
+    return false;
+  if (has_cdxa)
+  {
+    // The scheduler event's deadline and period are restored by TimingEvents; it is always active with the board.
+    sw.Do(&r.cdxa_scheduler_interval_ticks);
+    sw.Do(&r.cdxa_cycle_fraction);
+    sw.Do(&r.cdxa_scheduler_count);
+    if (!r.cdxa_timing_event || !r.cdxa->DoState(sw))
+      return false;
+  }
+
+  return !sw.HasError();
+}
+
 } // namespace NamcoSystem12

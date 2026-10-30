@@ -10,6 +10,8 @@
 
 #include <array>
 
+class StateWrapper;
+
 namespace KonamiGQTMS57002 {
 
 class Core
@@ -42,6 +44,9 @@ public:
   u64 GetSyncCount() const { return m_sync_count; }
   u64 GetExternalReads() const { return m_external_reads; }
   u64 GetExternalWrites() const { return m_external_writes; }
+
+  // Saves registers, data/coefficient memories, program and external RAM. The decode cache is rebuilt.
+  bool DoState(StateWrapper& sw);
 
 private:
   enum

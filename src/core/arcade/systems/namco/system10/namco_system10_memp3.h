@@ -12,6 +12,8 @@
 
 class TimingEvent;
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // MEM(P3) board: a TMP95C061 sub-CPU runs a program the game uploads into its
@@ -21,6 +23,8 @@ namespace NamcoSystem10 {
 class MemP3Board
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   struct Cabinet
   {
     void* context = nullptr;

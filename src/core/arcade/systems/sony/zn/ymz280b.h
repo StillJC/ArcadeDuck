@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <vector>
 
+class StateWrapper;
+
 namespace SonyZN {
 
 class YMZ280B
@@ -32,6 +34,7 @@ public:
 
   void AdvanceCycles(u32 source_cycles, u32 source_clock_hz);
   void GetOutput(s32* left, s32* right) const;
+  bool DoState(StateWrapper& sw);
 
   u32 GetClockHz() const { return m_clock_hz; }
   u32 GetNativeSampleRate() const { return m_native_sample_rate; }

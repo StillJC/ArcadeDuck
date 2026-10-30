@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/systems/namco/system10/namco_system10_punchpad.h"
+#include "util/state_wrapper.h"
 
 #include "core/system.h"
 
@@ -177,6 +178,24 @@ float PunchButton::Strength() const
   const float rate = static_cast<float>(System::GetTicksPerSecond()) * static_cast<float>(m_taps - 1) /
                      static_cast<float>(m_last_tap - m_first_tap);
   return std::max((rate - SLOW_TAPS_PER_SECOND) / (FAST_TAPS_PER_SECOND - SLOW_TAPS_PER_SECOND), 0.0f);
+}
+
+bool PunchPad::DoState(StateWrapper& sw)
+{
+  sw.Do(&m_motion);
+  sw.Do(&m_from);
+  sw.Do(&m_start);
+  sw.Do(&m_duration);
+  sw.Do(&m_solenoid);
+  return !sw.HasError() && (!sw.IsReading() || m_motion <= Motion::Falling);
+}
+
+bool PunchButton::DoState(StateWrapper& sw)
+{
+  sw.Do(&m_first_tap);
+  sw.Do(&m_last_tap);
+  sw.Do(&m_taps);
+  return !sw.HasError();
 }
 
 } // namespace NamcoSystem10

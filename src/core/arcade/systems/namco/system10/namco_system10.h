@@ -11,9 +11,13 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace Arcade::Database {
 struct GameDefinition;
+}
+namespace Arcade::SaveState {
+struct NVRAMComponent;
 }
 
 namespace NamcoSystem10 {
@@ -78,6 +82,19 @@ bool InitializeMemM(MemMLoadedContent content, Error* error);
 void Reset();
 void Shutdown();
 bool IsActive();
+
+/// Save states are not offered on MGEXIO boards: their battery-backed RAM is the H8 working RAM and changes every
+/// few frames, so the NVRAM check would refuse every load.
+bool SupportsSaveStates(const Arcade::Database::GameDefinition& game);
+bool DoState(StateWrapper& sw);
+bool CanSaveState(Error* error);
+
+/// The Cyber Lead LED board finishes its handshake, uploads and display-mode transactions on its own, so an
+/// interactive save may wait for it.
+bool IsSaveReadinessPending(std::string* message);
+size_t GetExtraStateSize();
+void AppendStateIdentity(std::string* record);
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 
 /// Advances the board watchdog by one frame. Returns true when it expires and the system must be reset.
 bool ProcessFrame();

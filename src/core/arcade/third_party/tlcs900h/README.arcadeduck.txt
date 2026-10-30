@@ -11,3 +11,4 @@ ArcadeDuck changes:
 - Trailing whitespace removed.
 
 The opcode implementation otherwise remains third-party code.
+- ArcadeDuckTLCS900HDoState() (tlcs900h_arcadeduck.h/.c) adds save-state serialization of the global core.

@@ -1,0 +1,4 @@
+ArcadeDuck local changes to the ares SH-2 interpreter adaptation
+
+- CPU::DoState() (sh2.h/.cpp) adds save-state serialization of the register file, delay-slot,
+  sleep/illegal-instruction and interrupt-request state.

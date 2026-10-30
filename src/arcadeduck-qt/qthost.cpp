@@ -1053,7 +1053,7 @@ void EmuThread::bootOrLoadState(std::string path)
   if (System::IsValid())
   {
     Error error;
-    if (!System::LoadState(path.c_str(), &error, true))
+    if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
     {
       emit errorReported(tr("Error"), GetSaveStateErrorMessage(error, "Failed to load state: %1"));
     }
@@ -1505,7 +1505,7 @@ void EmuThread::saveState(const QString& filename, bool block_until_done /* = fa
     return;
 
   Error error;
-  if (!System::SaveState(filename.toUtf8().data(), &error, g_settings.create_save_state_backups))
+  if (!System::SaveStateWhenReady(filename.toUtf8().data(), &error, g_settings.create_save_state_backups))
     emit errorReported(tr("Error"), GetSaveStateErrorMessage(error, "Failed to save state: %1"));
 }
 
@@ -1522,13 +1522,26 @@ void EmuThread::saveState(bool global, qint32 slot, bool block_until_done /* = f
     return;
 
   Error error;
-  if (!System::SaveState((global ? System::GetGlobalSaveStateFileName(slot) :
-                                   System::GetGameSaveStateFileName(System::GetGameSerial(), slot))
-                           .c_str(),
-                         &error, g_settings.create_save_state_backups))
+  if (!System::SaveStateWhenReady((global ? System::GetGlobalSaveStateFileName(slot) :
+                                            System::GetGameSaveStateFileName(System::GetGameSerial(), slot))
+                                    .c_str(),
+                                  &error, g_settings.create_save_state_backups))
   {
     emit errorReported(tr("Error"), GetSaveStateErrorMessage(error, "Failed to save state: %1"));
   }
+}
+
+void EmuThread::saveNamedState(const QString& label)
+{
+  if (!isOnThread())
+  {
+    QMetaObject::invokeMethod(this, "saveNamedState", Qt::QueuedConnection, Q_ARG(const QString&, label));
+    return;
+  }
+
+  Error error;
+  if (!System::SaveNamedStateWhenReady(label.toStdString(), &error))
+    emit errorReported(tr("Error"), GetSaveStateErrorMessage(error, "Failed to save state: %1"));
 }
 
 void EmuThread::undoLoadState()

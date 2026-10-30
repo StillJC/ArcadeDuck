@@ -6,11 +6,16 @@
 #include <cstdint>
 #include <functional>
 
+class StateWrapper;
+
 namespace ArcadeDuck::SH2
 {
 class CPU
 {
 public:
+  // Bus callbacks and instruction-fetch regions are host configuration and are kept.
+  bool DoState(StateWrapper& sw);
+
   using Read8 = std::function<uint8_t(uint32_t)>;
   using Read16 = std::function<uint16_t(uint32_t)>;
   using Read32 = std::function<uint32_t(uint32_t)>;

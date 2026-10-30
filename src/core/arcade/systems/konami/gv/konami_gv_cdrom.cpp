@@ -8,6 +8,7 @@
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "util/cd_image.h"
+#include "util/state_wrapper.h"
 
 #include "common/log.h"
 
@@ -452,5 +453,43 @@ void MixAudioFrame(s16 input_left, s16 input_right, s32* output_left, s32* outpu
 
   *output_left = (routed_left * static_cast<s32>(s_volume[0])) / maximum_output_scale;
   *output_right = (routed_right * static_cast<s32>(s_volume[1])) / maximum_output_scale;
+}
+
+bool DoState(StateWrapper& sw)
+{
+  if (!s_event)
+    return false;
+
+  bool event_active = s_event->IsActive();
+  sw.Do(&s_playing);
+  sw.Do(&s_paused);
+  sw.Do(&s_completed);
+  sw.Do(&s_track);
+  sw.Do(&s_index);
+  sw.Do(&s_end_track);
+  sw.Do(&s_end_index);
+  sw.Do(&s_lba);
+  sw.Do(&s_read_lba);
+  sw.Do(&s_end_lba);
+  sw.DoArray(s_channel.data(), s_channel.size());
+  sw.DoArray(s_volume.data(), s_volume.size());
+  sw.Do(&event_active);
+
+  // Sectors already decoded for playback are held in the shared external CDDA FIFO.
+  if (!CDROM::DoExternalCDAudioState(sw) || sw.HasError())
+    return false;
+
+  if (sw.IsReading())
+  {
+    if ((s_playing || event_active) && !Open())
+      return false;
+
+    if (event_active)
+      s_event->Schedule(s_event->GetInterval());
+    else
+      s_event->Deactivate();
+  }
+
+  return !sw.HasError();
 }
 } // namespace KonamiGVCDROM

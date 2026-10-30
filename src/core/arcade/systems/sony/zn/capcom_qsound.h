@@ -8,6 +8,7 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace SonyZN::CapcomQSound {
 
@@ -19,5 +20,6 @@ bool IsActive();
 void PrepareForCPUClockChange();
 void WriteCommand(u8 value);
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::CapcomQSound

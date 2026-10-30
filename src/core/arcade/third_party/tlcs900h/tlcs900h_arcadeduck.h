@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 
+#include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -44,6 +45,11 @@ uint8 ArcadeDuckTLCS900HGetIFF(void);
 // Pushes PC and SR, raises the interrupt mask to level and jumps through the
 // vector table at 0xFFFF00. Leaves HALT.
 void ArcadeDuckTLCS900HTakeInterrupt(uint8 level, uint8 vector);
+
+// Save-state support: visits the global register file, flags, register bank, error register, HALT and the
+// interpreter's per-instruction scratch in a fixed order. Register maps are static tables indexed by the bank.
+typedef void (*ArcadeDuckTLCS900HStateCallback)(void* context, void* data, size_t size);
+void ArcadeDuckTLCS900HDoState(ArcadeDuckTLCS900HStateCallback callback, void* context);
 
 uint8 loadB(uint32 address);
 uint16 loadW(uint32 address);

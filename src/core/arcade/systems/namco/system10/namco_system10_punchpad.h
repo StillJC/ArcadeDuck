@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace NamcoSystem10 {
 
 // Hajime no Ippo punch pad. The pad rests on the DOWN speed sensor; the solenoid stands it up
@@ -14,6 +16,8 @@ namespace NamcoSystem10 {
 class PunchPad
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   // IN1 bits.
   static constexpr u32 SENSOR_DOWN = 0x0002;
   static constexpr u32 SENSOR_MID = 0x0004;
@@ -64,6 +68,8 @@ private:
 class PunchButton
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   void Reset();
 
   // Records a press at emulated tick `now`. Returns true when this tap throws the punch.

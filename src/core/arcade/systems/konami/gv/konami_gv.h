@@ -9,9 +9,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 class Error;
 class StateWrapper;
+
+namespace Arcade::SaveState {
+struct NVRAMComponent;
+}
 namespace BIOS {
 struct Image;
 }
@@ -91,6 +96,7 @@ std::string_view GetGVTitle();
 std::string_view GetGVPersistenceDirectory();
 std::string_view GetGVCHDPath();
 bool DoGVState(StateWrapper& sw);
+void GetGVNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 void WriteEEPROMControl(u32 value);
 bool GetEEPROMDataOutput();
 u32 ReadGVPlayer1Status(u32 size, u32 offset);

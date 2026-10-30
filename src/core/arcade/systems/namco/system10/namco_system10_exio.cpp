@@ -6,6 +6,7 @@
 // and namcos10.cpp. See THIRD-PARTY-LICENSES.txt.
 
 #include "core/arcade/systems/namco/system10/namco_system10_exio.h"
+#include "util/state_wrapper.h"
 
 #include "core/system.h"
 #include "core/timing_event.h"
@@ -355,6 +356,49 @@ bool EXIOBoard::Write(u32 width, u32 offset, u32 value)
     default:
       return false;
   }
+}
+
+// Deadlines are restored by TimingEvents; only activation is established here.
+static bool DoEXIOEventActivation(StateWrapper& sw, TimingEvent* event)
+{
+  bool active = event && event->IsActive();
+  sw.Do(&active);
+  if (!sw.IsReading())
+    return !sw.HasError();
+  if (sw.HasError() || (active && !event))
+    return false;
+  if (event)
+  {
+    if (active)
+      event->Schedule(1);
+    else
+      event->Deactivate();
+  }
+  return true;
+}
+
+// Cabinet callbacks are host configuration; output latches are republished by the next write.
+bool EXIOBoard::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("S10EXIO"))
+    return false;
+
+  bool has_cpu = static_cast<bool>(m_mcu);
+  sw.Do(&has_cpu);
+  if (has_cpu != static_cast<bool>(m_mcu))
+    return false;
+
+  sw.Do(&m_state_fraction);
+  sw.DoArray(m_work_ram.data(), m_work_ram.size());
+  sw.DoArray(m_shared_ram.data(), m_shared_ram.size());
+  sw.Do(&m_ctrl);
+  sw.Do(&m_bus_req);
+  sw.Do(&m_active);
+  sw.Do(&m_analog_select);
+  if (!DoEXIOEventActivation(sw, m_event.get()))
+    return false;
+
+  return (!m_mcu || m_mcu->DoState(sw)) && !sw.HasError();
 }
 
 } // namespace NamcoSystem10
