@@ -82,6 +82,14 @@ static void HotkeyLoadStateSlot(bool global, s32 slot)
     return;
   }
 
+  if (global && System::IsArcadeSaveStateSession())
+  {
+    Host::AddKeyedOSDMessage("LoadState",
+                             TRANSLATE_STR("OSDMessage", "Global save slots are not available for arcade games."),
+                             Host::OSD_ERROR_DURATION);
+    return;
+  }
+
   std::string path(global ? System::GetGlobalSaveStateFileName(slot) :
                             System::GetGameSaveStateFileName(System::GetGameSerial(), slot));
   if (!FileSystem::FileExists(path.c_str()))
@@ -93,7 +101,7 @@ static void HotkeyLoadStateSlot(bool global, s32 slot)
   }
 
   Error error;
-  if (!System::LoadState(path.c_str(), &error, true))
+  if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
   {
     Host::AddKeyedOSDMessage(
       "LoadState",
@@ -120,10 +128,18 @@ static void HotkeySaveStateSlot(bool global, s32 slot)
     return;
   }
 
+  if (global && System::IsArcadeSaveStateSession())
+  {
+    Host::AddKeyedOSDMessage("SaveState",
+                             TRANSLATE_STR("OSDMessage", "Global save slots are not available for arcade games."),
+                             Host::OSD_ERROR_DURATION);
+    return;
+  }
+
   std::string path(global ? System::GetGlobalSaveStateFileName(slot) :
                             System::GetGameSaveStateFileName(System::GetGameSerial(), slot));
   Error error;
-  if (!System::SaveState(path.c_str(), &error, g_settings.create_save_state_backups))
+  if (!System::SaveStateWhenReady(path.c_str(), &error, g_settings.create_save_state_backups))
   {
     Host::AddIconOSDMessage(
       "SaveState", ICON_FA_EXCLAMATION_TRIANGLE,

@@ -68,6 +68,23 @@ public:
     return true;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override
+  {
+    // Board profiles whose complete-system state has passed save-state validation.
+    return game.hardware_profile == "konamigv_standard" || game.hardware_profile == "konamigv_simpbowl" ||
+           game.hardware_profile == "konamigv_btchamp" || game.hardware_profile == "konamigv_kdeadeye" ||
+           game.hardware_profile == "konamigv_tokimeki";
+  }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    Konami::GetGVNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return Konami::DoGVState(sw); }
+
 private:
   std::optional<BIOS::Image> m_bios;
   std::optional<Konami::GVLoadedContent> m_content;
@@ -121,6 +138,17 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    Konami::GetGQNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return Konami::DoGQState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -190,6 +218,17 @@ public:
     return true;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    NamcoSystem11::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return NamcoSystem11::DoState(sw); }
+
 private:
   bool m_coh100 = false;
   std::optional<NamcoSystem11::LoadedContent> m_content;
@@ -245,6 +284,28 @@ public:
                 context.canonical_game_id, context.game_definition->hardware_profile);
     return true;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override
+  {
+    return NamcoSystem12::SupportsSaveStates(game);
+  }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    NamcoSystem12::GetNVRAMComponents(components);
+  }
+
+  bool CanSaveState(Error* error) const override { return NamcoSystem12::CanSaveState(error); }
+  bool IsSaveReadinessPending(std::string* message) const override
+  {
+    return NamcoSystem12::IsSaveReadinessPending(message);
+  }
+
+  void AppendStateIdentity(std::string* record) const override { NamcoSystem12::AppendStateIdentity(record); }
+
+  bool DoState(StateWrapper& sw) override { return NamcoSystem12::DoState(sw); }
 
 private:
   bool m_coh716 = false;
@@ -338,6 +399,17 @@ public:
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
+
 private:
   bool m_use_2mb_vram = false;
   std::optional<BIOS::Image> m_bios;
@@ -406,6 +478,17 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -478,6 +561,23 @@ public:
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override
+  {
+    // The communication board (coh3002t_comm) is an active network configuration.
+    return game.hardware_profile != "coh3002t_comm";
+  }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool CanSaveState(Error* error) const override { return SonyZN::CanSaveState(error); }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
+
 private:
   std::optional<BIOS::Image> m_bios;
   std::optional<SonyZN::TaitoGNetContent> m_content;
@@ -546,6 +646,17 @@ public:
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
+
 private:
   std::optional<BIOS::Image> m_bios;
   std::optional<SonyZN::VideoSystemZN1Content> m_content;
@@ -612,6 +723,17 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -716,6 +838,21 @@ public:
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override
+  {
+    return game.hardware_profile == "coh1002e" || game.hardware_profile == "bam2hdd" ||
+           game.hardware_profile == "bam2cdrom";
+  }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
+
 private:
   std::optional<BIOS::Image> m_bios;
   std::optional<SonyZN::EightingRaizingZN1Content> m_content;
@@ -784,6 +921,17 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -859,6 +1007,17 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -974,6 +1133,21 @@ public:
   {
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
+
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override
+  {
+    // The GR2 link board (coh1002ml) is an active network configuration.
+    return game.hardware_profile != "coh1002ml";
+  }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
 
 private:
   std::optional<BIOS::Image> m_bios;
@@ -1116,6 +1290,17 @@ public:
     return m_bios.has_value() ? &m_bios.value() : nullptr;
   }
 
+  bool SupportsSaveStates(const Database::GameDefinition& game) const override { return true; }
+
+  u32 GetStateVersion() const override { return 1; }
+
+  void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const override
+  {
+    SonyZN::GetNVRAMComponents(components);
+  }
+
+  bool DoState(StateWrapper& sw) override { return SonyZN::DoState(sw); }
+
 private:
   enum class Family : u8
   {
@@ -1190,10 +1375,10 @@ std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id)
   return {};
 }
 
-bool MachineHandlerSupportsSaveStates(std::string_view id)
+bool MachineHandlerSupportsSaveStates(std::string_view id, const Database::GameDefinition& game)
 {
   const std::unique_ptr<MachineHandler> handler = CreateMachineHandler(id);
-  return handler && handler->SupportsSaveStates();
+  return handler && handler->SupportsSaveStates(game);
 }
 
 bool MachineHandlerSupportsSplitMergedSets(std::string_view id)

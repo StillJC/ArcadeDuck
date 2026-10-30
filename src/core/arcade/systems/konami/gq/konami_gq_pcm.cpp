@@ -5,6 +5,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 
@@ -160,6 +162,12 @@ u8 ReadRAMByte(u32 index)
 
   s_state.active_byte_reads++;
   return s_state.ram[index];
+}
+
+bool DoState(StateWrapper& sw)
+{
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  return !sw.HasError();
 }
 
 } // namespace KonamiGQPCM

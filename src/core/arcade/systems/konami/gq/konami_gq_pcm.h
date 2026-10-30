@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace KonamiGQPCM {
 
 inline constexpr u32 RAM_SIZE = 0x180000;
@@ -19,5 +21,6 @@ void Write(u32 width, u32 offset, u32 value);
 
 /// Reads one byte from the contiguous 1.5 MiB shared PCM RAM backing store.
 u8 ReadRAMByte(u32 index);
+bool DoState(StateWrapper& sw);
 
 } // namespace KonamiGQPCM

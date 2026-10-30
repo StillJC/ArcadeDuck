@@ -17,6 +17,8 @@
 #include <span>
 #include <vector>
 
+class StateWrapper;
+
 namespace TaitoFX1BZSG2 {
 
 class Chip
@@ -31,6 +33,7 @@ public:
   u16 Read(u32 offset);
   void Write(u32 offset, u16 data);
   void GenerateFrame(std::array<s32, OUTPUT_COUNT>* output);
+  bool DoState(StateWrapper& sw);
 
 private:
   static constexpr u16 STATUS_ACTIVE = 0x8000;

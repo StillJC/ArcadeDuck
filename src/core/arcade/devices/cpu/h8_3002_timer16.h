@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <optional>
 
+class StateWrapper;
+
 namespace Arcade::H8 {
 
 // H8/3002 five-channel Timer16.
@@ -27,6 +29,8 @@ public:
   static constexpr u16 REGISTER_END = UINT16_C(0xFF9F);
 
   H83002Timer16() { Reset(); }
+
+  bool DoState(StateWrapper& sw);
 
   void Reset()
   {

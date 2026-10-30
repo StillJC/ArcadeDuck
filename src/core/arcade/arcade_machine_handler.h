@@ -10,14 +10,20 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace BIOS {
 struct Image;
 }
 
 namespace Arcade {
+
+namespace SaveState {
+struct NVRAMComponent;
+}
 
 enum class VideoTimingStandard : u8
 {
@@ -53,8 +59,30 @@ class MachineHandler
 public:
   virtual ~MachineHandler() = default;
 
-  /// Returns true only after this handler's complete-system save states have been certified.
-  virtual bool SupportsSaveStates() const { return false; }
+  /// Returns true only for games whose complete-system save states have been certified on this handler.
+  virtual bool SupportsSaveStates(const Database::GameDefinition& game) const { return false; }
+
+  /// Version of the board section written by DoState(). States with any other version are refused.
+  virtual u32 GetStateVersion() const { return 0; }
+
+  /// Lists every persistent NVRAM component. Contents must be the live device memory, not the disk copy.
+  virtual void GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const {}
+
+  /// Refuses saving while the board is in a condition that cannot be captured, such as an active network link.
+  virtual bool CanSaveState(Error* error) const { return true; }
+
+  /// Appends configuration chosen at boot that is not visible in the game definition (for example optional
+  /// hardware that is absent) to the save-state identity record.
+  virtual void AppendStateIdentity(std::string* record) const {}
+
+  /// True when CanSaveState() refuses only because the board is busy with something that finishes on its own
+  /// (such as programming a cabinet flash). An interactive save may then wait for it; message explains the wait.
+  virtual bool IsSaveReadinessPending(std::string* message) const { return false; }
+
+  /// Serializes board state. NVRAM contents are excluded; they are matched by fingerprint instead. When reading,
+  /// event activation must match the saved state before the shared Events section is restored, and no
+  /// persistence write may occur. Returns false on any invalid value.
+  virtual bool DoState(StateWrapper& sw) { return false; }
 
   /// Selects the base hardware timing before shared GPU construction.
   virtual VideoTimingStandard GetVideoTiming() const = 0;
@@ -78,9 +106,9 @@ public:
 /// Creates a registered machine handler. Returns null for unknown or unsupported handler IDs.
 std::unique_ptr<MachineHandler> CreateMachineHandler(std::string_view id);
 
-/// Queries a registered handler's save-state capability without starting the machine.
+/// Queries a registered handler's save-state capability for one game without starting the machine.
 /// Unknown handlers are unsupported.
-bool MachineHandlerSupportsSaveStates(std::string_view id);
+bool MachineHandlerSupportsSaveStates(std::string_view id, const Database::GameDefinition& game);
 
 /// Returns whether the ID names a registered handler. All registered handlers must resolve non-merged, split, and
 /// merged game archives through the logical game definition.

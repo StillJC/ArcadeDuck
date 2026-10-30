@@ -14,6 +14,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include "core/arcade/third_party/musashi/m68k.h"
 #include "core/arcade/third_party/musashi/m68k_bus.h"
 
@@ -1208,6 +1210,100 @@ void WriteMemory32ForCore(u32 address, u32 value)
 {
   WriteMemory16ForCore(address, value >> 16);
   WriteMemory16ForCore(address + 2, value);
+}
+
+// Queued native frames are consumed only through their output pair; the other fields are per-frame
+// diagnostics and are not carried across a load. Diagnostic counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !s_state.tms57002 || !s_state.timing_event || s_state.executing)
+    return false;
+
+  if (!sw.DoMarker("GQSoundCPU"))
+    return false;
+
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  for (auto& registers : s_state.k054539_registers)
+    sw.DoArray(registers.data(), registers.size());
+  for (K054539::Chip& chip : s_state.k054539_chips)
+  {
+    if (!chip.DoState(sw))
+      return false;
+  }
+
+  u32 queued = static_cast<u32>(s_state.native_audio_queue.size());
+  sw.Do(&queued);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || queued > MAX_NATIVE_AUDIO_QUEUE_FRAMES)
+      return false;
+
+    s_state.native_audio_queue.clear();
+    for (u32 i = 0; i < queued; i++)
+    {
+      NativeAudioFrame frame;
+      sw.DoArray(frame.output.data(), frame.output.size());
+      s_state.native_audio_queue.push_back(frame);
+    }
+    s_state.k054539_resample_current = {};
+    s_state.k054539_resample_next = {};
+  }
+  else
+  {
+    for (NativeAudioFrame& frame : s_state.native_audio_queue)
+      sw.DoArray(frame.output.data(), frame.output.size());
+  }
+  sw.DoArray(s_state.k054539_resample_current.output.data(), s_state.k054539_resample_current.output.size());
+  sw.DoArray(s_state.k054539_resample_next.output.data(), s_state.k054539_resample_next.output.size());
+  sw.Do(&s_state.k054539_resample_phase);
+  sw.Do(&s_state.k054539_resampler_initialized);
+
+  sw.DoArray(s_state.k054539_data_pointer.data(), s_state.k054539_data_pointer.size());
+  sw.DoArray(s_state.k054539_data_bank.data(), s_state.k054539_data_bank.size());
+  sw.DoArray(s_state.k054539_timer_phase.data(), s_state.k054539_timer_phase.size());
+  sw.DoArray(s_state.k054539_timer_state.data(), s_state.k054539_timer_state.size());
+  for (bool& configured : s_state.k054539_timer_configured)
+    sw.Do(&configured);
+  sw.Do(&s_state.sound_control);
+  sw.Do(&s_state.nres);
+  sw.Do(&s_state.reset_released);
+  sw.Do(&s_state.k054539_irq2_pending);
+  sw.Do(&s_state.cycle_fraction);
+  sw.Do(&s_state.last_ticks_per_second);
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.tms_cycle_balance);
+  for (auto& chip_flags : s_state.crypt_killer_gameplay_sfx_active)
+  {
+    for (bool& flag : chip_flags)
+      sw.Do(&flag);
+  }
+
+  bool event_active = s_state.timing_event->IsActive();
+  sw.Do(&event_active);
+
+  if (!sw.DoMarker("GQTMS57002") || !s_state.tms57002->DoState(sw))
+    return false;
+
+  bool has_rvv_tms = static_cast<bool>(s_state.rvv_tms57002);
+  sw.Do(&has_rvv_tms);
+  if (has_rvv_tms != static_cast<bool>(s_state.rvv_tms57002) || (has_rvv_tms && !s_state.rvv_tms57002->DoState(sw)))
+    return false;
+
+  if (!sw.DoMarker("GQ68000") || !MusashiBus::DoCPUState(sw))
+    return false;
+
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || s_state.k054539_resample_phase >= SPU::SAMPLE_RATE)
+      return false;
+
+    if (event_active)
+      s_state.timing_event->Schedule(SCHEDULER_INTERVAL_TICKS);
+    else
+      s_state.timing_event->Deactivate();
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace KonamiGQSoundCPU

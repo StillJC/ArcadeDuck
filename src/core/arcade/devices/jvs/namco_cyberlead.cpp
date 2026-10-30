@@ -3,9 +3,18 @@
 
 #include "core/arcade/devices/jvs/namco_cyberlead.h"
 
+#include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
-#include "common/log.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
+#include "core/settings.h"
+
+#include "common/error.h"
+#include "common/file_system.h"
+#include "common/log.h"
+#include "common/minizip_helpers.h"
+#include "common/path.h"
+#include "common/sha1_digest.h"
+#include "common/string_util.h"
 
 #include <algorithm>
 #include <array>
@@ -25,6 +34,16 @@ static constexpr u64 LINK_BYTE_CLOCKS = 15360;
 // C39C reload values: after 0xF1 and after a 71/02 or 71/06 transaction.
 static constexpr u16 LINK_ADDRESS_COUNTDOWN = UINT16_C(0x0708);
 static constexpr u16 LINK_TRANSACTION_COUNTDOWN = UINT16_C(0xFFFF);
+
+static constexpr size_t LED_FIRMWARE_SIZE = 0x40000;
+static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> LED_FIRMWARE_SHA1 = {
+  UINT8_C(0x61), UINT8_C(0xD6), UINT8_C(0x13), UINT8_C(0x38), UINT8_C(0xE1),
+  UINT8_C(0xBB), UINT8_C(0x41), UINT8_C(0x4A), UINT8_C(0xF3), UINT8_C(0x2D),
+  UINT8_C(0xBD), UINT8_C(0xC1), UINT8_C(0xE2), UINT8_C(0x4D), UINT8_C(0x54),
+  UINT8_C(0xC0), UINT8_C(0x2F), UINT8_C(0xB9), UINT8_C(0x19), UINT8_C(0x6E)
+};
+
+NamcoCyberLead* s_active = nullptr;
 
 // JVS 70/02 program date, from ROM offset 186A.
 static constexpr std::array<u8, 8> PROGRAM_DATE = {
@@ -51,7 +70,193 @@ bool AppendResponseData(std::array<u8, 256>& response, u32& length, const char* 
   return AppendResponseByte(response, length, UINT8_C(0x00));
 }
 
+std::vector<u8> ReadZipMember(const std::string& archive_path, const char* member)
+{
+  std::vector<u8> data;
+  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path.c_str());
+  if (!zf)
+    return data;
+
+  if (unzLocateFile(zf, member, 2) == UNZ_OK && unzOpenCurrentFile(zf) == UNZ_OK)
+  {
+    unz_file_info64 file_info = {};
+    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK)
+    {
+      data.resize(static_cast<size_t>(file_info.uncompressed_size));
+      size_t read_offset = 0;
+      while (read_offset < data.size())
+      {
+        const int bytes_read =
+          unzReadCurrentFile(zf, data.data() + read_offset, static_cast<unsigned>(data.size() - read_offset));
+        if (bytes_read <= 0)
+          break;
+        read_offset += static_cast<size_t>(bytes_read);
+      }
+      if (unzCloseCurrentFile(zf) != UNZ_OK || read_offset != data.size())
+        data.clear();
+    }
+  }
+
+  unzClose(zf);
+  return data;
+}
+
 } // namespace
+
+std::vector<u8> NamcoCyberLead::LoadFactoryLEDFirmware()
+{
+  std::string path = Path::Combine(EmuFolders::Bios, "namco_cyberlead_led.zip");
+  std::vector<u8> firmware = ReadZipMember(path, "cl1-leda.ic5");
+  if (firmware.empty())
+  {
+    path = Path::Combine(EmuFolders::Bios, "cl1-leda.ic5");
+    if (const std::optional<DynamicHeapArray<u8>> loose = FileSystem::ReadBinaryFile(path.c_str()))
+      firmware.assign(loose->cspan().begin(), loose->cspan().end());
+  }
+
+  if (firmware.empty())
+  {
+    INFO_LOG("CyberLead LED firmware not found. Cabinet LED emulation will remain disabled; "
+             "the game itself will continue normally.");
+    return firmware;
+  }
+
+  if (firmware.size() != LED_FIRMWARE_SIZE)
+  {
+    WARNING_LOG("CyberLead LED firmware wrong size path='{}' expected={} actual={}; LED disabled", path,
+                LED_FIRMWARE_SIZE, firmware.size());
+    firmware.clear();
+    return firmware;
+  }
+
+  auto sha1 = SHA1Digest::GetDigest(std::span<const u8>(firmware));
+  if (sha1 != LED_FIRMWARE_SHA1)
+  {
+    WARNING_LOG("CyberLead LED firmware SHA1 mismatch path='{}' expected={} actual={}; LED disabled", path,
+                "61d61338e1bb414af32dbdc1e24d54c02fb9196e", SHA1Digest::DigestToString(sha1));
+    firmware.clear();
+    return firmware;
+  }
+
+  INFO_LOG("CyberLead LED firmware loaded path='{}' size={}", path, firmware.size());
+  return firmware;
+}
+
+// The LED PCB's AT29C020 holds data games program into it, so it is kept with
+// the set's other non-volatile memory once written.
+bool NamcoCyberLead::InitializeLEDFlash(std::span<const u8> factory_firmware, std::string flash_path)
+{
+  m_led_flash_path = std::move(flash_path);
+  m_led_flash_file.SetPath(m_led_flash_path);
+  if (factory_firmware.empty())
+    return false;
+
+  if (!m_led_flash_path.empty() && FileSystem::FileExists(m_led_flash_path.c_str()))
+  {
+    const std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(m_led_flash_path.c_str());
+    if (data)
+      m_led_flash_file.RecordDiskContents(data->cspan());
+    if (data && data->size() == LED_FIRMWARE_SIZE && SetLEDFirmware(data->cspan()))
+    {
+      INFO_LOG("CyberLead LED flash loaded path='{}'", m_led_flash_path);
+      return true;
+    }
+
+    WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", m_led_flash_path);
+  }
+  else
+  {
+    m_led_flash_file.RecordDiskAbsent();
+  }
+
+  if (!SetLEDFirmware(factory_firmware))
+  {
+    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
+    return false;
+  }
+
+  return true;
+}
+
+void NamcoCyberLead::SaveLEDFlash()
+{
+  if (m_led_flash_path.empty() || !m_led_device.IsFlashModified() || SaveState::IsRestoring())
+    return;
+
+  const std::span<const u8> flash = m_led_device.GetFlash();
+  if (!FileSystem::CreateDirectory(std::string(Path::GetDirectory(m_led_flash_path)).c_str(), false) ||
+      !FileSystem::WriteBinaryFile(m_led_flash_path.c_str(), flash.data(), flash.size()))
+  {
+    ERROR_LOG("CyberLead LED flash save failed path='{}'", m_led_flash_path);
+    return;
+  }
+
+  m_led_flash_file.RecordDiskContents(flash);
+  m_led_device.ClearFlashModified();
+  INFO_LOG("CyberLead LED flash saved path='{}'", m_led_flash_path);
+}
+
+std::string NamcoCyberLead::DescribeLinkDiagnostics() const
+{
+  std::string id;
+  for (const u8 value : m_link.profile_id)
+    id += fmt::format("{:02X}", value);
+  return fmt::format("txn={} profile_result={} transfer_result={} poll={} attempts={} profile_id={} "
+                     "handshake={} uploaded={} changed_since_handshake={} mode_since_change={} commits={} modes={} "
+                     "setup_closed={}",
+                     m_link.transaction_id, m_link.profile_result, m_link.transfer_result, m_link.poll_count,
+                     m_link.attempts, id, m_link.handshake_complete, m_link.initial_upload_complete,
+                     m_link.flash_changed_since_handshake, m_link.mode_since_last_change, m_link.commit_count,
+                     m_link.mode_count, m_link.setup_closed_since_query);
+}
+
+bool NamcoCyberLead::IsLEDSaveReady() const
+{
+  if (!m_led_device.HasFirmware())
+    return true;
+
+  // The LED data is in place once the game has switched the LED to display mode (71/08) after the last upload
+  // that changed the flash, or when every committed upload since the handshake rewrote identical data.
+  // An installed board can also report its data as present (profile result 1) without any upload or 71/08, and a
+  // game which ends setup with 71/04 after the query does not upload in that setup.
+  const bool data_settled =
+    m_link.mode_since_last_change ||
+    (!m_link.flash_changed_since_handshake &&
+     (m_link.initial_upload_complete || m_link.profile_result == UINT8_C(0x01) || m_link.setup_closed_since_query));
+  if (!m_link.handshake_complete || !data_settled)
+    return false;
+
+  // Every LED transaction can program the flash (71/08 display mode writes settings too), so saving waits for an
+  // idle link.
+  return m_link.state == LinkState::Idle && !m_led_device.IsFlashOperationActive();
+}
+
+void NamcoCyberLead::GetNVRAMComponents(std::vector<SaveState::NVRAMComponent>* components) const
+{
+  if (!m_led_flash_path.empty() && m_led_device.HasFirmware())
+    components->push_back({"cyberlead_led", m_led_device.GetFlash(), &m_led_flash_file});
+}
+
+NamcoCyberLead* NamcoCyberLead::GetActive()
+{
+  return s_active;
+}
+
+void NamcoCyberLead::SetActive(NamcoCyberLead* device)
+{
+  s_active = device;
+}
+
+bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)
+{
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
+  if (!game)
+    return false;
+
+  return std::any_of(game->properties.begin(), game->properties.end(), [](const Arcade::Database::Property& property) {
+    return property.name == "ioBoard" && property.value == "cyberlead";
+  });
+}
 
 void NamcoCyberLead::Reset()
 {
@@ -363,13 +568,23 @@ void NamcoCyberLead::EvaluateLinkState()
       else if (LEDReplyAccepted() && result != 0)
       {
         m_link.profile_result = result;
+        if (!m_link.handshake_complete)
+          m_link.upload_change_baseline = m_led_device.GetFlashContentChanges();
+        m_link.handshake_complete = true;
         m_link.state = LinkState::Idle;
       }
       break;
 
     case LinkState::Status:
-      if (++m_link.attempts >= 0x60 || LEDReplyAccepted())
+      if (++m_link.attempts >= 0x60)
+      {
         m_link.state = LinkState::Idle;
+      }
+      else if (LEDReplyAccepted())
+      {
+        m_link.setup_closed_since_query = m_link.handshake_complete;
+        m_link.state = LinkState::Idle;
+      }
       break;
 
     case LinkState::Block:
@@ -393,6 +608,15 @@ void NamcoCyberLead::EvaluateLinkState()
         else
         {
           m_link.transfer_result = result;
+          m_link.initial_upload_complete = true;
+          const u64 changes = m_led_device.GetFlashContentChanges();
+          m_link.commit_count++;
+          if (changes != m_link.upload_change_baseline)
+          {
+            m_link.flash_changed_since_handshake = true;
+            m_link.mode_since_last_change = false;
+          }
+          m_link.upload_change_baseline = changes;
           m_link.state = LinkState::Idle;
         }
       }
@@ -400,7 +624,13 @@ void NamcoCyberLead::EvaluateLinkState()
 
     case LinkState::Mode:
       if (LEDReplyAccepted())
+      {
+        // Display mode ends an installation. The LED stores its mode settings while handling 71/08, so those
+        // writes become part of the baseline rather than a change seen at the next commit.
+        m_link.mode_since_last_change = true;
+        m_link.upload_change_baseline = m_led_device.GetFlashContentChanges();
         m_link.state = LinkState::Idle;
+      }
       break;
 
     case LinkState::Idle:
@@ -767,6 +997,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
               m_link.poll_count = 0;
               m_link.attempts = 0;
               m_link.profile_result = 0;
+              m_link.setup_closed_since_query = false;
               m_link.idle_countdown = LINK_TRANSACTION_COUNTDOWN;
               SetLinkState(LinkState::Profile);
             }
@@ -839,6 +1070,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 
           case UINT8_C(0x08):
             m_link.idle_countdown = 0;
+            m_link.mode_count++;
             SetLinkState(LinkState::Mode);
             break;
 

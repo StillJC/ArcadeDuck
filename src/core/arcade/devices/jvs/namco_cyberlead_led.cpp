@@ -3,11 +3,15 @@
 
 #include "core/arcade/devices/jvs/namco_cyberlead_led.h"
 
+#include "core/arcade/devices/cpu/h8_300h_state.h"
+
 extern "C" {
 #include "core/arcade/third_party/h8_300h/system.h"
 }
 
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 
 #include <algorithm>
 #include <array>
@@ -180,6 +184,7 @@ struct NamcoCyberLeadLEDDevice::Impl
   u32 flash_page_count = 0;
   bool flash_sdp = false;
   bool flash_modified = false;
+  u64 flash_content_changes = 0;
 
   u64 pending_interrupts = 0; // one bit per vector
 
@@ -852,6 +857,9 @@ struct NamcoCyberLeadLEDDevice::Impl
         flash_mode = FlashMode::Normal;
         if (command_address == 0x5555 && value == 0x10)
         {
+          stats.flash_erases++;
+          flash_content_changes +=
+            static_cast<u64>(std::count_if(firmware.begin(), firmware.end(), [](u8 v) { return v != 0xFF; }));
           flash_modified |= std::any_of(firmware.begin(), firmware.end(), [](u8 v) { return v != 0xFF; });
           firmware.fill(0xFF);
         }
@@ -872,6 +880,9 @@ struct NamcoCyberLeadLEDDevice::Impl
         }
 
         // Programming completes immediately, so data polling sees the value at once.
+        stats.flash_program_bytes++;
+        stats.flash_changed_bytes += (firmware[offset] != value) ? 1 : 0;
+        flash_content_changes += (firmware[offset] != value) ? 1 : 0;
         flash_modified |= (firmware[offset] != value);
         firmware[offset] = value;
         if (++flash_page_count == FLASH_PAGE_SIZE)
@@ -1296,6 +1307,26 @@ std::span<const u8> NamcoCyberLeadLEDDevice::GetFlash() const
   return m_impl->firmware;
 }
 
+bool NamcoCyberLeadLEDDevice::IsFlashOperationActive() const
+{
+  return m_impl->flash_mode != FlashMode::Normal && m_impl->flash_mode != FlashMode::ReadID;
+}
+
+u64 NamcoCyberLeadLEDDevice::GetFlashContentChanges() const
+{
+  return m_impl->flash_content_changes;
+}
+
+u8 NamcoCyberLeadLEDDevice::GetFlashMode() const
+{
+  return static_cast<u8>(m_impl->flash_mode);
+}
+
+u32 NamcoCyberLeadLEDDevice::GetFlashPageCount() const
+{
+  return m_impl->flash_page_count;
+}
+
 bool NamcoCyberLeadLEDDevice::IsFlashModified() const
 {
   return m_impl->flash_modified;
@@ -1304,6 +1335,122 @@ bool NamcoCyberLeadLEDDevice::IsFlashModified() const
 void NamcoCyberLeadLEDDevice::ClearFlashModified()
 {
   m_impl->flash_modified = false;
+}
+
+bool NamcoCyberLeadLEDLink::DoState(StateWrapper& sw)
+{
+  sw.Do(&m_address);
+  sw.DoArray(m_last_frame.logical.data(), m_last_frame.logical.size());
+  sw.Do(&m_last_frame.logical_size);
+  sw.DoArray(m_last_frame.wire.data(), m_last_frame.wire.size());
+  sw.Do(&m_last_frame.wire_size);
+  sw.Do(&m_last_frame.checksum);
+  sw.Do(&m_last_frame.generation);
+  sw.Do(&m_last_frame.valid);
+  return !sw.HasError() && m_last_frame.logical_size <= m_last_frame.logical.size() &&
+         m_last_frame.wire_size <= m_last_frame.wire.size();
+}
+
+// The AT29C020 programs bytes immediately (no timed write window), so the restored command mode only affects
+// later bus writes. Statistics are diagnostics and are excluded.
+bool NamcoCyberLeadLEDDevice::DoState(StateWrapper& sw)
+{
+  Impl& s = *m_impl;
+  if (!sw.DoMarker("CyberLeadLED"))
+    return false;
+
+  bool firmware_loaded = s.firmware_loaded;
+  sw.Do(&firmware_loaded);
+  if (firmware_loaded != s.firmware_loaded)
+    return false;
+  if (!firmware_loaded)
+    return !sw.HasError();
+
+  sw.DoArray(s.display_ram.data(), s.display_ram.size());
+  sw.DoArray(s.display_control.data(), s.display_control.size());
+  sw.DoArray(s.scroll.data(), s.scroll.size());
+  sw.DoArray(s.work_ram.data(), s.work_ram.size());
+  sw.DoArray(s.rx_queue.data(), s.rx_queue.size());
+  sw.Do(&s.rx_head);
+  sw.Do(&s.rx_tail);
+  sw.Do(&s.rx_count);
+  sw.DoArray(s.tx_queue.data(), s.tx_queue.size());
+  sw.Do(&s.tx_head);
+  sw.Do(&s.tx_count);
+  if (!H8::DoCoreState(sw, s.cpu))
+    return false;
+
+  sw.DoArray(s.frame_state.pixels.data(), s.frame_state.pixels.size());
+  sw.DoArray(s.frame_state.intensity_counts.data(), s.frame_state.intensity_counts.size());
+  sw.Do(&s.frame_state.generation);
+  sw.Do(&s.frame_state.start_address);
+  sw.Do(&s.frame_state.scroll_x);
+  sw.Do(&s.frame_state.scroll_y);
+  sw.Do(&s.frame_state.valid);
+
+  sw.Do(&s.last_step_pc);
+  sw.Do(&s.cycle_balance);
+  sw.Do(&s.peripheral_pending_clocks);
+  sw.Do(&s.peripheral_next_event);
+  sw.Do(&s.source_clock_fraction);
+  sw.Do(&s.vblank_clock_accumulator);
+  sw.Do(&s.next_vblank_start_clock);
+  sw.Do(&s.vblank_end_clock);
+  sw.Do(&s.vblank_active);
+  sw.Do(&s.irq6_latched);
+  sw.Do(&s.timer_clock_accumulator);
+  sw.Do(&s.flash_bank);
+  sw.Do(&s.flash_mode);
+  sw.Do(&s.flash_page_count);
+  sw.Do(&s.flash_sdp);
+  sw.Do(&s.flash_content_changes);
+  sw.Do(&s.pending_interrupts);
+  sw.DoArray(s.port_ddr.data(), s.port_ddr.size());
+  sw.DoArray(s.port_dr.data(), s.port_dr.size());
+  sw.Do(&s.wscr);
+  sw.Do(&s.stcr);
+  sw.Do(&s.syscr);
+  sw.Do(&s.mdcr);
+  sw.Do(&s.iscr);
+  sw.Do(&s.ier);
+  sw.Do(&s.fff1);
+  sw.Do(&s.timer_tcr);
+  sw.Do(&s.timer_tcsr);
+  sw.DoArray(s.timer_tcor.data(), s.timer_tcor.size());
+  sw.Do(&s.timer_tcnt);
+  sw.Do(&s.timer_extra_clock);
+  sw.Do(&s.sci0_smr);
+  sw.Do(&s.sci0_brr);
+  sw.Do(&s.sci0_scr);
+  sw.Do(&s.sci0_tdr);
+  sw.Do(&s.sci0_ssr);
+  sw.Do(&s.sci0_rdr);
+  sw.Do(&s.sci1_smr);
+  sw.Do(&s.sci1_brr);
+  sw.Do(&s.sci1_scr);
+  sw.Do(&s.sci1_tdr);
+  sw.Do(&s.sci1_ssr);
+  sw.Do(&s.sci1_ssr_read);
+  sw.Do(&s.sci1_rdr);
+  sw.Do(&s.sci1_rx_busy);
+  sw.Do(&s.sci1_rx_clocks_remaining);
+  sw.Do(&s.sci1_tx_busy);
+  sw.Do(&s.sci1_tx_shift);
+  sw.Do(&s.sci1_tx_clocks_remaining);
+  sw.Do(&s.sci1_tx_pending);
+  sw.Do(&s.sci1_tx_pending_byte);
+
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || s.rx_head >= RX_QUEUE_SIZE || s.rx_tail >= RX_QUEUE_SIZE || s.rx_count > RX_QUEUE_SIZE ||
+        s.tx_head >= RX_QUEUE_SIZE || s.tx_count > RX_QUEUE_SIZE || s.flash_mode > FlashMode::WritePage)
+    {
+      return false;
+    }
+    s.UpdateInstructionFetch();
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace Arcade::JVS

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "core/arcade/systems/konami/gq/konami_gq_eeprom.h"
+#include "core/arcade/arcade_save_state.h"
 
 #include "core/settings.h"
 
@@ -9,6 +10,8 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/path.h"
+
+#include "util/state_wrapper.h"
 
 #include <array>
 #include <cstring>
@@ -51,6 +54,7 @@ struct State
   std::string set_name;
   std::string persistence_directory;
   std::string path;
+  Arcade::SaveState::PersistentFile file;
   std::array<u8, EEPROM_SIZE> data = {};
 
   bool active = false;
@@ -131,7 +135,7 @@ static bool EnsurePersistenceDirectory(const State& state)
 
 static bool Save(State& state)
 {
-  if (!state.dirty)
+  if (!state.dirty || Arcade::SaveState::IsRestoring())
     return true;
 
   if (!EnsurePersistenceDirectory(state) ||
@@ -141,6 +145,7 @@ static bool Save(State& state)
     return false;
   }
 
+  state.file.RecordDiskContents(state.data);
   state.dirty = false;
   VERBOSE_LOG("KonamiGQ.EEPROM saved canonical_set='{}' path='{}'", state.set_name, state.path);
   return true;
@@ -360,6 +365,10 @@ bool Initialize(std::string_view set_name, std::string_view persistence_director
     }
   }
 
+  // The file now holds exactly the in-memory contents, whether loaded or freshly written.
+  state.file.SetPath(state.path);
+  state.file.RecordDiskContents(state.data);
+
   ResetTransaction(state);
   state.active = true;
   state.write_enabled = false;
@@ -517,6 +526,46 @@ u32 ReadDSW(u32 width, u32 offset)
   if (width == 2)
     return shifted & 0xffff;
   return shifted;
+}
+
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (s_state.has_value())
+    components->push_back({"eeprom", s_state->data, &s_state->file});
+}
+
+// EEPROM contents are matched by fingerprint, not stored. A word write completes against identical contents.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.has_value())
+    return false;
+
+  State& s = *s_state;
+  u8 protocol_state = static_cast<u8>(s.protocol_state);
+  sw.Do(&s.write_enabled);
+  sw.Do(&s.di);
+  sw.Do(&s.data_out);
+  sw.Do(&s.cs);
+  sw.Do(&s.clk);
+  sw.Do(&s.sound_cpu_released);
+  sw.Do(&protocol_state);
+  sw.Do(&s.command_shift);
+  sw.Do(&s.command_bits);
+  sw.Do(&s.data_shift);
+  sw.Do(&s.data_bits);
+  sw.Do(&s.address);
+  sw.Do(&s.write_all);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || protocol_state > static_cast<u8>(ProtocolState::WaitingForWriteData) || s.command_bits > 32 ||
+        s.data_bits > 16 || s.address >= 0x40)
+    {
+      return false;
+    }
+    s.protocol_state = static_cast<ProtocolState>(protocol_state);
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace KonamiGQEEPROM

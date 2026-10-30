@@ -8,6 +8,8 @@
 #include "common/log.h"
 #include "common/path.h"
 
+#include "util/state_wrapper.h"
+
 #include "libchdr/chd.h"
 
 #include <algorithm>
@@ -281,6 +283,49 @@ void CHDHardDisk::ClearWriteOverlay()
   if (!m_impl->write_overlay.empty())
     VERBOSE_LOG("Arcade CHD hard-disk overlay cleared sectors={}", m_impl->write_overlay.size());
   m_impl->write_overlay.clear();
+}
+
+bool CHDHardDisk::DoWriteOverlayState(StateWrapper& sw)
+{
+  if (!m_impl)
+    return false;
+
+  // Sorted by LBA so identical overlays serialize identically.
+  std::vector<u32> lbas;
+  lbas.reserve(m_impl->write_overlay.size());
+  for (const auto& [lba, sector] : m_impl->write_overlay)
+    lbas.push_back(lba);
+  std::sort(lbas.begin(), lbas.end());
+
+  u32 count = static_cast<u32>(lbas.size());
+  sw.Do(&count);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || count > m_impl->block_count)
+      return false;
+
+    m_impl->write_overlay.clear();
+    for (u32 i = 0; i < count; i++)
+    {
+      u32 lba = 0;
+      std::array<u8, SECTOR_SIZE> sector;
+      sw.Do(&lba);
+      sw.DoBytes(sector.data(), sector.size());
+      if (sw.HasError() || lba >= m_impl->block_count)
+        return false;
+      m_impl->write_overlay[lba] = sector;
+    }
+  }
+  else
+  {
+    for (u32 lba : lbas)
+    {
+      sw.Do(&lba);
+      sw.DoBytes(m_impl->write_overlay[lba].data(), SECTOR_SIZE);
+    }
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace Arcade::Storage

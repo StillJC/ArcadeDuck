@@ -12,6 +12,8 @@
 #include "core/pch.h"
 #include "core/arcade/systems/sony/zn/taito_fx1b_zsg2.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -385,6 +387,43 @@ u16 Chip::Read(u32 offset)
   if (offset < 0x300)
     return ChannelRead(static_cast<int>(offset >> 4), static_cast<int>(offset & 0x0f));
   return ControlRead(static_cast<int>(offset - 0x300));
+}
+
+// The decoded-sample cache (m_mem_copy/m_full_samples) and gain table derive from the constant sample ROM.
+bool Chip::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("ZSG2"))
+    return false;
+
+  sw.DoArray(m_reg.data(), m_reg.size());
+  for (Channel& channel : m_chan)
+  {
+    sw.DoArray(channel.v.data(), channel.v.size());
+    sw.Do(&channel.status);
+    sw.Do(&channel.cur_pos);
+    sw.Do(&channel.step_ptr);
+    sw.Do(&channel.step);
+    sw.Do(&channel.start_pos);
+    sw.Do(&channel.end_pos);
+    sw.Do(&channel.loop_pos);
+    sw.Do(&channel.page);
+    sw.Do(&channel.vol);
+    sw.Do(&channel.vol_initial);
+    sw.Do(&channel.vol_target);
+    sw.Do(&channel.vol_delta);
+    sw.Do(&channel.output_cutoff);
+    sw.Do(&channel.output_cutoff_initial);
+    sw.Do(&channel.output_cutoff_target);
+    sw.Do(&channel.output_cutoff_delta);
+    sw.Do(&channel.emphasis_filter_state);
+    sw.Do(&channel.output_filter_state);
+    sw.DoArray(channel.output_gain.data(), channel.output_gain.size());
+    sw.DoArray(channel.samples.data(), channel.samples.size());
+  }
+  sw.Do(&m_sample_count);
+  sw.Do(&m_read_address);
+
+  return !sw.HasError();
 }
 
 } // namespace TaitoFX1BZSG2

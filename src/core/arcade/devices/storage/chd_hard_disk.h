@@ -10,6 +10,7 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace Arcade::Storage {
 
@@ -48,6 +49,9 @@ public:
   bool ReadSector(u32 lba, u8* buffer);
   bool WriteSector(u32 lba, const u8* buffer);
   void ClearWriteOverlay();
+
+  // The overlay holds sectors written this session; the CHD itself is never modified.
+  bool DoWriteOverlayState(StateWrapper& sw);
 
 private:
   struct Impl;

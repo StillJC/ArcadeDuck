@@ -12,6 +12,8 @@
 #include "common/error.h"
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -970,6 +972,70 @@ void Write(u32 width, u32 offset, u32 value)
     WriteIRQControl(width, offset - IRQ_CONTROL_BASE, value);
   else
     WriteData32(width, offset - DATA32_BASE, value);
+}
+
+// While DRQ is set, the data port indexes the sector buffer before checking
+// for the end of the sector, so the position must be inside it. Read and write
+// phases with DRQ set always have at least the current sector remaining. A
+// pending sector refill holds position 0 with DRQ clear.
+static bool IsDataPhaseStateValid()
+{
+  if ((s_state.status & ATA_STATUS_DRQ) == 0 || s_state.transfer_mode == TransferMode::None)
+    return s_state.data_position <= SECTOR_SIZE;
+
+  return s_state.data_position < SECTOR_SIZE &&
+         (s_state.transfer_mode == TransferMode::Identify || s_state.sectors_remaining != 0);
+}
+
+// The CHD handle is reconstructed by Initialize(); the in-memory write overlay is stored. DMA request and IRQ
+// line levels belong to the shared DMA and interrupt controller state.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_initialized || !sw.DoMarker("TWATA"))
+    return false;
+
+  sw.Do(&s_state.error);
+  sw.Do(&s_state.features);
+  sw.Do(&s_state.sector_count);
+  sw.Do(&s_state.lba_low);
+  sw.Do(&s_state.lba_mid);
+  sw.Do(&s_state.lba_high);
+  sw.Do(&s_state.device_head);
+  sw.Do(&s_state.status);
+  sw.Do(&s_state.device_control);
+  sw.Do(&s_state.multiple_count);
+  sw.Do(&s_state.transfer_mode);
+  sw.DoArray(s_state.data_buffer.data(), s_state.data_buffer.size());
+  sw.Do(&s_state.data_position);
+  sw.Do(&s_state.current_lba);
+  sw.Do(&s_state.sectors_remaining);
+  sw.Do(&s_state.irq_pending);
+  sw.Do(&s_state.irq_control);
+  sw.Do(&s_state.config_selector);
+  sw.Do(&s_state.config_register_num);
+  sw.DoArray(s_state.config_registers.data(), s_state.config_registers.size());
+  sw.Do(&s_state.read_sector_refill_pending);
+
+  bool event_active = s_read_sector_ready_event && s_read_sector_ready_event->IsActive();
+  sw.Do(&event_active);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || s_state.transfer_mode > TransferMode::Write || !IsDataPhaseStateValid())
+      return false;
+
+    // Deadlines are restored by TimingEvents; only activation is established here.
+    if (event_active && !s_read_sector_ready_event)
+    {
+      s_read_sector_ready_event =
+        std::make_unique<TimingEvent>("Time Warner ATA Next Sector", 1, 1, ReadSectorReadyEventCallback, nullptr);
+    }
+    if (event_active)
+      s_read_sector_ready_event->Schedule(1);
+    else if (s_read_sector_ready_event)
+      s_read_sector_ready_event->Deactivate();
+  }
+
+  return s_state.disk.DoWriteOverlayState(sw) && !sw.HasError();
 }
 
 } // namespace SonyZN::TimeWarnerATA

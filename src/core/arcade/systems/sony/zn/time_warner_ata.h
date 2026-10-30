@@ -8,6 +8,7 @@
 #include <string_view>
 
 class Error;
+class StateWrapper;
 
 namespace SonyZN::TimeWarnerATA {
 
@@ -25,5 +26,6 @@ void DMAWrite(const u32* data, u32 word_count);
 bool HandlesOffset(u32 offset);
 u32 Read(u32 width, u32 offset);
 void Write(u32 width, u32 offset, u32 value);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::TimeWarnerATA

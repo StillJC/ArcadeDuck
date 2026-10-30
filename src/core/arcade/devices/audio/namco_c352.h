@@ -5,6 +5,8 @@
 #include <array>
 #include <span>
 
+class StateWrapper;
+
 namespace Arcade::Audio {
 
 // Namco C352 - System 12 sound device.
@@ -25,6 +27,8 @@ namespace Arcade::Audio {
 class NamcoC352
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 VOICE_COUNT = 32;
   static constexpr u64 H8_CLOCKS_PER_NATIVE_FRAME = UINT64_C(192);
 

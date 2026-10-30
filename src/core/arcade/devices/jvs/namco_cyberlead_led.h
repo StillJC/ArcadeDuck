@@ -9,6 +9,8 @@
 #include <memory>
 #include <span>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 // Physical serial framing used between the Cyber Lead I/O C77 and the
@@ -16,6 +18,8 @@ namespace Arcade::JVS {
 class NamcoCyberLeadLEDLink
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr u8 DEFAULT_ADDRESS = UINT8_C(0x01);
   static constexpr u32 MAX_COMMAND_SIZE = 80;
   static constexpr u32 MAX_LOGICAL_FRAME_SIZE = MAX_COMMAND_SIZE + 3;
@@ -57,6 +61,9 @@ private:
 class NamcoCyberLeadLEDDevice
 {
 public:
+  // Flash contents are matched by NVRAM fingerprint and are not stored.
+  bool DoState(StateWrapper& sw);
+
   static constexpr u32 CLOCK_HZ = 14745600;
   static constexpr u32 FIRMWARE_SIZE = 0x40000;
   static constexpr u32 DISPLAY_RAM_SIZE = 0x2000;
@@ -94,6 +101,9 @@ public:
     u64 frame_refreshes = 0;
     u64 frame_changes = 0;
     u64 cpu_steps = 0;
+    u64 flash_program_bytes = 0;
+    u64 flash_changed_bytes = 0;
+    u64 flash_erases = 0;
     u32 cpu_fault_code = 0;
     u32 cpu_fault_line = 0;
     u32 cpu_fault_pc = 0;
@@ -132,6 +142,16 @@ public:
   std::span<const u8> GetScroll() const;
 
   std::span<const u8> GetFlash() const;
+
+  // True while the AT29C020 is inside a command sequence or a page load: an unfinished persistent-memory
+  // operation. Byte programs and chip erase complete immediately, so a page load is the only multi-step write.
+  bool IsFlashOperationActive() const;
+  u8 GetFlashMode() const;
+
+  // Total flash bytes whose contents have changed through programming or erase since reset. Machine state: the
+  // Cyber Lead I/O board compares it across upload transactions to tell installation from identical refreshes.
+  u64 GetFlashContentChanges() const;
+  u32 GetFlashPageCount() const;
   bool IsFlashModified() const;
   void ClearFlashModified();
 

@@ -18,7 +18,15 @@ add_library(core
   arcade/arcade_rom_loader.cpp
   arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
+  arcade/arcade_save_state.cpp
   arcade/arcade_output.h
+  arcade/arcade_save_state.h
+  arcade/devices/audio/namco_c352_state.cpp
+  arcade/devices/cpu/h8_3002_state.cpp
+  arcade/devices/jvs/jvs_state.cpp
+  arcade/devices/cpu/h8_300h_state.h
+  arcade/devices/cpu/z80_state.cpp
+  arcade/devices/cpu/z80_state.h
   arcade/arcade_output_network.cpp
   arcade/arcade_output_network.h
   arcade/arcade_output_win32.cpp
@@ -203,6 +211,7 @@ add_library(core
   arcade/third_party/m37710/m37710op.h
   arcade/third_party/musashi/m68k.h
   arcade/third_party/musashi/m68k_bus.cpp
+  arcade/third_party/musashi/m68k_state.cpp
   arcade/third_party/musashi/m68k_bus.h
   arcade/third_party/musashi/m68kconf.h
   arcade/third_party/musashi/m68kcpu.c

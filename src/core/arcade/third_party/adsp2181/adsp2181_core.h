@@ -38,6 +38,12 @@ enum {
 adsp2181_t *adsp2181_create(void);
 void adsp2181_destroy(adsp2181_t *cpu);
 void adsp2181_reset(adsp2181_t *cpu);
+/* ArcadeDuck save-state support. Visits every architectural field (registers, stacks, interrupt and
+ * IDMA/SPORT latches, internal and overlay memory, cycle count) in a fixed order. Callbacks, register maps
+ * and reverse-engineering instrumentation are not visited. When loading, returns 0 if the visited stack
+ * pointers are out of range. */
+typedef void (*adsp2181_state_cb)(void *ctx, void *data, size_t size);
+int adsp2181_do_state(adsp2181_t *cpu, adsp2181_state_cb cb, void *ctx, int loading);
 int adsp2181_run(adsp2181_t *cpu, int cycles);
 uint16_t adsp2181_sport0_tdm_frame(adsp2181_t *cpu, int active_slot,
                                    int dispatch_slot, uint16_t active_word,

@@ -7,6 +7,7 @@
 #include "gpu.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "dma.h"
 #include "gpu_shadergen.h"
@@ -81,20 +82,7 @@ static bool IsCyberLeadLEDGame()
     return s_result;
 
   s_serial = serial;
-  s_result = false;
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
-  if (game && game->system_id == "namco_system12")
-  {
-    for (const Arcade::Database::Property& property : game->properties)
-    {
-      if (property.name == "ioBoard" && property.value == "cyberlead")
-      {
-        s_result = true;
-        break;
-      }
-    }
-  }
-
+  s_result = Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(serial);
   return s_result;
 }
 

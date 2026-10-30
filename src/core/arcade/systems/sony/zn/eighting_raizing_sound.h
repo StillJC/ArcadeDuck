@@ -9,6 +9,8 @@
 
 class Error;
 
+class StateWrapper;
+
 namespace SonyZN::EightingRaizingSound {
 
 bool Initialize(std::vector<u8> sound_program, std::vector<u8> ymf271_rom, Error* error);
@@ -19,5 +21,6 @@ bool IsActive();
 void MainCommandWrite(u8 value);
 void MainIRQWrite();
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::EightingRaizingSound

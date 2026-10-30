@@ -7,11 +7,15 @@
 #include <cstdint>
 #include <utility>
 
+class StateWrapper;
+
 namespace Arcade
 {
 class SH7014
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   using SCI0TransmitCallback = void (*)(void* opaque, uint8_t value);
   using PortBWriteCallback = void (*)(void* opaque, uint16_t value);
 

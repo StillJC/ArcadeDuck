@@ -7,6 +7,7 @@
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_output.h"
+#include "core/arcade/arcade_save_state.h"
 #include "core/bus.h"
 #include "core/cpu_core.h"
 #include "core/arcade/third_party/m37710/m37710.h"
@@ -18,6 +19,8 @@
 #include "common/file_system.h"
 #include "common/log.h"
 #include "common/path.h"
+
+#include "util/state_wrapper.h"
 
 #include <algorithm>
 #include <array>
@@ -176,6 +179,7 @@ struct RuntimeState
 
   std::string persistence_directory;
   std::string eeprom_path;
+  Arcade::SaveState::PersistentFile eeprom_file;
   bool eeprom_dirty = false;
   bool eeprom_busy = false;
   u8 eeprom_last_write = UINT8_C(0xff);
@@ -1645,6 +1649,8 @@ static bool LoadEEPROM(RuntimeState& runtime, Error* error)
     std::memcpy(s_eeprom.data(), data->data(), data->size());
     if (data->size() == EEPROM_SIZE)
       runtime.eeprom_dirty = true;
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(std::span<const u8>(data->data(), data->size()));
   }
   else
   {
@@ -1657,6 +1663,8 @@ static bool LoadEEPROM(RuntimeState& runtime, Error* error)
                 runtime.content.set_name, runtime.eeprom_path);
       return false;
     }
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(s_eeprom);
   }
 
   VERBOSE_LOG("System 11 AT28C16 {} canonical_set='{}' path='{}'.",
@@ -1666,7 +1674,7 @@ static bool LoadEEPROM(RuntimeState& runtime, Error* error)
 
 static void SaveEEPROM(RuntimeState& runtime)
 {
-  if (!runtime.eeprom_dirty)
+  if (!runtime.eeprom_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -1679,6 +1687,7 @@ static void SaveEEPROM(RuntimeState& runtime)
     return;
   }
 
+  runtime.eeprom_file.RecordDiskContents(s_eeprom);
   runtime.eeprom_dirty = false;
   VERBOSE_LOG("System 11 AT28C16 saved canonical_set='{}' path='{}'.",
            runtime.content.set_name, runtime.eeprom_path);
@@ -2169,6 +2178,118 @@ void EndMainBoardReset()
            s_runtime->c76_cpu ? s_runtime->c76_cpu->program_counter() : 0);
 }
 
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (s_runtime.has_value())
+    components->push_back({"at28c16", s_eeprom, &s_runtime->eeprom_file});
+}
+
+// AT28C16 contents are matched by fingerprint, not stored. A byte program changes the array immediately; the
+// restored busy window only affects data polling and rejects writes until its absolute deadline, so it
+// completes identically against the same contents. Host input accumulators and diagnostics are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_runtime.has_value() || !s_runtime->c76_cpu || !s_runtime->c76_timing_event)
+    return false;
+
+  RuntimeState& r = *s_runtime;
+  if (!sw.DoMarker("S11Board"))
+    return false;
+  sw.DoArray(r.bank_entries.data(), r.bank_entries.size());
+  sw.Do(&r.rom8_64_bank_offset);
+  sw.Do(&r.keycus_p1);
+  sw.Do(&r.keycus_p2);
+  sw.Do(&r.keycus_p3);
+  sw.Do(&r.test_switch_latched);
+  sw.Do(&r.mainboard_reset_pending);
+  sw.Do(&r.eeprom_busy);
+  sw.Do(&r.eeprom_last_write);
+  sw.Do(&r.eeprom_busy_until);
+
+  if (!sw.DoMarker("S11C352"))
+    return false;
+  for (C352Voice& v : r.c352_voices)
+  {
+    sw.Do(&v.pos);
+    sw.Do(&v.counter);
+    sw.Do(&v.sample);
+    sw.Do(&v.last_sample);
+    sw.Do(&v.vol_f);
+    sw.Do(&v.vol_r);
+    sw.DoArray(v.curr_vol.data(), v.curr_vol.size());
+    sw.Do(&v.freq);
+    sw.Do(&v.flags);
+    sw.Do(&v.wave_bank);
+    sw.Do(&v.wave_start);
+    sw.Do(&v.wave_end);
+    sw.Do(&v.wave_loop);
+  }
+  sw.Do(&r.c352_control);
+  sw.Do(&r.c352_random);
+
+  if (!sw.DoMarker("S11C76"))
+    return false;
+  sw.DoBytes(s_c76_shared_ram.data(), s_c76_shared_ram.size());
+  sw.Do(&r.c76_cycle_fraction);
+  sw.Do(&r.c76_last_ticks_per_second);
+  sw.Do(&r.c76_cycle_balance);
+  sw.Do(&s_c76_irq_cycles_until_next);
+  sw.Do(&s_c76_next_irq_is_irq0);
+  bool event_active = r.c76_timing_event->IsActive();
+  sw.Do(&event_active);
+  if (!r.c76_cpu->do_state(sw))
+    return false;
+
+  if (!sw.DoMarker("S11FamilyBowl"))
+    return false;
+  bool family_bowl = r.content.has_family_bowl_io;
+  sw.Do(&family_bowl);
+  if (family_bowl != r.content.has_family_bowl_io)
+    return false;
+  if (family_bowl)
+  {
+    sw.Do(&r.family_bowl_m139_pending_command);
+    sw.Do(&r.family_bowl_m139_param_bytes_remaining);
+    sw.DoArray(r.family_bowl_m139_params.data(), r.family_bowl_m139_params.size());
+    sw.Do(&r.family_bowl_startup_c9_stage);
+    sw.Do(&r.family_bowl_startup_c9_delay_ms);
+    sw.Do(&r.family_bowl_ready_c9_stage);
+    sw.Do(&r.family_bowl_end_game_c9_stage);
+    sw.Do(&r.family_bowl_end_game_c9_delay_ms);
+
+    std::lock_guard<std::mutex> lock(s_family_bowl_trackball_mutex);
+    sw.Do(&r.family_bowl_c3_idle_ms);
+    sw.Do(&r.family_bowl_c3_measurement_enabled);
+    sw.Do(&r.family_bowl_c3_packet_armed);
+    sw.Do(&r.family_bowl_c3_packet_index);
+    sw.DoArray(r.family_bowl_c3_packet.data(), r.family_bowl_c3_packet.size());
+    sw.Do(&r.family_bowl_trackball_settle_polls);
+    sw.Do(&r.family_bowl_sensor_sequence_stage);
+    sw.Do(&r.family_bowl_sensor_sequence_polls_remaining);
+    sw.Do(&r.family_bowl_sensor_sequence_first);
+    sw.Do(&r.family_bowl_sensor_sequence_second);
+  }
+
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || r.family_bowl_m139_param_bytes_remaining > r.family_bowl_m139_params.size() ||
+        r.family_bowl_c3_packet_index > r.family_bowl_c3_packet.size() ||
+        s_c76_irq_cycles_until_next > C76_IRQ_HALF_PERIOD_CYCLES)
+    {
+      return false;
+    }
+
+    if (event_active)
+      r.c76_timing_event->Schedule(C76_SCHEDULER_INTERVAL_TICKS);
+    else
+      r.c76_timing_event->Deactivate();
+
+    // Republish cabinet outputs from the next game write.
+    r.gun_output_latch_valid = false;
+  }
+
+  return !sw.HasError();
+}
 
 bool IsFamilyBowlActive()
 {

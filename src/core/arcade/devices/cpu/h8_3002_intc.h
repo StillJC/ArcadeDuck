@@ -6,6 +6,8 @@
 #include <bit>
 #include <optional>
 
+class StateWrapper;
+
 namespace Arcade::H8 {
 
 class H83002Intc
@@ -22,6 +24,8 @@ public:
   static constexpr u32 NMI_VECTOR = 7;
 
   H83002Intc() { Reset(); }
+
+  bool DoState(StateWrapper& sw);
 
   void Reset()
   {

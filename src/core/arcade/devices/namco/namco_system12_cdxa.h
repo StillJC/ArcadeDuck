@@ -12,12 +12,15 @@
 
 class CDImage;
 class Error;
+class StateWrapper;
 
 namespace Arcade::Namco
 {
 class System12CDXA
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   static constexpr uint32_t PSX_SHARED_BASE = 0x007C0000u;
   static constexpr uint32_t PSX_SHARED_END = 0x007CFFFFu;
   static constexpr uint32_t PSX_CONTROL_BASE = 0x007D6000u;

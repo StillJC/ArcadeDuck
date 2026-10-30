@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace KonamiGQK056800 {
 
 void Initialize();
@@ -30,5 +32,6 @@ u8 GetRearVolume();
 u8 GetCommonVolume();
 
 u8 GetOutputControl();
+bool DoState(StateWrapper& sw);
 
 } // namespace KonamiGQK056800

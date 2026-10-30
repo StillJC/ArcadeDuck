@@ -32,6 +32,9 @@
 #include "fmt/format.h"
 #include "imgui.h"
 
+#include "core/arcade/arcade_save_state.h"
+#include "core/arcade/devices/cpu/h8_300h_state.h"
+
 extern "C" {
 #include "core/arcade/third_party/h8_300h/system.h"
 }
@@ -39,6 +42,8 @@ extern "C" {
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 #include "common/path.h"
 #include "common/minizip_helpers.h"
 #include "common/sha1_digest.h"
@@ -164,13 +169,6 @@ static constexpr u8 H8_SCI_SSR_MPBT = 0x01;
 
 static constexpr u32 CYBERLEAD_JVS_BAUD = 115200;
 static constexpr u32 CYBERLEAD_SCHEDULER_HZ = CYBERLEAD_JVS_BAUD * 2;
-static constexpr size_t CYBERLEAD_LED_FIRMWARE_SIZE = 0x40000;
-static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> CYBERLEAD_LED_FIRMWARE_SHA1 = {
-  UINT8_C(0x61), UINT8_C(0xD6), UINT8_C(0x13), UINT8_C(0x38), UINT8_C(0xE1),
-  UINT8_C(0xBB), UINT8_C(0x41), UINT8_C(0x4A), UINT8_C(0xF3), UINT8_C(0x2D),
-  UINT8_C(0xBD), UINT8_C(0xC1), UINT8_C(0xE2), UINT8_C(0x4D), UINT8_C(0x54),
-  UINT8_C(0xC0), UINT8_C(0x2F), UINT8_C(0xB9), UINT8_C(0x19), UINT8_C(0x6E)
-};
 
 
 enum class JVSProfile : u8
@@ -287,7 +285,7 @@ struct RuntimeState
   bool h8_fault_logged = false;
   std::string persistence_directory;
   std::string eeprom_path;
-  std::string cyberlead_flash_path;
+  Arcade::SaveState::PersistentFile eeprom_file;
   bool eeprom_dirty = false;
 
   Arcade::H8::H83002Timer16 h8_timer16;
@@ -442,6 +440,8 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
     std::memcpy(s_eeprom.data(), data->data(), data->size());
     if (data->size() == EEPROM_SIZE)
       runtime.eeprom_dirty = true;
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(data->cspan());
   }
   else
   {
@@ -455,6 +455,8 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
                 runtime.content.set_name, runtime.eeprom_path);
       return false;
     }
+    runtime.eeprom_file.SetPath(runtime.eeprom_path);
+    runtime.eeprom_file.RecordDiskContents(s_eeprom);
   }
 
   INFO_LOG("System12 AT28C16 {} set='{}' size={} path='{}'",
@@ -465,7 +467,7 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
 
 void SaveEEPROM(RuntimeState& runtime)
 {
-  if (!runtime.eeprom_dirty)
+  if (!runtime.eeprom_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -478,54 +480,10 @@ void SaveEEPROM(RuntimeState& runtime)
     return;
   }
 
+  runtime.eeprom_file.RecordDiskContents(s_eeprom);
   runtime.eeprom_dirty = false;
   INFO_LOG("System12 AT28C16 saved set='{}' path='{}'",
            runtime.content.set_name, runtime.eeprom_path);
-}
-
-// The LED PCB's AT29C020 holds data games program into it, so it is kept with
-// the set's other non-volatile memory once written.
-void LoadCyberLeadFlash(RuntimeState& runtime)
-{
-  runtime.cyberlead_flash_path = Path::Combine(runtime.persistence_directory, "cl1-leda.ic5");
-  if (FileSystem::FileExists(runtime.cyberlead_flash_path.c_str()))
-  {
-    Error error;
-    const std::optional<DynamicHeapArray<u8>> data =
-      FileSystem::ReadBinaryFile(runtime.cyberlead_flash_path.c_str(), &error);
-    if (data && data->size() == CYBERLEAD_LED_FIRMWARE_SIZE &&
-        runtime.h8_cyberlead.SetLEDFirmware(data->cspan()))
-    {
-      INFO_LOG("CyberLead LED flash loaded path='{}'", runtime.cyberlead_flash_path);
-      return;
-    }
-
-    WARNING_LOG("CyberLead LED flash '{}' is unusable; using the factory image", runtime.cyberlead_flash_path);
-  }
-
-  if (!runtime.h8_cyberlead.SetLEDFirmware(std::span<const u8>(runtime.content.cyberlead_led_firmware)))
-  {
-    WARNING_LOG("CyberLead LED firmware was validated but C77 initialization failed; LED disabled");
-    runtime.content.cyberlead_led_firmware.clear();
-  }
-}
-
-void SaveCyberLeadFlash(RuntimeState& runtime)
-{
-  Arcade::JVS::NamcoCyberLeadLEDDevice& led = runtime.h8_cyberlead.GetLEDDevice();
-  if (runtime.cyberlead_flash_path.empty() || !led.IsFlashModified())
-    return;
-
-  const std::span<const u8> flash = led.GetFlash();
-  if (!FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
-      !FileSystem::WriteBinaryFile(runtime.cyberlead_flash_path.c_str(), flash.data(), flash.size()))
-  {
-    ERROR_LOG("CyberLead LED flash save failed path='{}'", runtime.cyberlead_flash_path);
-    return;
-  }
-
-  led.ClearFlashModified();
-  INFO_LOG("CyberLead LED flash saved path='{}'", runtime.cyberlead_flash_path);
 }
 
 u32 ReadEEPROM(RuntimeState& runtime, u32 width, u32 offset)
@@ -3122,99 +3080,7 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
   }
 
   if (content.io_board == "cyberlead")
-  {
-    std::vector<u8> led_firmware;
-    std::string led_firmware_path(Path::Combine(EmuFolders::Bios, "namco_cyberlead_led.zip"));
-
-    if (unzFile zf = MinizipHelpers::OpenUnzFile(led_firmware_path.c_str()))
-    {
-      if (unzGoToFirstFile(zf) == UNZ_OK)
-      {
-        for (;;)
-        {
-          unz_file_info64 file_info = {};
-          char member_name[512] = {};
-          if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-            break;
-
-          member_name[sizeof(member_name) - 1] = '\0';
-          if (StringUtil::EqualNoCase(member_name, "cl1-leda.ic5"))
-          {
-            if (unzOpenCurrentFile(zf) == UNZ_OK)
-            {
-              led_firmware.resize(static_cast<size_t>(file_info.uncompressed_size));
-              size_t read_offset = 0;
-              bool read_ok = true;
-              while (read_offset < led_firmware.size())
-              {
-                const int bytes_read =
-                  unzReadCurrentFile(zf, led_firmware.data() + read_offset,
-                                     static_cast<unsigned>(led_firmware.size() - read_offset));
-                if (bytes_read <= 0)
-                {
-                  read_ok = false;
-                  break;
-                }
-                read_offset += static_cast<size_t>(bytes_read);
-              }
-
-              if (unzCloseCurrentFile(zf) != UNZ_OK)
-                read_ok = false;
-              if (!read_ok)
-                led_firmware.clear();
-            }
-            break;
-          }
-
-          const int next_result = unzGoToNextFile(zf);
-          if (next_result != UNZ_OK)
-            break;
-        }
-      }
-      unzClose(zf);
-    }
-
-    if (led_firmware.empty())
-    {
-      led_firmware_path = Path::Combine(EmuFolders::Bios, "cl1-leda.ic5");
-      const std::optional<DynamicHeapArray<u8>> loose_firmware =
-        FileSystem::ReadBinaryFile(led_firmware_path.c_str());
-      if (loose_firmware)
-      {
-        const std::span<const u8> loose_span = loose_firmware->cspan();
-        led_firmware.assign(loose_span.begin(), loose_span.end());
-      }
-    }
-
-    if (led_firmware.empty())
-    {
-      INFO_LOG(
-        "CyberLead LED firmware not found. Cabinet LED emulation will remain disabled; "
-        "The game itself will continue normally.");
-    }
-    else if (led_firmware.size() != CYBERLEAD_LED_FIRMWARE_SIZE)
-    {
-      WARNING_LOG("CyberLead LED firmware wrong size path='{}' expected={} actual={}; LED disabled",
-                  led_firmware_path, CYBERLEAD_LED_FIRMWARE_SIZE, led_firmware.size());
-    }
-    else
-    {
-      const std::span<const u8> firmware_span(led_firmware.data(), led_firmware.size());
-      auto sha1 = SHA1Digest::GetDigest(firmware_span);
-      const std::string sha1_string = SHA1Digest::DigestToString(sha1);
-      if (sha1 != CYBERLEAD_LED_FIRMWARE_SHA1)
-      {
-        WARNING_LOG("CyberLead LED firmware SHA1 mismatch path='{}' expected={} actual={}; LED disabled",
-                    led_firmware_path, "61d61338e1bb414af32dbdc1e24d54c02fb9196e", sha1_string);
-      }
-      else
-      {
-        content.cyberlead_led_firmware.assign(firmware_span.begin(), firmware_span.end());
-        INFO_LOG("CyberLead LED firmware loaded path='{}' size={} sha1={}", led_firmware_path,
-                 content.cyberlead_led_firmware.size(), sha1_string);
-      }
-    }
-  }
+    content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
 
   INFO_LOG("Loaded System 12 set '{}' profile='{}': program={} banked={} sub={} c352={} alternate_bank={}",
            game.id, game.hardware_profile, content.program_rom.size(), content.banked_rom.size(),
@@ -3364,10 +3230,16 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
 
   runtime.h8_cpu = std::make_unique<h8_system_t>();
-  if (!runtime.content.cyberlead_led_firmware.empty())
-    LoadCyberLeadFlash(runtime);
+  if (!runtime.content.cyberlead_led_firmware.empty() &&
+      !runtime.h8_cyberlead.InitializeLEDFlash(std::span<const u8>(runtime.content.cyberlead_led_firmware),
+                                              Path::Combine(runtime.persistence_directory, "cl1-leda.ic5")))
+  {
+    runtime.content.cyberlead_led_firmware.clear();
+  }
 
   s_runtime = std::move(runtime);
+  if (s_runtime->content.io_board == "cyberlead")
+    Arcade::JVS::NamcoCyberLead::SetActive(&s_runtime->h8_cyberlead);
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
 
@@ -3445,8 +3317,10 @@ void Shutdown()
   {
     SaveEEPROM(*s_runtime);
     FlushCyberLeadLED(*s_runtime);
-    SaveCyberLeadFlash(*s_runtime);
+    s_runtime->h8_cyberlead.SaveLEDFlash();
   }
+
+  Arcade::JVS::NamcoCyberLead::SetActive(nullptr);
 
   ArcadeInput::SetOperatorServiceMinimumHold(0);
   s_runtime.reset();
@@ -3961,27 +3835,6 @@ u32 ReadBankedROM(u32 width, u32 offset)
   return ReadBytes(std::span<const u8>(s_runtime->content.banked_rom), width, static_cast<u32>(source));
 }
 
-bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intensity_counts,
-                                u16* start_address, u32* scroll_x,
-                                u32* scroll_y, u64* generation)
-{
-  if (!s_runtime)
-    return false;
-
-  return s_runtime->h8_cyberlead.CopyLEDFrame(pixels, intensity_counts, start_address,
-                                              scroll_x, scroll_y, generation);
-}
-
-bool DebugGetCyberLeadLEDGeneration(u64* generation)
-{
-  if (!s_runtime)
-    return false;
-
-  const Arcade::JVS::NamcoCyberLeadLEDDevice::FrameState& frame = s_runtime->h8_cyberlead.GetLEDDevice().GetFrameState();
-  *generation = frame.generation;
-  return frame.valid;
-}
-
 void DMARead(u32* destination, u32 word_count)
 {
   if (!s_runtime || !destination || word_count == 0)
@@ -4082,4 +3935,163 @@ void DMARead(u32* destination, u32 word_count)
   // Consume this ROM-board DREQ; the next source-latch write rearms it.
   DMA::SetRequest(DMA::Channel::PIO, false);
 }
+
+bool SupportsSaveStates(const Arcade::Database::GameDefinition& game)
+{
+  LoadedContent content;
+  const std::string* machine_config = FindGameProperty(game, "machineConfig");
+  const std::string* state_class = FindGameProperty(game, "stateClass");
+  content.machine_config = machine_config ? *machine_config : game.hardware_profile;
+  content.state_class = state_class ? *state_class : std::string();
+  return !HasLinkBoard(content);
+}
+
+bool CanSaveState(Error* error)
+{
+  if (s_runtime.has_value() && !s_runtime->h8_cyberlead.IsLEDSaveReady())
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", "The Cyber Lead LED board is still initializing or programming "
+                                                       "its flash. Try saving again after it finishes."));
+    return false;
+  }
+
+  return true;
+}
+
+bool IsSaveReadinessPending(std::string* message)
+{
+  if (!s_runtime.has_value() || s_runtime->h8_cyberlead.IsLEDSaveReady())
+    return false;
+
+  *message = TRANSLATE_STR("System", "The Cyber Lead LED board is busy. The state will be saved as soon as it "
+                                     "finishes (up to 30 seconds).");
+  return true;
+}
+
+void AppendStateIdentity(std::string* record)
+{
+  if (s_runtime.has_value() && s_runtime->content.io_board == "cyberlead")
+    *record += fmt::format("cyberlead_led={}\n", s_runtime->h8_cyberlead.IsLEDPresent() ? "present" : "absent");
+}
+
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (!s_runtime.has_value())
+    return;
+
+  components->push_back({"at28c16", s_eeprom, &s_runtime->eeprom_file});
+  s_runtime->h8_cyberlead.GetNVRAMComponents(components);
+}
+
+// AT28C16 and Cyber Lead LED flash writes complete immediately; their contents are matched by fingerprint, not
+// stored. Host configuration (content, callbacks, JVS chain wiring) and diagnostic counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_runtime.has_value() || !s_runtime->h8_cpu || !s_runtime->h8_timing_event || s_runtime->hsc ||
+      !sw.DoMarker("S12Board"))
+  {
+    return false;
+  }
+
+  RuntimeState& r = *s_runtime;
+  sw.DoArray(r.shared_ram.data(), r.shared_ram.size());
+  sw.DoArray(r.board_control.data(), r.board_control.size());
+  sw.Do(&r.gun_output_latch);
+  sw.Do(&r.gun_output_latch_valid);
+  sw.Do(&r.bank);
+  sw.Do(&r.dma_source);
+  sw.Do(&r.dma_transfer_count);
+  sw.DoArray(r.m8f4_challenge.data(), r.m8f4_challenge.size());
+  sw.Do(&r.m8f4_challenge_count);
+  sw.Do(&r.m8f4_protected_source);
+  sw.Do(&r.m8f4_response);
+  sw.Do(&r.m8f4_nonce);
+  sw.Do(&r.m8f4_response_class);
+  sw.Do(&r.m8f4_challenge_active);
+  sw.Do(&r.m8f4_response_valid);
+  sw.Do(&r.m8f4_protected_dma_armed);
+  sw.Do(&r.m8f4_waiting_for_release);
+  sw.Do(&r.m8f4_ready);
+  sw.Do(&r.m8f4_transaction_count);
+  sw.Do(&r.m8f4_dma_count);
+  sw.Do(&r.mainboard_reset_pending);
+  sw.Do(&r.boot_warm_reset_completed);
+  sw.Do(&r.cold_boot_h8_released);
+  sw.DoArray(r.cold_boot_config_header.data(), r.cold_boot_config_header.size());
+  sw.Do(&r.cold_boot_config_feed_words);
+  sw.Do(&r.cold_boot_config_finalize_words);
+  sw.Do(&r.cold_boot_config_bulk_complete);
+  sw.Do(&r.ram_preserving_reset_count);
+  sw.Do(&r.test_switch_latched);
+  sw.Do(&r.test_switch_was_pressed);
+
+  if (!sw.DoMarker("S12H8") || !Arcade::H8::DoCoreState(sw, *r.h8_cpu))
+    return false;
+
+  sw.Do(&r.h8_scheduler_interval_ticks);
+  sw.Do(&r.h8_scheduler_rate_hz);
+  sw.Do(&r.h8_cycle_balance);
+  sw.Do(&r.h8_cycle_fraction);
+  sw.Do(&r.h8_rtc_scheduler_fraction);
+  sw.DoArray(r.h8_internal.data(), r.h8_internal.size());
+  // h8_scheduler_count only counts scheduler callbacks for the fault log; it is a diagnostic counter, not stored.
+  sw.Do(&r.h8_jvs_sense);
+  sw.Do(&r.h8_jvs_rts);
+  sw.Do(&r.h8_cyberlead_deferred_clocks);
+  sw.Do(&r.h8_jvs.initialize_sense_after_response);
+  sw.Do(&r.h8_sci0_ssr_read);
+  sw.Do(&r.h8_sci0_tx_busy);
+  sw.Do(&r.h8_sci0_tx_shift_byte);
+  sw.Do(&r.h8_sci0_tx_clocks_remaining);
+  sw.Do(&r.h8_sci0_rx_busy);
+  sw.Do(&r.h8_sci0_rx_clocks_remaining);
+  sw.Do(&r.h8_sci1_ssr_read);
+  sw.Do(&r.h8_sci1_rx_busy);
+  sw.Do(&r.h8_sci1_rx_clocks_remaining);
+  sw.Do(&r.h8_sub_porta);
+  sw.Do(&r.h8_sub_portb);
+  sw.Do(&r.h8_settings_ce);
+  sw.Do(&r.h8_settings_clk);
+  sw.Do(&r.h8_settings_data);
+  sw.Do(&r.h8_settings_address);
+  sw.Do(&r.h8_settings_value);
+  sw.Do(&r.h8_settings_bit);
+  sw.Do(&r.h8_rtc_ce);
+  sw.Do(&r.h8_rtc_clk);
+  sw.Do(&r.h8_rtc_data);
+  sw.Do(&r.h8_rtc_bit);
+  sw.DoArray(r.h8_rtc_regs.data(), r.h8_rtc_regs.size());
+  // The RTC runs from emulated time once seeded from the host clock at boot; the restored machine keeps its time.
+  s64 rtc_time = static_cast<s64>(r.h8_rtc_time);
+  sw.Do(&rtc_time);
+  r.h8_rtc_time = static_cast<std::time_t>(rtc_time);
+  sw.Do(&r.h8_rtc_millisecond_accumulator);
+  sw.Do(&r.h8_vblank);
+  sw.Do(&r.h8_c352_instruction_clocks);
+  sw.Do(&r.h8_c352_deferred_clocks);
+
+  if (!r.h8_timer16.DoState(sw) || !r.h8_peripherals.DoState(sw) || !r.h8_intc.DoState(sw) || !r.c352.DoState(sw) ||
+      !sw.DoMarker("S12JVS") || !r.h8_jvs_bus.DoState(sw) || !r.h8_fca10.DoState(sw) || !r.h8_emio102.DoState(sw) ||
+      !r.h8_empri101.DoState(sw) || !r.h8_cyberlead.DoState(sw))
+  {
+    return false;
+  }
+
+  bool has_cdxa = static_cast<bool>(r.cdxa);
+  sw.Do(&has_cdxa);
+  if (has_cdxa != static_cast<bool>(r.cdxa))
+    return false;
+  if (has_cdxa)
+  {
+    // The scheduler event's deadline and period are restored by TimingEvents; it is always active with the board.
+    sw.Do(&r.cdxa_scheduler_interval_ticks);
+    sw.Do(&r.cdxa_cycle_fraction);
+    sw.Do(&r.cdxa_scheduler_count);
+    if (!r.cdxa_timing_event || !r.cdxa->DoState(sw))
+      return false;
+  }
+
+  return !sw.HasError();
+}
+
 } // namespace NamcoSystem12

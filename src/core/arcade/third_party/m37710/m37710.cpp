@@ -72,6 +72,8 @@
 #define LOG_TIMER (1U << 4)
 #define LOG_INT   (1U << 5)
 //#define VERBOSE (LOG_GENERAL | LOG_PORTS | LOG_AD | LOG_UART | LOG_TIMER | LOG_INT)
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -1903,6 +1905,53 @@ void m37710_cpu_device::m37710i_interrupt_software(uint32_t vector)
 }
 
 
+
+// ArcadeDuck save-state support. Callbacks and the internal ROM are host configuration; the opcode tables are
+// rebuilt from the M/X flags.
+bool m37710_cpu_device::do_state(StateWrapper& sw)
+{
+	sw.DoBytes(m_internal_ram.data(), m_internal_ram.size());
+	sw.Do(&m_a); sw.Do(&m_b); sw.Do(&m_ba); sw.Do(&m_bb);
+	sw.Do(&m_x); sw.Do(&m_y); sw.Do(&m_xh); sw.Do(&m_yh);
+	sw.Do(&m_s); sw.Do(&m_pc); sw.Do(&m_ppc); sw.Do(&m_pg); sw.Do(&m_dt); sw.Do(&m_dpr);
+	sw.Do(&m_flag_e); sw.Do(&m_flag_m); sw.Do(&m_flag_x); sw.Do(&m_flag_n); sw.Do(&m_flag_v);
+	sw.Do(&m_flag_d); sw.Do(&m_flag_i); sw.Do(&m_flag_z); sw.Do(&m_flag_c);
+	sw.Do(&m_line_irq); sw.Do(&m_ipl); sw.Do(&m_ir); sw.Do(&m_im); sw.Do(&m_im2); sw.Do(&m_im3); sw.Do(&m_im4);
+	sw.Do(&m_irq_delay); sw.Do(&m_ICount); sw.Do(&m_source); sw.Do(&m_destination); sw.Do(&m_stopped);
+	sw.DoBytes(m_port_regs, sizeof(m_port_regs));
+	sw.DoBytes(m_port_dir, sizeof(m_port_dir));
+	sw.Do(&m_ad_control); sw.Do(&m_ad_sweep);
+	sw.DoArray(m_ad_result, std::size(m_ad_result));
+	sw.Do(&m_ad_cycles);
+	sw.DoBytes(m_uart_mode, sizeof(m_uart_mode));
+	sw.DoBytes(m_uart_baud, sizeof(m_uart_baud));
+	sw.DoBytes(m_uart_ctrl_reg0, sizeof(m_uart_ctrl_reg0));
+	sw.DoBytes(m_uart_ctrl_reg1, sizeof(m_uart_ctrl_reg1));
+	sw.DoArray(m_uart_recv_buf, std::size(m_uart_recv_buf));
+	sw.Do(&m_count_start); sw.Do(&m_one_shot_start); sw.Do(&m_up_down_reg);
+	sw.DoArray(m_timer_reg, std::size(m_timer_reg));
+	sw.DoBytes(m_timer_mode, sizeof(m_timer_mode));
+	sw.DoArray(m_reload, std::size(m_reload));
+	sw.DoArray(m_timer_cycles, std::size(m_timer_cycles));
+	sw.DoArray(m_timer_out, std::size(m_timer_out));
+	sw.Do(&m_proc_mode); sw.Do(&m_watchdog_freq); sw.Do(&m_rto_control); sw.Do(&m_dram_control);
+	sw.Do(&m_dmac_control);
+	sw.DoArray(m_dma_src, std::size(m_dma_src));
+	sw.DoArray(m_dma_dst, std::size(m_dma_dst));
+	sw.DoArray(m_dma_cnt, std::size(m_dma_cnt));
+	sw.DoArray(m_dma_mode, std::size(m_dma_mode));
+	sw.DoBytes(m_int_control, sizeof(m_int_control));
+
+	if (sw.IsReading())
+	{
+		if (sw.HasError() || (m_flag_m & ~0x20u) != 0 || (m_flag_x & ~0x10u) != 0)
+			return false;
+
+		m37710i_set_execution_mode((m_flag_m >> 4) | (m_flag_x >> 4));
+	}
+
+	return !sw.HasError();
+}
 
 /* ======================================================================== */
 /* ============================== END OF FILE ============================= */

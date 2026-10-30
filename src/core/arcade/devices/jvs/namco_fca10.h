@@ -8,6 +8,8 @@
 #include <array>
 #include <span>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 // High-level model of the Namco FCA-1 (FCA10) JVS I/O board used by
@@ -17,6 +19,8 @@ namespace Arcade::JVS {
 class NamcoFCA10
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   struct PacketResult
   {
     std::array<u8, 256> response{};

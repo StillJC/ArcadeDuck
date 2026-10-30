@@ -27,6 +27,7 @@
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/arcade_rom_loader.h"
+#include "core/arcade/arcade_save_state.h"
 #include "core/arcade/systems/konami/konami.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
 #include "core/arcade/systems/namco/system12/namco_system12.h"
@@ -134,6 +135,8 @@ struct SaveStateBuffer
   RGBA8Image screenshot;
   DynamicHeapArray<u8> state_data;
   size_t state_size;
+  bool arcade = false;
+  std::vector<u8> arcade_metadata;
 };
 struct MemorySaveState
 {
@@ -213,6 +216,23 @@ static u32 CompressAndWriteStateData(std::FILE* fp, std::span<const u8> src, Sav
                                      u32* header_type, Error* error);
 static bool DoState(StateWrapper& sw, GPUTexture** host_texture, bool update_display, bool is_memory_state);
 
+static bool SupportsMemoryStates();
+static bool DoArcadeState(StateWrapper& sw);
+static std::string BuildArcadeIdentityRecord(const Arcade::BootContext& context);
+static Arcade::SaveState::Hash GetArcadeIdentity();
+static void GetArcadeNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
+static bool IsGlobalSaveStatePath(std::string_view path);
+static bool SaveArcadeState(const char* path, s32 slot, std::string_view label, bool backup_existing_save, Error* error,
+                            bool check_readiness = true);
+static bool LoadArcadeState(const char* path, Error* error);
+static void ProcessPendingArcadeSave();
+static void CancelPendingArcadeSave(std::string_view reason);
+static bool QueueArcadeSaveIfPending(const char* path, s32 slot, std::string_view label, bool backup_existing_save,
+                                     bool named);
+static bool PreflightArcadeState(const SaveStateBuffer& buffer, const Arcade::SaveState::Metadata& metadata,
+                                 Error* error);
+static void RejectArcadeLoad(std::string_view message, Error* error);
+
 static bool IsExecutionInterrupted();
 static void CheckForAndExitExecution();
 
@@ -267,9 +287,38 @@ static System::GameHash s_running_game_hash;
 static System::BootMode s_boot_mode = System::BootMode::None;
 static bool s_running_game_custom_title = false;
 static bool s_save_states_supported = true;
+static bool s_memory_states_supported = true;
+static bool s_load_rejection_reported = false;
+
+// Retained for the session only when the running arcade game supports save states.
+static std::unique_ptr<Arcade::MachineHandler> s_arcade_machine_handler;
+static std::string s_arcade_handler_id;
+static std::string s_arcade_archive_base;
+static std::string s_arcade_identity_record;
 
 static bool s_system_executing = false;
 static bool s_system_interrupted = false;
+static bool s_frame_host_work_after_exit = false;
+
+namespace {
+struct PendingArcadeSave
+{
+  std::string path;
+  std::string label;
+  s32 slot;
+  bool backup_existing_save;
+  bool named;
+  u32 frames_left;
+
+  // The target file as it was when the request was queued. The save is only written if it is still the same file.
+  bool target_existed;
+  Arcade::SaveState::Hash target_save_id;
+};
+} // namespace
+
+// About 30 seconds. Cyber Lead boards that keep re-uploading identical data are idle at least every ~16 seconds.
+static constexpr u32 PENDING_ARCADE_SAVE_FRAMES = 1800;
+static std::optional<PendingArcadeSave> s_pending_arcade_save;
 static bool s_frame_step_request = false;
 static bool s_fast_forward_enabled = false;
 static bool s_turbo_enabled = false;
@@ -743,6 +792,21 @@ bool System::IsRunningUnknownGame()
 bool System::SupportsSaveStates()
 {
   return s_save_states_supported;
+}
+
+bool System::SupportsMemoryStates()
+{
+  return s_save_states_supported && s_memory_states_supported;
+}
+
+bool System::WasLoadRejectionReported()
+{
+  return s_load_rejection_reported;
+}
+
+bool System::IsArcadeSaveStateSession()
+{
+  return static_cast<bool>(s_arcade_machine_handler);
 }
 
 const char* System::GetSaveStateUnsupportedMessage()
@@ -1469,6 +1533,8 @@ void System::ResetSystem()
   if (!IsValid())
     return;
 
+  CancelPendingArcadeSave(TRANSLATE_SV("System", "the system was reset"));
+
   if (!Achievements::ConfirmSystemReset())
     return;
 
@@ -1732,7 +1798,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
   }
 
   const bool supports_save_states =
-    !arcade_machine_handler || arcade_machine_handler->SupportsSaveStates();
+    !arcade_machine_handler || arcade_machine_handler->SupportsSaveStates(*arcade_boot_context->game_definition);
   if (!parameters.save_state.empty() && !supports_save_states)
   {
     Error::SetStringView(error, SAVE_STATE_UNSUPPORTED_MESSAGE);
@@ -1860,6 +1926,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
                          arcade_machine_handler->GetRAMSizeOverride().value_or(configured_ram_size) :
                          configured_ram_size;
   s_save_states_supported = supports_save_states;
+  s_memory_states_supported = !arcade_machine_handler;
 
   if (arcade_machine_handler)
   {
@@ -1914,6 +1981,14 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
     s_running_game_path = arcade_boot_context->archive_path;
     s_running_game_serial = arcade_boot_context->canonical_game_id;
     s_running_game_title = arcade_boot_context->game_definition->title;
+
+    if (supports_save_states)
+    {
+      s_arcade_handler_id = arcade_boot_context->machine_handler_id;
+      s_arcade_archive_base = Path::GetFileTitle(arcade_boot_context->archive_path);
+      s_arcade_identity_record = BuildArcadeIdentityRecord(*arcade_boot_context);
+      s_arcade_machine_handler = std::move(arcade_machine_handler);
+    }
   }
 
   // Attach boot media.
@@ -1950,8 +2025,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
   Host::OnSystemStarted();
   Host::OnIdleStateChanged();
 
-  // try to load the state, if it fails, bail out
-  if (!parameters.save_state.empty() && !LoadState(parameters.save_state.c_str(), error, false))
+  // try to load the state, if it fails, bail out. A refused arcade state keeps the freshly booted machine, since
+  // the refusal has already been shown to the user.
+  if (!parameters.save_state.empty() && !LoadState(parameters.save_state.c_str(), error, false) &&
+      !(s_arcade_machine_handler && s_load_rejection_reported))
   {
     Error::AddPrefixFmt(error, "Failed to load save state file '{}' for booting:\n",
                         Path::GetFileName(parameters.save_state));
@@ -2079,6 +2156,8 @@ void System::DestroySystem()
   if (s_state == State::Shutdown)
     return;
 
+  CancelPendingArcadeSave(TRANSLATE_SV("System", "the game was closed"));
+
   if (s_media_capture)
     StopMediaCapture();
 
@@ -2165,6 +2244,11 @@ void System::ClearRunningGame()
   s_running_game_entry = nullptr;
   s_running_game_hash = 0;
   s_save_states_supported = true;
+  s_memory_states_supported = true;
+  s_arcade_machine_handler.reset();
+  s_arcade_handler_id.clear();
+  s_arcade_archive_base.clear();
+  s_arcade_identity_record.clear();
 
   Host::OnGameChanged(s_running_game_path, s_running_game_serial, s_running_game_title);
 
@@ -2193,6 +2277,11 @@ void System::Execute()
           CPU::Execute();
 
         s_system_executing = false;
+        if (s_frame_host_work_after_exit)
+        {
+          s_frame_host_work_after_exit = false;
+          RunFrameHostWork();
+        }
         continue;
       }
 
@@ -2428,9 +2517,22 @@ void System::FrameDone()
   // Input poll already done above
   if (s_runahead_frames == 0)
   {
-    Host::PumpMessagesOnCPUThread();
-    InputManager::PollSources();
-    CheckForAndExitExecution();
+    if (!s_system_executing)
+    {
+      RunFrameHostWork();
+    }
+    else if (IsExecutionInterrupted())
+    {
+      // A board reset requested from an event callback leaves that event loop running on the previous timeline
+      // until the next frame end exits execution. Exit here as before, and run the host work once the CPU has
+      // stopped, so a queued save or load never sees this point.
+      s_frame_host_work_after_exit = true;
+      CheckForAndExitExecution();
+    }
+    else
+    {
+      TimingEvents::DeferFrameHostWork();
+    }
   }
 
   g_gpu->RestoreDeviceContext();
@@ -2439,6 +2541,16 @@ void System::FrameDone()
   // to start-of-frame, not end-of-frame to end-of-frame (will be noisy due to different
   // amounts of computation happening in each frame).
   System::UpdatePerformanceCounters();
+}
+
+void System::RunFrameHostWork()
+{
+  ProcessPendingArcadeSave();
+  Host::PumpMessagesOnCPUThread();
+  InputManager::PollSources();
+  g_gpu->RestoreDeviceContext();
+  if (s_system_executing)
+    CheckForAndExitExecution();
 }
 
 void System::SetThrottleFrequency(float frequency)
@@ -2667,7 +2779,11 @@ bool System::DoState(StateWrapper& sw, GPUTexture** host_texture, bool update_di
   if (!sw.DoMarker("SIO") || !SIO::DoState(sw))
     return false;
 
-  if (!sw.DoMarker("Events") || !TimingEvents::DoState(sw))
+  const bool arcade_state = (s_arcade_machine_handler && !is_memory_state);
+  if (arcade_state && (!sw.DoMarker("Arcade") || !DoArcadeState(sw)))
+    return false;
+
+  if (!sw.DoMarker("Events") || !TimingEvents::DoState(sw, arcade_state))
     return false;
 
   if (!sw.DoMarker("Overclock"))
@@ -2826,6 +2942,7 @@ std::string System::GetMediaPathFromSaveState(const char* path)
 
 bool System::LoadState(const char* path, Error* error, bool save_undo_state)
 {
+  s_load_rejection_reported = false;
   if (!CheckSaveStateSupport(error))
     return false;
 
@@ -2834,6 +2951,9 @@ bool System::LoadState(const char* path, Error* error, bool save_undo_state)
     Error::SetStringView(error, "System is not booted.");
     return false;
   }
+
+  if (s_arcade_machine_handler)
+    return LoadArcadeState(path, error);
 
   if (Achievements::IsHardcoreModeActive())
   {
@@ -2866,6 +2986,7 @@ bool System::LoadState(const char* path, Error* error, bool save_undo_state)
 
   SaveStateBuffer buffer;
   if (!LoadStateBufferFromFile(&buffer, fp.get(), error, false, true, false, true) ||
+      (buffer.arcade && (Error::SetStringView(error, "This save state belongs to an arcade game."), true)) ||
       !LoadStateFromBuffer(buffer, error, true))
   {
     if (save_undo_state)
@@ -2986,9 +3107,15 @@ bool System::LoadStateBufferFromFile(SaveStateBuffer* buffer, std::FILE* fp, Err
   DebugAssert(FileSystem::FTell64(fp) == 0);
 
   SAVE_STATE_HEADER header;
-  if (std::fread(&header, sizeof(header), 1, fp) != 1 || header.magic != SAVE_STATE_MAGIC) [[unlikely]]
+  if (std::fread(&header, sizeof(header), 1, fp) != 1) [[unlikely]]
   {
     Error::SetErrno(error, "fread() for header failed: ", errno);
+    return false;
+  }
+
+  if (header.magic != SAVE_STATE_MAGIC && header.magic != ARCADE_SAVE_STATE_MAGIC) [[unlikely]]
+  {
+    Error::SetStringView(error, "File is not a save state.");
     return false;
   }
 
@@ -3013,13 +3140,16 @@ bool System::LoadStateBufferFromFile(SaveStateBuffer* buffer, std::FILE* fp, Err
       (static_cast<s64>(header.offset_to_screenshot) + header.screenshot_compressed_size) > file_size ||
       header.screenshot_width >= 32768 || header.screenshot_height >= 32768 ||
       (static_cast<s64>(header.offset_to_data) + header.data_compressed_size) > file_size ||
-      header.data_uncompressed_size > SAVE_STATE_HEADER::MAX_SAVE_STATE_SIZE) [[unlikely]]
+      header.data_uncompressed_size > SAVE_STATE_HEADER::MAX_SAVE_STATE_SIZE ||
+      (header.magic == ARCADE_SAVE_STATE_MAGIC && header.media_path_length > Arcade::SaveState::MAX_METADATA_SIZE))
+    [[unlikely]]
   {
     Error::SetStringView(error, "Save state header is corrupted.");
     return false;
   }
 
   buffer->version = header.version;
+  buffer->arcade = (header.magic == ARCADE_SAVE_STATE_MAGIC);
 
   if (read_title)
   {
@@ -3027,17 +3157,29 @@ bool System::LoadStateBufferFromFile(SaveStateBuffer* buffer, std::FILE* fp, Err
     buffer->serial.assign(header.serial, StringUtil::Strnlen(header.serial, std::size(header.serial)));
   }
 
-  // Read media path.
+  // Read media path, or the arcade metadata stored in its place.
   if (read_media_path)
   {
-    buffer->media_path.resize(header.media_path_length);
     buffer->media_subimage_index = header.media_subimage_index;
+    void* dst;
+    if (buffer->arcade)
+    {
+      buffer->media_path.clear();
+      buffer->arcade_metadata.resize(header.media_path_length);
+      dst = buffer->arcade_metadata.data();
+    }
+    else
+    {
+      buffer->media_path.resize(header.media_path_length);
+      dst = buffer->media_path.data();
+    }
+
     if (header.media_path_length > 0)
     {
       if (!FileSystem::FSeek64(fp, header.offset_to_media_path, SEEK_SET, error)) [[unlikely]]
         return false;
 
-      if (std::fread(buffer->media_path.data(), buffer->media_path.length(), 1, fp) != 1) [[unlikely]]
+      if (std::fread(dst, header.media_path_length, 1, fp) != 1) [[unlikely]]
       {
         Error::SetErrno(error, "fread() for media path failed: ", errno);
         return false;
@@ -3152,6 +3294,9 @@ bool System::SaveState(const char* path, Error* error, bool backup_existing_save
 {
   if (!CheckSaveStateSupport(error))
     return false;
+
+  if (s_arcade_machine_handler)
+    return SaveArcadeState(path, Arcade::SaveState::GetSlotFromFileName(path), {}, backup_existing_save, error);
 
   Common::Timer save_timer;
 
@@ -3284,7 +3429,7 @@ bool System::SaveStateBufferToFile(const SaveStateBuffer& buffer, std::FILE* fp,
 {
   // Header gets rewritten below.
   SAVE_STATE_HEADER header = {};
-  header.magic = SAVE_STATE_MAGIC;
+  header.magic = buffer.arcade ? ARCADE_SAVE_STATE_MAGIC : SAVE_STATE_MAGIC;
   header.version = SAVE_STATE_VERSION;
   StringUtil::Strlcpy(header.title, s_running_game_title.c_str(), sizeof(header.title));
   StringUtil::Strlcpy(header.serial, s_running_game_serial.c_str(), sizeof(header.serial));
@@ -3298,17 +3443,21 @@ bool System::SaveStateBufferToFile(const SaveStateBuffer& buffer, std::FILE* fp,
   }
   file_position += sizeof(header);
 
-  if (!buffer.media_path.empty())
+  const std::span<const u8> media_region =
+    buffer.arcade ?
+      std::span<const u8>(buffer.arcade_metadata) :
+      std::span<const u8>(reinterpret_cast<const u8*>(buffer.media_path.data()), buffer.media_path.size());
+  if (!media_region.empty())
   {
     DebugAssert(FileSystem::FTell64(fp) == static_cast<s64>(file_position));
-    header.media_path_length = static_cast<u32>(buffer.media_path.length());
+    header.media_path_length = static_cast<u32>(media_region.size());
     header.offset_to_media_path = file_position;
-    if (std::fwrite(buffer.media_path.data(), buffer.media_path.length(), 1, fp) != 1)
+    if (std::fwrite(media_region.data(), media_region.size(), 1, fp) != 1)
     {
       Error::SetErrno(error, "fwrite() for media path failed: ", errno);
       return false;
     }
-    file_position += static_cast<u32>(buffer.media_path.length());
+    file_position += static_cast<u32>(media_region.size());
   }
 
   if (buffer.screenshot.IsValid())
@@ -3715,7 +3864,7 @@ void System::SetRewindState(bool enabled)
   if (!System::IsValid())
     return;
 
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
   {
     SetRewinding(false);
     return;
@@ -4728,7 +4877,7 @@ void System::UpdateMemorySaveStateSettings()
 {
   ClearMemorySaveStates();
 
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
   {
     s_memory_saves_enabled = false;
     s_rewind_save_frequency = -1;
@@ -4772,7 +4921,7 @@ void System::UpdateMemorySaveStateSettings()
 
 bool System::LoadMemoryState(const MemorySaveState& mss)
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
   StateWrapper sw(mss.state_data.cspan(), StateWrapper::Mode::Read, SAVE_STATE_VERSION);
@@ -4789,7 +4938,7 @@ bool System::LoadMemoryState(const MemorySaveState& mss)
 
 bool System::SaveMemoryState(MemorySaveState* mss)
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
   if (mss->state_data.empty())
@@ -4814,7 +4963,7 @@ bool System::SaveMemoryState(MemorySaveState* mss)
 
 bool System::SaveRewindState()
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
 #ifdef PROFILE_MEMORY_SAVE_STATES
@@ -4845,7 +4994,7 @@ bool System::SaveRewindState()
 
 bool System::LoadRewindState(u32 skip_saves /*= 0*/, bool consume_state /*=true */)
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
   while (skip_saves > 0 && !s_rewind_states.empty())
@@ -4882,7 +5031,7 @@ bool System::IsRewinding()
 
 void System::SetRewinding(bool enabled)
 {
-  if (enabled && !SupportsSaveStates())
+  if (enabled && !SupportsMemoryStates())
     return;
 
   if (enabled)
@@ -4929,7 +5078,7 @@ void System::DoRewind()
 
 void System::SaveRunaheadState()
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return;
 
   // try to reuse the frontmost slot
@@ -4951,7 +5100,7 @@ void System::SaveRunaheadState()
 
 bool System::DoRunahead()
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
 #ifdef PROFILE_MEMORY_SAVE_STATES
@@ -5021,7 +5170,7 @@ bool System::DoRunahead()
 
 void System::SetRunaheadReplayFlag()
 {
-  if (!SupportsSaveStates() || s_runahead_frames == 0 || s_runahead_states.empty())
+  if (!SupportsMemoryStates() || s_runahead_frames == 0 || s_runahead_states.empty())
     return;
 
 #ifdef PROFILE_MEMORY_SAVE_STATES
@@ -5054,13 +5203,13 @@ void System::ShutdownSystem(bool save_resume_state)
 
 bool System::CanUndoLoadState()
 {
-  return SupportsSaveStates() && s_undo_load_state.has_value();
+  return SupportsMemoryStates() && s_undo_load_state.has_value();
 }
 
 std::optional<ExtendedSaveStateInfo> System::GetUndoSaveStateInfo()
 {
   std::optional<ExtendedSaveStateInfo> ssi;
-  if (SupportsSaveStates() && s_undo_load_state.has_value())
+  if (SupportsMemoryStates() && s_undo_load_state.has_value())
   {
     ssi.emplace();
     ssi->title = s_undo_load_state->title;
@@ -5075,7 +5224,7 @@ std::optional<ExtendedSaveStateInfo> System::GetUndoSaveStateInfo()
 
 bool System::UndoLoadState()
 {
-  if (!SupportsSaveStates() || !s_undo_load_state.has_value())
+  if (!SupportsMemoryStates() || !s_undo_load_state.has_value())
     return false;
 
   Assert(IsValid());
@@ -5097,7 +5246,7 @@ bool System::UndoLoadState()
 
 bool System::SaveUndoLoadState()
 {
-  if (!SupportsSaveStates())
+  if (!SupportsMemoryStates())
     return false;
 
   if (!s_undo_load_state.has_value())
@@ -5330,8 +5479,629 @@ void System::StopMediaCapture()
   Host::OnMediaCaptureStopped();
 }
 
+static constexpr const char ARCADE_LOAD_REJECTED_TITLE[] = "Cannot Load Save State";
+static constexpr const char ARCADE_NVRAM_MISMATCH_MESSAGE[] =
+  "This save state was created with different NVRAM data. Cabinet settings or bookkeeping may have changed since "
+  "it was saved, including through the test menu. Loading has been blocked to preserve your current data.";
+
+std::string System::BuildArcadeIdentityRecord(const Arcade::BootContext& context)
+{
+  std::string record;
+  const auto out = std::back_inserter(record);
+  const Arcade::Database::GameDefinition& game = *context.game_definition;
+  fmt::format_to(out, "handler={}\ngame={}\nsystem={}\nbios_profile={}\nregion={}\nhardware_profile={}\n",
+                 context.machine_handler_id, context.canonical_game_id, context.system_id, context.bios_profile_id,
+                 context.region, game.hardware_profile);
+  for (const Arcade::Database::ROMDefinition& rom : game.roms)
+  {
+    fmt::format_to(out, "rom={}:{}:{}:{}:{:08x}:{}\n", rom.role, rom.region, rom.name, rom.size, rom.crc32, rom.sha1);
+  }
+  for (const Arcade::Database::MediaDefinition& media : game.media)
+    fmt::format_to(out, "media={}:{}:{}\n", media.role, media.name, media.sha1);
+  if (context.firmware_definition)
+  {
+    fmt::format_to(out, "firmware={}\n", context.firmware_definition->id);
+    for (const Arcade::Database::ROMDefinition& rom : context.firmware_definition->roms)
+      fmt::format_to(out, "firmware_rom={}:{}:{}:{:08x}:{}\n", rom.role, rom.name, rom.size, rom.crc32, rom.sha1);
+  }
+  fmt::format_to(out, "bios_hash={}\nram_size={}\nvram_height={}\nstate_version={}\n",
+                 BIOS::ImageInfo::GetHashString(s_bios_hash), Bus::g_ram_size, g_vram_height, SAVE_STATE_VERSION);
+  return record;
+}
+
+Arcade::SaveState::Hash System::GetArcadeIdentity()
+{
+  // The CPU clock can change during a session, and pending event timestamps depend on it.
+  std::string record = s_arcade_identity_record;
+  s_arcade_machine_handler->AppendStateIdentity(&record);
+  fmt::format_to(std::back_inserter(record), "cpu_clock={}:{}:{}\n", static_cast<bool>(g_settings.cpu_overclock_active),
+                 g_settings.cpu_overclock_numerator, g_settings.cpu_overclock_denominator);
+  return Arcade::SaveState::HashBytes(std::span<const u8>(reinterpret_cast<const u8*>(record.data()), record.size()));
+}
+
+void System::GetArcadeNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  components->clear();
+  s_arcade_machine_handler->GetNVRAMComponents(components);
+}
+
+bool System::DoArcadeState(StateWrapper& sw)
+{
+  std::string handler_id = s_arcade_handler_id;
+  u32 version = s_arcade_machine_handler->GetStateVersion();
+  sw.Do(&handler_id);
+  sw.Do(&version);
+  if (sw.IsReading() && (handler_id != s_arcade_handler_id || version != s_arcade_machine_handler->GetStateVersion()))
+  {
+    ERROR_LOG("Arcade state section is for '{}' v{}, running '{}' v{}.", handler_id, version, s_arcade_handler_id,
+              s_arcade_machine_handler->GetStateVersion());
+    return false;
+  }
+
+  if (sw.HasError() || !s_arcade_machine_handler->DoState(sw))
+  {
+    ERROR_LOG("Arcade board state for '{}' failed to {}.", s_arcade_handler_id, sw.IsReading() ? "load" : "save");
+    return false;
+  }
+
+  return sw.DoMarker("ArcadeEnd");
+}
+
+bool System::IsGlobalSaveStatePath(std::string_view path)
+{
+  const std::string_view name = Path::GetFileName(path);
+  if (StringUtil::EqualNoCase(name, Path::GetFileName(GetGlobalSaveStateFileName(-1))))
+    return true;
+
+  for (s32 i = 1; i <= GLOBAL_SAVE_STATE_SLOTS; i++)
+  {
+    if (StringUtil::EqualNoCase(name, Path::GetFileName(GetGlobalSaveStateFileName(i))))
+      return true;
+  }
+
+  return false;
+}
+
+bool System::SaveArcadeState(const char* path, s32 slot, std::string_view label, bool backup_existing_save,
+                             Error* error, bool check_readiness)
+{
+  if (IsGlobalSaveStatePath(path))
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", "Global save slots are not available for arcade games."));
+    return false;
+  }
+
+  if (check_readiness && !s_arcade_machine_handler->CanSaveState(error))
+    return false;
+
+  Common::Timer save_timer;
+
+  // Overwriting a save of this game keeps its slot and label; slot ownership lives in the metadata.
+  Arcade::SaveState::Metadata existing;
+  const bool exists = FileSystem::FileExists(path);
+  const bool owned = exists && Arcade::SaveState::ReadFileMetadata(path, &existing, nullptr) &&
+                     StringUtil::EqualNoCase(existing.game_id, s_running_game_serial);
+  if (owned)
+  {
+    slot = existing.slot;
+    label = existing.label;
+  }
+
+  if (slot != Arcade::SaveState::SLOT_NONE)
+  {
+    for (const Arcade::SaveState::Entry& entry : Arcade::SaveState::FindSaves(s_running_game_serial))
+    {
+      if (entry.metadata.slot != slot)
+        continue;
+
+      if (entry.duplicate_slot)
+      {
+        Error::SetStringFmt(error,
+                            TRANSLATE_FS("System", "More than one save claims {}. Resolve the duplicate from the "
+                                                   "Load State menu before saving to it."),
+                            Arcade::SaveState::GetSlotDisplayName(slot));
+        return false;
+      }
+
+      if (!StringUtil::EqualNoCase(Path::Canonicalize(entry.path), Path::Canonicalize(path)))
+      {
+        Error::SetStringFmt(error, TRANSLATE_FS("System", "{} is already used by '{}'."),
+                            Arcade::SaveState::GetSlotDisplayName(slot), Path::GetFileName(entry.path));
+        return false;
+      }
+    }
+  }
+
+  Arcade::SaveState::Metadata metadata;
+  metadata.handler_id = s_arcade_handler_id;
+  metadata.handler_state_version = s_arcade_machine_handler->GetStateVersion();
+  metadata.game_id = s_running_game_serial;
+  metadata.game_title = s_running_game_title;
+  metadata.archive_base = s_arcade_archive_base;
+  metadata.identity = GetArcadeIdentity();
+  metadata.created_time = static_cast<u64>(std::time(nullptr));
+  metadata.slot = slot;
+  metadata.label = (slot == Arcade::SaveState::SLOT_NONE && label.empty()) ? Path::GetFileTitle(path) : label;
+  metadata.save_id = Arcade::SaveState::GenerateSaveID();
+
+  // Board state and NVRAM fingerprints are captured at the same emulated instant.
+  std::vector<Arcade::SaveState::NVRAMComponent> components;
+  GetArcadeNVRAMComponents(&components);
+  metadata.nvram = Arcade::SaveState::FingerprintNVRAM(components);
+  metadata.cpu_execution_mode = static_cast<u8>(g_settings.cpu_execution_mode);
+
+  SaveStateBuffer buffer;
+  if (!SaveStateToBuffer(&buffer, error, 256))
+    return false;
+
+  buffer.arcade = true;
+  buffer.media_path.clear();
+  if (!Arcade::SaveState::SerializeMetadata(metadata, &buffer.arcade_metadata, error))
+    return false;
+
+  // The previous save stays at its path until the new file is complete; the backup is a copy.
+  if (backup_existing_save && exists &&
+      !FileSystem::CopyFilePath(path, Path::ReplaceExtension(path, "bak").c_str(), true))
+  {
+    WARNING_LOG("Failed to copy save state backup for '{}'.", Path::GetFileName(path));
+  }
+
+  auto fp = FileSystem::CreateAtomicRenamedFile(path, "wb", error);
+  if (!fp)
+  {
+    Error::AddPrefixFmt(error, "Cannot open '{}': ", Path::GetFileName(path));
+    return false;
+  }
+
+  if (!SaveStateBufferToFile(buffer, fp.get(), error, g_settings.save_state_compression))
+  {
+    FileSystem::DiscardAtomicRenamedFile(fp);
+    return false;
+  }
+
+  // Closing commits the rename; confirm the file at the path is the one just written.
+  fp.reset();
+  Arcade::SaveState::Metadata written;
+  if (!Arcade::SaveState::ReadFileMetadata(path, &written, nullptr) || written.save_id != metadata.save_id)
+  {
+    Error::SetStringFmt(error, TRANSLATE_FS("System", "Failed to write '{}'. Any previous save there is unchanged."),
+                        Path::GetFileName(path));
+    return false;
+  }
+
+  INFO_LOG("Saved arcade state '{}' ({}, {} NVRAM components, {} bytes) in {:.2f} ms.", Path::GetFileName(path),
+           Arcade::SaveState::GetSlotDisplayName(slot), components.size(), buffer.state_size,
+           save_timer.GetTimeMilliseconds());
+  Host::AddIconOSDMessage("save_state", ICON_EMOJI_FLOPPY_DISK,
+                          fmt::format(TRANSLATE_FS("OSDMessage", "State saved to '{}'."), Path::GetFileName(path)),
+                          5.0f);
+  return true;
+}
+
+bool System::SaveNamedState(std::string_view label, Error* error)
+{
+  if (!IsValid() || !s_arcade_machine_handler)
+  {
+    Error::SetStringView(error, SAVE_STATE_UNSUPPORTED_MESSAGE);
+    return false;
+  }
+
+  if (label.empty())
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", "A named save needs a name."));
+    return false;
+  }
+
+  const std::string name =
+    Arcade::SaveState::GetDefaultFileName(s_arcade_archive_base, Arcade::SaveState::SLOT_NONE, label);
+  std::string path = Path::Combine(EmuFolders::SaveStates, name);
+  for (u32 n = 2; FileSystem::FileExists(path.c_str()); n++)
+    path = Path::Combine(EmuFolders::SaveStates, fmt::format("{}-{}.sav", Path::GetFileTitle(name), n));
+
+  return SaveArcadeState(path.c_str(), Arcade::SaveState::SLOT_NONE, label, false, error);
+}
+
+bool System::QueueArcadeSaveIfPending(const char* path, s32 slot, std::string_view label, bool backup_existing_save,
+                                      bool named)
+{
+  std::string message;
+  if (!s_arcade_machine_handler || !s_arcade_machine_handler->IsSaveReadinessPending(&message))
+    return false;
+
+  const std::string target = named ? std::string(label) : std::string(Path::GetFileName(path));
+  if (s_pending_arcade_save.has_value())
+  {
+    const PendingArcadeSave& current = *s_pending_arcade_save;
+    if (current.named == named && (named ? (current.label == label) : (current.path == path)))
+    {
+      // Repeated presses for the same target keep the original request and its deadline.
+      INFO_LOG("Arcade save to '{}' is already queued.", target);
+      Host::AddIconOSDMessage("arcade_pending_save", ICON_EMOJI_FLOPPY_DISK,
+                              fmt::format(TRANSLATE_FS("System", "Save already queued: {}"), message),
+                              Host::OSD_INFO_DURATION);
+      return true;
+    }
+
+    INFO_LOG("Queued arcade save to '{}' replaced by '{}'.",
+             current.named ? current.label : std::string(Path::GetFileName(current.path)), target);
+  }
+
+  PendingArcadeSave request{path,  std::string(label),         slot,  backup_existing_save,
+                            named, PENDING_ARCADE_SAVE_FRAMES, false, {}};
+  if (!named)
+  {
+    Arcade::SaveState::Metadata existing;
+    request.target_existed = FileSystem::FileExists(path);
+    if (request.target_existed && Arcade::SaveState::ReadFileMetadata(path, &existing, nullptr))
+      request.target_save_id = existing.save_id;
+  }
+
+  const bool replaced = s_pending_arcade_save.has_value();
+  s_pending_arcade_save = std::move(request);
+  INFO_LOG("Arcade save to '{}' queued; it waits for the board to become ready.", target);
+  Host::AddIconOSDMessage("arcade_pending_save", ICON_EMOJI_FLOPPY_DISK,
+                          fmt::format(replaced ?
+                                        TRANSLATE_FS("System", "Save queued (replaces the previous queued save): {}") :
+                                        TRANSLATE_FS("System", "Save queued: {}"),
+                                      message),
+                          Host::OSD_INFO_DURATION);
+  return true;
+}
+
+bool System::SaveStateWhenReady(const char* path, Error* error, bool backup_existing_save)
+{
+  if (!CheckSaveStateSupport(error))
+    return false;
+
+  if (s_arcade_machine_handler && !IsGlobalSaveStatePath(path) &&
+      QueueArcadeSaveIfPending(path, Arcade::SaveState::GetSlotFromFileName(path), {}, backup_existing_save, false))
+  {
+    return true;
+  }
+
+  return SaveState(path, error, backup_existing_save);
+}
+
+bool System::SaveNamedStateWhenReady(std::string_view label, Error* error)
+{
+  if (IsValid() && s_arcade_machine_handler && !label.empty() &&
+      QueueArcadeSaveIfPending("", Arcade::SaveState::SLOT_NONE, label, false, true))
+  {
+    return true;
+  }
+
+  return SaveNamedState(label, error);
+}
+
+bool System::HasPendingArcadeSave()
+{
+  return s_pending_arcade_save.has_value();
+}
+
+void System::CancelPendingArcadeSave(std::string_view reason)
+{
+  if (!s_pending_arcade_save.has_value())
+    return;
+
+  s_pending_arcade_save.reset();
+  INFO_LOG("Pending arcade save cancelled: {}.", reason);
+  Host::AddIconOSDMessage("arcade_pending_save", ICON_FA_EXCLAMATION_TRIANGLE,
+                          fmt::format(TRANSLATE_FS("System", "The pending save was cancelled because {}."), reason),
+                          Host::OSD_ERROR_DURATION);
+}
+
+// Runs at the frame boundary where host work runs, so the state and the NVRAM fingerprints are captured together
+// by the ordinary save path. Board activity is never paused or delayed for it.
+void System::ProcessPendingArcadeSave()
+{
+  if (!s_pending_arcade_save.has_value())
+    return;
+
+  if (!s_arcade_machine_handler)
+  {
+    s_pending_arcade_save.reset();
+    return;
+  }
+
+  Error error;
+  if (s_arcade_machine_handler->CanSaveState(&error))
+  {
+    const PendingArcadeSave request = std::move(*s_pending_arcade_save);
+    s_pending_arcade_save.reset();
+
+    if (!request.named)
+    {
+      // Never write over a file that appeared, disappeared or was replaced while the request waited.
+      Arcade::SaveState::Metadata existing;
+      const bool exists = FileSystem::FileExists(request.path.c_str());
+      const bool same_target =
+        (exists == request.target_existed) &&
+        (!exists || (Arcade::SaveState::ReadFileMetadata(request.path.c_str(), &existing, nullptr) &&
+                     existing.save_id == request.target_save_id));
+      if (!same_target)
+      {
+        INFO_LOG("Queued arcade save to '{}' not written: the target changed while waiting.",
+                 Path::GetFileName(request.path));
+        Host::AddIconOSDMessage(
+          "arcade_pending_save", ICON_FA_EXCLAMATION_TRIANGLE,
+          fmt::format(TRANSLATE_FS("System", "The queued save to '{}' was not written because that save file "
+                                             "changed while it was waiting."),
+                      Path::GetFileName(request.path)),
+          Host::OSD_ERROR_DURATION);
+        return;
+      }
+    }
+
+    const bool saved = request.named ? SaveNamedState(request.label, &error) :
+                                       SaveArcadeState(request.path.c_str(), request.slot, request.label,
+                                                       request.backup_existing_save, &error);
+    if (!saved)
+    {
+      Host::AddIconOSDMessage("arcade_pending_save", ICON_FA_EXCLAMATION_TRIANGLE,
+                              fmt::format(TRANSLATE_FS("System", "Failed to save state: {}"), error.GetDescription()),
+                              Host::OSD_ERROR_DURATION);
+    }
+    return;
+  }
+
+  if (--s_pending_arcade_save->frames_left == 0)
+  {
+    s_pending_arcade_save.reset();
+    INFO_LOG("Pending arcade save timed out: {}", error.GetDescription());
+    Host::AddIconOSDMessage("arcade_pending_save", ICON_FA_EXCLAMATION_TRIANGLE,
+                            fmt::format(TRANSLATE_FS("System", "Failed to save state: {}"), error.GetDescription()),
+                            Host::OSD_ERROR_DURATION);
+  }
+}
+
+std::vector<std::string> System::GetArcadeNVRAMFingerprints()
+{
+  std::vector<std::string> out;
+  if (!s_arcade_machine_handler)
+    return out;
+
+  std::vector<Arcade::SaveState::NVRAMComponent> components;
+  GetArcadeNVRAMComponents(&components);
+  for (const Arcade::SaveState::NVRAMFingerprint& fp : Arcade::SaveState::FingerprintNVRAM(components))
+    out.push_back(fmt::format("{}={}", fp.id, Arcade::SaveState::FormatHash(fp.hash)));
+  return out;
+}
+
+bool System::IsArcadeSaveReady(Error* error)
+{
+  return !s_arcade_machine_handler || s_arcade_machine_handler->CanSaveState(error);
+}
+
+bool System::SaveArcadeDiagnosticState(const char* path, Error* error)
+{
+  if (!s_arcade_machine_handler)
+  {
+    Error::SetStringView(error, "No arcade machine is running.");
+    return false;
+  }
+
+  return SaveArcadeState(path, Arcade::SaveState::SLOT_NONE, {}, false, error, false);
+}
+
+bool System::DumpArcadeNVRAM(std::string_view directory, std::string_view prefix)
+{
+  if (!s_arcade_machine_handler)
+    return false;
+
+  std::vector<Arcade::SaveState::NVRAMComponent> components;
+  GetArcadeNVRAMComponents(&components);
+  bool ok = true;
+  for (const Arcade::SaveState::NVRAMComponent& component : components)
+  {
+    const std::string path = Path::Combine(directory, fmt::format("{}.{}.bin", prefix, component.id));
+    ok = FileSystem::WriteBinaryFile(path.c_str(), component.contents.data(), component.contents.size()) && ok;
+  }
+  return ok;
+}
+
+void System::RejectArcadeLoad(std::string_view message, Error* error)
+{
+  Error::SetStringView(error, message);
+  s_load_rejection_reported = true;
+  Host::ReportErrorAsync(TRANSLATE_SV("System", ARCADE_LOAD_REJECTED_TITLE), message);
+}
+
+bool System::PreflightArcadeState(const SaveStateBuffer& buffer, const Arcade::SaveState::Metadata& metadata,
+                                  Error* error)
+{
+  if (buffer.version != SAVE_STATE_VERSION)
+  {
+    Error::SetStringFmt(error, TRANSLATE_FS("System", "This save state uses format version {}; this build uses {}."),
+                        buffer.version, SAVE_STATE_VERSION);
+    return false;
+  }
+
+  if (!StringUtil::EqualNoCase(metadata.game_id, s_running_game_serial))
+  {
+    Error::SetStringFmt(error, TRANSLATE_FS("System", "This save state belongs to '{}' ({}), not the running game."),
+                        metadata.game_title, metadata.game_id);
+    return false;
+  }
+
+  if (metadata.handler_id != s_arcade_handler_id ||
+      metadata.handler_state_version != s_arcade_machine_handler->GetStateVersion())
+  {
+    ERROR_LOG("Arcade state handler '{}' v{} does not match '{}' v{}.", metadata.handler_id,
+              metadata.handler_state_version, s_arcade_handler_id, s_arcade_machine_handler->GetStateVersion());
+    Error::SetStringView(error, TRANSLATE_SV("System", "This save state was created by an incompatible version of "
+                                                       "this arcade system's emulation."));
+    return false;
+  }
+
+  // CPU execution modes do not produce interchangeable machine state, so a save only loads in the mode it was made
+  // with. The mode is never switched automatically.
+  if (metadata.cpu_execution_mode != static_cast<u8>(g_settings.cpu_execution_mode))
+  {
+    const char* saved_mode =
+      Settings::GetCPUExecutionModeDisplayName(static_cast<CPUExecutionMode>(metadata.cpu_execution_mode));
+    const char* current_mode = Settings::GetCPUExecutionModeDisplayName(g_settings.cpu_execution_mode);
+    Error::SetStringFmt(error,
+                        TRANSLATE_FS("System", "This save state was created using {0}. ArcadeDuck is currently using "
+                                               "{1}. Switch to {0} before loading this save."),
+                        saved_mode, current_mode);
+    return false;
+  }
+
+  if (metadata.identity != GetArcadeIdentity())
+  {
+    ERROR_LOG("Arcade state identity {} does not match the running machine {}.",
+              Arcade::SaveState::FormatHash(metadata.identity), Arcade::SaveState::FormatHash(GetArcadeIdentity()));
+    Error::SetStringView(error, TRANSLATE_SV("System", "This save state was created with a different ROM, BIOS, "
+                                                       "media or machine configuration (including the CPU clock)."));
+    return false;
+  }
+
+  if (metadata.slot != Arcade::SaveState::SLOT_NONE)
+  {
+    const std::vector<Arcade::SaveState::Entry> entries = Arcade::SaveState::FindSaves(metadata.game_id);
+    if (std::count_if(entries.begin(), entries.end(),
+                      [&metadata](const Arcade::SaveState::Entry& e) { return e.metadata.slot == metadata.slot; }) > 1)
+    {
+      Error::SetStringFmt(error,
+                          TRANSLATE_FS("System", "More than one save claims {}. Resolve the duplicate from the Load "
+                                                 "State menu before loading it."),
+                          Arcade::SaveState::GetSlotDisplayName(metadata.slot));
+      return false;
+    }
+  }
+
+  std::vector<Arcade::SaveState::NVRAMComponent> components;
+  GetArcadeNVRAMComponents(&components);
+  bool nvram_matches = Arcade::SaveState::CompareNVRAM(components, metadata.nvram, nullptr);
+  for (const Arcade::SaveState::NVRAMComponent& component : components)
+  {
+    if (!component.file || !component.file->CheckDiskUnchanged(component.id, nullptr))
+      nvram_matches = false;
+  }
+
+  if (!nvram_matches)
+  {
+    Error::SetStringView(error, TRANSLATE_SV("System", ARCADE_NVRAM_MISMATCH_MESSAGE));
+    return false;
+  }
+
+  return true;
+}
+
+bool System::LoadArcadeState(const char* path, Error* error)
+{
+  CancelPendingArcadeSave(TRANSLATE_SV("System", "a state was loaded"));
+  Common::Timer load_timer;
+  Error local_error;
+
+  SaveStateBuffer buffer;
+  Arcade::SaveState::Metadata metadata;
+  {
+    auto fp = FileSystem::OpenManagedCFile(path, "rb", &local_error);
+    if (!fp || !LoadStateBufferFromFile(&buffer, fp.get(), &local_error, true, true, false, true))
+    {
+      ERROR_LOG("Arcade state '{}' unreadable: {}", Path::GetFileName(path), local_error.GetDescription());
+      RejectArcadeLoad(TRANSLATE_SV("System", "The save state file is missing, unreadable or corrupted."), error);
+      return false;
+    }
+  }
+
+  if (!buffer.arcade)
+  {
+    RejectArcadeLoad(TRANSLATE_SV("System", "This save state was not created for an arcade game."), error);
+    return false;
+  }
+
+  if (!Arcade::SaveState::ParseMetadata(buffer.arcade_metadata, &metadata, &local_error))
+  {
+    ERROR_LOG("Arcade state '{}' metadata: {}", Path::GetFileName(path), local_error.GetDescription());
+    RejectArcadeLoad(local_error.GetDescription().starts_with("Unsupported arcade save state metadata version") ?
+                       TRANSLATE_SV("System", "This save state was created by a different ArcadeDuck build and "
+                                              "cannot be loaded by this one.") :
+                       TRANSLATE_SV("System", "The save state is missing its identity or NVRAM information."),
+                     error);
+    return false;
+  }
+
+  Common::Timer preflight_timer;
+  if (!PreflightArcadeState(buffer, metadata, &local_error))
+  {
+    RejectArcadeLoad(local_error.GetDescription(), error);
+    return false;
+  }
+
+  INFO_LOG("Loading arcade state '{}' ({}), preflight {:.2f} ms.", Path::GetFileName(path),
+           Arcade::SaveState::GetSlotDisplayName(metadata.slot), preflight_timer.GetTimeMilliseconds());
+
+  // Nothing has changed yet. Restoration and any rollback run with board persistence writes suppressed.
+  Arcade::SaveState::RestoreScope restore_scope;
+
+  SaveStateBuffer rollback;
+  if (!SaveStateToBuffer(&rollback, &local_error, 0))
+  {
+    RejectArcadeLoad(TRANSLATE_SV("System", "The current session could not be preserved, so loading was cancelled."),
+                     error);
+    return false;
+  }
+
+  Achievements::DisableHardcoreMode();
+  ClearMemorySaveStates();
+
+  StateWrapper sw(buffer.state_data.cspan(0, buffer.state_size), StateWrapper::Mode::Read, buffer.version);
+  if (!DoState(sw, nullptr, true, false))
+  {
+    ERROR_LOG("Arcade state '{}' failed during restoration; rolling back.", Path::GetFileName(path));
+    StateWrapper rollback_sw(rollback.state_data.cspan(0, rollback.state_size), StateWrapper::Mode::Read,
+                             rollback.version);
+    if (!DoState(rollback_sw, nullptr, true, false))
+    {
+      ERROR_LOG("Rollback failed; resetting the machine.");
+      ResetSystem();
+      RejectArcadeLoad(TRANSLATE_SV("System", "The save state is damaged and the previous session could not be "
+                                              "restored. The machine has been reset; NVRAM was not modified."),
+                       error);
+    }
+    else
+    {
+      RejectArcadeLoad(TRANSLATE_SV("System", "The save state is damaged. The previous session has been restored."),
+                       error);
+    }
+
+    InterruptExecution();
+    return false;
+  }
+
+  InterruptExecution();
+  ResetPerformanceCounters();
+  ResetThrottler();
+  if (IsPaused())
+    InvalidateDisplay();
+
+  INFO_LOG("Loaded arcade state '{}' in {:.2f} ms.", Path::GetFileName(path), load_timer.GetTimeMilliseconds());
+  Host::AddIconOSDMessage("load_state", ICON_EMOJI_OPEN_THE_FOLDER,
+                          fmt::format(TRANSLATE_FS("OSDMessage", "State loaded from '{}'."), Path::GetFileName(path)),
+                          Host::OSD_INFO_DURATION);
+  return true;
+}
+
+static const Arcade::Database::GameDefinition* GetArcadeSaveStateGame(std::string_view serial)
+{
+  return serial.empty() ? nullptr : Arcade::Database::GetGame(serial);
+}
+
+static std::string_view GetArcadeSaveStateBase(const Arcade::Database::GameDefinition& game)
+{
+  if (s_arcade_machine_handler && StringUtil::EqualNoCase(game.id, s_running_game_serial))
+    return s_arcade_archive_base;
+
+  return game.archive_name.empty() ? std::string_view(game.id) : std::string_view(game.archive_name);
+}
+
 std::string System::GetGameSaveStateFileName(std::string_view serial, s32 slot)
 {
+  if (const Arcade::Database::GameDefinition* game = GetArcadeSaveStateGame(serial))
+    return Arcade::SaveState::ResolveSlotPath(game->id, GetArcadeSaveStateBase(*game), (slot < 0) ? -1 : slot);
+
   if (slot < 0)
     return Path::Combine(EmuFolders::SaveStates, fmt::format("{}_resume.sav", serial));
   else
@@ -5359,6 +6129,21 @@ std::vector<SaveStateInfo> System::GetAvailableSaveStates(const char* serial)
     si.push_back(SaveStateInfo{std::move(path), sd.ModificationTime, static_cast<s32>(slot), global});
   };
 
+  if (const Arcade::Database::GameDefinition* game = serial ? GetArcadeSaveStateGame(serial) : nullptr)
+  {
+    // Arcade games have no global slots. Named saves are listed through Arcade::SaveState::FindSaves().
+    for (Arcade::SaveState::Entry& entry : Arcade::SaveState::FindSaves(game->id))
+    {
+      if (entry.metadata.slot != Arcade::SaveState::SLOT_NONE)
+      {
+        si.push_back(SaveStateInfo{std::move(entry.path), static_cast<std::time_t>(entry.metadata.created_time),
+                                   entry.metadata.slot, false});
+      }
+    }
+
+    return si;
+  }
+
   if (serial && std::strlen(serial) > 0)
   {
     add_path(GetGameSaveStateFileName(serial, -1), -1, false);
@@ -5375,11 +6160,23 @@ std::vector<SaveStateInfo> System::GetAvailableSaveStates(const char* serial)
 std::optional<SaveStateInfo> System::GetSaveStateInfo(const char* serial, s32 slot)
 {
   const bool global = (!serial || serial[0] == 0);
+  if (global && s_arcade_machine_handler)
+    return std::nullopt;
+
   std::string path = global ? GetGlobalSaveStateFileName(slot) : GetGameSaveStateFileName(serial, slot);
 
   FILESYSTEM_STAT_DATA sd;
   if (!FileSystem::StatFile(path.c_str(), &sd))
     return std::nullopt;
+
+  if (!global && GetArcadeSaveStateGame(serial))
+  {
+    Arcade::SaveState::Metadata metadata;
+    if (!Arcade::SaveState::ReadFileMetadata(path.c_str(), &metadata, nullptr))
+      return std::nullopt;
+
+    return SaveStateInfo{std::move(path), static_cast<std::time_t>(metadata.created_time), slot, false};
+  }
 
   return SaveStateInfo{std::move(path), sd.ModificationTime, slot, global};
 }
@@ -5407,6 +6204,17 @@ std::optional<ExtendedSaveStateInfo> System::GetExtendedSaveStateInfo(const char
 
       FILESYSTEM_STAT_DATA sd;
       ssi->timestamp = FileSystem::StatFile(fp.get(), &sd) ? sd.ModificationTime : 0;
+
+      Arcade::SaveState::Metadata metadata;
+      if (buffer.arcade && Arcade::SaveState::ParseMetadata(buffer.arcade_metadata, &metadata, nullptr))
+      {
+        ssi->arcade = true;
+        ssi->title = std::move(metadata.game_title);
+        ssi->serial = std::move(metadata.game_id);
+        ssi->label = metadata.label.empty() ? std::string(Path::GetFileTitle(path)) : std::move(metadata.label);
+        ssi->slot = metadata.slot;
+        ssi->timestamp = static_cast<std::time_t>(metadata.created_time);
+      }
     }
     else
     {
@@ -5420,6 +6228,7 @@ std::optional<ExtendedSaveStateInfo> System::GetExtendedSaveStateInfo(const char
 
 void System::DeleteSaveStates(const char* serial, bool resume)
 {
+  // For arcade games this covers slot and resume saves found by metadata; named saves are kept.
   const std::vector<SaveStateInfo> states(GetAvailableSaveStates(serial));
   for (const SaveStateInfo& si : states)
   {
@@ -5443,14 +6252,19 @@ std::string System::GetMostRecentResumeSaveStatePath()
     return {};
   }
 
-  FILESYSTEM_FIND_DATA* most_recent = &files[0];
+  // Arcade resume saves are tied to their game and are only resumed through it.
+  FILESYSTEM_FIND_DATA* most_recent = nullptr;
   for (FILESYSTEM_FIND_DATA& file : files)
   {
-    if (file.ModificationTime > most_recent->ModificationTime)
+    const std::string_view name = Path::GetFileName(file.FileName);
+    if (!StringUtil::EndsWithNoCase(name, "_resume.sav") && !StringUtil::EqualNoCase(name, "resume.sav"))
+      continue;
+
+    if (!most_recent || file.ModificationTime > most_recent->ModificationTime)
       most_recent = &file;
   }
 
-  return std::move(most_recent->FileName);
+  return most_recent ? std::move(most_recent->FileName) : std::string();
 }
 
 void System::ToggleWidescreen()

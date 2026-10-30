@@ -6,6 +6,7 @@
 
 #include "imgui_overlays.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_output.h"
 #include "cdrom.h"
 #include "cpu_core_private.h"
@@ -220,13 +221,6 @@ void ImGuiManager::RenderDebugWindows()
   }
 }
 
-namespace NamcoSystem12 {
-bool DebugCopyCyberLeadLEDFrame(std::span<u8> pixels, std::array<u32, 4>* intensity_counts,
-                                u16* start_address, u32* scroll_x,
-                                u32* scroll_y, u64* generation);
-bool DebugGetCyberLeadLEDGeneration(u64* generation);
-}
-
 static bool IsCyberLeadLEDGame()
 {
   // Asked every presented frame; the answer only changes with the game.
@@ -237,20 +231,7 @@ static bool IsCyberLeadLEDGame()
     return s_result;
 
   s_serial = serial;
-  s_result = false;
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
-  if (game && game->system_id == "namco_system12")
-  {
-    for (const Arcade::Database::Property& property : game->properties)
-    {
-      if (property.name == "ioBoard" && property.value == "cyberlead")
-      {
-        s_result = true;
-        break;
-      }
-    }
-  }
-
+  s_result = Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(serial);
   return s_result;
 }
 
@@ -291,17 +272,21 @@ static void UpdateCyberLeadLEDSnapshot()
     return;
   }
 
-  u64 generation = 0;
-  if (s_cyber_lead_led_snapshot_valid && NamcoSystem12::DebugGetCyberLeadLEDGeneration(&generation) &&
-      generation == s_cyber_lead_led_snapshot_generation && System::GetGameSerial() == s_cyber_lead_led_snapshot_serial)
+  const Arcade::JVS::NamcoCyberLead* const device = Arcade::JVS::NamcoCyberLead::GetActive();
+  if (s_cyber_lead_led_snapshot_valid && device)
   {
-    return;
+    const Arcade::JVS::NamcoCyberLeadLEDDevice::FrameState& frame = device->GetLEDDevice().GetFrameState();
+    if (frame.valid && frame.generation == s_cyber_lead_led_snapshot_generation &&
+        System::GetGameSerial() == s_cyber_lead_led_snapshot_serial)
+    {
+      return;
+    }
   }
 
   CyberLeadLEDSnapshot snapshot;
-  snapshot.valid = NamcoSystem12::DebugCopyCyberLeadLEDFrame(
-    std::span<u8>(snapshot.pixels.data(), snapshot.pixels.size()), &snapshot.levels,
-    &snapshot.start_address, &snapshot.scroll_x, &snapshot.scroll_y, &snapshot.generation);
+  snapshot.valid = device && device->CopyLEDFrame(std::span<u8>(snapshot.pixels.data(), snapshot.pixels.size()),
+                                                  &snapshot.levels, &snapshot.start_address, &snapshot.scroll_x,
+                                                  &snapshot.scroll_y, &snapshot.generation);
   s_cyber_lead_led_snapshot_serial = System::GetGameSerial();
   s_cyber_lead_led_snapshot_generation = snapshot.generation;
   s_cyber_lead_led_snapshot_valid = snapshot.valid;
@@ -1055,6 +1040,10 @@ void SaveStateSelectorUI::RefreshList(const std::string& serial)
     }
   }
 
+  // Global slots are not game-specific, so arcade games do not offer them.
+  if (System::IsArcadeSaveStateSession())
+    return;
+
   for (s32 i = 1; i <= System::GLOBAL_SAVE_STATE_SLOTS; i++)
   {
     std::string path(System::GetGlobalSaveStateFileName(i));
@@ -1129,7 +1118,7 @@ void SaveStateSelectorUI::SelectNextSlot(bool open_selector)
   if (s_current_slot >= total_slots)
   {
     s_current_slot -= total_slots;
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
       s_current_slot_global = false;
@@ -1155,7 +1144,7 @@ void SaveStateSelectorUI::SelectPreviousSlot(bool open_selector)
   s_current_slot--;
   if (s_current_slot < 0)
   {
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     s_current_slot += s_current_slot_global ? System::GLOBAL_SAVE_STATE_SLOTS : System::PER_GAME_SAVE_STATE_SLOTS;
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
@@ -1393,7 +1382,7 @@ void SaveStateSelectorUI::LoadCurrentSlot()
     if (FileSystem::FileExists(path.c_str()))
     {
       Error error;
-      if (!System::LoadState(path.c_str(), &error, true))
+      if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
       {
         Host::AddKeyedOSDMessage("LoadState",
                                  fmt::format(TRANSLATE_FS("OSDMessage", "Failed to load state from slot {0}:\n{1}"),
@@ -1427,7 +1416,7 @@ void SaveStateSelectorUI::SaveCurrentSlot()
   if (std::string path = GetCurrentSlotPath(); !path.empty())
   {
     Error error;
-    if (!System::SaveState(path.c_str(), &error, g_settings.create_save_state_backups))
+    if (!System::SaveStateWhenReady(path.c_str(), &error, g_settings.create_save_state_backups))
     {
       Host::AddIconOSDMessage("SaveState", ICON_EMOJI_WARNING,
                               fmt::format(TRANSLATE_FS("OSDMessage", "Failed to save state to slot {0}:\n{1}"),

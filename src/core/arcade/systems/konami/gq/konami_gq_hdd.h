@@ -8,6 +8,7 @@
 #include <string_view>
 
 class Error;
+class StateWrapper;
 
 namespace KonamiGQHDD {
 
@@ -24,5 +25,6 @@ u32 GetBlockCount();
 bool ReadSector(u32 lba, u8* buffer);
 bool WriteSector(u32 lba, const u8* buffer);
 void ClearWriteOverlay();
+bool DoState(StateWrapper& sw);
 
 } // namespace KonamiGQHDD

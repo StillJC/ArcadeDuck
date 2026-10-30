@@ -9,11 +9,15 @@
 #include <utility>
 #include <vector>
 
+class StateWrapper;
+
 namespace Arcade::JVS {
 
 class NamcoEMPri101 final : public Node
 {
 public:
+  bool DoState(StateWrapper& sw);
+
   using JobCallback = std::function<void(std::span<const u8>)>;
 
   void Reset() override;

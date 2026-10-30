@@ -182,6 +182,7 @@ struct ControllerRegisterReadResult
 struct RuntimeRestoreActions
 {
   bool dma_request = false;
+  bool schedule_reset = false;
   bool schedule_selection = false;
   bool schedule_disconnect = false;
 };
@@ -217,6 +218,7 @@ public:
   bool ScheduleSelection(TickCount delay);
   bool ScheduleDisconnect(TickCount delay);
 
+  void RestoreReset(bool schedule, TickCount delay);
   void RestoreSelection(bool schedule, TickCount delay);
   void RestoreDisconnect(bool schedule, TickCount delay);
 
@@ -873,6 +875,7 @@ RuntimeRestoreActions RestoreControllerRuntimeState(State& state, const Serializ
 
   RuntimeRestoreActions actions;
   actions.dma_request = state.dma_request;
+  actions.schedule_reset = state.reset_bus_pending;
   actions.schedule_selection = state.selection_pending;
   actions.schedule_disconnect = state.disconnect_pending && state.initiator_connected;
   return actions;
@@ -1443,15 +1446,16 @@ public:
     Policy::DoStateExtraSuffix(sw, m_state);
     NCR53CF96::DoStateControllerSuffix(sw, m_state, values);
 
-    if (sw.IsReading() &&
-        (!NCR53CF96::IsControllerStateValid(m_state, values) || !Policy::ValidateExtraState(m_state)))
+    if (sw.IsReading())
     {
-      ResetController();
-    }
-    else if (sw.IsReading())
-    {
+      // A corrupt controller image fails the load; the caller restores the previous session.
+      if (sw.HasError() || !NCR53CF96::IsControllerStateValid(m_state, values) || !Policy::ValidateExtraState(m_state))
+        return false;
+
+      // Event deadlines are restored afterwards by TimingEvents; only activation is established here.
       const RuntimeRestoreActions actions = NCR53CF96::RestoreControllerRuntimeState(m_state, values);
       Policy::DeliverDMARequest(actions.dma_request);
+      m_events.RestoreReset(actions.schedule_reset, NCR53CF96::GetResetBusDelayTicks(m_state));
       m_events.RestoreSelection(actions.schedule_selection, NCR53CF96::GetSelectionDelayTicks(m_state));
       m_events.RestoreDisconnect(actions.schedule_disconnect, NCR53CF96::GetDisconnectDelayTicks(m_state));
     }

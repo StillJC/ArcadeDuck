@@ -6,8 +6,14 @@
 #include "core/types.h"
 
 #include <string_view>
+#include <vector>
 
 class Error;
+class StateWrapper;
+
+namespace Arcade::SaveState {
+struct NVRAMComponent;
+}
 
 namespace KonamiGQEEPROM {
 
@@ -22,5 +28,8 @@ bool IsSoundCPUReleased();
 
 void WriteControl(u32 value);
 u32 ReadDSW(u32 width, u32 offset);
+
+bool DoState(StateWrapper& sw);
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 
 } // namespace KonamiGQEEPROM
