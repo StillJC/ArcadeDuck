@@ -4,11 +4,14 @@
 #include "core/arcade/systems/sony/zn/tecmo_cbaj_sound.h"
 
 #include "core/arcade/systems/sony/zn/ymz280b.h"
+#include "core/arcade/devices/cpu/z80_state.h"
 #include "core/arcade/third_party/z80_superzazu/z80.h"
 #include "core/system.h"
 
 #include "common/error.h"
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 
 #include <array>
 #include <vector>
@@ -401,6 +404,37 @@ void GenerateAudioFrame(s32* left, s32* right)
   RunToTarget(s_state.audio_target_cycles);
 
   s_state.ymz280b.GetOutput(left, right);
+}
+
+static bool DoFIFOState(StateWrapper& sw, ByteFIFO& fifo)
+{
+  sw.DoArray(fifo.data.data(), fifo.data.size());
+  sw.Do(&fifo.read);
+  sw.Do(&fifo.write);
+  sw.Do(&fifo.count);
+  return !sw.HasError() && fifo.read < FIFO_CAPACITY && fifo.write < FIFO_CAPACITY && fifo.count <= FIFO_CAPACITY;
+}
+
+// Diagnostic flags are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !sw.DoMarker("TecmoCBAJ") || !Arcade::Z80State::DoState(sw, s_state.cpu))
+    return false;
+
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  if (!DoFIFOState(sw, s_state.main_to_sound) || !DoFIFOState(sw, s_state.sound_to_main))
+    return false;
+
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.audio_cycle_fraction);
+  sw.Do(&s_state.audio_target_cycles);
+  sw.Do(&s_state.host_target_cycles);
+  sw.Do(&s_state.scheduled_target_cycles);
+  sw.Do(&s_state.host_tick_fraction);
+  sw.Do(&s_state.last_host_sync_ticks);
+  sw.Do(&s_state.last_ticks_per_second);
+
+  return s_state.ymz280b.DoState(sw) && !sw.HasError();
 }
 
 } // namespace SonyZN::TecmoCBAJSound

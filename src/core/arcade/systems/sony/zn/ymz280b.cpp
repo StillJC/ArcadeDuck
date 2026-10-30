@@ -5,6 +5,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 Log_SetChannel(SonyZNYMZ280B);
 
 namespace SonyZN {
@@ -520,6 +522,75 @@ void YMZ280B::WriteRegister(u8 reg, u8 value)
     m_unknown_register_logged = true;
     DEV_LOG("YMZ280B first unsupported register write reg=0x{:02X} value=0x{:02X}", reg, value);
   }
+}
+
+static bool IsADPCMSignalValid(s32 signal)
+{
+  return signal >= -32768 && signal <= 32767;
+}
+
+static bool IsADPCMStepValid(s32 step)
+{
+  return step >= 0x7f && step <= 0x6000;
+}
+
+// The IRQ callback is reconstructed by Initialize(). The IRQ line state is not re-signalled; the owner restores
+// its own copy of the line.
+bool YMZ280B::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("YMZ280B"))
+    return false;
+
+  for (Voice& voice : m_voice)
+  {
+    sw.Do(&voice.playing);
+    sw.Do(&voice.keyon);
+    sw.Do(&voice.looping);
+    sw.Do(&voice.loop_state_captured);
+    sw.Do(&voice.mode);
+    sw.Do(&voice.fnum);
+    sw.Do(&voice.level);
+    sw.Do(&voice.pan);
+    sw.Do(&voice.start);
+    sw.Do(&voice.stop);
+    sw.Do(&voice.loop_start);
+    sw.Do(&voice.loop_end);
+    sw.Do(&voice.position);
+    sw.Do(&voice.signal);
+    sw.Do(&voice.step);
+    sw.Do(&voice.loop_signal);
+    sw.Do(&voice.loop_step);
+    sw.Do(&voice.output_step);
+    sw.Do(&voice.output_left);
+    sw.Do(&voice.output_right);
+    sw.Do(&voice.output_pos);
+    sw.Do(&voice.last_sample);
+    sw.Do(&voice.curr_sample);
+
+    // Reset and DecodeADPCM() keep the live and captured loop ADPCM state
+    // within the 16-bit signal and 0x7f..0x6000 step ranges.
+    if (sw.IsReading() && (!IsADPCMSignalValid(voice.signal) || !IsADPCMSignalValid(voice.loop_signal) ||
+                           !IsADPCMStepValid(voice.step) || !IsADPCMStepValid(voice.loop_step)))
+    {
+      return false;
+    }
+  }
+  sw.Do(&m_register);
+  sw.Do(&m_status);
+  sw.Do(&m_irq_mask);
+  sw.Do(&m_irq_enable);
+  sw.Do(&m_irq_state);
+  sw.Do(&m_keyon_enable);
+  sw.Do(&m_ext_mem_enable);
+  sw.Do(&m_ext_mem_address);
+  sw.Do(&m_ext_mem_address_hi);
+  sw.Do(&m_ext_mem_address_mid);
+  sw.Do(&m_ext_read_latch);
+  sw.Do(&m_native_phase);
+  sw.Do(&m_last_left);
+  sw.Do(&m_last_right);
+
+  return !sw.HasError();
 }
 
 } // namespace SonyZN

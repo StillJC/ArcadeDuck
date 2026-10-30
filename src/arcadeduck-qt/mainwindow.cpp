@@ -27,8 +27,9 @@
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_rom_loader.h"
-#include "core/game_list.h"
+#include "core/arcade/arcade_save_state.h"
 #include "core/fullscreen_ui.h"
+#include "core/game_list.h"
 #include "core/host.h"
 #include "core/settings.h"
 #include "core/system.h"
@@ -52,10 +53,12 @@
 #include <QtGui/QCursor>
 #include <QtGui/QWindowStateChangeEvent>
 #include <QtWidgets/QFileDialog>
+#include <QtWidgets/QInputDialog>
 #include <QtWidgets/QMessageBox>
 #include <QtWidgets/QProgressBar>
 #include <QtWidgets/QStyleFactory>
 #include <cmath>
+#include <functional>
 
 #ifdef _WIN32
 #include "common/windows_headers.h"
@@ -134,15 +137,15 @@ static QString s_current_game_title;
 
 static void ShowSaveStateUnsupportedMessage(QWidget* parent)
 {
-  QMessageBox::information(parent, MainWindow::tr("Under Investigation"),
+  QMessageBox::information(parent, MainWindow::tr("Save States Not Available"),
                            QString::fromUtf8(System::GetSaveStateUnsupportedMessage()), QMessageBox::Ok);
 }
 
 static bool CheckSaveStateAvailability(QWidget* parent)
 {
-  // Save states are currently disabled for ArcadeDuck. In particular, the desktop Load State action can be
-  // triggered while no machine is running, where System::SupportsSaveStates() alone would otherwise report the
-  // idle default and allow the user to reach the file picker before the core rejects the selected state.
+  // Save states require a running machine that supports them. The desktop Load State action can be triggered while
+  // no machine is running, where System::SupportsSaveStates() alone would otherwise report the idle default and
+  // allow the user to reach the file picker before the core rejects the selected state.
   if (System::IsValid() && System::SupportsSaveStates())
     return true;
 
@@ -156,7 +159,66 @@ static bool ArcadeGameSupportsSaveStates(const Arcade::Database::GameDefinition*
     return false;
 
   const Arcade::Database::SystemDefinition* system = Arcade::Database::GetSystem(game->system_id);
-  return system && Arcade::MachineHandlerSupportsSaveStates(system->machine_handler);
+  return system && Arcade::MachineHandlerSupportsSaveStates(system->machine_handler, *game);
+}
+
+static QString FormatTimestampForSaveStateMenu(u64 timestamp);
+
+/// Adds an arcade game's named saves and duplicate-slot resolution entries. Slot owners are listed by the caller.
+static void AddArcadeSaveStateEntries(QWidget* parent, std::string_view game_id, QMenu* menu,
+                                      const std::function<void(std::string)>& load)
+{
+  bool separator_added = false;
+  const auto add_separator = [&separator_added, menu]() {
+    if (!separator_added)
+      menu->addSeparator();
+    separator_added = true;
+  };
+
+  for (Arcade::SaveState::Entry& entry : Arcade::SaveState::FindSaves(game_id))
+  {
+    const QString file_name = QString::fromUtf8(Path::GetFileName(entry.path));
+    const QString timestamp = FormatTimestampForSaveStateMenu(entry.metadata.created_time);
+    if (entry.duplicate_slot)
+    {
+      // Ownership lives in the metadata, so renaming the file would not resolve this.
+      add_separator();
+      QMenu* resolve_menu =
+        menu->addMenu(MainWindow::tr("%1 - %2 (duplicate, %3)")
+                        .arg(QString::fromStdString(Arcade::SaveState::GetSlotDisplayName(entry.metadata.slot)))
+                        .arg(file_name)
+                        .arg(timestamp));
+      QObject::connect(resolve_menu->addAction(MainWindow::tr("Convert to Named Save")), &QAction::triggered,
+                       [parent, path = entry.path]() {
+                         Error error;
+                         if (!Arcade::SaveState::RewriteSlot(path.c_str(), Arcade::SaveState::SLOT_NONE,
+                                                             Path::GetFileTitle(path), &error))
+                         {
+                           QMessageBox::critical(parent, MainWindow::tr("Error"),
+                                                 QString::fromStdString(error.GetDescription()));
+                         }
+                       });
+      QObject::connect(
+        resolve_menu->addAction(MainWindow::tr("Delete...")), &QAction::triggered,
+        [parent, path = entry.path, file_name]() {
+          if (QMessageBox::warning(parent, MainWindow::tr("Confirm Save State Deletion"),
+                                   MainWindow::tr("Delete %1?\n\nThe save will not be recoverable.").arg(file_name),
+                                   QMessageBox::Yes, QMessageBox::No) == QMessageBox::Yes)
+          {
+            FileSystem::DeleteFile(path.c_str());
+          }
+        });
+      continue;
+    }
+
+    if (entry.metadata.slot != Arcade::SaveState::SLOT_NONE)
+      continue;
+
+    add_separator();
+    const QString label = entry.metadata.label.empty() ? file_name : QString::fromStdString(entry.metadata.label);
+    QObject::connect(menu->addAction(MainWindow::tr("%1 (%2)").arg(label).arg(timestamp)), &QAction::triggered,
+                     [load, path = std::move(entry.path)]() mutable { load(std::move(path)); });
+  }
 }
 
 static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameList::Entry* entry)
@@ -934,13 +996,8 @@ void MainWindow::populateGameListContextMenu(const GameList::Entry* entry, QWidg
   const bool supports_save_states = ArcadeGameSupportsSaveStates(GetArcadeGameForEntry(entry));
   if (!supports_save_states)
   {
-    QAction* resume_action = menu->addAction(tr("Resume"));
-    connect(resume_action, &QAction::triggered,
-            [parent_window]() { ShowSaveStateUnsupportedMessage(parent_window); });
-
-    QAction* load_state_action = menu->addAction(tr("Load State"));
-    connect(load_state_action, &QAction::triggered,
-            [parent_window]() { ShowSaveStateUnsupportedMessage(parent_window); });
+    menu->addAction(tr("Resume"))->setEnabled(false);
+    menu->addAction(tr("Load State"))->setEnabled(false);
 
     QAction* delete_save_states_action = menu->addAction(tr("Delete Save States..."));
     delete_save_states_action->setEnabled(false);
@@ -993,6 +1050,13 @@ void MainWindow::populateGameListContextMenu(const GameList::Entry* entry, QWidg
             startFile(entry->path, std::move(path));
         });
       }
+
+      if (Arcade::Database::GetGame(entry->serial))
+      {
+        AddArcadeSaveStateEntries(parent_window, entry->serial, load_state_menu,
+                                  [this, entry](std::string path) { startFile(entry->path, std::move(path)); });
+        load_state_menu->setEnabled(!load_state_menu->isEmpty());
+      }
     }
   }
 
@@ -1002,7 +1066,7 @@ void MainWindow::populateGameListContextMenu(const GameList::Entry* entry, QWidg
     delete_save_states_action->setEnabled(has_any_states);
     if (has_any_states)
     {
-      connect(delete_save_states_action, &QAction::triggered, [parent_window, entry] {
+      connect(delete_save_states_action, &QAction::triggered, [this, parent_window, entry] {
         if (QMessageBox::warning(
               parent_window, tr("Confirm Save State Deletion"),
               tr("Are you sure you want to delete all save states for %1?\n\nThe saves will not be recoverable.")
@@ -1013,6 +1077,7 @@ void MainWindow::populateGameListContextMenu(const GameList::Entry* entry, QWidg
         }
 
         System::DeleteSaveStates(entry->serial.c_str(), true);
+        updateResumeAction();
       });
     }
   }
@@ -1064,6 +1129,13 @@ void MainWindow::populateLoadStateMenu(const char* game_serial, QMenu* menu)
     for (u32 slot = 1; slot <= System::PER_GAME_SAVE_STATE_SLOTS; slot++)
       add_slot(tr("Game Save %1 (%2)"), tr("Game Save %1 (Empty)"), false, static_cast<s32>(slot));
 
+    if (Arcade::Database::GetGame(game_serial))
+    {
+      AddArcadeSaveStateEntries(this, game_serial, menu,
+                                [](std::string path) { g_emu_thread->loadState(QString::fromStdString(path)); });
+      return;
+    }
+
     menu->addSeparator();
   }
 
@@ -1096,12 +1168,32 @@ void MainWindow::populateSaveStateMenu(const char* game_serial, QMenu* menu)
 
     g_emu_thread->saveState(QDir::toNativeSeparators(path));
   });
+
+  const bool arcade_game = game_serial && Arcade::Database::GetGame(game_serial);
+  if (arcade_game)
+  {
+    connect(menu->addAction(tr("Save As...")), &QAction::triggered, [this]() {
+      if (!System::IsValid() || !CheckSaveStateAvailability(this))
+        return;
+
+      bool ok = false;
+      const QString label =
+        QInputDialog::getText(this, tr("Save As"), tr("Name for this save:"), QLineEdit::Normal, QString(), &ok)
+          .trimmed();
+      if (ok && !label.isEmpty())
+        g_emu_thread->saveNamedState(label);
+    });
+  }
+
   menu->addSeparator();
 
   if (game_serial && std::strlen(game_serial) > 0)
   {
     for (u32 slot = 1; slot <= System::PER_GAME_SAVE_STATE_SLOTS; slot++)
       add_slot(tr("Game Save %1 (%2)"), tr("Game Save %1 (Empty)"), false, static_cast<s32>(slot));
+
+    if (arcade_game)
+      return;
 
     menu->addSeparator();
   }
@@ -1368,12 +1460,42 @@ void MainWindow::onGameListRefreshComplete()
 
 void MainWindow::onGameListSelectionChanged()
 {
+  {
+    auto lock = GameList::GetLock();
+    const GameList::Entry* entry = m_game_list_widget->getSelectedEntry();
+    if (entry)
+      m_ui.statusBar->showMessage(QString::fromStdString(entry->path));
+  }
+
+  updateResumeAction();
+}
+
+std::string MainWindow::getSelectedEntryResumeStatePath(std::string* game_path) const
+{
+  if (!m_game_list_widget)
+    return {};
+
   auto lock = GameList::GetLock();
   const GameList::Entry* entry = m_game_list_widget->getSelectedEntry();
-  if (!entry)
+  if (!entry || entry->serial.empty() || !ArcadeGameSupportsSaveStates(GetArcadeGameForEntry(entry)))
+    return {};
+
+  std::string path(System::GetGameSaveStateFileName(entry->serial.c_str(), -1));
+  if (!FileSystem::FileExists(path.c_str()))
+    return {};
+
+  if (game_path)
+    *game_path = entry->path;
+  return path;
+}
+
+void MainWindow::updateResumeAction()
+{
+  if (!m_emulation_idle)
     return;
 
-  m_ui.statusBar->showMessage(QString::fromStdString(entry->path));
+  m_ui.actionResumeLastState->setEnabled(!Achievements::IsHardcoreModeActive() &&
+                                         !getSelectedEntryResumeStatePath(nullptr).empty());
 }
 
 void MainWindow::onGameListEntryActivated()
@@ -1894,7 +2016,9 @@ void MainWindow::setupAdditionalUi()
 void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevos_challenge_mode)
 {
   m_ui.actionStartFile->setDisabled(starting || running);
-  m_ui.actionResumeLastState->setDisabled(starting || running || cheevos_challenge_mode);
+  m_emulation_idle = !starting && !running;
+  m_ui.actionResumeLastState->setDisabled(!m_emulation_idle || cheevos_challenge_mode ||
+                                          getSelectedEntryResumeStatePath(nullptr).empty());
   m_ui.actionStartFullscreenUI->setDisabled(starting || running);
   m_ui.actionStartFullscreenUI2->setDisabled(starting || running);
 
@@ -1912,8 +2036,12 @@ void MainWindow::updateEmulationActions(bool starting, bool running, bool cheevo
   m_ui.actionDumpVRAM->setDisabled(starting || !running || cheevos_challenge_mode);
   m_ui.actionDumpSPURAM->setDisabled(starting || !running || cheevos_challenge_mode);
 
-  m_ui.actionSaveState->setDisabled(starting || !running);
-  m_ui.menuSaveState->setDisabled(starting || !running);
+  // Load State and Save State are only available while a game that supports save states is running.
+  const bool save_states_available = !starting && running && System::SupportsSaveStates();
+  m_ui.actionLoadState->setEnabled(save_states_available);
+  m_ui.menuLoadState->setEnabled(save_states_available);
+  m_ui.actionSaveState->setEnabled(save_states_available);
+  m_ui.menuSaveState->setEnabled(save_states_available);
   m_ui.menuWindowSize->setDisabled(starting || !running);
 
   m_ui.actionViewGameProperties->setDisabled(starting || !running);
@@ -2119,10 +2247,17 @@ void MainWindow::connectSignals()
 
   connect(m_ui.actionStartFile, &QAction::triggered, this, &MainWindow::onStartFileActionTriggered);
   connect(m_ui.actionResumeLastState, &QAction::triggered, this, [this]() {
-    if (!CheckSaveStateAvailability(this))
+    // The core validates the state after the normal boot; a refused state leaves the booted game running and
+    // reports the actual reason.
+    std::string game_path;
+    std::string resume_path = getSelectedEntryResumeStatePath(&game_path);
+    if (s_system_valid || resume_path.empty())
+    {
+      updateResumeAction();
       return;
+    }
 
-    g_emu_thread->resumeSystemFromMostRecentState();
+    startFile(std::move(game_path), std::move(resume_path));
   });
   connect(m_ui.menuLoadState, &QMenu::aboutToShow, this, &MainWindow::onLoadStateMenuAboutToShow);
   connect(m_ui.menuSaveState, &QMenu::aboutToShow, this, &MainWindow::onSaveStateMenuAboutToShow);

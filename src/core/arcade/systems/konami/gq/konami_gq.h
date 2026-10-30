@@ -11,6 +11,12 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
+
+namespace Arcade::SaveState {
+struct NVRAMComponent;
+}
+
 namespace BIOS {
 struct Image;
 }
@@ -75,6 +81,8 @@ std::string_view GetGQCHDPath();
 void WriteGQCabinetOutput(u32 size, u32 offset, u32 value);
 u32 ReadGQInput(u32 size, u32 offset);
 void ProcessGQFrame();
+bool DoGQState(StateWrapper& sw);
+void GetGQNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 void ResetGQArcadeInputs();
 void SetGQArcadeButton(u32 player, u32 button_mask, bool pressed);
 void SetGQTest(bool pressed);

@@ -5,6 +5,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <array>
 
 Log_SetChannel(KonamiGQK056800);
@@ -351,6 +353,20 @@ u8 GetCommonVolume()
 u8 GetOutputControl()
 {
   return s_state.output_control;
+}
+
+bool DoState(StateWrapper& sw)
+{
+  sw.DoArray(s_state.host_to_sound.data(), s_state.host_to_sound.size());
+  sw.DoArray(s_state.sound_to_host.data(), s_state.sound_to_host.size());
+  sw.Do(&s_state.front_volume);
+  sw.Do(&s_state.rear_volume);
+  sw.Do(&s_state.common_volume);
+  sw.Do(&s_state.output_control);
+  sw.Do(&s_state.output_control_seen);
+  sw.Do(&s_state.interrupt_pending);
+  sw.Do(&s_state.interrupt_enabled);
+  return !sw.HasError();
 }
 
 } // namespace KonamiGQK056800

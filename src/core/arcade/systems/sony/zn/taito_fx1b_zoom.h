@@ -7,6 +7,8 @@
 
 #include <span>
 
+class StateWrapper;
+
 namespace TaitoFX1BZoom {
 
 bool Initialize(std::span<const u8> mn10200_rom, std::span<const u8> zsg2_rom, std::span<u8> shared_ram);
@@ -23,5 +25,6 @@ u8 SharedRead(u32 index);
 void SharedWrite(u32 index, u8 value);
 
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace TaitoFX1BZoom

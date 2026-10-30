@@ -4,6 +4,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace KonamiGVCDROM {
 void Initialize();
 void Reset();
@@ -17,4 +19,5 @@ void PauseAudio(bool resume);
 void SetAudioOutput(u8 output, u8 channel, u8 volume);
 bool GetAudioOutput(u8 output, u8* channel, u8* volume);
 void MixAudioFrame(s16 input_left, s16 input_right, s32* output_left, s32* output_right);
+bool DoState(StateWrapper& sw);
 }

@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 #include <vector>
 
 namespace KonamiGQSoundCPU {
@@ -18,5 +20,6 @@ void GenerateAudioFrame(s32* left, s32* right);
 void SetResetReleased(bool released);
 void SynchronizeAfterHostWrite();
 void SynchronizeBeforeHostRead();
+bool DoState(StateWrapper& sw);
 
 } // namespace KonamiGQSoundCPU

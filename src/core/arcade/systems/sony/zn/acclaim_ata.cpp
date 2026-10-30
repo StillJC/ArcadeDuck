@@ -10,6 +10,8 @@
 #include "common/error.h"
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -746,6 +748,52 @@ void Write(u32 width, u32 offset, u32 value)
     WriteCS0(width, offset, value);
   else
     WriteCS1(width, offset, value);
+}
+
+// While DRQ is set, the data port indexes the sector buffer before checking
+// for the end of the sector, so the position must be inside it. Read and write
+// phases with DRQ set always have at least the current sector remaining.
+static bool IsDataPhaseStateValid()
+{
+  if ((s_state.status & ATA_STATUS_DRQ) == 0 || s_state.transfer_mode == TransferMode::None)
+    return s_state.data_position <= SECTOR_SIZE;
+
+  return s_state.data_position < SECTOR_SIZE &&
+         (s_state.transfer_mode == TransferMode::Identify || s_state.sectors_remaining != 0);
+}
+
+// The CHD handle is reconstructed by Initialize(); the in-memory write overlay is stored. DMA request and IRQ
+// line levels belong to the shared DMA and interrupt controller state.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_initialized || !sw.DoMarker("AcclaimATA"))
+    return false;
+
+  sw.Do(&s_state.error);
+  sw.Do(&s_state.features);
+  sw.Do(&s_state.sector_count);
+  sw.Do(&s_state.lba_low);
+  sw.Do(&s_state.lba_mid);
+  sw.Do(&s_state.lba_high);
+  sw.Do(&s_state.device_head);
+  sw.Do(&s_state.status);
+  sw.Do(&s_state.device_control);
+  sw.Do(&s_state.multiple_count);
+  sw.Do(&s_state.transfer_mode);
+  sw.DoArray(s_state.data_buffer.data(), s_state.data_buffer.size());
+  sw.Do(&s_state.data_position);
+  sw.Do(&s_state.current_lba);
+  sw.Do(&s_state.sectors_remaining);
+  sw.Do(&s_state.irq_pending);
+  sw.Do(&s_state.dma_bridge_address);
+  sw.Do(&s_state.dma_bridge_control);
+
+  if (sw.IsReading() && (sw.HasError() || s_state.transfer_mode > TransferMode::Write || !IsDataPhaseStateValid()))
+  {
+    return false;
+  }
+
+  return s_state.disk.DoWriteOverlayState(sw) && !sw.HasError();
 }
 
 } // namespace SonyZN::AcclaimATA

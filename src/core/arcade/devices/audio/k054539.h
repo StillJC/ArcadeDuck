@@ -8,6 +8,8 @@
 #include <array>
 #include <functional>
 
+class StateWrapper;
+
 namespace K054539 {
 
 class Chip
@@ -67,6 +69,9 @@ public:
   // Separate AXDA latch for the optional RVVOL-pair diagnostic loop.
   // This diagnostic never participates in the audible path.
   void SetGQRVVAuxInput(s32 word_a, s32 word_b);
+
+  // Saves registers, channel and pipeline state and reverb RAM. Lookup tables and callbacks are configuration.
+  bool DoState(StateWrapper& sw);
 
   // aux_send_* exposes the pre-AXDA stereo mix used as the GQ DSP send.
   // gq_source_slots exposes the twelve mixer inputs in hardware order:

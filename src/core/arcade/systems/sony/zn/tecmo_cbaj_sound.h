@@ -9,6 +9,8 @@
 
 class Error;
 
+class StateWrapper;
+
 namespace SonyZN::TecmoCBAJSound {
 
 bool Initialize(const std::vector<u8>& sound_program, const std::vector<u8>& ymz280b_rom, Error* error);
@@ -21,5 +23,6 @@ void MainDataWrite(u8 value);
 u8 MainStatusRead();
 
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::TecmoCBAJSound

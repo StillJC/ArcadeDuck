@@ -2358,3 +2358,38 @@ uint16_t adsp2181_sr1(const adsp2181_t *a)
 {
     return a ? a->core.sr.srx.sr1.u : 0;
 }
+
+#define ADSP_STATE(field) cb(ctx, &a->field, sizeof(a->field))
+int adsp2181_do_state(adsp2181_t *a, adsp2181_state_cb cb, void *ctx, int loading)
+{
+	if (!a || !cb)
+		return 0;
+
+	ADSP_STATE(core); ADSP_STATE(alt);
+	ADSP_STATE(i); ADSP_STATE(m); ADSP_STATE(l); ADSP_STATE(lmask); ADSP_STATE(base); ADSP_STATE(px);
+	ADSP_STATE(pc); ADSP_STATE(ppc); ADSP_STATE(loop); ADSP_STATE(loop_condition);
+	ADSP_STATE(cntr); ADSP_STATE(cntr_valid);
+	ADSP_STATE(astat); ADSP_STATE(sstat); ADSP_STATE(mstat); ADSP_STATE(mstat_prev);
+	ADSP_STATE(astat_clear); ADSP_STATE(idle);
+	ADSP_STATE(loop_stack); ADSP_STATE(cntr_stack); ADSP_STATE(pc_stack); ADSP_STATE(stat_stack);
+	ADSP_STATE(pc_sp); ADSP_STATE(cntr_sp); ADSP_STATE(stat_sp); ADSP_STATE(loop_sp);
+	ADSP_STATE(inject_pc_sp); ADSP_STATE(inject_cntr_sp); ADSP_STATE(inject_stat_sp); ADSP_STATE(inject_loop_sp);
+	ADSP_STATE(inject_return); ADSP_STATE(inject_valid); ADSP_STATE(stack_over_warned);
+	ADSP_STATE(flagout); ADSP_STATE(flagin); ADSP_STATE(fl0); ADSP_STATE(fl1); ADSP_STATE(fl2);
+	ADSP_STATE(idma_addr); ADSP_STATE(idma_cache); ADSP_STATE(idma_offs); ADSP_STATE(idma_pending_write);
+	ADSP_STATE(idma_boot_hold); ADSP_STATE(idma_boot_mode);
+	ADSP_STATE(sport_rx); ADSP_STATE(sport_tx); ADSP_STATE(sport_tx_written);
+	ADSP_STATE(imask); ADSP_STATE(icntl); ADSP_STATE(ifc); ADSP_STATE(pmovlay); ADSP_STATE(dmovlay);
+	ADSP_STATE(irq_state); ADSP_STATE(irq_latch); ADSP_STATE(interrupts_enabled);
+	ADSP_STATE(icount);
+	ADSP_STATE(program); ADSP_STATE(data); ADSP_STATE(program_overlay); ADSP_STATE(data_overlay); ADSP_STATE(io);
+	ADSP_STATE(cycles);
+
+	if (loading &&
+		(a->pc_sp < 0 || a->pc_sp > PC_STACK_DEPTH || a->cntr_sp < 0 || a->cntr_sp > CNTR_STACK_DEPTH ||
+		 a->stat_sp < 0 || a->stat_sp > STAT_STACK_DEPTH || a->loop_sp < 0 || a->loop_sp > LOOP_STACK_DEPTH))
+		return 0;
+
+	return 1;
+}
+#undef ADSP_STATE

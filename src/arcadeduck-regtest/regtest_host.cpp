@@ -6,11 +6,16 @@
 
 #include "core/achievements.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_save_state.h"
+#include "core/cpu_code_cache.h"
 #include "core/fullscreen_ui.h"
 #include "core/game_list.h"
 #include "core/gpu.h"
 #include "core/host.h"
+#include "core/save_state_version.h"
+#include "core/settings.h"
 #include "core/system.h"
+#include "core/timing_event.h"
 
 #include "scmversion/arcadeduck_version.h"
 #include "scmversion/scmversion.h"
@@ -32,8 +37,13 @@
 #include "common/string_util.h"
 #include "common/timer.h"
 
+#include <algorithm>
+#include <array>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
+#include <map>
+#include <vector>
 
 Log_SetChannel(RegTestHost);
 
@@ -55,6 +65,29 @@ static u32 s_frames_to_run = 60 * 60;
 static u32 s_frames_remaining = 0;
 static u32 s_frame_dump_interval = 0;
 static std::string s_dump_base_directory;
+
+// Arcade save-state check script: one "<frame> <command> [args...]" per line, run between frames.
+namespace RegTestScript {
+struct Command
+{
+  u32 frame;
+  std::vector<std::string> args;
+};
+
+static bool Load(const std::string& path);
+static void RunFrame();
+static void Check(bool condition, std::string_view what);
+
+static std::vector<Command> s_commands;
+static size_t s_next_command = 0;
+static u32 s_frame = 0;
+static u32 s_failures = 0;
+static std::map<std::string, Arcade::SaveState::Hash> s_hashes;
+static std::map<std::string, std::vector<u8>> s_file_backups;
+} // namespace RegTestScript
+
+static bool s_arcade_boot = false;
+static std::string s_data_root_override;
 
 bool RegTestHost::SetFolders()
 {
@@ -304,6 +337,7 @@ void Host::OnMediaCaptureStopped()
 
 void Host::PumpMessagesOnCPUThread()
 {
+  RegTestScript::RunFrame();
   s_frames_remaining--;
   if (s_frames_remaining == 0)
     System::ShutdownSystem(false);
@@ -419,14 +453,28 @@ void Host::OpenHostFileSelectorAsync(std::string_view title, bool select_directo
   callback(std::string());
 }
 
+// The runner has no keyboard; scripts press named keys so ordinary bindings can be exercised.
+static constexpr std::array<std::string_view, 24> s_regtest_key_names = {
+  {"Up", "Down", "Left", "Right", "Enter", "Space", "F1", "F2", "F3", "F4", "F5", "F6",
+   "1",  "2",    "3",    "4",     "5",     "6",     "A",  "B",  "C",  "D",  "E",  "F"}};
+
 std::optional<u32> InputManager::ConvertHostKeyboardStringToCode(std::string_view str)
 {
+  for (size_t i = 0; i < s_regtest_key_names.size(); i++)
+  {
+    if (s_regtest_key_names[i] == str)
+      return static_cast<u32>(i + 1);
+  }
+
   return std::nullopt;
 }
 
 std::optional<std::string> InputManager::ConvertHostKeyboardCodeToString(u32 code)
 {
-  return std::nullopt;
+  if (code == 0 || code > s_regtest_key_names.size())
+    return std::nullopt;
+
+  return std::string(s_regtest_key_names[code - 1]);
 }
 
 const char* InputManager::ConvertHostKeyboardCodeToIcon(u32 code)
@@ -436,7 +484,7 @@ const char* InputManager::ConvertHostKeyboardCodeToIcon(u32 code)
 
 void Host::AddFixedInputBindings(SettingsInterface& si)
 {
-  ArcadeInput::RegisterBindings(si);
+  ArcadeInput::RegisterBindings(si, *s_base_settings_interface, System::GetGameSerial());
 }
 
 void Host::OnInputDeviceConnected(std::string_view identifier, std::string_view device_name)
@@ -514,6 +562,11 @@ void RegTestHost::PrintCommandLineVersion()
   std::fprintf(stderr, "  -frames: Sets the number of frames to execute.\n");
   std::fprintf(stderr, "  -log <level>: Sets the log level. Defaults to verbose.\n");
   std::fprintf(stderr, "  -renderer <renderer>: Sets the graphics renderer. Default to software.\n");
+  std::fprintf(stderr, "  -arcade: Boots the filename as an arcade ROM archive.\n");
+  std::fprintf(stderr, "  -dataroot <dir>: Uses <dir> for settings-relative folders, NVRAM and save states.\n");
+  std::fprintf(stderr, "  -set <Section/Key=Value>: Overrides one setting before boot.\n");
+  std::fprintf(stderr, "  -bind <Section/Key=Binding>: Adds one input binding, e.g. Keyboard/C.\n");
+  std::fprintf(stderr, "  -script <file>: Runs frame-scheduled save-state checks; failures set exit code 2.\n");
   std::fprintf(stderr, "  --: Signals that no more arguments will follow and the remaining\n"
                        "    parameters make up the filename. Use when the filename contains\n"
                        "    spaces or starts with a dash.\n");
@@ -652,6 +705,43 @@ bool RegTestHost::ParseCommandLineParameters(int argc, char* argv[], std::option
         s_base_settings_interface->SetBoolValue("GPU", "PGXPCPU", true);
         continue;
       }
+      else if (CHECK_ARG("-arcade"))
+      {
+        s_arcade_boot = true;
+        continue;
+      }
+      else if (CHECK_ARG_PARAM("-dataroot"))
+      {
+        s_data_root_override = Path::Canonicalize(argv[++i]);
+        continue;
+      }
+      else if (CHECK_ARG_PARAM("-set") || CHECK_ARG_PARAM("-bind"))
+      {
+        const bool bind = CHECK_ARG("-bind");
+        const std::string_view arg = argv[++i];
+        const std::string_view::size_type slash = arg.find('/');
+        const std::string_view::size_type equals = arg.find('=');
+        if (slash == std::string_view::npos || equals == std::string_view::npos || equals < slash)
+        {
+          ERROR_LOG("Invalid -set/-bind argument: '{}'", arg);
+          return false;
+        }
+
+        const std::string section(arg.substr(0, slash));
+        const std::string key(arg.substr(slash + 1, equals - slash - 1));
+        const std::string value(arg.substr(equals + 1));
+        if (bind)
+          s_base_settings_interface->AddToStringList(section.c_str(), key.c_str(), value.c_str());
+        else
+          s_base_settings_interface->SetStringValue(section.c_str(), key.c_str(), value.c_str());
+        continue;
+      }
+      else if (CHECK_ARG_PARAM("-script"))
+      {
+        if (!RegTestScript::Load(argv[++i]))
+          return false;
+        continue;
+      }
       else if (CHECK_ARG("--"))
       {
         no_more_args = true;
@@ -677,26 +767,8 @@ bool RegTestHost::ParseCommandLineParameters(int argc, char* argv[], std::option
 
 bool RegTestHost::SetNewDataRoot(const std::string& filename)
 {
-  Error error;
-  std::unique_ptr<CDImage> image = CDImage::Open(filename.c_str(), false, &error);
-  if (!image)
-  {
-    ERROR_LOG("Failed to open CD image '{}' to set data root: {}", Path::GetFileName(filename), error.GetDescription());
-    return false;
-  }
-
-  const GameDatabase::Entry* dbentry = GameDatabase::GetEntryForDisc(image.get());
-  std::string_view game_name;
-  if (dbentry)
-  {
-    game_name = dbentry->title;
-    INFO_LOG("Game name from database: {}", game_name);
-  }
-  else
-  {
-    game_name = Path::GetFileTitle(filename);
-    WARNING_LOG("Game not found in database, using filename: {}", game_name);
-  }
+  const std::string_view game_name = Path::GetFileTitle(filename);
+  INFO_LOG("Game name from filename: {}", game_name);
 
   if (!s_dump_base_directory.empty())
   {
@@ -718,6 +790,284 @@ bool RegTestHost::SetNewDataRoot(const std::string& filename)
   }
 
   return true;
+}
+
+bool RegTestScript::Load(const std::string& path)
+{
+  const std::optional<std::string> text = FileSystem::ReadFileToString(path.c_str());
+  if (!text.has_value())
+  {
+    ERROR_LOG("Failed to read script '{}'.", path);
+    return false;
+  }
+
+  for (const std::string_view line : StringUtil::SplitString(text.value(), '\n'))
+  {
+    const std::string_view trimmed = StringUtil::StripWhitespace(line);
+    if (trimmed.empty() || trimmed.front() == '#')
+      continue;
+
+    Command cmd;
+    for (const std::string_view token : StringUtil::SplitString(trimmed, ' '))
+      cmd.args.emplace_back(token);
+
+    const std::optional<u32> frame = StringUtil::FromChars<u32>(cmd.args.front());
+    if (!frame.has_value() || cmd.args.size() < 2)
+    {
+      ERROR_LOG("Invalid script line: '{}'", trimmed);
+      return false;
+    }
+
+    cmd.frame = frame.value();
+    cmd.args.erase(cmd.args.begin());
+    s_commands.push_back(std::move(cmd));
+  }
+
+  std::stable_sort(s_commands.begin(), s_commands.end(),
+                   [](const Command& a, const Command& b) { return a.frame < b.frame; });
+  return true;
+}
+
+void RegTestScript::Check(bool condition, std::string_view what)
+{
+  if (condition)
+  {
+    INFO_LOG("REGTEST PASS frame={} {}", s_frame, what);
+  }
+  else
+  {
+    ERROR_LOG("REGTEST FAIL frame={} {}", s_frame, what);
+    s_failures++;
+  }
+}
+
+static std::string GetScriptPath(std::string_view name)
+{
+  return Path::IsAbsolute(name) ? std::string(name) : Path::Combine(EmuFolders::SaveStates, name);
+}
+
+static std::string GetNVRAMPath(std::string_view name)
+{
+  return Path::Combine(Path::Combine(Path::Combine(EmuFolders::DataRoot, "nvram"), System::GetGameSerial()), name);
+}
+
+// Hashes the machine state as written by an uncompressed save, excluding header, metadata and screenshot.
+static std::optional<Arcade::SaveState::Hash> HashMachineState(const std::string& tag, bool keep_file)
+{
+  const std::string path = Path::Combine(EmuFolders::Cache, fmt::format("regtest_hash_{}.sav", tag));
+  Error error;
+  if (!System::SaveState(path.c_str(), &error, false))
+  {
+    ERROR_LOG("hash save failed: {}", error.GetDescription());
+    return std::nullopt;
+  }
+
+  const std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(path.c_str());
+  if (!keep_file)
+    FileSystem::DeleteFile(path.c_str());
+  if (!data.has_value() || data->size() < sizeof(SAVE_STATE_HEADER))
+    return std::nullopt;
+
+  SAVE_STATE_HEADER header;
+  std::memcpy(&header, data->data(), sizeof(header));
+  if (header.data_compression_type != static_cast<u32>(SAVE_STATE_HEADER::CompressionType::None) ||
+      static_cast<size_t>(header.offset_to_data) + header.data_compressed_size > data->size())
+  {
+    ERROR_LOG("hash requires Main/SaveStateCompression=Uncompressed");
+    return std::nullopt;
+  }
+
+  return Arcade::SaveState::HashBytes(
+    std::span<const u8>(data->data() + header.offset_to_data, header.data_compressed_size));
+}
+
+void RegTestScript::RunFrame()
+{
+  for (; s_next_command < s_commands.size() && s_commands[s_next_command].frame <= s_frame; s_next_command++)
+  {
+    const std::vector<std::string>& a = s_commands[s_next_command].args;
+    const std::string& op = a[0];
+    const auto arg = [&a](size_t i) -> std::string_view { return (i < a.size()) ? std::string_view(a[i]) : ""; };
+    INFO_LOG("REGTEST frame={} {}", s_frame, StringUtil::JoinString(a.begin(), a.end(), ' '));
+
+    if (op == "press" || op == "release")
+    {
+      const std::optional<u32> code = InputManager::ConvertHostKeyboardStringToCode(arg(1));
+      Check(code.has_value(), fmt::format("key {}", arg(1)));
+      if (code.has_value())
+        InputManager::InvokeEvents(InputManager::MakeHostKeyboardKey(code.value()), (op == "press") ? 1.0f : 0.0f);
+    }
+    else if (op == "save" || op == "save-fail")
+    {
+      Error error;
+      const bool ok = System::SaveState(GetScriptPath(arg(1)).c_str(), &error, false);
+      Check(ok == (op == "save"), fmt::format("{} {} ({})", op, arg(1), ok ? "saved" : error.GetDescription()));
+    }
+    else if (op == "saveslot")
+    {
+      Error error;
+      const s32 slot = StringUtil::FromChars<s32>(arg(1)).value_or(0);
+      const bool ok =
+        System::SaveState(System::GetGameSaveStateFileName(System::GetGameSerial(), slot).c_str(), &error, false);
+      Check(ok == (arg(2) != "fail"), fmt::format("saveslot {} ({})", slot, ok ? "saved" : error.GetDescription()));
+    }
+    else if (op == "saveslot-wait")
+    {
+      // Interactive slot save: waits for the board when it is only briefly busy. Logs whether it was queued.
+      Error error;
+      const s32 slot = StringUtil::FromChars<s32>(arg(1)).value_or(0);
+      const bool ok = System::SaveStateWhenReady(
+        System::GetGameSaveStateFileName(System::GetGameSerial(), slot).c_str(), &error, false);
+      Check(ok, fmt::format("saveslot-wait {} ({})", slot,
+                            ok ? (System::HasPendingArcadeSave() ? "queued" : "saved") : error.GetDescription()));
+    }
+    else if (op == "pending-save")
+    {
+      INFO_LOG("REGTEST pending-save {} pending={}", arg(1), System::HasPendingArcadeSave());
+    }
+    else if (op == "savenamed")
+    {
+      Error error;
+      Check(System::SaveNamedState(arg(1), &error), fmt::format("savenamed {} {}", arg(1), error.GetDescription()));
+    }
+    else if (op == "load" || op == "load-reject")
+    {
+      Error error;
+      const std::string path = (arg(1).starts_with("slot:")) ?
+                                 System::GetGameSaveStateFileName(
+                                   System::GetGameSerial(), StringUtil::FromChars<s32>(arg(1).substr(5)).value_or(0)) :
+                                 GetScriptPath(arg(1));
+      const bool ok = System::LoadState(path.c_str(), &error, false);
+      const bool expected = (op == "load");
+      Check(ok == expected && (ok || System::WasLoadRejectionReported()),
+            fmt::format("{} {} ({})", op, arg(1), ok ? "loaded" : error.GetDescription()));
+    }
+    else if (op == "hash" || op == "hash-keep")
+    {
+      std::optional<Arcade::SaveState::Hash> hash = HashMachineState(std::string(arg(1)), op == "hash-keep");
+      Check(hash.has_value(), fmt::format("hash {}", arg(1)));
+      if (hash.has_value())
+      {
+        INFO_LOG("REGTEST hash {} = {}", arg(1), Arcade::SaveState::FormatHash(hash.value()));
+        s_hashes[std::string(arg(1))] = hash.value();
+      }
+    }
+    else if (op == "expect-equal" || op == "expect-differ")
+    {
+      const auto ha = s_hashes.find(std::string(arg(1)));
+      const auto hb = s_hashes.find(std::string(arg(2)));
+      const bool both = (ha != s_hashes.end() && hb != s_hashes.end());
+      Check(both && ((ha->second == hb->second) == (op == "expect-equal")),
+            fmt::format("{} {} {}", op, arg(1), arg(2)));
+    }
+    else if (op == "nvram-backup" || op == "file-backup")
+    {
+      const std::string path = (op == "nvram-backup") ? GetNVRAMPath(arg(1)) : GetScriptPath(arg(1));
+      std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(path.c_str());
+      Check(data.has_value(), fmt::format("{} {}", op, path));
+      if (data.has_value())
+        s_file_backups[path].assign(data->begin(), data->end());
+    }
+    else if (op == "nvram-restore" || op == "file-restore")
+    {
+      const std::string path = (op == "nvram-restore") ? GetNVRAMPath(arg(1)) : GetScriptPath(arg(1));
+      const auto it = s_file_backups.find(path);
+      Check(it != s_file_backups.end() &&
+              FileSystem::WriteBinaryFile(path.c_str(), it->second.data(), it->second.size()),
+            fmt::format("{} {}", op, path));
+    }
+    else if (op == "nvram-corrupt" || op == "file-corrupt")
+    {
+      // XORs one byte in place.
+      const std::string path = (op == "nvram-corrupt") ? GetNVRAMPath(arg(1)) : GetScriptPath(arg(1));
+      std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(path.c_str());
+      const size_t offset = StringUtil::FromChars<size_t>(arg(2)).value_or(0);
+      const bool ok = data.has_value() && offset < data->size();
+      if (ok)
+        (*data)[offset] ^= 0xFF;
+      Check(ok && FileSystem::WriteBinaryFile(path.c_str(), data->data(), data->size()),
+            fmt::format("{} {} @{}", op, path, offset));
+    }
+    else if (op == "nvram-delete" || op == "file-delete")
+    {
+      const std::string path = (op == "nvram-delete") ? GetNVRAMPath(arg(1)) : GetScriptPath(arg(1));
+      Check(FileSystem::DeleteFile(path.c_str()), fmt::format("{} {}", op, path));
+    }
+    else if (op == "file-truncate")
+    {
+      const std::string src = GetScriptPath(arg(1));
+      std::optional<DynamicHeapArray<u8>> data = FileSystem::ReadBinaryFile(src.c_str());
+      const size_t size = StringUtil::FromChars<size_t>(arg(3)).value_or(0);
+      Check(data.has_value() && size <= data->size() &&
+              FileSystem::WriteBinaryFile(GetScriptPath(arg(2)).c_str(), data->data(), size),
+            fmt::format("file-truncate {} -> {} ({} bytes)", arg(1), arg(2), size));
+    }
+    else if (op == "file-copy")
+    {
+      Check(FileSystem::CopyFilePath(GetScriptPath(arg(1)).c_str(), GetScriptPath(arg(2)).c_str(), true),
+            fmt::format("file-copy {} -> {}", arg(1), arg(2)));
+    }
+    else if (op == "rewrite-slot")
+    {
+      Error error;
+      const s32 slot = StringUtil::FromChars<s32>(arg(2)).value_or(0);
+      const bool ok = Arcade::SaveState::RewriteSlot(GetScriptPath(arg(1)).c_str(), slot, arg(3), &error);
+      Check(ok == (arg(4) != "fail"), fmt::format("rewrite-slot {} {} {}", arg(1), slot, error.GetDescription()));
+    }
+    else if (op == "expect-slot-path")
+    {
+      // The path a slot resolves to, by file name.
+      const s32 slot = StringUtil::FromChars<s32>(arg(1)).value_or(0);
+      const std::string path = System::GetGameSaveStateFileName(System::GetGameSerial(), slot);
+      Check(StringUtil::EqualNoCase(Path::GetFileName(path), arg(2)),
+            fmt::format("expect-slot-path {} {} (got {})", slot, arg(2), Path::GetFileName(path)));
+    }
+    else if (op == "list")
+    {
+      for (const Arcade::SaveState::Entry& e : Arcade::SaveState::FindSaves(System::GetGameSerial()))
+      {
+        INFO_LOG("REGTEST save '{}' slot={} label='{}' created={} duplicate={} nvram={}", Path::GetFileName(e.path),
+                 e.metadata.slot, e.metadata.label, e.metadata.created_time, e.duplicate_slot, e.metadata.nvram.size());
+      }
+    }
+    else if (op == "expect-count")
+    {
+      const size_t expected = StringUtil::FromChars<size_t>(arg(1)).value_or(0);
+      const size_t actual = Arcade::SaveState::FindSaves(System::GetGameSerial()).size();
+      Check(actual == expected, fmt::format("expect-count {} (got {})", expected, actual));
+    }
+    else if (op == "reset")
+    {
+      System::ResetSystem();
+    }
+    else if (op == "flush-code-cache")
+    {
+      // Discards compiled code exactly as a state load does, without changing machine state.
+      CPU::CodeCache::Reset();
+      System::InterruptExecution();
+    }
+    else if (op == "position")
+    {
+      INFO_LOG("REGTEST position {} frame={} internal_frame={} ticks={} event_run={} running_events={}", arg(1),
+               System::GetFrameNumber(), System::GetInternalFrameNumber(), System::GetGlobalTickCounter(),
+               TimingEvents::GetEventRunTickCounter(), TimingEvents::IsRunningEvents());
+    }
+    else if (op == "nvram-fp")
+    {
+      // Live NVRAM contents; these are excluded from the state data and so from "hash".
+      const std::vector<std::string> fps = System::GetArcadeNVRAMFingerprints();
+      const std::string joined = StringUtil::JoinString(fps.begin(), fps.end(), ' ');
+      INFO_LOG("REGTEST nvram {} {}", arg(1), joined);
+      s_hashes[fmt::format("nvram:{}", arg(1))] =
+        Arcade::SaveState::HashBytes(std::span<const u8>(reinterpret_cast<const u8*>(joined.data()), joined.size()));
+    }
+    else
+    {
+      Check(false, fmt::format("unknown command '{}'", op));
+    }
+  }
+
+  s_frame++;
 }
 
 std::string RegTestHost::GetFrameDumpFilename(u32 frame)
@@ -744,6 +1094,20 @@ int main(int argc, char* argv[])
 
   if (!RegTestHost::SetNewDataRoot(autoboot->filename))
     return EXIT_FAILURE;
+
+  if (!s_data_root_override.empty())
+  {
+    // Every folder, including nvram/ and savestates/, resolves under the override.
+    EmuFolders::DataRoot = s_data_root_override;
+    EmuFolders::LoadConfig(*s_base_settings_interface.get());
+    EmuFolders::EnsureFoldersExist();
+  }
+
+  INFO_LOG("Resolved DataRoot='{}' SaveStates='{}' Bios='{}' NVRAM='{}'", EmuFolders::DataRoot, EmuFolders::SaveStates,
+           EmuFolders::Bios, Path::Combine(EmuFolders::DataRoot, "nvram"));
+
+  if (s_arcade_boot)
+    autoboot->boot_intent = SystemBootIntent::PublicArcade;
 
   {
     Error startup_error;
@@ -790,6 +1154,13 @@ int main(int argc, char* argv[])
     INFO_LOG("Total execution time: {:.2f}ms, average frame time {:.2f}ms, {:.2f} FPS", elapsed_time_ms,
              elapsed_time_ms / static_cast<double>(s_frames_to_run),
              static_cast<double>(s_frames_to_run) / elapsed_time_ms * 1000.0);
+  }
+
+  if (RegTestScript::s_failures > 0)
+  {
+    ERROR_LOG("REGTEST {} check(s) failed.", RegTestScript::s_failures);
+    result = 2;
+    goto cleanup;
   }
 
   INFO_LOG("Exiting with success.");

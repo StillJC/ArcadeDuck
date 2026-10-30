@@ -22,6 +22,7 @@
 #include "core/bios.h"
 #include "core/bus.h"
 #include "util/cd_image.h"
+#include "util/state_wrapper.h"
 
 #include <algorithm>
 #include <array>
@@ -285,6 +286,43 @@ void ShutdownGQ()
     KonamiGQHDD::Shutdown();
   }
   s_gq_runtime.reset();
+}
+
+void GetGQNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  KonamiGQEEPROM::GetNVRAMComponents(components);
+}
+
+// Host input (buttons, light gun position, test switch) keeps its current value.
+bool DoGQState(StateWrapper& sw)
+{
+  if (!s_gq_runtime || !s_gq_runtime->active)
+    return false;
+
+  if (!sw.DoMarker("GQSCSI") || !KonamiGQScsi::DoState(sw))
+    return false;
+  if (!sw.DoMarker("GQHDD") || !KonamiGQHDD::DoState(sw))
+    return false;
+  if (!sw.DoMarker("GQEEPROM") || !KonamiGQEEPROM::DoState(sw))
+    return false;
+  if (!sw.DoMarker("GQK056800") || !KonamiGQK056800::DoState(sw))
+    return false;
+  if (!sw.DoMarker("GQPCM") || !KonamiGQPCM::DoState(sw))
+    return false;
+  if (!KonamiGQSoundCPU::DoState(sw))
+    return false;
+
+  if (!sw.DoMarker("GQCabinet"))
+    return false;
+  GQRuntimeState& r = *s_gq_runtime;
+  sw.DoArray(r.gq_output_registers.data(), r.gq_output_registers.size());
+  if (sw.IsReading())
+  {
+    // Republish lamps from the next game write.
+    r.gq_output_register_valid = {};
+  }
+
+  return !sw.HasError();
 }
 
 bool IsGQActive()

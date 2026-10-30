@@ -3204,6 +3204,35 @@ void CDROM::PushExternalCDAudioFrames(const u32* frames, u32 frame_count)
     s_external_cdda_fifo.Push(frames[i]);
 }
 
+bool CDROM::DoExternalCDAudioState(StateWrapper& sw)
+{
+  u32 size = s_external_cdda_fifo.GetSize();
+  sw.Do(&size);
+  if (sw.IsReading())
+  {
+    if (size > s_external_cdda_fifo.GetCapacity())
+      return false;
+
+    s_external_cdda_fifo.Clear();
+    for (u32 i = 0; i < size; i++)
+    {
+      u32 frame = 0;
+      sw.Do(&frame);
+      s_external_cdda_fifo.Push(frame);
+    }
+  }
+  else
+  {
+    for (u32 i = 0; i < size; i++)
+    {
+      u32 frame = s_external_cdda_fifo.Peek(i);
+      sw.Do(&frame);
+    }
+  }
+
+  return !sw.HasError();
+}
+
 void CDROM::ClearExternalCDAudioFrames()
 {
   s_external_cdda_fifo.Clear();

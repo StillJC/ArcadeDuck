@@ -87,6 +87,13 @@ bool ControllerEvents::ScheduleDisconnect(TickCount delay)
   return true;
 }
 
+void ControllerEvents::RestoreReset(bool schedule, TickCount delay)
+{
+  DeactivateReset();
+  if (schedule)
+    ScheduleReset(delay);
+}
+
 void ControllerEvents::RestoreSelection(bool schedule, TickCount delay)
 {
   DeactivateSelection();

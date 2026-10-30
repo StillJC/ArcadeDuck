@@ -4,3 +4,5 @@ Resolved revision: 683515156d9717dfa272bb6e171a22d7c6a53e8b
 
 The imported CPU source files retain their upstream BSD-3-Clause headers
 and R. Belmont / Karl Stenerud attribution.
+
+Local change: m37710_cpu_device::do_state() (m37710.h/.cpp) adds save-state serialization.

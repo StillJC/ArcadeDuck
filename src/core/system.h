@@ -83,6 +83,11 @@ struct ExtendedSaveStateInfo
   std::string media_path;
   std::time_t timestamp;
 
+  // Arcade saves only: identity comes from metadata, not the filename.
+  std::string label;
+  s32 slot = 0;
+  bool arcade = false;
+
   RGBA8Image screenshot;
 };
 
@@ -232,6 +237,12 @@ u32 GetInternalFrameNumber();
 void IncrementInternalFrameNumber();
 void FrameDone();
 
+/// End-of-frame host work: message pump, input poll and execution exit. Runs at a resumable CPU boundary.
+void RunFrameHostWork();
+
+/// True while an interactive arcade save is waiting for the board to become ready.
+bool HasPendingArcadeSave();
+
 const std::string& GetDiscPath();
 const std::string& GetGameSerial();
 const std::string& GetGameTitle();
@@ -244,6 +255,24 @@ bool SupportsSaveStates();
 
 /// User-facing explanation returned when complete-system save states are unavailable.
 const char* GetSaveStateUnsupportedMessage();
+
+/// Returns true when the most recent LoadState() refusal has already been shown to the user in a popup.
+bool WasLoadRejectionReported();
+
+/// Returns true while an arcade game with save-state support is running.
+bool IsArcadeSaveStateSession();
+
+/// Writes an independent named save for the running arcade game. It never owns a slot.
+bool SaveNamedState(std::string_view label, Error* error);
+
+/// Interactive arcade saves: when the board is only briefly busy (IsSaveReadinessPending), the request waits for
+/// the next frame boundary at which it can be saved, up to a bounded number of frames, instead of being refused.
+/// It is cancelled by a load, reset, game change or shutdown. Otherwise identical to SaveState / SaveNamedState.
+bool SaveStateWhenReady(const char* path, Error* error, bool backup_existing_save);
+bool SaveNamedStateWhenReady(std::string_view label, Error* error);
+
+/// Returns "id=hash" for each live NVRAM component of the running arcade game, for diagnostics and tests.
+std::vector<std::string> GetArcadeNVRAMFingerprints();
 
 /// Returns the time elapsed in the current play session.
 u64 GetSessionPlayedTime();

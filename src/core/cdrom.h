@@ -56,4 +56,7 @@ void ClearExternalCDAudioFrames();
 /// Reads one externally supplied stereo CDDA frame.
 std::tuple<s16, s16> GetExternalCDAudioFrame();
 
+/// Serializes the external CDDA FIFO. Called by the arcade board that owns it, after CDROM::DoState().
+bool DoExternalCDAudioState(StateWrapper& sw);
+
 } // namespace CDROM

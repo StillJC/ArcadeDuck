@@ -11,6 +11,8 @@
 #include "common/error.h"
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <utility>
@@ -441,6 +443,32 @@ void GenerateAudioFrame(s32* left, s32* right)
   s_state.audio_cycle_fraction %= OUTPUT_SAMPLE_RATE;
   RunToTarget(s_state.audio_target_cycles);
   s_state.ymz280b.GetOutput(left, right);
+}
+
+// The 68000 bus callbacks are reconstructed by Initialize(). Diagnostic flags are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !sw.DoMarker("AtlusSound"))
+    return false;
+
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  sw.Do(&s_state.command_latch);
+  sw.Do(&s_state.sound_control);
+  sw.Do(&s_state.command_pending);
+  sw.Do(&s_state.ymz_irq);
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.audio_cycle_fraction);
+  sw.Do(&s_state.audio_target_cycles);
+  sw.Do(&s_state.host_target_cycles);
+  sw.Do(&s_state.scheduled_target_cycles);
+  sw.Do(&s_state.host_tick_fraction);
+  sw.Do(&s_state.last_host_sync_ticks);
+  sw.Do(&s_state.last_ticks_per_second);
+
+  if (!s_state.ymz280b.DoState(sw) || !sw.DoMarker("Atlus68000") || !MusashiBus::DoCPUState(sw))
+    return false;
+
+  return !sw.HasError();
 }
 
 } // namespace SonyZN::AtlusZN1Sound

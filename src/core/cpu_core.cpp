@@ -267,10 +267,20 @@ bool CPU::DoState(StateWrapper& sw)
     bool interrupt_delay;
     sw.Do(&interrupt_delay);
   }
+  // A load-delay value is dead while its register is Reg::count: every consumer checks the register first or writes
+  // the dummy register slot. The legacy recompiler still copies stale values into it, so which code path last ran
+  // would otherwise show up in the state. Store dead values as zero.
+  u32 load_delay_value = (g_state.load_delay_reg == Reg::count) ? 0 : g_state.load_delay_value;
+  u32 next_load_delay_value = (g_state.next_load_delay_reg == Reg::count) ? 0 : g_state.next_load_delay_value;
   sw.Do(&g_state.load_delay_reg);
-  sw.Do(&g_state.load_delay_value);
+  sw.Do(&load_delay_value);
   sw.Do(&g_state.next_load_delay_reg);
-  sw.Do(&g_state.next_load_delay_value);
+  sw.Do(&next_load_delay_value);
+  if (sw.IsReading())
+  {
+    g_state.load_delay_value = load_delay_value;
+    g_state.next_load_delay_value = next_load_delay_value;
+  }
 
   // Compatibility with old states.
   if (sw.GetVersion() < 59) [[unlikely]]
@@ -2036,7 +2046,7 @@ static void ExecuteRecompilerBranchEventBoundaryImpl(u32 branch_pc, u32 branch_b
   // This is the hardware-visible branch -> event -> delay-slot boundary.
   if (g_state.pending_ticks >= g_state.downcount)
   {
-    TimingEvents::RunEvents();
+    TimingEvents::RunEventsInsideInstructionPair();
 
     if (g_state.exception_raised)
       return;
@@ -2592,7 +2602,7 @@ void CPU::CodeCache::InterpretCachedBlock(const Block* block)
     // and marks the exception; otherwise continue into the already-fetched delay slot.
     if (g_state.pending_ticks >= g_state.downcount && info->is_branch_instruction)
     {
-      TimingEvents::RunEvents();
+      TimingEvents::RunEventsInsideInstructionPair();
 
       if (g_state.exception_raised)
         break;

@@ -821,6 +821,10 @@ void SaveStateSelectorUI::RefreshList(const std::string& serial)
     }
   }
 
+  // Global slots are not game-specific, so arcade games do not offer them.
+  if (System::IsArcadeSaveStateSession())
+    return;
+
   for (s32 i = 1; i <= System::GLOBAL_SAVE_STATE_SLOTS; i++)
   {
     std::string path(System::GetGlobalSaveStateFileName(i));
@@ -895,7 +899,7 @@ void SaveStateSelectorUI::SelectNextSlot(bool open_selector)
   if (s_current_slot >= total_slots)
   {
     s_current_slot -= total_slots;
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
       s_current_slot_global = false;
@@ -921,7 +925,7 @@ void SaveStateSelectorUI::SelectPreviousSlot(bool open_selector)
   s_current_slot--;
   if (s_current_slot < 0)
   {
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     s_current_slot += s_current_slot_global ? System::GLOBAL_SAVE_STATE_SLOTS : System::PER_GAME_SAVE_STATE_SLOTS;
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
@@ -1159,7 +1163,7 @@ void SaveStateSelectorUI::LoadCurrentSlot()
     if (FileSystem::FileExists(path.c_str()))
     {
       Error error;
-      if (!System::LoadState(path.c_str(), &error, true))
+      if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
       {
         Host::AddKeyedOSDMessage("LoadState",
                                  fmt::format(TRANSLATE_FS("OSDMessage", "Failed to load state from slot {0}:\n{1}"),
@@ -1193,7 +1197,7 @@ void SaveStateSelectorUI::SaveCurrentSlot()
   if (std::string path = GetCurrentSlotPath(); !path.empty())
   {
     Error error;
-    if (!System::SaveState(path.c_str(), &error, g_settings.create_save_state_backups))
+    if (!System::SaveStateWhenReady(path.c_str(), &error, g_settings.create_save_state_backups))
     {
       Host::AddIconOSDMessage("SaveState", ICON_EMOJI_WARNING,
                               fmt::format(TRANSLATE_FS("OSDMessage", "Failed to save state to slot {0}:\n{1}"),

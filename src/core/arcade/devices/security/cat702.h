@@ -7,6 +7,8 @@
 
 #include <array>
 
+class StateWrapper;
+
 namespace CAT702 {
 
 class Chip
@@ -26,6 +28,8 @@ public:
 
   bool GetDataOutLine() const { return m_data_out; }
   bool IsSelected() const { return !m_select; }
+
+  bool DoState(StateWrapper& sw);
 
 private:
   static u8 ShiftCoefficient(u8 value);

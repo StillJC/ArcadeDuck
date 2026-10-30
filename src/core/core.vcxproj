@@ -9,6 +9,8 @@
     <ClCompile Include="arcade\arcade_machine_handler.cpp" />
     <ClCompile Include="arcade\arcade_rom_loader.cpp" />
     <ClCompile Include="arcade\arcade_output.cpp" />
+    <ClCompile Include="arcade\arcade_save_state.cpp" />
+    <ClCompile Include="arcade\devices\cpu\z80_state.cpp" />
     <ClCompile Include="arcade\arcade_output_network.cpp" />
     <ClCompile Include="arcade\arcade_output_win32.cpp" />
     <ClCompile Include="bios.cpp" />
@@ -163,6 +165,7 @@
       <DisableSpecificWarnings Condition="'$(Configuration)' != 'Debug-Clang' And '$(Configuration)' != 'DebugFast-Clang' And '$(Configuration)' != 'Release-Clang' And '$(Configuration)' != 'ReleaseLTCG-Clang'">4018;4100;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
         <ClCompile Include="arcade\third_party\musashi\m68k_bus.cpp" />
+        <ClCompile Include="arcade\third_party\musashi\m68k_state.cpp" />
     <ClCompile Include="arcade\third_party\musashi\m68kcpu.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile></PrecompiledHeaderFile>
@@ -210,6 +213,8 @@
     <ClInclude Include="arcade\arcade_machine_handler.h" />
     <ClInclude Include="arcade\arcade_rom_loader.h" />
     <ClInclude Include="arcade\arcade_output.h" />
+    <ClInclude Include="arcade\arcade_save_state.h" />
+    <ClInclude Include="arcade\devices\cpu\z80_state.h" />
     <ClInclude Include="arcade\arcade_output_network.h" />
     <ClInclude Include="arcade\arcade_output_win32.h" />
     <ClInclude Include="bios.h" />

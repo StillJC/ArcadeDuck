@@ -7,6 +7,8 @@
     <ClCompile Include="arcade\arcade_input.cpp" />
     <ClCompile Include="arcade\arcade_machine_handler.cpp" />
     <ClCompile Include="arcade\arcade_rom_loader.cpp" />
+    <ClCompile Include="arcade\arcade_save_state.cpp" />
+    <ClCompile Include="arcade\devices\cpu\z80_state.cpp" />
     <ClCompile Include="arcade\devices\security\cat702.cpp" />
     <ClCompile Include="arcade\devices\audio\ymf271.cpp" />
     <ClCompile Include="arcade\devices\storage\chd_hard_disk.cpp" />
@@ -55,6 +57,7 @@
       <ClCompile Include="arcade\third_party\m37710\m37710o2.cpp" />
       <ClCompile Include="arcade\third_party\m37710\m37710o3.cpp" />
           <ClCompile Include="arcade\third_party\musashi\m68k_bus.cpp" />
+          <ClCompile Include="arcade\third_party\musashi\m68k_state.cpp" />
     <ClCompile Include="arcade\third_party\musashi\m68kcpu.c" />
       <ClCompile Include="arcade\third_party\musashi\m68kops.c" />
       <ClCompile Include="arcade\systems\konami\gv\konami_gv.cpp" />
@@ -116,6 +119,8 @@
     <ClInclude Include="arcade\arcade_input.h" />
     <ClInclude Include="arcade\arcade_machine_handler.h" />
     <ClInclude Include="arcade\arcade_rom_loader.h" />
+    <ClInclude Include="arcade\arcade_save_state.h" />
+    <ClInclude Include="arcade\devices\cpu\z80_state.h" />
     <ClInclude Include="arcade\devices\security\cat702.h" />
     <ClInclude Include="arcade\devices\storage\chd_hard_disk.h" />
     <ClInclude Include="arcade\third_party\qsound_hle\qsound.h" />
