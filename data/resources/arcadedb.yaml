@@ -11063,6 +11063,7 @@ games:
 
   rcdego:
     archive: "rcdego.zip"
+    parent: "gobyrc"
     title: "RC de Go!"
     system: "taito_gnet"
     manufacturer: "Taito"
@@ -11502,6 +11503,7 @@ games:
 
   zokuotena:
     archive: "zokuotena.zip"
+    parent: "zokuoten"
     title: "Zoku Otenamihaiken"
     system: "taito_gnet"
     manufacturer: "Success"
