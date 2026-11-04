@@ -177,6 +177,9 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   arcade_namco_system11_dip_freeze =
     si.GetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze", false);
 
+  arcade_namco_system12_cyber_lead_led_hardware_enabled =
+    si.GetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", false);
+
   if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode"))
   {
     arcade_namco_system12_cyber_lead_led_mode = static_cast<u8>(
@@ -531,6 +534,8 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
     si.SetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze",
                     arcade_namco_system11_dip_freeze);
 
+    si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled",
+                    arcade_namco_system12_cyber_lead_led_hardware_enabled);
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
                    arcade_namco_system12_cyber_lead_led_mode);
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", arcade_namco_system12_cyber_lead_led_size);

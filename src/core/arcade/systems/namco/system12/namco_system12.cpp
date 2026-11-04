@@ -237,6 +237,7 @@ struct RuntimeState
   bool h8_jvs_rts = false;
   Arcade::JVS::Bus h8_jvs_bus;
   Arcade::JVS::NamcoCyberLead h8_cyberlead;
+  bool cyberlead_led_enabled = false;
   u64 h8_cyberlead_deferred_clocks = 0;
   Arcade::JVS::NamcoFCA10 h8_fca10;
   Arcade::JVS::Chain h8_jvs_chain;
@@ -3079,7 +3080,7 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
              chd_sha1_string);
   }
 
-  if (content.io_board == "cyberlead")
+  if (content.io_board == "cyberlead" && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled)
     content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
 
   INFO_LOG("Loaded System 12 set '{}' profile='{}': program={} banked={} sub={} c352={} alternate_bank={}",
@@ -3198,6 +3199,8 @@ bool Initialize(LoadedContent content, Error* error)
 
   RuntimeState runtime;
   runtime.content = std::move(content);
+  runtime.cyberlead_led_enabled = runtime.content.io_board == "cyberlead" &&
+                                  g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
   if (HasLinkBoard(runtime.content))
   {
     runtime.hsc = std::make_unique<Arcade::Namco::System12HSC>();
@@ -3230,7 +3233,7 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
 
   runtime.h8_cpu = std::make_unique<h8_system_t>();
-  if (!runtime.content.cyberlead_led_firmware.empty() &&
+  if (runtime.cyberlead_led_enabled && !runtime.content.cyberlead_led_firmware.empty() &&
       !runtime.h8_cyberlead.InitializeLEDFlash(std::span<const u8>(runtime.content.cyberlead_led_firmware),
                                               Path::Combine(runtime.persistence_directory, "cl1-leda.ic5")))
   {
@@ -3238,7 +3241,7 @@ bool Initialize(LoadedContent content, Error* error)
   }
 
   s_runtime = std::move(runtime);
-  if (s_runtime->content.io_board == "cyberlead")
+  if (s_runtime->cyberlead_led_enabled)
     Arcade::JVS::NamcoCyberLead::SetActive(&s_runtime->h8_cyberlead);
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
@@ -3971,7 +3974,11 @@ bool IsSaveReadinessPending(std::string* message)
 void AppendStateIdentity(std::string* record)
 {
   if (s_runtime.has_value() && s_runtime->content.io_board == "cyberlead")
+  {
     *record += fmt::format("cyberlead_led={}\n", s_runtime->h8_cyberlead.IsLEDPresent() ? "present" : "absent");
+    if (!s_runtime->cyberlead_led_enabled)
+      *record += "cyberlead_led_hardware=disabled\n";
+  }
 }
 
 void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)

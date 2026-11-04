@@ -406,6 +406,18 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
                             "placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip "
                             "(or loose cl1-leda.ic5) in the BIOS folder."));
 
+    QCheckBox* hardware_check = new QCheckBox(group);
+    hardware_check->setChecked(
+      getBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", false).value_or(false));
+    connect(hardware_check, &QCheckBox::toggled, this, [this](bool checked) {
+      setBoolSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", checked);
+    });
+    const QString hardware_label = tr("Enable LED Hardware Emulation:");
+    form->addRow(hardware_label, hardware_check);
+    registerWidgetHelp(hardware_check, hardware_label, tr("Disabled"),
+                       tr("Runs the Cyber Lead LED firmware board. Restart the game after changing this setting. "
+                          "Cabinet JVS controls remain available when it is disabled."));
+
     QComboBox* mode_combo = new QComboBox(group);
     mode_combo->addItem(tr("Off"), 0);
     mode_combo->addItem(tr("Above Game"), 1);
@@ -519,11 +531,19 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
     registerWidgetHelp(fullscreen_check, fullscreen_label, tr("Unchecked"),
                        tr("Makes the separate Cyber Lead LED window frameless and fills the selected monitor."));
 
-    const auto update_separate_window_options = [mode_combo, monitor_combo, fullscreen_check]() {
-      const bool enabled = mode_combo->currentData().toInt() == 3;
-      monitor_combo->setEnabled(enabled);
-      fullscreen_check->setEnabled(enabled);
+    const auto update_separate_window_options = [hardware_check, mode_combo, size_combo, color_combo,
+                                                 mode_a_binding, mode_b_binding, monitor_combo, fullscreen_check]() {
+      const bool hardware_enabled = hardware_check->isChecked();
+      mode_combo->setEnabled(hardware_enabled);
+      size_combo->setEnabled(hardware_enabled);
+      color_combo->setEnabled(hardware_enabled);
+      mode_a_binding->setEnabled(hardware_enabled);
+      mode_b_binding->setEnabled(hardware_enabled);
+      const bool separate_window = hardware_enabled && mode_combo->currentData().toInt() == 3;
+      monitor_combo->setEnabled(separate_window);
+      fullscreen_check->setEnabled(separate_window);
     };
+    connect(hardware_check, &QCheckBox::toggled, this, update_separate_window_options);
     connect(mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this, mode_combo, update_separate_window_options](int index) {
               setIntSettingValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",

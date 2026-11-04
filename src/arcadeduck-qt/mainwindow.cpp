@@ -906,6 +906,7 @@ void MainWindow::updateCyberLeadLEDWindow()
   const bool want_window =
     s_system_valid &&
     g_settings.arcade_namco_system12_cyber_lead_led_mode == 3 &&
+    g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled &&
     IsCyberLeadGame(s_current_game_serial.toStdString());
 
   if (!want_window)
