@@ -74,6 +74,7 @@ public:
   // The Cyber Lead board attached to the running machine, used for LED presentation.
   static NamcoCyberLead* GetActive();
   static void SetActive(NamcoCyberLead* device);
+  static bool IsLEDHardwareActive();
 
   // True for database games whose cabinet uses the Cyber Lead I/O board.
   static bool IsCyberLeadGame(std::string_view serial);

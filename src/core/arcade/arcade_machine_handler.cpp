@@ -263,9 +263,7 @@ public:
 
   void PrepareSharedHardware() const override
   {
-    // COH-700 uses CXD8654Q and COH-716 uses CXD8561CQ, both with 2 MiB VRAM.
-    // ArcadeDuck's current type-2 arcade GPU mode is the closest existing
-    // hardware seam and is already used for CXD8654Q-class ZN-2/G-Net boards.
+    // COH-700/CXD8654Q and COH-716/CXD8561CQ use the shared arcade type-2 GPU path.
     GPU::SetCXD8561QMode(true);
   }
 
