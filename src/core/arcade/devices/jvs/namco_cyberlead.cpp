@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 
 Log_SetChannel(NamcoSystem12);
 
@@ -44,6 +45,7 @@ static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> LED_FIRMWARE_SHA1 = {
 };
 
 NamcoCyberLead* s_active = nullptr;
+std::atomic<bool> s_led_hardware_active{false};
 
 // JVS 70/02 program date, from ROM offset 186A.
 static constexpr std::array<u8, 8> PROGRAM_DATE = {
@@ -80,9 +82,10 @@ std::vector<u8> ReadZipMember(const std::string& archive_path, const char* membe
   if (unzLocateFile(zf, member, 2) == UNZ_OK && unzOpenCurrentFile(zf) == UNZ_OK)
   {
     unz_file_info64 file_info = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK)
+    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK &&
+        file_info.uncompressed_size == LED_FIRMWARE_SIZE)
     {
-      data.resize(static_cast<size_t>(file_info.uncompressed_size));
+      data.resize(LED_FIRMWARE_SIZE);
       size_t read_offset = 0;
       while (read_offset < data.size())
       {
@@ -92,9 +95,11 @@ std::vector<u8> ReadZipMember(const std::string& archive_path, const char* membe
           break;
         read_offset += static_cast<size_t>(bytes_read);
       }
-      if (unzCloseCurrentFile(zf) != UNZ_OK || read_offset != data.size())
+      if (read_offset != data.size())
         data.clear();
     }
+    if (unzCloseCurrentFile(zf) != UNZ_OK)
+      data.clear();
   }
 
   unzClose(zf);
@@ -215,10 +220,8 @@ bool NamcoCyberLead::IsLEDSaveReady() const
   if (!m_led_device.HasFirmware())
     return true;
 
-  // The LED data is in place once the game has switched the LED to display mode (71/08) after the last upload
-  // that changed the flash, or when every committed upload since the handshake rewrote identical data.
-  // An installed board can also report its data as present (profile result 1) without any upload or 71/08, and a
-  // game which ends setup with 71/04 after the query does not upload in that setup.
+  // LED data is settled after 71/08, an unchanged upload, or a board-reported
+  // installed profile. Some games finish setup with 71/04 and no upload.
   const bool data_settled =
     m_link.mode_since_last_change ||
     (!m_link.flash_changed_since_handshake &&
@@ -226,8 +229,7 @@ bool NamcoCyberLead::IsLEDSaveReady() const
   if (!m_link.handshake_complete || !data_settled)
     return false;
 
-  // Every LED transaction can program the flash (71/08 display mode writes settings too), so saving waits for an
-  // idle link.
+  // 71/08 can also write flash settings; save only when the link is idle.
   return m_link.state == LinkState::Idle && !m_led_device.IsFlashOperationActive();
 }
 
@@ -245,6 +247,12 @@ NamcoCyberLead* NamcoCyberLead::GetActive()
 void NamcoCyberLead::SetActive(NamcoCyberLead* device)
 {
   s_active = device;
+  s_led_hardware_active.store(device != nullptr, std::memory_order_release);
+}
+
+bool NamcoCyberLead::IsLEDHardwareActive()
+{
+  return s_led_hardware_active.load(std::memory_order_acquire);
 }
 
 bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)

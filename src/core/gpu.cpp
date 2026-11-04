@@ -3032,7 +3032,7 @@ bool GPU::CalculateCyberLeadLEDAttachedRect(s32 window_width, s32 window_height,
   static constexpr s32 LED_ASPECT_HEIGHT = 16;
 
   const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
-  if (!g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled || !IsCyberLeadLEDGame() ||
+  if (!Arcade::JVS::NamcoCyberLead::IsLEDHardwareActive() || !IsCyberLeadLEDGame() ||
       (mode != 1 && mode != 2) || window_width < LED_ASPECT_WIDTH ||
       window_height <= LED_ASPECT_HEIGHT)
   {

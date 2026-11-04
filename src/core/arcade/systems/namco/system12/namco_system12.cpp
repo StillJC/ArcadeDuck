@@ -3128,14 +3128,8 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
   }
 
-  // Point Blank 2 / Gunbarl register their DMA5 completion callback after the
-  // ROM-board transfer can already complete in the current System 12 model.
-  // Their program then waits forever for the missed completion callback.
-  //
-  // Apply the established family compatibility workaround at the loaded-ROM
-  // boundary rather than inventing behavior for the System 12 no-op strobes or
-  // changing generic PSX DMA timing. Guard the original instruction so a
-  // different program revision cannot be patched accidentally.
+  // Point Blank 2 / Gunbarl wait for a DMA5 completion already consumed during startup.
+  // Guard the ROM branch opcode so this workaround cannot patch another revision.
   if (content.set_name == "ptblank2" || content.set_name == "gunbarl")
   {
     static constexpr size_t PB2_DMA_WAIT_BRANCH_OFFSET = 0x331C4;
@@ -3162,10 +3156,8 @@ bool Initialize(LoadedContent content, Error* error)
     INFO_LOG("Applied Point Blank 2/Gunbarl DMA completion-wait compatibility patch set='{}' offset={:08X}",
              content.set_name, static_cast<u32>(PB2_DMA_WAIT_BRANCH_OFFSET));
   }
-  // Truck Kyosokyoku has a startup race between status initialization and
-  // DMA5. Match MAME's truckk_state::machine_start() workaround exactly:
-  // move the five status-initialization instructions ahead of the two
-  // instructions which start DMA5.
+  // Truck Kyosokyoku starts DMA5 before its status words are initialized.
+  // Match the instruction order used by MAME's truckk_state::machine_start().
   if (content.set_name == "truckk")
   {
     static constexpr size_t TRUCK_DMA_START_OFFSET = 0x376E4;
@@ -3246,10 +3238,7 @@ bool Initialize(LoadedContent content, Error* error)
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
 
-  INFO_LOG(
-    "Namco System 12 base board initialized for '{}'. H8/3002 instruction-state timing is active; "
-    "external H8 wait-state refinement, JVS edge cases and protected ROM-board capabilities remain staged follow-up work.",
-    s_runtime->content.set_name);
+  INFO_LOG("Namco System 12 initialized for '{}'", s_runtime->content.set_name);
   return true;
 }
 

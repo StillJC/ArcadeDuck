@@ -260,7 +260,7 @@ static std::atomic<u64> s_cyber_lead_led_snapshot_version{0};
 static void UpdateCyberLeadLEDSnapshot()
 {
   // Only the attached panel and the separate LED window read the snapshot.
-  if (!g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled ||
+  if (!Arcade::JVS::NamcoCyberLead::IsLEDHardwareActive() ||
       g_settings.arcade_namco_system12_cyber_lead_led_mode == 0 || !IsCyberLeadLEDGame())
   {
     if (s_cyber_lead_led_snapshot_valid)

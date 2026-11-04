@@ -85,6 +85,7 @@ constexpr u8 OP_REGISTER = 3;
 constexpr u8 OP_STATE = 4;  // offset = chunk index
 constexpr u8 OP_RESUME = 5; // board continues from the received state
 constexpr size_t STATE_CHUNK = 0x2000;
+constexpr size_t MAX_TRANSFER_STATE_SIZE = 0x100000;
 
 // Registers shared by the H8 and the host, as offsets from the host reset
 // register. The board raises PS1 IRQ10 by writing the mailbox; the host
@@ -156,9 +157,22 @@ void SendRecords(Link::Transport& link, u8 cabinet, u8 kind, u8 generation, std:
     message.assign({kind, generation});
     while (pos < records.size())
     {
+      if (records.size() - pos < RECORD_HEADER_SIZE)
+      {
+        WARNING_LOG("HSC truncated outgoing record");
+        records.clear();
+        return;
+      }
       const size_t length = records[pos + 3] | (records[pos + 4] << 8);
+      if (length > records.size() - pos - RECORD_HEADER_SIZE ||
+          RECORD_HEADER_SIZE + length > Link::Transport::MAX_MESSAGE_SIZE - 2)
+      {
+        WARNING_LOG("HSC invalid outgoing record length={}", length);
+        records.clear();
+        return;
+      }
       const size_t size = RECORD_HEADER_SIZE + length;
-      if (message.size() + size > Link::Transport::MAX_MESSAGE_SIZE && message.size() > 2)
+      if (message.size() + size > Link::Transport::MAX_MESSAGE_SIZE)
         break;
       message.insert(message.end(), records.begin() + pos, records.begin() + pos + size);
       pos += size;
@@ -841,6 +855,7 @@ struct System12HSC::RemoteBoard
   std::vector<u8> pending_writes;
   size_t last_record = SIZE_MAX;
   std::vector<u8> incoming_state;
+  u8 incoming_state_generation = 0;
 };
 
 System12HSC::System12HSC() = default;
@@ -1175,7 +1190,18 @@ void System12HSC::HandleCabinetMessage(RemoteBoard& remote, std::span<const u8> 
     else if (op == OP_STATE)
     {
       if (offset == 0)
+      {
         remote.incoming_state.clear();
+        remote.incoming_state_generation = generation;
+      }
+      if (remote.incoming_state_generation != generation || data.empty() || data.size() > STATE_CHUNK ||
+          remote.incoming_state.size() != static_cast<size_t>(offset) * STATE_CHUNK ||
+          remote.incoming_state.size() > MAX_TRANSFER_STATE_SIZE ||
+          data.size() > MAX_TRANSFER_STATE_SIZE - remote.incoming_state.size())
+      {
+        remote.incoming_state.clear();
+        return;
+      }
       remote.incoming_state.insert(remote.incoming_state.end(), data.begin(), data.end());
     }
     else if (op == OP_RESUME)
@@ -1183,7 +1209,8 @@ void System12HSC::HandleCabinetMessage(RemoteBoard& remote, std::span<const u8> 
       remote.generation = generation;
       remote.pending_writes.clear();
       remote.last_record = SIZE_MAX;
-      if (remote.board.LoadState(remote.incoming_state))
+      if (!remote.incoming_state.empty() && remote.incoming_state_generation == generation &&
+          remote.board.LoadState(remote.incoming_state))
         INFO_LOG("HSC board for cabinet {} resumed on cabinet 1", remote.cabinet);
       else
         WARNING_LOG("HSC board state from cabinet {} was not accepted", remote.cabinet);

@@ -152,9 +152,17 @@ Node::PacketResult NamcoEMPri101::ProcessAddressedPacket(std::span<const u8> pac
             if ((index + count) > commands_end)
               return result;
 
-            m_job_data.insert(m_job_data.end(), packet.begin() + index, packet.begin() + index + count);
+            static constexpr size_t MAX_JOB_SIZE = 0x400000;
+            if (m_job_data.size() > MAX_JOB_SIZE || count > MAX_JOB_SIZE - m_job_data.size())
+            {
+              AppendByte(response, response_length, UINT8_C(0x03));
+            }
+            else
+            {
+              m_job_data.insert(m_job_data.end(), packet.begin() + index, packet.begin() + index + count);
+              AppendByte(response, response_length, UINT8_C(0x01));
+            }
             index += count;
-            AppendByte(response, response_length, UINT8_C(0x01));
             produce_response = true;
             break;
           }
