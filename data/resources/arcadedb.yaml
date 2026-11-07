@@ -1694,6 +1694,69 @@ controlLayouts:
         displayName: "Button 4 — Right Kick"
         kind: "button"
 
+  tekken3:
+    displayName: "Tekken 3"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1 — Left Punch"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Right Punch"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 3 — Left Kick"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 4 — Right Kick"
+        kind: "button"
+
+  tektagt:
+    displayName: "Tekken Tag Tournament"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1 — Left Punch"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Right Punch"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 3 — Left Kick"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 4 — Right Kick"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 5 — Tag"
+        kind: "button"
+
   xevi3dg:
     displayName: "Xevious 3D/G"
     controllerType: "arcade"
@@ -5398,8 +5461,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5444,8 +5507,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5490,8 +5553,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5536,8 +5599,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5582,8 +5645,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5628,8 +5691,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5674,8 +5737,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5720,8 +5783,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5766,8 +5829,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5812,8 +5875,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -6936,8 +6999,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6984,8 +7047,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7038,8 +7101,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7086,8 +7149,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7134,8 +7197,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7184,8 +7247,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7233,8 +7296,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }

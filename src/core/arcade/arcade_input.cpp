@@ -711,9 +711,13 @@ void ResyncWindowedPointer(float x, float y)
 
   InputManager::SetPointerAbsolutePosition(physical_device, x, y);
 }
-void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std::string_view game_id, SettingsInterface* game_si)
+void RegisterBindings(SettingsInterface& binding_si, SettingsInterface& operator_si, std::string_view game_id, SettingsInterface* game_si)
 {
   std::lock_guard<std::mutex> lock(s_mutex);
+  // Per-game controls are complete mappings; missing values must remain unbound.
+  SettingsInterface& si =
+    (game_si && game_si->GetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", false)) ?
+      *game_si : binding_si;
   Konami::ResetGQArcadeInputs();
   Konami::ResetGVArcadeInputs();
   s_ports = {};
@@ -785,7 +789,10 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
       std::clamp(si.GetIntValue(section.c_str(), "ClutchDeadzone", 0) / 100.0f, 0.0f, 0.5f);
     state.clutch_sensitivity =
       std::clamp(si.GetIntValue(section.c_str(), "ClutchSensitivity", 100) / 100.0f, 0.01f, 5.0f);
-    for (const char* key : {"Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4",
+    const Arcade::ArcadeControlLayoutInfo* layout = Arcade::GetArcadeControlLayoutInfo(state.layout);
+    if (layout && layout->controller_type != state.type)
+      layout = nullptr;
+    for (const std::string_view key : {"Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4",
                             "Button5", "Button6", "Coin", "Start", "Trigger", "Reload", "GSRIncrease",
                             "GSRDecrease", "GearUp", "GearDown", "Handbrake", "View", "Horn", "MusicNext",
                             "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft", "SelectRight",
@@ -794,6 +801,14 @@ void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std
                             "MahjongK", "MahjongL", "MahjongM", "MahjongN", "MahjongKan", "MahjongPon",
                             "MahjongChi", "MahjongReach", "MahjongRon"})
     {
+      if (layout && key != "Coin" && key != "Start" &&
+          std::none_of(layout->bindings.begin(), layout->bindings.end(),
+                       [key](const Arcade::ArcadeControlLayoutBindingInfo& binding) {
+                         return binding.kind == Arcade::ArcadeControlBindingKind::Button && binding.binding_key == key;
+                       }))
+      {
+        continue;
+      }
       AddDigitalBindings(si, section, port, key);
     }
     if (state.type == Arcade::ArcadeControllerType::Trackball)
