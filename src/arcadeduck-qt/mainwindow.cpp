@@ -113,7 +113,7 @@ static void ConstrainWindowSizingRectTo16By9(RECT* rect, WPARAM edge, LONG extra
 
 Log_SetChannel(MainWindow);
 
-static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Set Archives (*.zip *.7z)");
+static constexpr char ARCADE_SET_FILTER[] = QT_TRANSLATE_NOOP("MainWindow", "Arcade Sets and G-Net CHDs (*.zip *.7z *.chd)");
 
 MainWindow* g_main_window = nullptr;
 
@@ -163,7 +163,7 @@ static const Arcade::Database::GameDefinition* GetArcadeGameForEntry(const GameL
 {
   if (const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(entry->serial))
     return game;
-  return Arcade::Database::IdentifyArchive(entry->path);
+  return Arcade::Database::IdentifyGamePath(entry->path);
 }
 
 static QString s_current_game_serial;
@@ -1218,23 +1218,15 @@ void MainWindow::startArcadeSet(const QString& path)
                           tr("Arcade launch path '%1' does not exist.").arg(QString::fromStdString(supplied_path)));
     return;
   }
-  if (!Arcade::Database::IsArchivePath(supplied_path))
-  {
-    QMessageBox::critical(
-      this, tr("Error"),
-      tr("File '%1' is not a supported ArcadeDuck arcade archive.").arg(QString::fromStdString(supplied_path)));
-    return;
-  }
-
   std::string path_str(Path::RealPath(supplied_path));
   if (path_str.empty())
     path_str = supplied_path;
 
-  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(path_str);
+  const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyGamePath(path_str);
   if (!game)
   {
     QMessageBox::critical(this, tr("Error"),
-                          tr("Archive '%1' is not a recognized ArcadeDuck set.")
+                          tr("File '%1' is not a recognized ArcadeDuck archive or G-Net CHD.")
                             .arg(QtUtils::StringViewToQString(Path::GetFileName(path_str))));
     return;
   }
@@ -1446,7 +1438,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
               [this, entry]() { g_emu_thread->bootSystem(getSystemBootParameters(entry->path)); });
 
       const Arcade::Database::GameDefinition* const parent_game = GetArcadeGameForEntry(entry);
-      const Arcade::Database::GameDefinition* const archive_game = Arcade::Database::IdentifyArchive(entry->path);
+      const Arcade::Database::GameDefinition* const archive_game = Arcade::Database::IdentifyGamePath(entry->path);
       if (parent_game && archive_game && parent_game != archive_game)
       {
         WARNING_LOG("Arcade game-list identity mismatch for '{}': cached game '{}' differs from archive game '{}'.",
@@ -1483,6 +1475,7 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
                    parent_game->id);
 
         QMenu* clone_menu = nullptr;
+        QMenu* clone_properties_menu = nullptr;
         for (const Arcade::Database::GameDefinition* const clone : clones)
         {
           std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
@@ -1497,7 +1490,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           }
 
           if (!clone_menu)
+          {
             clone_menu = menu.addMenu(tr("Start Clone"));
+            clone_properties_menu = menu.addMenu(tr("Clone Properties"));
+          }
 
           QString label = QString::fromStdString(clone->title);
           if (!clone->region.empty())
@@ -1505,6 +1501,10 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
           if (!clone->revision.empty())
             label += tr(" - %1").arg(QString::fromStdString(clone->revision));
           label += tr(" [%1]").arg(QString::fromStdString(clone->id));
+
+          QAction* const clone_properties_action = clone_properties_menu->addAction(label);
+          connect(clone_properties_action, &QAction::triggered,
+                  [clone_path, clone_id = clone->id]() { SettingsWindow::openGamePropertiesDialog(clone_path, clone_id); });
 
           QAction* const clone_action = clone_menu->addAction(label);
           connect(clone_action, &QAction::triggered,
@@ -2156,14 +2156,17 @@ void MainWindow::connectSignals()
   connect(m_ui.actionSettings2, &QAction::triggered, this, &MainWindow::onSettingsTriggeredFromToolbar);
   connect(m_ui.actionInterfaceSettings, &QAction::triggered, [this]() { doSettings("Interface"); });
   connect(m_ui.actionOperatorSettings, &QAction::triggered, [this]() { doSettings("Operator"); });
-  connect(m_ui.actionSystemLinkSettings, &QAction::triggered, [this]() { doSettings("System Link"); });
   connect(m_ui.actionConsoleSettings, &QAction::triggered, [this]() { doSettings("Machine"); });
   connect(m_ui.actionEmulationSettings, &QAction::triggered, [this]() { doSettings("Emulation"); });
   connect(m_ui.actionGameListSettings, &QAction::triggered, [this]() { doSettings("Game List"); });
-  connect(m_ui.actionHotkeySettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::HotkeySettings); });
-  connect(m_ui.actionControllerSettings, &QAction::triggered,
-          [this]() { doControllerSettings(ControllerSettingsWindow::Category::GlobalSettings); });
+  connect(m_ui.actionHotkeySettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::HotkeySettings);
+  });
+  connect(m_ui.actionControllerSettings, &QAction::triggered, [this]() {
+    doSettings("Controls");
+    getSettingsWindow()->setControlsCategory(ControllerSettingsWindow::Category::GlobalSettings);
+  });
   connect(m_ui.actionGraphicsSettings, &QAction::triggered, [this]() { doSettings("Graphics"); });
   connect(m_ui.actionPostProcessingSettings, &QAction::triggered, [this]() { doSettings("Post-Processing"); });
   connect(m_ui.actionAudioSettings, &QAction::triggered, [this]() { doSettings("Audio"); });
@@ -2608,7 +2611,7 @@ static QString getFilenameFromMimeData(const QMimeData* md)
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 {
   const std::string filename(getFilenameFromMimeData(event->mimeData()).toStdString());
-  if (!System::IsSaveStateFilename(filename) && !Arcade::Database::IdentifyArchive(filename))
+  if (!System::IsSaveStateFilename(filename) && !Arcade::Database::IdentifyGamePath(filename))
     return;
 
   event->acceptProposedAction();
@@ -2619,7 +2622,7 @@ void MainWindow::dropEvent(QDropEvent* event)
   const QString qfilename(getFilenameFromMimeData(event->mimeData()));
   const std::string filename(qfilename.toStdString());
   const bool is_save_state = System::IsSaveStateFilename(filename);
-  if (!is_save_state && !Arcade::Database::IdentifyArchive(filename))
+  if (!is_save_state && !Arcade::Database::IdentifyGamePath(filename))
     return;
 
   event->acceptProposedAction();

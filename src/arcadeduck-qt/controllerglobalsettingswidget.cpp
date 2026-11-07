@@ -41,7 +41,6 @@ ControllerGlobalSettingsWidget::ControllerGlobalSettingsWidget(QWidget* parent, 
 #ifdef _WIN32
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableDInputSource, "InputSources", "DInput", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableXInputSource, "InputSources", "XInput", false);
-  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableRawInput, "InputSources", "RawInput", false);
 #else
   m_ui.mainLayout->removeWidget(m_ui.xinputGroup);
   delete m_ui.xinputGroup;
@@ -51,12 +50,9 @@ ControllerGlobalSettingsWidget::ControllerGlobalSettingsWidget(QWidget* parent, 
   m_ui.dinputGroup = nullptr;
 #endif
 
-  ControllerSettingWidgetBinder::BindWidgetToInputProfileBool(sif, m_ui.enableMouseMapping, "UI", "EnableMouseMapping",
-                                                              false);
-  ControllerSettingWidgetBinder::BindWidgetToInputProfileFloat(sif, m_ui.pointerXScale, "Pointer",
-                                                               "PointerXScale", 8.0f);
-  ControllerSettingWidgetBinder::BindWidgetToInputProfileFloat(sif, m_ui.pointerYScale, "Pointer",
-                                                               "PointerYScale", 8.0f);
+  m_ui.mainLayout->removeWidget(m_ui.groupBox_5);
+  delete m_ui.groupBox_5;
+  m_ui.groupBox_5 = nullptr;
 
   if (dialog->isEditingProfile())
   {
@@ -78,13 +74,6 @@ ControllerGlobalSettingsWidget::ControllerGlobalSettingsWidget(QWidget* parent, 
   if (dialog->isEditingGameSettings())
     m_ui.deviceListGroup->setEnabled(false);
 
-  connect(m_ui.pointerXScale, &QSlider::valueChanged, this,
-          [this](int value) { m_ui.pointerXScaleLabel->setText(QStringLiteral("%1").arg(value)); });
-  connect(m_ui.pointerYScale, &QSlider::valueChanged, this,
-          [this](int value) { m_ui.pointerYScaleLabel->setText(QStringLiteral("%1").arg(value)); });
-  m_ui.pointerXScaleLabel->setText(QStringLiteral("%1").arg(m_ui.pointerXScale->value()));
-  m_ui.pointerYScaleLabel->setText(QStringLiteral("%1").arg(m_ui.pointerYScale->value()));
-
   updateSDLOptionsEnabled();
 }
 
@@ -93,7 +82,9 @@ ControllerGlobalSettingsWidget::~ControllerGlobalSettingsWidget() = default;
 void ControllerGlobalSettingsWidget::addDeviceToList(const QString& identifier, const QString& name)
 {
   QListWidgetItem* item = new QListWidgetItem();
-  item->setText(QStringLiteral("%1: %2").arg(identifier).arg(name));
+  item->setText(identifier.startsWith(QStringLiteral("RawInput-")) ? tr("Raw Input: %1").arg(name) :
+                                                                   QStringLiteral("%1: %2").arg(identifier).arg(name));
+  item->setToolTip(name + QStringLiteral("\n") + identifier);
   item->setData(Qt::UserRole, identifier);
   m_ui.deviceList->addItem(item);
 }

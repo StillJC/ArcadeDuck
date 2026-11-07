@@ -11,9 +11,13 @@
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
 
+#include "libchdr/chd.h"
 #include "ryml.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstring>
 #include <charconv>
 #include <cctype>
 #include <cmath>
@@ -137,7 +141,7 @@ bool IsKnownControllerType(std::string_view value)
 {
   return StringUtil::EqualNoCase(value, "none") || StringUtil::EqualNoCase(value, "arcade") ||
          StringUtil::EqualNoCase(value, "trackball") || StringUtil::EqualNoCase(value, "lightgun") ||
-         StringUtil::EqualNoCase(value, "driving") || StringUtil::EqualNoCase(value, "tokimeki");
+         StringUtil::EqualNoCase(value, "driving") || StringUtil::EqualNoCase(value, "tokimeki") || StringUtil::EqualNoCase(value, "mahjong");
 }
 
 bool IsKnownJoystickMode(std::string_view value)
@@ -325,6 +329,8 @@ ArcadeControllerType ParseControllerType(std::string_view value)
     return ArcadeControllerType::Driving;
   if (StringUtil::EqualNoCase(value, "tokimeki"))
     return ArcadeControllerType::Tokimeki;
+  if (StringUtil::EqualNoCase(value, "mahjong"))
+    return ArcadeControllerType::Mahjong;
   return ArcadeControllerType::None;
 }
 
@@ -927,7 +933,8 @@ bool ParseGame(const ryml::ConstNodeRef& node)
       !GetString(node, "setFormat", &game.set_format, true) || !GetString(node, "status", &status, true) ||
       !GetUnsigned(node, "year", &game.year, true) ||
       !GetUnsigned(node, "cpuClockPercent", &game.cpu_clock_percent) ||
-      !GetUnsigned(node, "minPlayers", &game.min_players) || !GetUnsigned(node, "maxPlayers", &game.max_players))
+      !GetUnsigned(node, "minPlayers", &game.min_players) || !GetUnsigned(node, "maxPlayers", &game.max_players) ||
+      !GetBool(node, "supportsSystemLink", &game.supports_system_link))
   {
     ERROR_LOG("Failed parsing arcade game '{}'.", game.id);
     return false;
@@ -1113,6 +1120,12 @@ bool ValidateDatabase()
     {
       ERROR_LOG("Arcade game '{}' supports {} players, exceeding system '{}' maximum {}.", game.id,
                 game.max_players, system->id, system->max_players);
+      valid = false;
+    }
+    if (game.supports_system_link && !system->supports_network)
+    {
+      ERROR_LOG("Arcade game '{}' enables system link on system '{}' which does not support networking.", game.id,
+                system->id);
       valid = false;
     }
     if (!game.parent.empty() && !GetGame(game.parent))
@@ -1407,6 +1420,85 @@ const GameDefinition* IdentifyArchive(std::string_view path)
   EnsureLoaded();
   const auto iterator = s_archive_lookup.find(GetArchiveLookupKey(path));
   return (iterator != s_archive_lookup.end()) ? &s_games[iterator->second] : nullptr;
+}
+
+const GameDefinition* IdentifyGamePath(std::string_view path)
+{
+  return IsArchivePath(path) ? IdentifyArchive(path) : IdentifyGNetCHD(path);
+}
+
+const GameDefinition* IdentifyGNetCHD(std::string_view path)
+{
+  if (!StringUtil::EqualNoCase(Path::GetExtension(path), "chd") || !EnsureLoaded())
+    return nullptr;
+
+  const std::string filename(path);
+  auto fp = FileSystem::OpenManagedSharedCFile(filename.c_str(), "rb", FileSystem::FileShareMode::DenyWrite, nullptr);
+  if (!fp)
+    return nullptr;
+
+  // Older libchdr header-only reads depend on uninitialized metadata state.
+  // Identification only needs the stored SHA-1, without opening the disk or its metadata.
+  std::array<u8, CHD_MAX_HEADER_SIZE> header{};
+  const size_t bytes = std::fread(header.data(), 1, header.size(), fp.get());
+  if (bytes < 16 || std::memcmp(header.data(), "MComprHD", 8) != 0)
+    return nullptr;
+
+  const auto read_be32 = [&header](u32 offset) -> u32 {
+    return (static_cast<u32>(header[offset]) << 24) | (static_cast<u32>(header[offset + 1]) << 16) |
+           (static_cast<u32>(header[offset + 2]) << 8) | static_cast<u32>(header[offset + 3]);
+  };
+  const u32 length = read_be32(8);
+  const u32 version = read_be32(12);
+  u32 sha1_offset;
+  switch (version)
+  {
+    case 3:
+      if (length != CHD_V3_HEADER_SIZE)
+        return nullptr;
+      sha1_offset = 80;
+      break;
+    case 4:
+      if (length != CHD_V4_HEADER_SIZE)
+        return nullptr;
+      sha1_offset = 48;
+      break;
+    case 5:
+      if (length != CHD_V5_HEADER_SIZE)
+        return nullptr;
+      sha1_offset = 84;
+      break;
+    default:
+      return nullptr;
+  }
+  if (bytes < length)
+    return nullptr;
+
+  // MAME disk definitions use the combined data/metadata SHA-1 stored in the CHD header.
+  constexpr char hex[] = "0123456789abcdef";
+  std::string sha1(40, '0');
+  for (u32 i = 0; i < 20; i++)
+  {
+    sha1[i * 2] = hex[header[sha1_offset + i] >> 4];
+    sha1[i * 2 + 1] = hex[header[sha1_offset + i] & 15];
+  }
+
+  const GameDefinition* match = nullptr;
+  for (const GameDefinition& game : s_games)
+  {
+    const SystemDefinition* const system = GetSystem(game.system_id);
+    if (!system || system->machine_handler != "taito_gnet")
+      continue;
+
+    const MediaDefinition* const media = GetMediaByRole(game, "pccard:ata:0:hdd_001");
+    if (!media || media->type != MediaType::CHDHardDisk || !StringUtil::EqualNoCase(media->sha1, sha1))
+      continue;
+
+    if (match)
+      return nullptr;
+    match = &game;
+  }
+  return match;
 }
 
 const ROMDefinition* GetROMByRole(const GameDefinition& game, std::string_view role)

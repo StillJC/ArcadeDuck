@@ -120,6 +120,17 @@ struct TaitoFX1AContent
   std::array<u8, 8> game_cat702_key{};
 };
 
+struct TaitoGNetContent
+{
+  std::string set_name;
+  std::vector<u8> u30_flash;
+  std::vector<u8> f35_eprom;
+  std::string pccard_path;
+  bool communication_board = false;
+  bool zn1_motherboard = false;
+  std::array<u8, 8> motherboard_cat702_key{};
+  std::array<u8, 8> fc_cat702_key{};
+};
 struct TaitoFX1BContent
 {
   std::string set_name;
@@ -189,12 +200,19 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
                                                     const Arcade::Database::FirmwareDefinition& firmware,
                                                     Error* error);
 
+std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
+                                                      const Arcade::Database::GameDefinition& game,
+                                                      const char* firmware_archive_path,
+                                                      const Arcade::Database::FirmwareDefinition& firmware,
+                                                      Error* error);
 std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
                                                   const Arcade::Database::GameDefinition& game,
                                                   const char* firmware_archive_path,
                                                   const Arcade::Database::FirmwareDefinition& firmware,
                                                   Error* error);
 
+bool InitializeTaitoGNet(const BIOS::Image& bios, TaitoGNetContent content, std::string_view persistence_directory,
+                         Error* error);
 bool InitializeCapcomZN(const BIOS::Image& bios, CapcomZNContent content, std::string_view persistence_directory,
                         Error* error);
 bool InitializeVideoSystemZN1(const BIOS::Image& bios, VideoSystemZN1Content content,
@@ -221,6 +239,8 @@ void PrepareForTimingEpochReset();
 void Reset();
 void Shutdown();
 bool IsActive();
+bool IsMawasundaActive();
+void AddMawasundaHandleDelta(u32 player, s32 delta);
 void ApplySPUOutputGain(s32* left, s32* right);
 void ProcessFrame();
 

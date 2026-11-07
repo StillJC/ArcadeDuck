@@ -21,6 +21,7 @@ enum class ArcadeControllerType : u8
   Lightgun,
   Driving,
   Tokimeki,
+  Mahjong,
 };
 
 enum class ArcadeJoystickMode : u8

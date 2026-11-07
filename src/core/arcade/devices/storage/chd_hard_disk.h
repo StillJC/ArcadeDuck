@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string_view>
+#include <vector>
 
 class Error;
 
@@ -38,6 +39,11 @@ public:
   std::string_view GetPath() const;
   const Geometry& GetGeometry() const;
   u32 GetBlockCount() const;
+
+  // Reads one binary CHD metadata entry by four-character tag/index.
+  // This is intentionally generic so arcade storage devices can consume
+  // hardware metadata without reopening or bypassing the shared CHD backend.
+  bool ReadMetadata(u32 tag, u32 index, std::vector<u8>* data) const;
 
   bool ReadSector(u32 lba, u8* buffer);
   bool WriteSector(u32 lba, const u8* buffer);

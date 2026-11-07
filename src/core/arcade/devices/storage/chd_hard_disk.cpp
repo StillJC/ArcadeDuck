@@ -212,6 +212,36 @@ u32 CHDHardDisk::GetBlockCount() const
   return m_impl ? m_impl->block_count : 0;
 }
 
+bool CHDHardDisk::ReadMetadata(u32 tag, u32 index, std::vector<u8>* data) const
+{
+  if (!m_impl || !m_impl->chd || !data)
+    return false;
+
+  u8 probe = 0;
+  u32 metadata_length = 0;
+  const chd_error probe_error =
+    chd_get_metadata(m_impl->chd, tag, index, &probe, 1, &metadata_length, nullptr, nullptr);
+  if (probe_error != CHDERR_NONE)
+    return false;
+
+  data->resize(metadata_length);
+  if (metadata_length == 0)
+    return true;
+
+  u32 actual_length = 0;
+  const chd_error read_error =
+    chd_get_metadata(m_impl->chd, tag, index, data->data(), static_cast<u32>(data->size()),
+                     &actual_length, nullptr, nullptr);
+  if (read_error != CHDERR_NONE)
+  {
+    data->clear();
+    return false;
+  }
+
+  if (actual_length < data->size())
+    data->resize(actual_length);
+  return true;
+}
 bool CHDHardDisk::ReadSector(u32 lba, u8* buffer)
 {
   if (!m_impl || !m_impl->chd || !buffer || lba >= m_impl->block_count)

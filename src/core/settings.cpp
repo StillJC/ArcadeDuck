@@ -152,6 +152,8 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
 
 
   system_link_enabled = si.GetBoolValue("SystemLink", "Enabled", false);
+  system_link_cabinet_id =
+    static_cast<u8>(std::clamp(si.GetIntValue("SystemLink", "CabinetID", 1), 1, 4));
   system_link_server_address = si.GetStringValue("SystemLink", "ServerAddress", "127.0.0.1");
   system_link_port =
     static_cast<u16>(std::clamp(si.GetIntValue("SystemLink", "Port", 19702), 1, 65535));
@@ -481,6 +483,7 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
   if (!ignore_base)
   {
     si.SetBoolValue("SystemLink", "Enabled", system_link_enabled);
+    si.SetUIntValue("SystemLink", "CabinetID", system_link_cabinet_id);
     si.SetStringValue("SystemLink", "ServerAddress", system_link_server_address.c_str());
     si.SetUIntValue("SystemLink", "Port", system_link_port);
 

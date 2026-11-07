@@ -23,6 +23,7 @@
 #include "imgui_overlays.h"
 #include "interrupt_controller.h"
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_machine_handler.h"
 #include "core/arcade/arcade_output.h"
 #include "core/arcade/arcade_rom_loader.h"
@@ -1601,7 +1602,7 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
   {
     if (parameters.filename.empty())
     {
-      Error::SetStringView(error, "An ArcadeDuck arcade set archive is required for a public launch.");
+      Error::SetStringView(error, "An ArcadeDuck arcade set archive or G-Net CHD is required for a public launch.");
       return false;
     }
     if (!FileSystem::FileExists(parameters.filename.c_str()))
@@ -1609,9 +1610,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       Error::SetStringFmt(error, "Arcade launch path '{}' does not exist.", parameters.filename);
       return false;
     }
-    if (!Arcade::Database::IsArchivePath(parameters.filename))
+    if (!Arcade::Database::IsArchivePath(parameters.filename) &&
+        !StringUtil::EqualNoCase(Path::GetExtension(parameters.filename), "chd"))
     {
-      Error::SetStringFmt(error, "File '{}' is not a supported ArcadeDuck arcade archive.", parameters.filename);
+      Error::SetStringFmt(error, "File '{}' is not a supported ArcadeDuck arcade archive or G-Net CHD.", parameters.filename);
       return false;
     }
 
@@ -1620,10 +1622,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       parameters.filename = real_path;
 
     const Arcade::Database::GameDefinition* const archive_game =
-      Arcade::Database::IdentifyArchive(parameters.filename);
+      Arcade::Database::IdentifyGamePath(parameters.filename);
     if (!archive_game)
     {
-      Error::SetStringFmt(error, "Archive '{}' is not a recognized ArcadeDuck set.",
+      Error::SetStringFmt(error, "File '{}' is not a recognized ArcadeDuck archive or G-Net CHD.",
                           Path::GetFileName(parameters.filename));
       return false;
     }
@@ -1635,6 +1637,13 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
       if (!arcade_game)
       {
         Error::SetStringFmt(error, "Arcade game '{}' is not present in arcadedb.yaml.", parameters.arcade_game_id);
+        return false;
+      }
+
+      if (!Arcade::Database::IsArchivePath(parameters.filename) && arcade_game != archive_game)
+      {
+        Error::SetStringFmt(error, "G-Net CHD '{}' belongs to '{}', not '{}'.",
+                            Path::GetFileName(parameters.filename), archive_game->id, arcade_game->id);
         return false;
       }
 
@@ -1662,6 +1671,10 @@ bool System::BootSystem(SystemBootParameters parameters, Error* error)
                           Path::GetFileName(parameters.filename));
       return false;
     }
+  }
+  else if (const auto* game = Arcade::Database::IdentifyGNetCHD(parameters.filename))
+  {
+    arcade_game = game;
   }
 
   if (arcade_game)
@@ -2223,6 +2236,9 @@ void System::FrameDone()
     InterruptExecution();
     return;
   }
+
+  if (SonyZN::IsMawasundaActive() || NamcoSystem11::IsFamilyBowlActive())
+    ArcadeInput::Update();
 
   if (SonyZN::IsActive())
     SonyZN::ProcessFrame();
@@ -3817,7 +3833,7 @@ void System::UpdateRunningGame(const std::string_view path, CDImage* image, bool
     if (should_resolve_game_identity)
     {
       const Arcade::Database::GameDefinition* const arcade_game =
-        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyArchive(s_running_game_path);
+        arcade_game_override ? arcade_game_override : Arcade::Database::IdentifyGamePath(s_running_game_path);
       if (arcade_game)
       {
         s_running_game_serial = arcade_game->id;
@@ -4104,7 +4120,7 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
     else if (source.IsOneShot())
     {
       info.type = MAMECheatType::OneShot;
-      info.value = "Ready";
+      info.value = "Activate";
     }
     else if (source.IsOneShotParameter())
     {
@@ -4126,9 +4142,13 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
 
     if (entry.HasParameter())
     {
-      if (!info.active)
+      if (!info.active && !source.IsOneShotParameter())
       {
         info.value = "Off";
+      }
+      else if (!info.active && source.IsOneShotParameter() && source.parameter->HasItemList())
+      {
+        info.value = source.parameter->items.front().text;
       }
       else if (const char* item_text = entry.GetParameterItemText())
       {
@@ -4136,13 +4156,24 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
       }
       else
       {
+        const u64 parameter_value = !info.active && source.IsOneShotParameter() ?
+                                      source.parameter->minimum.value : entry.GetParameterValue();
         const MAMECheats::NumberFormat format = source.parameter->minimum.format;
         if (format == MAMECheats::NumberFormat::HexDollar)
-          info.value = fmt::format("${:X}", entry.GetParameterValue());
+          info.value = fmt::format("${:X}", parameter_value);
         else if (format == MAMECheats::NumberFormat::HexC)
-          info.value = fmt::format("0x{:X}", entry.GetParameterValue());
+          info.value = fmt::format("0x{:X}", parameter_value);
         else
-          info.value = fmt::format("{}", entry.GetParameterValue());
+          info.value = fmt::format("{}", parameter_value);
+      }
+    }
+
+    if (source.IsOneShot() || source.IsOneShotParameter())
+    {
+      const MAMECheats::ActivationResult activation_result = entry.GetActivationResult();
+      if (activation_result != MAMECheats::ActivationResult::None)
+      {
+        info.value = source.IsOneShot() ? "Activated" : fmt::format("{} (Activated)", info.value);
       }
     }
 
@@ -4152,7 +4183,7 @@ std::vector<System::MAMECheatInfo> System::GetMAMECheatInfo()
     }
     else
     {
-      info.can_activate = source.IsOneShot() || (source.IsOneShotParameter() && info.active);
+      info.can_activate = source.IsOneShot() || source.IsOneShotParameter();
       info.can_previous = !source.IsOneShot() && info.active;
       info.can_next =
         source.IsOnOff() ? !info.active :
