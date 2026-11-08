@@ -1093,11 +1093,15 @@ void RegTestScript::RunFrame()
     }
     else if (op == "gpustat")
     {
-      static constexpr std::array<u32, 4> hres_table = {{256, 320, 512, 640}};
+      // hres_mode is the core's horizontal mode index (GPUSTAT bits 17-18 | bit 16 << 2); the resolution is the
+      // core's own unscaled display size rather than a separate decode of the mode bits.
+      // odd_line is GPUSTAT bit 31, which reads 0 during vblank, so it is not the displayed field here.
       const u32 stat = g_gpu->ReadRegister(4);
-      INFO_LOG("REGTEST gpustat {} frame={} GPUSTAT={:08X} hres={} vres={} interlace={} field={} 24bit={} "
-               "display_disabled={} interlaced_display={} interlaced_rendering={}",
-               arg(1), System::GetFrameNumber(), stat, ((stat >> 16) & 1) ? 368 : hres_table[(stat >> 17) & 3],
+      const u32 hres_mode = ((stat >> 17) & 3) | (((stat >> 16) & 1) << 2);
+      const auto [display_width, display_height] = g_gpu->GetEffectiveDisplayResolution(false);
+      INFO_LOG("REGTEST gpustat {} frame={} GPUSTAT={:08X} hres_mode={} display={}x{} vres={} interlace={} odd_line={} "
+               "24bit={} display_disabled={} interlaced_display={} interlaced_rendering={}",
+               arg(1), System::GetFrameNumber(), stat, hres_mode, display_width, display_height,
                ((stat >> 19) & 1) ? 480 : 240, (stat >> 22) & 1, (stat >> 31) & 1, (stat >> 21) & 1,
                (stat >> 23) & 1, g_gpu->IsInterlacedDisplayEnabled(), g_gpu->IsInterlacedRenderingEnabled());
     }
