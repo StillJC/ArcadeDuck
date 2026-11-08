@@ -394,7 +394,7 @@ s32 GetTrackballButtonDelta(TrackballButtonAxis& axis, float sensitivity, bool i
   }
 
   // Reach full trackball speed after holding a direction for 1 second.
-  const float speed = 2.0f + 126.0f * std::min(axis.held_seconds / 1.0f, 1.0f);
+  const float speed = 2.0f + 125.0f * std::min(axis.held_seconds / 1.0f, 1.0f);
   axis.held_seconds = std::min(axis.held_seconds + frame_seconds, 1.0f);
   axis.remainder += static_cast<float>(direction) * speed * sensitivity * (invert ? -1.0f : 1.0f);
   const s32 delta = static_cast<s32>(axis.remainder);
@@ -977,10 +977,10 @@ void Update()
       const float frame_seconds = 1.0f / std::max(System::GetThrottleFrequency(), 1.0f);
       const s32 delta_x = state.trackball_buttons_as_axis ?
         GetTrackballButtonDelta(state.trackball_button_axes[0], state.x_sensitivity, state.invert_x, frame_seconds) :
-        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -128.0f : 128.0f));
+        static_cast<s32>(state.axis_x * state.x_sensitivity * (state.invert_x ? -127.0f : 127.0f));
       const s32 delta_y = state.trackball_buttons_as_axis ?
         GetTrackballButtonDelta(state.trackball_button_axes[1], state.y_sensitivity, state.invert_y, frame_seconds) :
-        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -128.0f : 128.0f));
+        static_cast<s32>(state.axis_y * state.y_sensitivity * (state.invert_y ? -127.0f : 127.0f));
       if (SonyZN::IsMawasundaActive())
         SonyZN::AddMawasundaHandleDelta(port, delta_x);
       else if (NamcoSystem11::IsFamilyBowlActive())
