@@ -2806,7 +2806,7 @@ void GPU::DestroyDeinterlaceTextures()
   m_current_deinterlace_buffer = 0;
 }
 
-bool GPU::Deinterlace(u32 field, u32 line_skip)
+bool GPU::Deinterlace(u32 field, u32 line_skip, u32 line_band)
 {
   GPUTexture* src = m_display_texture;
   const u32 x = m_display_texture_view_x;
@@ -2822,7 +2822,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
         return true;
 
       // Still have to extract the field.
-      if (!DeinterlaceExtractField(0, src, x, y, width, height, line_skip)) [[unlikely]]
+      if (!DeinterlaceExtractField(0, src, x, y, width, height, line_skip, line_band)) [[unlikely]]
         return false;
 
       SetDisplayTexture(m_deinterlace_buffers[0].get(), m_display_depth_buffer, 0, 0, width, height);
@@ -2864,7 +2864,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
       const u32 this_buffer = m_current_deinterlace_buffer;
       m_current_deinterlace_buffer = (m_current_deinterlace_buffer + 1u) % NUM_BLEND_BUFFERS;
       GL_INS_FMT("Current buffer: {}", this_buffer);
-      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip) ||
+      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip, line_band) ||
           !DeinterlaceSetTargetSize(width, height, false)) [[unlikely]]
       {
         ClearDisplayTexture();
@@ -2896,7 +2896,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
       const u32 this_buffer = m_current_deinterlace_buffer;
       m_current_deinterlace_buffer = (m_current_deinterlace_buffer + 1u) % DEINTERLACE_BUFFER_COUNT;
       GL_INS_FMT("Current buffer: {}", this_buffer);
-      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip) ||
+      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip, line_band) ||
           !DeinterlaceSetTargetSize(width, full_height, false)) [[unlikely]]
       {
         ClearDisplayTexture();
@@ -2927,7 +2927,8 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
   }
 }
 
-bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip)
+bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip,
+                                  u32 line_band)
 {
   if (!m_deinterlace_buffers[dst_bufidx] || m_deinterlace_buffers[dst_bufidx]->GetWidth() != width ||
       m_deinterlace_buffers[dst_bufidx]->GetHeight() != height)
@@ -2960,7 +2961,7 @@ bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y,
     g_gpu_device->SetRenderTarget(dst);
     g_gpu_device->SetPipeline(m_deinterlace_extract_pipeline.get());
     g_gpu_device->SetTextureSampler(0, src, g_gpu_device->GetNearestSampler());
-    const u32 uniforms[] = {x, y, line_skip};
+    const u32 uniforms[] = {x, y, line_skip, line_band};
     g_gpu_device->PushUniformBuffer(uniforms, sizeof(uniforms));
     g_gpu_device->SetViewportAndScissor(0, 0, width, height);
     g_gpu_device->Draw(3, 0);

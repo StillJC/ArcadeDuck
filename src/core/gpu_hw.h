@@ -132,6 +132,7 @@ private:
     float u_dst_alpha_factor;
     u32 u_interlaced_displayed_field;
     u32 u_set_mask_while_drawing;
+    u32 u_interlaced_line_band;
   };
 
   struct RendererStats
@@ -173,6 +174,7 @@ private:
   void DrawBatchVertices(BatchRenderMode render_mode, u32 num_indices, u32 base_index, u32 base_vertex);
 
   u32 CalculateResolutionScale() const;
+  u32 GetInterlacedLineBand() const;
   GPUDownsampleMode GetDownsampleMode(u32 resolution_scale) const;
 
   bool IsUsingMultisampling() const;

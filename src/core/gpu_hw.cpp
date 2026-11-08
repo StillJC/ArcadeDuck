@@ -296,6 +296,7 @@ void GPU_HW::Reset(bool clear_vram)
 
   m_batch = {};
   m_batch_ubo_data = {};
+  m_batch_ubo_data.u_interlaced_line_band = 1;
   m_batch_ubo_dirty = true;
   m_current_depth = 1;
   SetClampedDrawingArea();
@@ -685,6 +686,15 @@ u32 GPU_HW::CalculateResolutionScale() const
   }
 
   return scale;
+}
+
+u32 GPU_HW::GetInterlacedLineBand() const
+{
+  // Fields alternate per VRAM line, so at upscaled resolutions a field covers whole bands of rows. Weave and Adaptive
+  // interleave fields per internal row, so they keep single-row fields.
+  const DisplayDeinterlacingMode mode = g_settings.display_deinterlacing_mode;
+  return (mode == DisplayDeinterlacingMode::Disabled || mode == DisplayDeinterlacingMode::Blend) ? m_resolution_scale :
+                                                                                                    1u;
 }
 
 void GPU_HW::UpdateResolutionScale()
@@ -3235,6 +3245,7 @@ void GPU_HW::FillVRAM(u32 x, u32 y, u32 width, u32 height, u32 color)
     u32 u_end_y;
     std::array<float, 4> u_fill_color;
     u32 u_interlaced_displayed_field;
+    u32 u_interlaced_line_band;
   };
   VRAMFillUBOData uniforms;
   uniforms.u_dst_x = (x % VRAM_WIDTH) * m_resolution_scale;
@@ -3245,6 +3256,7 @@ void GPU_HW::FillVRAM(u32 x, u32 y, u32 width, u32 height, u32 color)
   uniforms.u_fill_color =
     GPUDevice::RGBA8ToFloat(m_true_color ? color : VRAMRGBA5551ToRGBA8888(VRAMRGBA8888ToRGBA5551(color)));
   uniforms.u_interlaced_displayed_field = GetActiveLineLSB();
+  uniforms.u_interlaced_line_band = GetInterlacedLineBand();
   g_gpu_device->PushUniformBuffer(&uniforms, sizeof(uniforms));
   g_gpu_device->Draw(3, 0);
 
@@ -3779,8 +3791,11 @@ void GPU_HW::DispatchRenderCommand()
     if (m_batch.interlacing)
     {
       const u32 displayed_field = GetActiveLineLSB();
-      m_batch_ubo_dirty |= (m_batch_ubo_data.u_interlaced_displayed_field != displayed_field);
+      const u32 line_band = GetInterlacedLineBand();
+      m_batch_ubo_dirty |= (m_batch_ubo_data.u_interlaced_displayed_field != displayed_field ||
+                            m_batch_ubo_data.u_interlaced_line_band != line_band);
       m_batch_ubo_data.u_interlaced_displayed_field = displayed_field;
+      m_batch_ubo_data.u_interlaced_line_band = line_band;
     }
 
     // update state
@@ -3918,9 +3933,10 @@ void GPU_HW::UpdateDisplay()
   const bool interlaced = IsInterlacedDisplayEnabled();
   const u32 interlaced_field = GetInterlacedDisplayField();
   const u32 resolution_scale = m_GPUSTAT.display_area_color_depth_24 ? 1 : m_resolution_scale;
+  const u32 line_band = m_GPUSTAT.display_area_color_depth_24 ? 1 : GetInterlacedLineBand();
   const u32 scaled_vram_offset_x = m_crtc_state.display_vram_left * resolution_scale;
   const u32 scaled_vram_offset_y = (m_crtc_state.display_vram_top * resolution_scale) +
-                                   ((interlaced && m_GPUSTAT.vertical_resolution) ? interlaced_field : 0);
+                                   ((interlaced && m_GPUSTAT.vertical_resolution) ? (interlaced_field * line_band) : 0);
   const u32 scaled_display_width = m_crtc_state.display_vram_width * resolution_scale;
   const u32 scaled_display_height = m_crtc_state.display_vram_height * resolution_scale;
   const u32 scaled_vram_address_height = g_vram_address_height * resolution_scale;
@@ -3952,7 +3968,7 @@ void GPU_HW::UpdateDisplay()
     {
       GL_INS("Deinterlace fast path");
       drew_anything = true;
-      Deinterlace(interlaced_field, line_skip);
+      Deinterlace(interlaced_field, line_skip, line_band);
     }
     else
     {
@@ -4016,9 +4032,10 @@ void GPU_HW::UpdateDisplay()
       u32 u_vram_size_y;
       u32 u_skip_x;
       u32 u_line_skip;
+      u32 u_line_band;
     };
     const VRAMExtractUBOData uniforms = {reinterpret_start_x, scaled_vram_offset_y, VRAM_WIDTH * m_resolution_scale,
-                                     g_vram_address_height * m_resolution_scale, skip_x, line_skip};
+                                     g_vram_address_height * m_resolution_scale, skip_x, line_skip, line_band};
     g_gpu_device->PushUniformBuffer(&uniforms, sizeof(uniforms));
 
     g_gpu_device->SetViewportAndScissor(0, 0, scaled_display_width, read_height);
@@ -4041,13 +4058,13 @@ void GPU_HW::UpdateDisplay()
       if (ApplyChromaSmoothing())
       {
         if (interlaced)
-          Deinterlace(interlaced_field, 0);
+          Deinterlace(interlaced_field, 0, line_band);
       }
     }
     else
     {
       if (interlaced)
-        Deinterlace(interlaced_field, 0);
+        Deinterlace(interlaced_field, 0, line_band);
     }
   }
 

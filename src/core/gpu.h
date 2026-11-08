@@ -672,8 +672,10 @@ protected:
 
   bool RenderDisplay(GPUTexture* target, const GSVector4i display_rect, const GSVector4i draw_rect, bool postfx);
 
-  bool Deinterlace(u32 field, u32 line_skip);
-  bool DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip);
+  /// line_band is the height of one VRAM line in display texture rows (the resolution scale for upscaled VRAM).
+  bool Deinterlace(u32 field, u32 line_skip, u32 line_band = 1);
+  bool DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip,
+                               u32 line_band);
   bool DeinterlaceSetTargetSize(u32 width, u32 height, bool preserve);
   void DestroyDeinterlaceTextures();
   bool ApplyChromaSmoothing();

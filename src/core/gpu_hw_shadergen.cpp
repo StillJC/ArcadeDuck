@@ -59,7 +59,7 @@ void GPU_HW_ShaderGen::WriteBatchUniformBuffer(std::stringstream& ss)
   DeclareUniformBuffer(ss,
                        {"uint2 u_texture_window_and", "uint2 u_texture_window_or", "float u_src_alpha_factor",
                         "float u_dst_alpha_factor", "uint u_interlaced_displayed_field",
-                        "bool u_set_mask_while_drawing"},
+                        "bool u_set_mask_while_drawing", "uint u_interlaced_line_band"},
                        false);
 }
 
@@ -943,7 +943,9 @@ float3 ApplyDebanding(float2 frag_coord)
   float oalpha;
 
   #if INTERLACING
-    if ((fragpos.y & 1u) == u_interlaced_displayed_field)
+    // The line band is either 1 or RESOLUTION_SCALE; dividing by the constant avoids a per-pixel integer divide.
+    uint vram_line = (u_interlaced_line_band == 1u) ? fragpos.y : (fragpos.y / RESOLUTION_SCALE);
+    if ((vram_line & 1u) == u_interlaced_displayed_field)
       discard;
   #endif
 
@@ -1174,7 +1176,8 @@ std::string GPU_HW_ShaderGen::GenerateVRAMExtractFragmentShader(bool color_24bit
   DefineMacro(ss, "MULTISAMPLED", UsingMSAA());
 
   WriteCommonFunctions(ss);
-  DeclareUniformBuffer(ss, {"uint2 u_vram_offset", "uint2 u_vram_size", "uint u_skip_x", "uint u_line_skip"}, true);
+  DeclareUniformBuffer(
+    ss, {"uint2 u_vram_offset", "uint2 u_vram_size", "uint u_skip_x", "uint u_line_skip", "uint u_line_band"}, true);
   DeclareTexture(ss, "samp0", 0, UsingMSAA());
   if (depth_buffer)
     DeclareTexture(ss, "samp1", 1, UsingMSAA());
@@ -1233,7 +1236,9 @@ float3 SampleVRAM24(uint2 icoords)
   DeclareFragmentEntryPoint(ss, 0, 1, {}, true, depth_buffer ? 2 : 1);
   ss << R"(
 {
-  uint2 icoords = uint2(uint(v_pos.x) + u_skip_x, uint(v_pos.y) << u_line_skip);
+  uint row = uint(v_pos.y);
+  uint2 icoords = uint2(uint(v_pos.x) + u_skip_x,
+                        (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band));
   int2 wrapped_coords = int2((icoords + u_vram_offset) % u_vram_size);
 
   #if COLOR_24BIT
@@ -1559,7 +1564,10 @@ std::string GPU_HW_ShaderGen::GenerateVRAMFillFragmentShader(bool wrapped, bool 
   DefineMacro(ss, "INTERLACED", interlaced);
 
   DeclareUniformBuffer(
-    ss, {"uint2 u_dst_coords", "uint2 u_end_coords", "float4 u_fill_color", "uint u_interlaced_displayed_field"}, true);
+    ss,
+    {"uint2 u_dst_coords", "uint2 u_end_coords", "float4 u_fill_color", "uint u_interlaced_displayed_field",
+     "uint u_interlaced_line_band"},
+    true);
 
   DeclareFragmentEntryPoint(ss, 0, 1, {}, interlaced || wrapped, 1, false, m_write_mask_as_depth, false, false, false);
   ss << R"(
@@ -1569,7 +1577,8 @@ std::string GPU_HW_ShaderGen::GenerateVRAMFillFragmentShader(bool wrapped, bool 
 #endif
 
 #if INTERLACED
-  if ((dst_coords.y & 1u) == u_interlaced_displayed_field)
+  uint vram_line = (u_interlaced_line_band == 1u) ? dst_coords.y : (dst_coords.y / RESOLUTION_SCALE);
+  if ((vram_line & 1u) == u_interlaced_displayed_field)
     discard;
 #endif
 

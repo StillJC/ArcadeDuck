@@ -946,13 +946,16 @@ std::string GPUShaderGen::GenerateInterleavedFieldExtractFragmentShader()
 {
   std::stringstream ss;
   WriteHeader(ss);
-  DeclareUniformBuffer(ss, {"uint2 u_src_offset", "uint u_line_skip"}, true);
+  DeclareUniformBuffer(ss, {"uint2 u_src_offset", "uint u_line_skip", "uint u_line_band"}, true);
   DeclareTexture(ss, "samp0", 0, false);
 
   DeclareFragmentEntryPoint(ss, 0, 1, {}, true);
   ss << R"(
 {
-  uint2 tcoord = u_src_offset + uint2(uint(v_pos.x), uint(v_pos.y) << u_line_skip);
+  // Fields are u_line_band rows tall: one VRAM line at the internal resolution.
+  uint row = uint(v_pos.y);
+  uint src_row = (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band);
+  uint2 tcoord = u_src_offset + uint2(uint(v_pos.x), src_row);
   o_col0 = LOAD_TEXTURE(samp0, int2(tcoord), 0);
 }
 )";
