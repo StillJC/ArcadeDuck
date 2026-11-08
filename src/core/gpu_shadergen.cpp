@@ -952,9 +952,13 @@ std::string GPUShaderGen::GenerateInterleavedFieldExtractFragmentShader()
   DeclareFragmentEntryPoint(ss, 0, 1, {}, true);
   ss << R"(
 {
-  // Fields are u_line_band rows tall: one VRAM line at the internal resolution.
   uint row = uint(v_pos.y);
-  uint src_row = (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band);
+  uint src_row = row << u_line_skip;
+
+  // Skipped fields are u_line_band rows tall: one VRAM line at the internal resolution.
+  IF_BRANCH (u_line_skip != 0u && u_line_band != 1u)
+    src_row = (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band);
+
   uint2 tcoord = u_src_offset + uint2(uint(v_pos.x), src_row);
   o_col0 = LOAD_TEXTURE(samp0, int2(tcoord), 0);
 }

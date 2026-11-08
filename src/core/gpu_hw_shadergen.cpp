@@ -1237,8 +1237,13 @@ float3 SampleVRAM24(uint2 icoords)
   ss << R"(
 {
   uint row = uint(v_pos.y);
-  uint2 icoords = uint2(uint(v_pos.x) + u_skip_x,
-                        (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band));
+  uint src_row = row << u_line_skip;
+
+  // Skipped fields cover whole VRAM lines. The line band is either 1 or RESOLUTION_SCALE.
+  IF_BRANCH (u_line_skip != 0u && u_line_band != 1u)
+    src_row = (((row / RESOLUTION_SCALE) << u_line_skip) * RESOLUTION_SCALE) + (row % RESOLUTION_SCALE);
+
+  uint2 icoords = uint2(uint(v_pos.x) + u_skip_x, src_row);
   int2 wrapped_coords = int2((icoords + u_vram_offset) % u_vram_size);
 
   #if COLOR_24BIT
