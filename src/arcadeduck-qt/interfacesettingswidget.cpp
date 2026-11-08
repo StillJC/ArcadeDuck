@@ -59,6 +59,7 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
                                                "PauseOnControllerDisconnection", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.pauseOnStart, "Main", "StartPaused", false);
   SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.confirmPowerOff, "Main", "ConfirmPowerOff", true);
+  SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.saveStateOnExit, "Main", "SaveStateOnExit", false);
 
   if (!m_dialog->isPerGameSettings())
   {
@@ -101,6 +102,10 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsWindow* dialog, QWidget
     dialog->registerWidgetHelp(m_ui.startFullscreen, tr("Start Fullscreen"), tr("Unchecked"),
                                tr("Automatically switches to fullscreen mode when a game is started."));
   }
+  dialog->registerWidgetHelp(
+    m_ui.saveStateOnExit, tr("Save State For Resume"), tr("Unchecked"),
+    tr("Saves a resume state when shutting down a supported game. Also sets the initial checkbox state in the "
+       "shutdown confirmation dialog."));
   dialog->registerWidgetHelp(m_ui.hideMouseCursor, tr("Hide Cursor In Fullscreen"), tr("Checked"),
                              tr("Hides the mouse pointer/cursor when the emulator is in fullscreen mode."));
   dialog->registerWidgetHelp(

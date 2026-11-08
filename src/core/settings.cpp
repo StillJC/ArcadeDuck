@@ -136,7 +136,7 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   start_fullscreen = si.GetBoolValue("Main", "StartFullscreen", false);
   pause_on_focus_loss = si.GetBoolValue("Main", "PauseOnFocusLoss", false);
   pause_on_controller_disconnection = si.GetBoolValue("Main", "PauseOnControllerDisconnection", false);
-  save_state_on_exit = si.GetBoolValue("Main", "SaveStateOnExit", true);
+  save_state_on_exit = si.GetBoolValue("Main", "SaveStateOnExit", false);
   create_save_state_backups = si.GetBoolValue("Main", "CreateSaveStateBackups", DEFAULT_SAVE_STATE_BACKUPS);
   confim_power_off = si.GetBoolValue("Main", "ConfirmPowerOff", true);
   load_devices_from_save_states = si.GetBoolValue("Main", "LoadDevicesFromSaveStates", false);
