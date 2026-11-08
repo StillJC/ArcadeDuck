@@ -870,14 +870,13 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 
       case UINT8_C(0x30): // subtract from coin counter
       {
-        // Ver1.03 (0B9C) numbers the slots from 0, and on a bad slot reports
-        // 02 without consuming the amount bytes.
+        // JVS coin slots are numbered from 1.
         if (index >= commands_end)
           return result;
 
-        const u8 slot = packet[index++];
+        const u8 slot_number = packet[index++];
         produce_response = true;
-        if (slot >= m_coin_counter.size())
+        if (slot_number == 0 || slot_number > m_coin_counter.size())
         {
           AppendResponseByte(response, response_length, UINT8_C(0x02));
           break;
@@ -886,6 +885,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
         if ((index + 2) > commands_end)
           return result;
 
+        const u32 slot = slot_number - 1u;
         const u16 amount = static_cast<u16>((static_cast<u16>(packet[index]) << 8) | packet[index + 1]);
         index += 2;
         AppendResponseByte(response, response_length, UINT8_C(0x01));
