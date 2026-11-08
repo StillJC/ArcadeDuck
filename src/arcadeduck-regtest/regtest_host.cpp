@@ -1091,6 +1091,33 @@ void RegTestScript::RunFrame()
                System::GetFrameNumber(), System::GetInternalFrameNumber(), System::GetGlobalTickCounter(),
                TimingEvents::GetEventRunTickCounter(), TimingEvents::IsRunningEvents());
     }
+    else if (op == "gpustat")
+    {
+      static constexpr std::array<u32, 4> hres_table = {{256, 320, 512, 640}};
+      const u32 stat = g_gpu->ReadRegister(4);
+      INFO_LOG("REGTEST gpustat {} frame={} GPUSTAT={:08X} hres={} vres={} interlace={} field={} 24bit={} "
+               "display_disabled={} interlaced_display={} interlaced_rendering={}",
+               arg(1), System::GetFrameNumber(), stat, ((stat >> 16) & 1) ? 368 : hres_table[(stat >> 17) & 3],
+               ((stat >> 19) & 1) ? 480 : 240, (stat >> 22) & 1, (stat >> 31) & 1, (stat >> 21) & 1,
+               (stat >> 23) & 1, g_gpu->IsInterlacedDisplayEnabled(), g_gpu->IsInterlacedRenderingEnabled());
+    }
+    else if (op == "timer")
+    {
+      // Host time and emulated frames since the previous timer mark, for timing one segment of a run.
+      static Common::Timer::Value s_last_time = 0;
+      static u32 s_last_frame = 0;
+      const Common::Timer::Value now = Common::Timer::GetCurrentValue();
+      const u32 frame = System::GetFrameNumber();
+      if (s_last_time != 0 && frame > s_last_frame)
+      {
+        const double ms = Common::Timer::ConvertValueToMilliseconds(now - s_last_time);
+        const u32 frames = frame - s_last_frame;
+        INFO_LOG("REGTEST timer {} frames={} ms={:.2f} avg_ms={:.3f} fps={:.2f}", arg(1), frames, ms,
+                 ms / static_cast<double>(frames), static_cast<double>(frames) * 1000.0 / ms);
+      }
+      s_last_time = now;
+      s_last_frame = frame;
+    }
     else if (op == "nvram-dump")
     {
       // Live NVRAM contents written to the cache folder as <tag>.<component>.bin.
