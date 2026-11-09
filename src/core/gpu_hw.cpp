@@ -690,11 +690,8 @@ u32 GPU_HW::CalculateResolutionScale() const
 
 u32 GPU_HW::GetInterlacedLineBand() const
 {
-  // Fields alternate per VRAM line, so at upscaled resolutions a field covers whole bands of rows. Weave and Adaptive
-  // interleave fields per internal row, so they keep single-row fields.
-  const DisplayDeinterlacingMode mode = g_settings.display_deinterlacing_mode;
-  return (mode == DisplayDeinterlacingMode::Disabled || mode == DisplayDeinterlacingMode::Blend) ? m_resolution_scale :
-                                                                                                    1u;
+  // Blend combines both fields; other modes retain per-row field selection.
+  return (g_settings.display_deinterlacing_mode == DisplayDeinterlacingMode::Blend) ? m_resolution_scale : 1u;
 }
 
 void GPU_HW::UpdateResolutionScale()
