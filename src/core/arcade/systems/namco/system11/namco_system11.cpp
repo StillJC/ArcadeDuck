@@ -189,15 +189,6 @@ struct RuntimeState
 std::optional<RuntimeState> s_runtime;
 std::mutex s_family_bowl_trackball_mutex;
 
-bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
-                   Error* error)
-{
-  if (const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path))
-    return Arcade::LoadGameROM(archive_path, *game, rom, data, error);
-
-  return Arcade::LoadROMFromArchive(archive_path, rom, data, error);
-}
-
 bool PlaceROM(const Arcade::Database::ROMDefinition& rom, std::span<const u8> source, std::span<u8> destination,
               Error* error)
 {
@@ -409,7 +400,7 @@ std::optional<LoadedContent> LoadSystem11Content(const char* archive_path,
     }
 
     std::vector<u8> member_data;
-    if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+    if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
         !PlaceROM(rom, member_data, destination, error))
     {
       return std::nullopt;
@@ -446,7 +437,7 @@ std::optional<LoadedContent> LoadSystem11Content(const char* archive_path,
     return std::nullopt;
   }
 
-  if (!LoadROMMember(firmware_archive_path, *c76_internal_rom, &content.c76_internal, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *c76_internal_rom, &content.c76_internal, error))
     return std::nullopt;
 
   VERBOSE_LOG(

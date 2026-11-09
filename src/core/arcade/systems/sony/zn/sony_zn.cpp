@@ -1226,15 +1226,6 @@ const Arcade::Database::ROMDefinition* FindFirmwareROM(const Arcade::Database::F
   return nullptr;
 }
 
-bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
-                   Error* error)
-{
-  if (const Arcade::Database::GameDefinition* const game = Arcade::Database::IdentifyArchive(archive_path))
-    return Arcade::LoadGameROM(archive_path, *game, rom, data, error);
-
-  return Arcade::LoadROMFromArchive(archive_path, rom, data, error);
-}
-
 bool PlaceSimpleROM(const Arcade::Database::ROMDefinition& rom, std::span<const u8> source,
                     std::span<u8> destination, Error* error)
 {
@@ -3306,7 +3297,7 @@ std::optional<BIOS::Image> LoadFirmwareBIOS(const char* firmware_archive_path,
   }
 
   std::vector<u8> data;
-  if (!LoadROMMember(firmware_archive_path, *bios_rom, &data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *bios_rom, &data, error))
     return std::nullopt;
 
   BIOS::Image image{};
@@ -3372,7 +3363,7 @@ std::optional<CapcomZNContent> LoadCapcomZNContent(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3388,7 +3379,7 @@ std::optional<CapcomZNContent> LoadCapcomZNContent(const char* archive_path,
         rom.region == "qsound")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
 
       if (rom.region == "countryrom")
@@ -3425,7 +3416,7 @@ std::optional<CapcomZNContent> LoadCapcomZNContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
 
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
@@ -3497,7 +3488,7 @@ std::optional<VideoSystemZN1Content> LoadVideoSystemZN1Content(
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3509,7 +3500,7 @@ std::optional<VideoSystemZN1Content> LoadVideoSystemZN1Content(
     if (rom.region == "fixedroms" || rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
 
       if (rom.region == "fixedroms")
@@ -3535,7 +3526,7 @@ std::optional<VideoSystemZN1Content> LoadVideoSystemZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -3591,7 +3582,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3604,7 +3595,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceAtlusROM(rom, member_data, std::span<u8>(content.banked_rom), error))
       {
         return std::nullopt;
@@ -3614,7 +3605,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
     else if (rom.region == "audiocpu")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceAtlusROM(rom, member_data, std::span<u8>(content.audio_cpu_rom), error))
       {
         return std::nullopt;
@@ -3624,7 +3615,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
     else if (rom.region == "ymz280b")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceSimpleROM(rom, member_data, std::span<u8>(content.ymz280b_rom), error))
       {
         return std::nullopt;
@@ -3640,7 +3631,7 @@ std::optional<AtlusZN1Content> LoadAtlusZN1Content(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -3747,7 +3738,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3762,7 +3753,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceEightingROM(rom, member_data, std::span<u8>(content.banked_rom), error))
       {
         return std::nullopt;
@@ -3774,7 +3765,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
     else if (rom.region == "audiocpu")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceEightingROM(rom, member_data, std::span<u8>(content.audio_cpu_rom), error))
       {
         return std::nullopt;
@@ -3784,7 +3775,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
     else if (rom.region == "ymf")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceSimpleROM(rom, member_data, std::span<u8>(content.ymf271_rom), error))
       {
         return std::nullopt;
@@ -3800,7 +3791,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
         return std::nullopt;
       }
 
-      if (!LoadROMMember(archive_path, rom, &content.at28_initial, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &content.at28_initial, error))
         return std::nullopt;
       at28_count++;
     }
@@ -3814,7 +3805,7 @@ std::optional<EightingRaizingZN1Content> LoadEightingRaizingZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -3880,7 +3871,7 @@ std::optional<BustAMove2ZN1Content> LoadBustAMove2ZN1Content(
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3891,7 +3882,7 @@ std::optional<BustAMove2ZN1Content> LoadBustAMove2ZN1Content(
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
           !PlaceSimpleROM(rom, member_data, std::span<u8>(content.banked_rom), error))
       {
         return std::nullopt;
@@ -3907,7 +3898,7 @@ std::optional<BustAMove2ZN1Content> LoadBustAMove2ZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -3963,7 +3954,7 @@ std::optional<TimeWarnerZN1Content> LoadTimeWarnerZN1Content(
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -3981,7 +3972,7 @@ std::optional<TimeWarnerZN1Content> LoadTimeWarnerZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
 
       const size_t offset = static_cast<size_t>(rom.offset);
@@ -4011,7 +4002,7 @@ std::optional<TimeWarnerZN1Content> LoadTimeWarnerZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       content.at28_initial.assign(AT28_SIZE, UINT8_C(0xff));
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.at28_initial), error))
@@ -4028,7 +4019,7 @@ std::optional<TimeWarnerZN1Content> LoadTimeWarnerZN1Content(
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -4102,7 +4093,7 @@ std::optional<AcclaimZN1Content> LoadAcclaimZN1Content(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -4114,7 +4105,7 @@ std::optional<AcclaimZN1Content> LoadAcclaimZN1Content(const char* archive_path,
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceTaitoBankedROM(rom, member_data, std::span<u8>(content.banked_rom), error))
         return std::nullopt;
@@ -4129,7 +4120,7 @@ std::optional<AcclaimZN1Content> LoadAcclaimZN1Content(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.rax_rom), error))
         return std::nullopt;
@@ -4144,7 +4135,7 @@ std::optional<AcclaimZN1Content> LoadAcclaimZN1Content(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -4215,7 +4206,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -4228,7 +4219,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceTaitoBankedROM(rom, member_data, std::span<u8>(content.banked_rom), error))
         return std::nullopt;
@@ -4237,7 +4228,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
     else if (rom.region == "audiocpu")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.audio_cpu_rom), error))
         return std::nullopt;
@@ -4246,7 +4237,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
     else if (rom.region == "ym2610b:adpcma")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.ym2610_adpcma_rom), error))
         return std::nullopt;
@@ -4261,7 +4252,7 @@ std::optional<TaitoFX1AContent> LoadTaitoFX1AContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -4323,7 +4314,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -4336,7 +4327,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceTaitoBankedROM(rom, member_data, std::span<u8>(content.banked_rom), error))
         return std::nullopt;
@@ -4345,7 +4336,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
     else if (rom.region == "taito_zoom:mn10200")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.mn10200_rom), error))
         return std::nullopt;
@@ -4354,7 +4345,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
     else if (rom.region == "taito_zoom:zsg2")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.zsg2_rom), error))
         return std::nullopt;
@@ -4369,7 +4360,7 @@ std::optional<TaitoFX1BContent> LoadTaitoFX1BContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -4433,7 +4424,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
   }
 
   std::vector<u8> key_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &key_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &key_data, error))
     return std::nullopt;
   std::copy(key_data.begin(), key_data.end(), content.motherboard_cat702_key.begin());
 
@@ -4449,7 +4440,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
     if (rom.region == "bankedroms")
     {
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceTaitoBankedROM(rom, member_data, std::span<u8>(content.banked_rom), error))
         return std::nullopt;
@@ -4464,7 +4455,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.audio_cpu_rom), error))
         return std::nullopt;
@@ -4479,7 +4470,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.ymz280b_rom), error))
         return std::nullopt;
@@ -4494,7 +4485,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       if (!PlaceSimpleROM(rom, member_data, std::span<u8>(content.link_cpu_rom), error))
         return std::nullopt;
@@ -4512,7 +4503,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       bootleg_prot_count++;
     }
@@ -4526,7 +4517,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
 
       content.at28_initial.assign(AT28_SIZE, UINT8_C(0xff));
@@ -4543,7 +4534,7 @@ std::optional<TecmoTPSContent> LoadTecmoTPSContent(const char* archive_path,
       }
 
       std::vector<u8> member_data;
-      if (!LoadROMMember(archive_path, rom, &member_data, error))
+      if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error))
         return std::nullopt;
       std::copy(member_data.begin(), member_data.end(), content.game_cat702_key.begin());
       game_key_count++;
@@ -4635,11 +4626,11 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
   }
 
   std::vector<u8> member_data;
-  if (!LoadROMMember(firmware_archive_path, *motherboard_key_rom, &member_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *motherboard_key_rom, &member_data, error))
     return std::nullopt;
   std::copy(member_data.begin(), member_data.end(), content.motherboard_cat702_key.begin());
 
-  if (!LoadROMMember(firmware_archive_path, *u30_rom, &content.u30_flash, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *u30_rom, &content.u30_flash, error))
     return std::nullopt;
 
   if (zn1_motherboard)
@@ -4647,13 +4638,13 @@ std::optional<TaitoGNetContent> LoadTaitoGNetContent(const char* archive_path,
     // COH-1002T leaves the F35 service EPROM socket unpopulated.
     content.f35_eprom.assign(GNET_F35_EPROM_SIZE, UINT8_C(0xff));
   }
-  else if (!LoadROMMember(firmware_archive_path, *f35_rom, &content.f35_eprom, error))
+  else if (!Arcade::LoadROMFromArchive(firmware_archive_path, *f35_rom, &content.f35_eprom, error))
   {
     return std::nullopt;
   }
 
   member_data.clear();
-  if (!LoadROMMember(firmware_archive_path, *fc_key_rom, &member_data, error))
+  if (!Arcade::LoadROMFromArchive(firmware_archive_path, *fc_key_rom, &member_data, error))
     return std::nullopt;
   std::copy(member_data.begin(), member_data.end(), content.fc_cat702_key.begin());
 
