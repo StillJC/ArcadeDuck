@@ -19,6 +19,7 @@
 class ByteStream;
 class CDImage;
 class Error;
+class INISettingsInterface;
 class SmallStringBase;
 class StateWrapper;
 class SocketMultiplexer;
@@ -180,6 +181,7 @@ DiscRegion GetRegionForImage(CDImage* cdi);
 
 /// Returns the path for the game settings ini file for the specified serial.
 std::string GetGameSettingsPath(std::string_view game_serial);
+std::unique_ptr<INISettingsInterface> LoadGameSettings(std::string_view game_serial, Error* error = nullptr);
 
 /// Returns the path for the input profile ini file with the specified name (may not exist).
 std::string GetInputProfilePath(std::string_view name);

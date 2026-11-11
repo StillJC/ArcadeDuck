@@ -711,6 +711,191 @@ void ResyncWindowedPointer(float x, float y)
 
   InputManager::SetPointerAbsolutePosition(physical_device, x, y);
 }
+void CopyControllerConfiguration(
+  SettingsInterface* dest_si, const SettingsInterface& src_si, const Arcade::ArcadeGameControlProfile* target_profile)
+{
+  static constexpr std::array<const char*, 44> binding_keys = {{
+    "Up", "Down", "Left", "Right", "Button1", "Button2", "Button3", "Button4", "Button5", "Button6",
+    "Coin", "Start", "TrackballX", "TrackballY", "TrackballLeft", "TrackballRight",
+    "TrackballUp", "TrackballDown", "GunX", "GunY", "Trigger", "Reload", "GSRIncrease",
+    "GSRDecrease", "Steering", "SteeringLeft", "SteeringRight", "Accelerator", "Brake", "Clutch", "GearUp",
+    "GearDown", "Handbrake",
+    "View", "Horn", "MusicNext", "MusicPrevious", "Select", "SelectUp", "SelectDown", "SelectLeft",
+    "SelectRight", "Enter", "Sensor"}};
+  static constexpr std::array<const char*, 26> value_keys = {{
+    "Type", "Layout", "InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity",
+    "YSensitivity", "InvertX", "InvertY", "OffscreenReload", "CrosshairEnabled", "CrosshairImagePath", "CrosshairSize",
+    "CrosshairScale", "SindenBorder", "SindenBorderWidth", "UseButtonsAsAxis", "SteeringDeadzone",
+    "SteeringSensitivity", "AcceleratorDeadzone", "AcceleratorSensitivity", "BrakeDeadzone", "BrakeSensitivity",
+    "ClutchDeadzone", "ClutchSensitivity"}};
+
+  for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
+  {
+    const std::string section = std::string("ArcadeControllerPort") + std::to_string(port + 1);
+    for (const char* key : binding_keys)
+      dest_si->DeleteValue(section.c_str(), key);
+    for (const char* key : value_keys)
+      dest_si->DeleteValue(section.c_str(), key);
+
+    Arcade::ArcadeControllerType type = Arcade::ArcadeControllerType::None;
+    const Arcade::ArcadeControllerTypeInfo* type_info = nullptr;
+    const Arcade::ArcadePortProfile* const target_port = target_profile ? &target_profile->ports[port] : nullptr;
+    if (target_port)
+    {
+      type = target_port->controller_type;
+      type_info = Arcade::GetArcadeControllerTypeInfo(type);
+    }
+    else
+    {
+      const std::string type_name = src_si.GetStringValue(section.c_str(), "Type", "none");
+      for (const Arcade::ArcadeControllerTypeInfo& info : Arcade::GetArcadeControllerTypeInfos())
+      {
+        if (info.name == type_name)
+        {
+          type = info.type;
+          type_info = &info;
+          break;
+        }
+      }
+    }
+
+    if (type == Arcade::ArcadeControllerType::None || !type_info)
+    {
+      dest_si->SetStringValue(section.c_str(), "Type", "none");
+      continue;
+    }
+
+    const auto copy_binding = [&src_si, dest_si, &section](const char* key) {
+      dest_si->CopyStringListValue(src_si, section.c_str(), key);
+    };
+    const auto copy_value = [&src_si, dest_si, &section](const char* key) {
+      dest_si->CopyStringValue(src_si, section.c_str(), key);
+    };
+    const auto copy_layout_bindings = [&]() {
+      const Arcade::ArcadeControlLayoutInfo* layout_info =
+        target_port ? Arcade::GetArcadeControlLayoutInfo(target_port->game_layout_key) :
+                      Arcade::GetArcadeControlLayoutInfo(src_si.GetStringValue(section.c_str(), "Layout", ""));
+      if (!layout_info || layout_info->controller_type != type)
+        return false;
+
+      const bool uses_native_pointer =
+        src_si.GetStringValue(section.c_str(), "InputMode", "") == "NativeRawInputDevice";
+      for (const Arcade::ArcadeControlLayoutBindingInfo& binding : layout_info->bindings)
+      {
+        const bool native_pointer_axis =
+          uses_native_pointer &&
+          ((type == Arcade::ArcadeControllerType::Trackball &&
+            (binding.binding_key == "TrackballX" || binding.binding_key == "TrackballY")) ||
+           (type == Arcade::ArcadeControllerType::Lightgun &&
+            (binding.binding_key == "GunX" || binding.binding_key == "GunY")));
+        if (!native_pointer_axis)
+          copy_binding(binding.binding_key.data());
+      }
+      return true;
+    };
+
+    dest_si->SetStringValue(section.c_str(), "Type", type_info->name.data());
+    if (target_port)
+      dest_si->SetStringValue(section.c_str(), "Layout", target_port->game_layout_key.data());
+    else
+      copy_value("Layout");
+    copy_binding("Coin");
+    copy_binding("Start");
+
+    switch (type)
+    {
+      case Arcade::ArcadeControllerType::Arcade:
+      case Arcade::ArcadeControllerType::Mahjong:
+        copy_layout_bindings();
+        break;
+
+      case Arcade::ArcadeControllerType::Driving:
+        copy_layout_bindings();
+        for (const char* key : {"UseButtonsAsAxis", "SteeringDeadzone", "SteeringSensitivity",
+                                "AcceleratorDeadzone", "AcceleratorSensitivity", "BrakeDeadzone",
+                                "BrakeSensitivity", "ClutchDeadzone", "ClutchSensitivity"})
+        {
+          copy_value(key);
+        }
+        if (src_si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false))
+        {
+          copy_binding("SteeringLeft");
+          copy_binding("SteeringRight");
+        }
+        break;
+
+      case Arcade::ArcadeControllerType::Trackball:
+      {
+        if (!copy_layout_bindings())
+        {
+          for (const char* key : {"Button1", "Button2"})
+            copy_binding(key);
+        }
+
+        for (const char* key : {"InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity",
+                                "YSensitivity", "InvertX", "InvertY"})
+        {
+          copy_value(key);
+        }
+
+        copy_value("UseButtonsAsAxis");
+        if (src_si.GetStringValue(section.c_str(), "InputMode", "") != "NativeRawInputDevice")
+        {
+          copy_binding("TrackballX");
+          copy_binding("TrackballY");
+          if (src_si.GetBoolValue(section.c_str(), "UseButtonsAsAxis", false))
+          {
+            for (const char* key : {"TrackballLeft", "TrackballRight", "TrackballUp", "TrackballDown"})
+              copy_binding(key);
+          }
+        }
+        break;
+      }
+
+      case Arcade::ArcadeControllerType::Lightgun:
+      {
+        if (!copy_layout_bindings())
+        {
+          copy_binding("Trigger");
+          copy_binding("Reload");
+        }
+
+        for (const char* key : {"InputMode", "PhysicalDevice", "PhysicalDeviceName", "Screen", "XSensitivity",
+                                "YSensitivity", "InvertX", "InvertY", "OffscreenReload", "CrosshairEnabled",
+                                "CrosshairImagePath", "CrosshairScale"})
+        {
+          copy_value(key);
+        }
+
+        if (src_si.GetStringValue(section.c_str(), "InputMode", "") != "NativeRawInputDevice")
+        {
+          copy_binding("GunX");
+          copy_binding("GunY");
+        }
+
+        if (port == 0)
+        {
+          copy_value("SindenBorder");
+          copy_value("SindenBorderWidth");
+        }
+        break;
+      }
+
+      case Arcade::ArcadeControllerType::Tokimeki:
+        if (!copy_layout_bindings())
+        {
+          for (const char* key : {"Up", "Down", "Left", "Right", "Button1", "GSRIncrease", "GSRDecrease"})
+            copy_binding(key);
+        }
+        break;
+
+      case Arcade::ArcadeControllerType::None:
+      default:
+        break;
+    }
+  }
+}
+
 void RegisterBindings(SettingsInterface& binding_si, SettingsInterface& operator_si, std::string_view game_id, SettingsInterface* game_si)
 {
   std::lock_guard<std::mutex> lock(s_mutex);

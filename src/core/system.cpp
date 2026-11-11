@@ -22,6 +22,7 @@
 #include "host_interface_progress_callback.h"
 #include "imgui_overlays.h"
 #include "interrupt_controller.h"
+#include "core/arcade/arcade_control_registry.h"
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_machine_handler.h"
@@ -1200,6 +1201,63 @@ std::string System::GetGameSettingsPath(std::string_view game_serial)
   return Path::Combine(EmuFolders::GameSettings, fmt::format("{}.ini", Path::SanitizeFileName(game_serial)));
 }
 
+std::unique_ptr<INISettingsInterface> System::LoadGameSettings(std::string_view game_serial, Error* error)
+{
+  auto settings_lock = Host::GetSettingsLock();
+  auto settings = std::make_unique<INISettingsInterface>(GetGameSettingsPath(game_serial));
+  if (FileSystem::FileExists(settings->GetFileName().c_str()))
+  {
+    INFO_LOG("Loading game settings from '{}'...", Path::GetFileName(settings->GetFileName()));
+    return settings->Load(error) ? std::move(settings) : nullptr;
+  }
+
+  const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(game_serial);
+  if (!game)
+    return settings;
+
+  const SettingsInterface* controls = Host::Internal::GetBaseSettingsLayer();
+  std::unique_ptr<INISettingsInterface> parent_settings;
+  std::unique_ptr<INISettingsInterface> legacy_profile;
+  if (!game->parent.empty())
+  {
+    const std::string parent_path = GetGameSettingsPath(game->parent);
+    if (FileSystem::FileExists(parent_path.c_str()))
+    {
+      parent_settings = std::make_unique<INISettingsInterface>(parent_path);
+      if (!parent_settings->Load(error))
+      {
+        Error::AddPrefixFmt(error, "Failed to load settings for parent '{}': ", game->parent);
+        return nullptr;
+      }
+
+      settings->CopyFrom(*parent_settings);
+      if (parent_settings->GetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", false))
+      {
+        controls = parent_settings.get();
+      }
+      else if (const std::string profile = parent_settings->GetStringValue("ArcadeProfiles", "InputProfileName", "");
+               !profile.empty())
+      {
+        legacy_profile = std::make_unique<INISettingsInterface>(GetInputProfilePath(profile));
+        if (legacy_profile->Load())
+          controls = legacy_profile.get();
+      }
+    }
+  }
+
+  for (u32 port = 0; port < Arcade::NUM_ARCADE_CONTROLLER_PORTS; port++)
+    settings->ClearSection(fmt::format("ArcadeControllerPort{}", port + 1).c_str());
+  ArcadeInput::CopyControllerConfiguration(settings.get(), *controls, Arcade::GetArcadeGameControlProfile(game->id));
+  settings->DeleteValue("ArcadeProfiles", "InputProfileName");
+  settings->SetBoolValue("ArcadeProfiles", "UseGameSettingsForArcadeInput", true);
+  settings->SetBoolValue("ArcadeProfiles", "GameSettingsInitialized", true);
+  if (!settings->Save(error))
+    return nullptr;
+
+  INFO_LOG("Initialized arcade settings for '{}'.", game->id);
+  return settings;
+}
+
 std::string System::GetInputProfilePath(std::string_view name)
 {
   return Path::Combine(EmuFolders::InputProfiles, fmt::format("{}.ini", name));
@@ -1469,20 +1527,13 @@ bool System::UpdateGameSettingsLayer()
   std::unique_ptr<INISettingsInterface> new_interface;
   if (g_settings.apply_game_settings && !s_running_game_serial.empty())
   {
-    std::string filename(GetGameSettingsPath(s_running_game_serial));
-    if (FileSystem::FileExists(filename.c_str()))
+    if (Arcade::Database::GetGame(s_running_game_serial) ||
+        FileSystem::FileExists(GetGameSettingsPath(s_running_game_serial).c_str()))
     {
-      INFO_LOG("Loading game settings from '{}'...", Path::GetFileName(filename));
-      new_interface = std::make_unique<INISettingsInterface>(std::move(filename));
-      if (!new_interface->Load())
-      {
-        ERROR_LOG("Failed to parse game settings ini '{}'", new_interface->GetFileName());
-        new_interface.reset();
-      }
-    }
-    else
-    {
-      INFO_LOG("No game settings found (tried '{}')", Path::GetFileName(filename));
+      Error error;
+      new_interface = LoadGameSettings(s_running_game_serial, &error);
+      if (!new_interface)
+        ERROR_LOG("Failed to load game settings for '{}': {}", s_running_game_serial, error.GetDescription());
     }
   }
 

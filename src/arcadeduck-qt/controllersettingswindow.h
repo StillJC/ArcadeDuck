@@ -83,9 +83,6 @@ public:
   Category getCurrentCategory() const;
 
   void updateArcadeListDescription(u32 port, const QString& display_name);
-  static void copyArcadeControllerConfiguration(
-    SettingsInterface* dest_si, const SettingsInterface& src_si,
-    const Arcade::ArcadeGameControlProfile* target_profile = nullptr);
 
   void switchProfile(const std::string_view name);
 

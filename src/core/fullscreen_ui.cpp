@@ -284,7 +284,7 @@ static void SwitchToSettings();
 static void SwitchToGameSettings();
 static void SwitchToGameSettings(const GameList::Entry* entry);
 static void SwitchToGameSettingsForPath(const std::string& path);
-static void SwitchToGameSettingsForSerial(std::string_view serial);
+static bool SwitchToGameSettingsForSet(std::string_view serial, std::string_view path);
 static void DrawSettingsWindow();
 static void DrawSummarySettingsPage();
 static void DrawInterfaceSettingsPage();
@@ -2380,37 +2380,37 @@ void FullscreenUI::SwitchToSettings()
   QueueResetFocus(FocusResetType::ViewChanged);
 }
 
-void FullscreenUI::SwitchToGameSettingsForSerial(std::string_view serial)
+bool FullscreenUI::SwitchToGameSettingsForSet(std::string_view serial, std::string_view path)
 {
   const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(serial);
   if (!game)
-    return;
+    return false;
+
+  Error error;
+  std::unique_ptr<INISettingsInterface> settings = System::LoadGameSettings(game->id, &error);
+  if (!settings)
+  {
+    ImGuiFullscreen::OpenInfoMessageDialog(FSUI_STR("Error"), std::string(error.GetDescription()));
+    return false;
+  }
 
   if (s_current_main_window != MainWindowType::Settings)
     s_settings_return_window = s_current_main_window;
 
-  s_game_settings_entry.reset();
-  s_game_settings_interface = std::make_unique<INISettingsInterface>(System::GetGameSettingsPath(game->id));
-  s_game_settings_interface->Load();
+  s_game_settings_entry = std::make_unique<GameList::Entry>();
+  s_game_settings_entry->serial = game->id;
+  s_game_settings_entry->path = path;
+  s_game_settings_entry->title = game->title;
+  s_game_settings_interface = std::move(settings);
   s_current_main_window = MainWindowType::Settings;
   s_settings_page = SettingsPage::Interface;
   QueueResetFocus(FocusResetType::ViewChanged);
+  return true;
 }
 
 void FullscreenUI::SwitchToGameSettings()
 {
-  if (System::GetGameSerial().empty())
-    return;
-
-  auto lock = GameList::GetLock();
-  const GameList::Entry* entry = GameList::GetEntryForPath(System::GetDiscPath());
-  if (!entry)
-  {
-    SwitchToGameSettingsForSerial(System::GetGameSerial());
-    return;
-  }
-
-  SwitchToGameSettings(entry);
+  SwitchToGameSettingsForSet(System::GetGameSerial(), System::GetDiscPath());
 }
 
 void FullscreenUI::SwitchToGameSettingsForPath(const std::string& path)
@@ -2429,9 +2429,11 @@ void FullscreenUI::SwitchToGameSettings(const GameList::Entry* entry)
   if (!game)
     return;
 
-  SwitchToGameSettingsForSerial(game->id);
-  s_game_settings_entry = std::make_unique<GameList::Entry>(*entry);
-  s_game_settings_entry->serial = game->id;
+  if (SwitchToGameSettingsForSet(game->id, entry->path))
+  {
+    *s_game_settings_entry = *entry;
+    s_game_settings_entry->serial = game->id;
+  }
 }
 
 void FullscreenUI::PopulateGraphicsAdapterList()
@@ -6592,19 +6594,24 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
   {
     for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(game->id))
     {
-      std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+      const bool is_gnet = system->machine_handler == "taito_gnet";
+      std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) :
+                                        Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+      if (is_gnet && clone_path.empty())
+        continue;
       if (clone_path.empty())
         clone_path = entry->path;
-      if (!Arcade::CanResolveGameROMs(clone_path, *clone))
+      if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone))
         continue;
 
-      std::string label = fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, clone->title);
+      std::string label = clone->title;
       if (!clone->region.empty())
         label.append(fmt::format(" - {}", clone->region));
       if (!clone->revision.empty())
         label.append(fmt::format(" - {}", clone->revision));
       label.append(fmt::format(" [{}]", clone->id));
-      options.emplace_back(std::move(label), false);
+      options.emplace_back(fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, label), false);
+      options.emplace_back(fmt::format("{} Clone Properties: {}", ICON_FA_WRENCH, label), false);
       clone_launch_options.push_back({std::move(clone_path), clone->id});
     }
   }
@@ -6642,8 +6649,12 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
         default:
           if (index >= 5 && index < reset_play_time_index)
           {
-            CloneLaunchOption& clone = clone_launch_options[static_cast<size_t>(index - 5)];
-            DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+            const size_t clone_option = static_cast<size_t>(index - 5);
+            CloneLaunchOption& clone = clone_launch_options[clone_option / 2];
+            if ((clone_option % 2) == 0)
+              DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+            else
+              SwitchToGameSettingsForSet(clone.game_id, clone.path);
           }
           else if (index == reset_play_time_index)
           {

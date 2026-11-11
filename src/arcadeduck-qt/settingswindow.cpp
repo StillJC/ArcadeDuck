@@ -25,6 +25,7 @@
 
 #include "core/achievements.h"
 #include "core/arcade/arcade_control_registry.h"
+#include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_database.h"
 #include "core/game_database.h"
 #include "core/host.h"
@@ -33,6 +34,7 @@
 #include "util/ini_settings_interface.h"
 
 #include "common/assert.h"
+#include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
 
@@ -590,7 +592,7 @@ QWidget* SettingsWindow::createArcadeControlsPage()
       INISettingsInterface profile_settings(System::GetInputProfilePath(legacy_profile_name));
       if (FileSystem::FileExists(profile_settings.GetFileName().c_str()) && profile_settings.Load())
       {
-        ControllerSettingsWindow::copyArcadeControllerConfiguration(m_sif.get(), profile_settings, profile);
+        ArcadeInput::CopyControllerConfiguration(m_sif.get(), profile_settings, profile);
         copied_legacy_profile = true;
       }
     }
@@ -598,7 +600,7 @@ QWidget* SettingsWindow::createArcadeControlsPage()
     if (!copied_legacy_profile)
     {
       const auto lock = Host::GetSettingsLock();
-      ControllerSettingsWindow::copyArcadeControllerConfiguration(
+      ArcadeInput::CopyControllerConfiguration(
         m_sif.get(), *Host::Internal::GetBaseSettingsLayer(), profile);
     }
   }
@@ -1187,7 +1189,7 @@ void SettingsWindow::openGamePropertiesDialog(const std::string& path, const std
     arcade_game = Arcade::Database::IdentifyArchive(path);
 
   const std::string real_serial = arcade_game ? arcade_game->id : serial;
-  std::string ini_filename = System::GetGameSettingsPath(real_serial);
+  const std::string ini_filename = System::GetGameSettingsPath(real_serial);
 
   // Reuse an existing dialog for the same per-set settings file.
   for (SettingsWindow* dialog : s_open_game_properties_dialogs)
@@ -1203,9 +1205,13 @@ void SettingsWindow::openGamePropertiesDialog(const std::string& path, const std
     }
   }
 
-  std::unique_ptr<INISettingsInterface> sif = std::make_unique<INISettingsInterface>(std::move(ini_filename));
-  if (FileSystem::FileExists(sif->GetFileName().c_str()))
-    sif->Load();
+  Error error;
+  std::unique_ptr<INISettingsInterface> sif = System::LoadGameSettings(real_serial, &error);
+  if (!sif)
+  {
+    Host::ReportErrorAsync(tr("Game Settings Error").toStdString(), error.GetDescription());
+    return;
+  }
 
   SettingsWindow* dialog = new SettingsWindow(path, real_serial, nullptr, std::move(sif));
   dialog->show();
