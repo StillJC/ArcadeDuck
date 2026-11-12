@@ -335,7 +335,8 @@ public:
       context.canonical_game_id == "sfex" || context.canonical_game_id == "sfexu" ||
       context.canonical_game_id == "sfexa" || context.canonical_game_id == "sfexj" ||
       context.canonical_game_id == "sfexp" || context.canonical_game_id == "sfexpu1" ||
-      context.canonical_game_id == "sfexpj" || context.canonical_game_id == "sfexpj1";
+      context.canonical_game_id == "sfexpj" || context.canonical_game_id == "sfexpj1" ||
+      context.canonical_game_id == "sfex01" || context.canonical_game_id == "sfexp01";
 
     const bool profile_matches =
       (supported_coh1000c && context.game_definition->hardware_profile == "coh1000c") ||
@@ -1045,6 +1046,7 @@ public:
     const bool ordinary_supported =
       context.canonical_game_id == "glpracr2" || context.canonical_game_id == "glpracr2j" ||
       context.canonical_game_id == "doapp" || context.canonical_game_id == "doappk" ||
+      context.canonical_game_id == "doapp01" || context.canonical_game_id == "doapp02" ||
       context.canonical_game_id == "shngmtkb" || context.canonical_game_id == "tondemo" ||
       context.canonical_game_id == "glpracr3" || context.canonical_game_id == "glpracr3j" ||
       context.canonical_game_id == "flamegun" || context.canonical_game_id == "flamegunj" ||

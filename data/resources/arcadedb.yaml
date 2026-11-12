@@ -8526,6 +8526,58 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  sfex01:
+    archive: "sfex01.zip"
+    title: "Street Fighter EX (Enable Hidden Characters)"
+    parent: "sfex"
+    system: "capcom_zn1"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1996
+    region: "Europe"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002c"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x2400000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-13.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0x50033af6", sha1: "486d92ff6c7f1e54f8e0ef41cd9116eca0e10e1a", biosVariant: "j", groupSize: 1, skip: 0 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "msm27c402zb.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0xf20f7fe5", sha1: "9aac7d3b3d0cc0bbbe4056164b73078dce41d91c", biosVariant: "e", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "sfee_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x092cfa2e", sha1: "8af38a3f4f89f661233995a672faf486e71b79bc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "sfe-05m_s01.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xee9ab584", sha1: "82c31637d58fabf41a29bc55f2c23e97a13c6520", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "sfe-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x999de60c", sha1: "092882698c411fc5c3bcb43105bf1886f94b8e40", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "sfe-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x76117b0a", sha1: "027233199170fa6e5b32f28da2031638c6d3d14a", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "sfe-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0xa36bbec5", sha1: "fa22ea50d4d8bed2ded97a346f61b2f5f68769b9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "sfe-09m.3k", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x62c424cc", sha1: "ea19c49b486473b150dbf8541286e225655496db", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "sfe-10m.4k", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0x83791a8b", sha1: "534969797640834ca692c11d0ce7c3a060fc7e4b", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "sfe_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x1908475c", sha1: "99f68cff2d92f5697eec0846201f6fb317d5dc08", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "sfe_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x95c1e2e0", sha1: "383bbe9613798a3ac6944d18768280a840994e40", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "sfe-01m.3b", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0xf5afff0d", sha1: "7f9ac32ba0a3d9c6fef367e36a92d47c9ac1feb3", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp04", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe0dc24ae", sha1: "17d6e3dc11308195f4c46a6cd8093db9eaf584e5", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
   sfexu:
     archive: "sfexu.zip"
     title: "Street Fighter EX"
@@ -8715,6 +8767,58 @@ games:
       - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
       - { role: "countryrom_001", region: "countryrom", name: "sfpu_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x4617adc2", sha1: "200307904349ad7e5d7d76d8c904b6b10424c7ef", groupSize: 1, skip: 0 }
       - { role: "bankedroms_001", region: "bankedroms", name: "sfp-05m.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xac7dcc5e", sha1: "216de2de691a9bd7982d5d6b5b1e3e35ff381a2f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "sfp-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x1d504758", sha1: "bd56141aba35dbb5b318445ba5db12eff7442221", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "sfp-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x0f585f30", sha1: "24ffdbc360f8eddb702905c99d315614327861a7", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "sfp-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x65eabc61", sha1: "bbeb3bcd8dd8f7f88ed82412a81134a3d6f6ffd9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "sfp-09m.3k", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x15f8b71e", sha1: "efb28fbe750f443550ee9718385355aae7e858c9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "sfp-10m.4k", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xc1ecf652", sha1: "616e14ff63d38272730c810b933a6b3412e2da17", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "sfe_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x1908475c", sha1: "99f68cff2d92f5697eec0846201f6fb317d5dc08", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "sfe_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x95c1e2e0", sha1: "383bbe9613798a3ac6944d18768280a840994e40", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "sfe-01m.3b", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0xf5afff0d", sha1: "7f9ac32ba0a3d9c6fef367e36a92d47c9ac1feb3", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp04", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe0dc24ae", sha1: "17d6e3dc11308195f4c46a6cd8093db9eaf584e5", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  sfexp01:
+    archive: "sfexp01.zip"
+    title: "Street Fighter EX Plus (Enable Hidden Characters)"
+    parent: "sfexp"
+    system: "capcom_zn1"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1997
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002c"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x2400000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-13.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0x50033af6", sha1: "486d92ff6c7f1e54f8e0ef41cd9116eca0e10e1a", biosVariant: "j", groupSize: 1, skip: 0 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "msm27c402zb.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0xf20f7fe5", sha1: "9aac7d3b3d0cc0bbbe4056164b73078dce41d91c", biosVariant: "e", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "sfpu_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x4617adc2", sha1: "200307904349ad7e5d7d76d8c904b6b10424c7ef", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "sfp-05m_s01.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x449cf487", sha1: "1bad501d328169e04dab371b669e2952541db408", groupSize: 1, skip: 0 }
       - { role: "bankedroms_002", region: "bankedroms", name: "sfp-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x1d504758", sha1: "bd56141aba35dbb5b318445ba5db12eff7442221", groupSize: 1, skip: 0 }
       - { role: "bankedroms_003", region: "bankedroms", name: "sfp-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x0f585f30", sha1: "24ffdbc360f8eddb702905c99d315614327861a7", groupSize: 1, skip: 0 }
       - { role: "bankedroms_004", region: "bankedroms", name: "sfp-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x65eabc61", sha1: "bbeb3bcd8dd8f7f88ed82412a81134a3d6f6ffd9", groupSize: 1, skip: 0 }
@@ -11969,6 +12073,56 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  sfex2s01:
+    archive: "sfex2s01.zip"
+    title: "Street Fighter EX2 (Enable Hidden Characters)"
+    parent: "sfex2"
+    system: "capcom_zn2"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1998
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x3000000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-59.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe860ea8b", sha1: "66e7e1d4e426466b8f48a2ba055a91b475569504", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7808fcef", sha1: "3c3fb8227b05dace042dc1429b9f2355b1a15638", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "ex2u_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x8dc5317f", sha1: "c35224caf70662a0e45a74cbead294a51f9b9e16", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "ex2-05m_s01.3h", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xb78cdfd2", sha1: "64b53a777af2c943b023011afe1919aba452a6d1", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "ex2-06m.4h", size: 0x800000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0xbe1075ed", sha1: "36dc673372f30f8b3ff5689ae568c5cd01fe2c07", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "ex2-07m.5h", size: 0x800000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x6496c6ed", sha1: "054bcecbb04033abea14d9ffe6634b2bd11ca88b", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "ex2-08m.2k", size: 0x800000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0x3194132e", sha1: "d1324fcf0a8528fc683791d6342697a7e08674f4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "ex2-09m.3k", size: 0x400000, offset: 0x2000000, interleave: 1, wordSwap: false, required: true, crc32: "0x075ae585", sha1: "6b88851db618fc3e96f1d740c46c1bc5be0ee21b", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "ex2_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x9489875e", sha1: "1fc9985ff98232c63ea8d05a69f7d77cdf72919f", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "ex2-01m.3a", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x14a5bb0e", sha1: "dfe3c3a53bd4c58743d8039b5344d3afbe2a9c24", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp08", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xa63d6fa6", sha1: "68995438a1e90ff9aa59090e7e031d51c68c4d73", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh3002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
   sfex2u:
     archive: "sfex2u.zip"
     title: "Street Fighter EX2"
@@ -12675,6 +12829,58 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  sfex2p01:
+    archive: "sfex2p01.zip"
+    title: "Street Fighter EX2 Plus (Enable Hidden Characters)"
+    parent: "sfex2p"
+    system: "capcom_zn2"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1999
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x3000000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-59.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe860ea8b", sha1: "66e7e1d4e426466b8f48a2ba055a91b475569504", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7808fcef", sha1: "3c3fb8227b05dace042dc1429b9f2355b1a15638", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "x2pu_04.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x2938118c", sha1: "4bdeeb9aa3dd54ef44aa3fc73d78d65297b1ed25", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "x2p-05mp_s01.3h", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x08e6a6f4", sha1: "b18bb531fade80a6639cd6202c6e490f8a3144bd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "x2p-06m.4h", size: 0x800000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x4cd53a45", sha1: "39499ea6c9aa51c71f4fe44cc02f93d5a39e14ec", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "x2p-07m.5h", size: 0x800000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x11207c2a", sha1: "0182652819f1c3a36e7b42e34ef86d2455a2dd90", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "x2p-08m.2k", size: 0x800000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0x3560c2cc", sha1: "8b0ce22d954387f7bb032b5220d1014ef68741e8", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "x2p-09m.3k", size: 0x800000, offset: 0x2000000, interleave: 1, wordSwap: false, required: true, crc32: "0x344aa227", sha1: "69dc6f511939bf7fa25c2531ecf307a7565fe7a8", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "x2p-10m.4k", size: 0x800000, offset: 0x2800000, interleave: 1, wordSwap: false, required: true, crc32: "0x2eef5931", sha1: "e5227529fb68eeb1b2f25813694173a75d906b52", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "x2p_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x3705de5e", sha1: "847007ca271da64bf13ffbf496d4291429eee27a", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "x2p_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x6ae828f6", sha1: "41c54165e87b846a845da581f408b96979288158", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "x2p-01m.3a", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x14a5bb0e", sha1: "dfe3c3a53bd4c58743d8039b5344d3afbe2a9c24", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp12", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7cc2ed68", sha1: "a409ae837665700bdc4e3aa7c41a418d5b792940", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh3002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
   sfex2pu:
     archive: "sfex2pu.zip"
     title: "Street Fighter EX2 Plus"
@@ -13298,6 +13504,98 @@ games:
       - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
       - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.bin", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xbbe04cef", sha1: "f2dae4810ca78075fc3007a6001531a455235a2e", groupSize: 1, skip: 1 }
       - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.bin", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0xb614d7e6", sha1: "373756d9b88b45c677e987ee1e5cb2d5446ecfe8", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "doapp-3.219", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x1c6540f3", sha1: "8631fde93a1da6325d7b31c7edf12c964f0ac4fc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_007", region: "bankedroms", name: "doapp-4.220", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xf83bacf7", sha1: "5bd66da993f0db966581dde80dd7e5b377754412", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_008", region: "bankedroms", name: "doapp-5.221", size: 0x400000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0xe11e8b71", sha1: "b1d1b9532b5f074ce216a603436d5674d136865d", groupSize: 1, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "mg05", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x5748a4ca", sha1: "c88d73f6a646a9ddefdfd84cba70d591759c069f", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002m"
+      inputProfile: "zn2p"
+      stateClass: "tecmo_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  doapp02:
+    archive: "doapp02.zip"
+    title: "Dead Or Alive ++ (Kasumi Sexy Hack)"
+    parent: "doapp"
+    system: "tecmo_tps"
+    manufacturer: "Tecmo / Yumeji (hack)"
+    year: 1998
+    region: "Japan/USA/Export"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002m"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "bankedroms", size: 0x2800000, width: 32, endianness: "little" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-61.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x69ffbcb4", sha1: "03eb2febfab3fcde716defff291babd9392de965", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.bin", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xbbe04cef", sha1: "f2dae4810ca78075fc3007a6001531a455235a2e", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.s02", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0xcb236b2f", sha1: "b4e69abed13d9166ab0e329e2d1119fbea9e396c", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "doapp-3.219", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x1c6540f3", sha1: "8631fde93a1da6325d7b31c7edf12c964f0ac4fc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_007", region: "bankedroms", name: "doapp-4.220", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xf83bacf7", sha1: "5bd66da993f0db966581dde80dd7e5b377754412", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_008", region: "bankedroms", name: "doapp-5.221", size: 0x400000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0xe11e8b71", sha1: "b1d1b9532b5f074ce216a603436d5674d136865d", groupSize: 1, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "mg05", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x5748a4ca", sha1: "c88d73f6a646a9ddefdfd84cba70d591759c069f", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002m"
+      inputProfile: "zn2p"
+      stateClass: "tecmo_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  doapp01:
+    archive: "doapp01.zip"
+    title: "Dead Or Alive ++ (Enable Hidden Characters)"
+    parent: "doapp"
+    system: "tecmo_tps"
+    manufacturer: "Tecmo / Yumeji (hack)"
+    year: 1998
+    region: "Japan/USA/Export"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002m"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "bankedroms", size: 0x2800000, width: 32, endianness: "little" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-61.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x69ffbcb4", sha1: "03eb2febfab3fcde716defff291babd9392de965", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.s01", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xf3691595", sha1: "470ea8989229b6400cb7adac30939a2f635dccd9", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.s01", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x3a8e9786", sha1: "8632bcba3ecd42c112885821792c78f7b0f51cd9", groupSize: 1, skip: 1 }
       - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
       - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
       - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }

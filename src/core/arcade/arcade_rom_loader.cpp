@@ -578,9 +578,10 @@ bool LoadGameROMByRole(std::string_view archive_path, const Database::GameDefini
   return false;
 }
 
-bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefinition& game)
+bool CanResolveGameROMs(std::string_view archive_path, const Database::GameDefinition& game,
+                        Database::ROMArchiveSearchScope scope)
 {
-  const std::vector<std::string> archive_paths = Database::GetROMArchiveSearchPaths(archive_path, game);
+  const std::vector<std::string> archive_paths = Database::GetROMArchiveSearchPaths(archive_path, game, scope);
   if (archive_paths.empty())
     return false;
 

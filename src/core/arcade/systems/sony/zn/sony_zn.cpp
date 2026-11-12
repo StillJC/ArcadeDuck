@@ -1566,7 +1566,8 @@ CapcomInputProfile GetCapcomInputProfile()
       set == "sfexp" || set == "sfexpj" || set == "sfexpj1" || set == "sfexpu1" ||
       set == "sfex2" || set == "sfex2u" || set == "sfex2u1" || set == "sfex2a" ||
       set == "sfex2h" || set == "sfex2j" || set == "sfex2p" || set == "sfex2pu" ||
-      set == "sfex2pa" || set == "sfex2ph" || set == "sfex2pj")
+      set == "sfex2pa" || set == "sfex2ph" || set == "sfex2pj" ||
+      set == "sfex01" || set == "sfexp01" || set == "sfex2s01" || set == "sfex2p01")
   {
     return CapcomInputProfile::Capcom6Button;
   }

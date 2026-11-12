@@ -6595,13 +6595,13 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
     for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(game->id))
     {
       const bool is_gnet = system->machine_handler == "taito_gnet";
-      std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) :
-                                        Arcade::Database::GetIndexedArchivePath(clone->archive_name);
-      if (is_gnet && clone_path.empty())
-        continue;
+      std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) : entry->path;
       if (clone_path.empty())
-        clone_path = entry->path;
-      if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone))
+        continue;
+
+      const auto search_scope = is_gnet ? Arcade::Database::ROMArchiveSearchScope::AllDirectories :
+                                          Arcade::Database::ROMArchiveSearchScope::SameDirectory;
+      if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone, search_scope))
         continue;
 
       std::string label = clone->title;

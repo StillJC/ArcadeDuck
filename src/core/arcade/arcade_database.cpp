@@ -1554,7 +1554,8 @@ std::string GetIndexedArchivePath(std::string_view archive_name)
   return FindIndexedArchivePath(archive_name);
 }
 
-std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game)
+std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game,
+                                                  ROMArchiveSearchScope scope)
 {
   std::vector<std::string> paths;
   const auto add_path = [&paths](std::string path) {
@@ -1584,8 +1585,11 @@ std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path,
     filename.append(".").append(alternate_extension);
     add_path(Path::Combine(archive_directory, filename));
 
-    for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
-      add_path(std::move(indexed_path));
+    if (scope == ROMArchiveSearchScope::AllDirectories)
+    {
+      for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
+        add_path(std::move(indexed_path));
+    }
   };
 
   const GameDefinition* current = &game;
