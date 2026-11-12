@@ -1580,6 +1580,12 @@ void FullscreenUI::BeginInputBinding(SettingsInterface* bsi, InputBindingInfo::T
     // holding the settings lock here will protect the input binding list
     auto lock = Host::GetSettingsLock();
 
+    if (s_input_binding_section != "Hotkeys" && !s_input_binding_new_bindings.empty() &&
+        s_input_binding_new_bindings.front().MaskDirection() != key.MaskDirection())
+    {
+      return InputInterceptHook::CallbackResult::StopProcessingEvent;
+    }
+
     float initial_value = value;
     float min_value = value;
     auto it = std::find_if(s_input_binding_value_ranges.begin(), s_input_binding_value_ranges.end(),
