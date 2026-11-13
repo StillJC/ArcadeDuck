@@ -4180,6 +4180,12 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
 
           if (runtime.cold_boot_config_finalize_words == BOARD_CONFIG_FINALIZE_WORDS)
           {
+            // The H8 leaves reset at this write. Retire the scheduler interval
+            // that elapsed while it was held so its first quantum starts here
+            // instead of at the previous scheduler boundary.
+            if (runtime.h8_timing_event && runtime.h8_timing_event->IsActive())
+              runtime.h8_timing_event->InvokeEarly(true);
+
             runtime.cold_boot_h8_released = true;
             INFO_LOG(
               "System12 cold-boot H8 release machine='{}' "
