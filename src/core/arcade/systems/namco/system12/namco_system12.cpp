@@ -3217,7 +3217,8 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
 
 }
 
-void ResetH8(RuntimeState& runtime)
+// Preserve the separate Cyber Lead LED board during main-board resets.
+void ResetH8(RuntimeState& runtime, bool reset_led_board = true)
 {
   if (!runtime.h8_cpu)
     return;
@@ -3293,7 +3294,8 @@ void ResetH8(RuntimeState& runtime)
 
   runtime.h8_jvs_rts = false;
   ResetH8JVSProtocol(runtime);
-  runtime.h8_cyberlead.ResetLED();
+  if (reset_led_board)
+    runtime.h8_cyberlead.ResetLED();
   runtime.h8_sci1_ssr_read = 0;
   runtime.h8_sci1_rx_busy = false;
   runtime.h8_sci1_rx_clocks_remaining = 0;
@@ -3878,11 +3880,11 @@ void EndMainBoardReset()
   if (!s_runtime)
     return;
 
-  // InternalReset() has already reset H8/board/timing state. The PSX main RAM
-  // is restored by System::FrameDone after that reset. Inhibit another cold
-  // transition until a normal user/power reset starts a fresh lifecycle.
+  // Restart the H8 to restore work variables overwritten by the BIOS RAM test.
+  // Preserve shared RAM and the Cyber Lead LED board.
   s_runtime->mainboard_reset_pending = false;
   s_runtime->boot_warm_reset_completed = true;
+  ResetH8(*s_runtime, false);
 
   INFO_LOG("System12 RAM-preserving warm boot resumed machine='{}'",
            s_runtime->content.machine_config);
