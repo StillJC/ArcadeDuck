@@ -3597,8 +3597,6 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
              chd_sha1_string);
   }
 
-  if (content.io_board == "cyberlead" && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled)
-    content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
 
   INFO_LOG("Loaded System 12 set '{}' profile='{}': program={} banked={} sub={} c352={} alternate_bank={}",
            game.id, game.hardware_profile, content.program_rom.size(), content.banked_rom.size(),
@@ -3710,6 +3708,8 @@ bool Initialize(LoadedContent content, Error* error)
   runtime.content = std::move(content);
   runtime.cyberlead_led_enabled = runtime.content.io_board == "cyberlead" &&
                                   g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
+  if (runtime.cyberlead_led_enabled)
+    runtime.content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
   if (HasLinkBoard(runtime.content))
   {
     runtime.hsc = std::make_unique<Arcade::Namco::System12HSC>();
