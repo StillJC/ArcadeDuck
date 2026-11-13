@@ -3703,6 +3703,7 @@ bool Initialize(LoadedContent content, Error* error)
   runtime.buttons_on_direction_lines = runtime.content.input_profile == "mdhorse" ||
                                        runtime.content.input_profile == "pacapp" ||
                                        runtime.content.input_profile == "pacapp2";
+  runtime.h8_cyberlead.SetButtonsOnDirectionLines(runtime.buttons_on_direction_lines);
 
   if (UsesCDXA(runtime))
   {

@@ -358,6 +358,16 @@ u32 NamcoCyberLead::ReadPlayerInputs(u32 player) const
   set_if_pressed(UINT32_C(0x00000080), "Start");
   if (player == 0 && ArcadeInput::IsOperatorPressed("Service"))
     value |= UINT32_C(0x00000040);
+
+  if (m_buttons_on_direction_lines)
+  {
+    set_if_pressed(UINT32_C(0x00000020), "Button1");
+    set_if_pressed(UINT32_C(0x00000010), "Button2");
+    set_if_pressed(UINT32_C(0x00000008), "Button3");
+    set_if_pressed(UINT32_C(0x00000004), "Button4");
+    return value;
+  }
+
   set_if_pressed(UINT32_C(0x00000020), "Up");
   set_if_pressed(UINT32_C(0x00000010), "Down");
   set_if_pressed(UINT32_C(0x00000008), "Left");

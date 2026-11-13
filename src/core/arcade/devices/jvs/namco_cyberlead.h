@@ -33,6 +33,9 @@ public:
   void Reset();
   PacketResult ProcessPacket(std::span<const u8> packet);
 
+  // Quiz panels wire their four answer buttons to the player's UP/DOWN/LEFT/RIGHT switch inputs.
+  void SetButtonsOnDirectionLines(bool enabled) { m_buttons_on_direction_lines = enabled; }
+
   bool SetLEDFirmware(std::span<const u8> firmware);
   void ResetLED();
   void AdvanceLED(u32 source_clocks, u32 source_clock_hz);
@@ -161,6 +164,7 @@ private:
   bool LEDReplyAccepted() const;
 
   u8 m_address = UINT8_C(0xFF);
+  bool m_buttons_on_direction_lines = false;
   std::array<u16, 2> m_coin_counter{};
   std::array<u16, 2> m_coin_used{};
   std::array<bool, 2> m_coin_previous{};

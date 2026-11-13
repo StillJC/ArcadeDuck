@@ -6576,6 +6576,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
 
   technodr:
     archive: "technodr.zip"
@@ -7639,6 +7640,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
 
   pacappsp:
     archive: "pacappsp.zip"
@@ -7804,6 +7806,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   truckk:
@@ -8021,6 +8024,7 @@ games:
       machineConfig: "coh716"
       inputProfile: "namcos12"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   ts2:
