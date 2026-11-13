@@ -843,7 +843,6 @@ void UpdateH8RTCRegisters(RuntimeState& runtime)
 static constexpr u32 TECHNODR_PRINT_WIDTH = 576;
 static constexpr u32 TECHNODR_PRINT_CELL_WIDTH = 12;
 static constexpr u32 TECHNODR_PRINT_LINE_HEIGHT = 24;
-static constexpr u32 TECHNODR_PRINT_MARGIN = 12;
 
 bool DecodeTechnoDrivePrintCharacter(std::span<const u8> data, size_t* offset, ImWchar* codepoint, u32* cells)
 {

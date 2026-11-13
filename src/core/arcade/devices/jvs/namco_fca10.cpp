@@ -378,10 +378,7 @@ NamcoFCA10::PacketResult NamcoFCA10::ProcessPacket(std::span<const u8> packet)
             if ((index + 4) > commands_end)
               return result;
 
-            const u8 parameter0 = packet[index++];
-            const u8 parameter1 = packet[index++];
-            const u8 parameter2 = packet[index++];
-            const u8 parameter3 = packet[index++];
+            index += 4;
             AppendResponseByte(response, response_length, UINT8_C(0x01));
             break;
           }
