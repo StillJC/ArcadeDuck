@@ -1126,3 +1126,20 @@ float3 SampleVRAMAverage2x2(uint2 icoords)
 
   return ss.str();
 }
+
+std::string GPUShaderGen::GenerateVideoGainFragmentShader()
+{
+  std::stringstream ss;
+  WriteHeader(ss);
+  DeclareUniformBuffer(ss, {"uint2 u_sample_offset", "uint2 u_pad", "float4 u_gain"}, true);
+  DeclareTexture(ss, "samp0", 0);
+  DeclareFragmentEntryPoint(ss, 0, 1, {}, true);
+  ss << R"(
+{
+  uint2 icoords = uint2(v_pos.xy) + u_sample_offset;
+  o_col0 = float4(LOAD_TEXTURE(samp0, int2(icoords), 0).rgb * u_gain.rgb, 1.0);
+}
+)";
+
+  return ss.str();
+}

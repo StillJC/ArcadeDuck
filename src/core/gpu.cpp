@@ -2233,6 +2233,28 @@ bool GPU::CompileDisplayPipelines(bool display, bool deinterlace, bool chroma_sm
 
       GL_OBJECT_NAME(m_display_fsr1_rcas_pipeline, "Display FSR1 RCAS Pipeline");
     }
+
+    m_video_gain_pipeline.reset();
+    {
+      plconfig.layout = GPUPipeline::Layout::SingleTextureAndPushConstants;
+      plconfig.SetTargetFormats(GPUTexture::Format::RGBA8);
+
+      std::unique_ptr<GPUShader> gain_vso = g_gpu_device->CreateShader(
+        GPUShaderStage::Vertex, shadergen.GetLanguage(), shadergen.GenerateScreenQuadVertexShader());
+      std::unique_ptr<GPUShader> gain_fso = g_gpu_device->CreateShader(
+        GPUShaderStage::Fragment, shadergen.GetLanguage(), shadergen.GenerateVideoGainFragmentShader());
+      if (!gain_vso || !gain_fso)
+        return false;
+
+      GL_OBJECT_NAME(gain_vso, "Video Gain Vertex Shader");
+      GL_OBJECT_NAME(gain_fso, "Video Gain Fragment Shader");
+      plconfig.vertex_shader = gain_vso.get();
+      plconfig.fragment_shader = gain_fso.get();
+      if (!(m_video_gain_pipeline = g_gpu_device->CreatePipeline(plconfig)))
+        return false;
+
+      GL_OBJECT_NAME(m_video_gain_pipeline, "Video Gain Pipeline");
+    }
   }
 
   if (deinterlace)
@@ -2481,6 +2503,44 @@ bool GPU::RenderDisplay(GPUTexture* target, const GSVector4i display_rect, const
       display_texture_view_y = 0;
       display_texture = post_output_texture;
       display_texture->MakeReadyForSampling();
+    }
+  }
+
+  // System 12 fades by lowering the RGB gain of the video output stage, not through GPU drawing.
+  std::array<float, 3> video_gain;
+  std::unique_ptr<GPUTexture, GPUDevice::PooledTextureDeleter> video_gain_texture;
+  if (display_texture && m_video_gain_pipeline && display_texture_view_width > 0 && display_texture_view_height > 0 &&
+      NamcoSystem12::GetVideoGain(&video_gain))
+  {
+    const u32 gain_width = static_cast<u32>(display_texture_view_width);
+    const u32 gain_height = static_cast<u32>(display_texture_view_height);
+    video_gain_texture = g_gpu_device->FetchAutoRecycleTexture(gain_width, gain_height, 1, 1, 1,
+                                                               GPUTexture::Type::RenderTarget,
+                                                               GPUTexture::Format::RGBA8);
+    if (GPUTexture* gain_texture = video_gain_texture.get())
+    {
+      GL_SCOPE_FMT("ApplyVideoGain({},{},{})", video_gain[0], video_gain[1], video_gain[2]);
+      struct VideoGainUniforms
+      {
+        u32 sample_offset[2];
+        u32 pad[2];
+        float gain[4];
+      } uniforms = {{static_cast<u32>(display_texture_view_x), static_cast<u32>(display_texture_view_y)},
+                    {0, 0},
+                    {video_gain[0], video_gain[1], video_gain[2], 1.0f}};
+
+      g_gpu_device->InvalidateRenderTarget(gain_texture);
+      g_gpu_device->SetRenderTarget(gain_texture);
+      g_gpu_device->SetPipeline(m_video_gain_pipeline.get());
+      g_gpu_device->SetTextureSampler(0, display_texture, g_gpu_device->GetNearestSampler());
+      g_gpu_device->PushUniformBuffer(&uniforms, sizeof(uniforms));
+      g_gpu_device->SetViewportAndScissor(0, 0, gain_width, gain_height);
+      g_gpu_device->Draw(3, 0);
+      gain_texture->MakeReadyForSampling();
+
+      display_texture = gain_texture;
+      display_texture_view_x = 0;
+      display_texture_view_y = 0;
     }
   }
 

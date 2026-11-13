@@ -689,6 +689,9 @@ protected:
   std::unique_ptr<GPUPipeline> m_chroma_smoothing_pipeline;
   std::unique_ptr<GPUTexture> m_chroma_smoothing_texture;
 
+  /// Board-level video output gain (System 12 settings DAC), applied to the display image before scaling.
+  std::unique_ptr<GPUPipeline> m_video_gain_pipeline;
+
   std::unique_ptr<GPUPipeline> m_display_pipeline;
   std::unique_ptr<GPUPipeline> m_display_fsr1_rcas_pipeline;
   GPUTexture* m_display_texture = nullptr;

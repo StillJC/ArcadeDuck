@@ -10,10 +10,14 @@ static constexpr u32 SAVE_STATE_MAGIC = 0x43435544;
 // Arcade states share the header layout. Their media-path region holds Arcade::SaveState::Metadata instead of
 // a disc path, and PS1 builds reject the different magic.
 static constexpr u32 ARCADE_SAVE_STATE_MAGIC = 0x53414441;
-static constexpr u32 SAVE_STATE_VERSION = 72;
+static constexpr u32 SAVE_STATE_VERSION = 73;
 static constexpr u32 SAVE_STATE_MINIMUM_VERSION = 42;
 
+// Oldest arcade state version this build still loads. Version 73 added the System 12 settings DAC outputs.
+static constexpr u32 ARCADE_SAVE_STATE_MINIMUM_VERSION = 72;
+
 static_assert(SAVE_STATE_VERSION >= SAVE_STATE_MINIMUM_VERSION);
+static_assert(SAVE_STATE_VERSION >= ARCADE_SAVE_STATE_MINIMUM_VERSION);
 
 #pragma pack(push, 4)
 struct SAVE_STATE_HEADER

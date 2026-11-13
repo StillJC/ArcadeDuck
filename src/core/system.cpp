@@ -220,7 +220,7 @@ static bool DoState(StateWrapper& sw, GPUTexture** host_texture, bool update_dis
 static bool SupportsMemoryStates();
 static bool DoArcadeState(StateWrapper& sw);
 static std::string BuildArcadeIdentityRecord(const Arcade::BootContext& context);
-static Arcade::SaveState::Hash GetArcadeIdentity();
+static Arcade::SaveState::Hash GetArcadeIdentity(u32 state_version = SAVE_STATE_VERSION);
 static void GetArcadeNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 static bool IsGlobalSaveStatePath(std::string_view path);
 static bool SaveArcadeState(const char* path, s32 slot, std::string_view label, bool backup_existing_save, Error* error,
@@ -5555,15 +5555,16 @@ std::string System::BuildArcadeIdentityRecord(const Arcade::BootContext& context
     for (const Arcade::Database::ROMDefinition& rom : context.firmware_definition->roms)
       fmt::format_to(out, "firmware_rom={}:{}:{}:{:08x}:{}\n", rom.role, rom.name, rom.size, rom.crc32, rom.sha1);
   }
-  fmt::format_to(out, "bios_hash={}\nram_size={}\nvram_height={}\nstate_version={}\n",
-                 BIOS::ImageInfo::GetHashString(s_bios_hash), Bus::g_ram_size, g_vram_height, SAVE_STATE_VERSION);
+  fmt::format_to(out, "bios_hash={}\nram_size={}\nvram_height={}\n", BIOS::ImageInfo::GetHashString(s_bios_hash),
+                 Bus::g_ram_size, g_vram_height);
   return record;
 }
 
-Arcade::SaveState::Hash System::GetArcadeIdentity()
+Arcade::SaveState::Hash System::GetArcadeIdentity(u32 state_version)
 {
   // The CPU clock can change during a session, and pending event timestamps depend on it.
   std::string record = s_arcade_identity_record;
+  fmt::format_to(std::back_inserter(record), "state_version={}\n", state_version);
   s_arcade_machine_handler->AppendStateIdentity(&record);
   fmt::format_to(std::back_inserter(record), "cpu_clock={}:{}:{}\n", static_cast<bool>(g_settings.cpu_overclock_active),
                  g_settings.cpu_overclock_numerator, g_settings.cpu_overclock_denominator);
@@ -5960,7 +5961,7 @@ void System::RejectArcadeLoad(std::string_view message, Error* error)
 bool System::PreflightArcadeState(const SaveStateBuffer& buffer, const Arcade::SaveState::Metadata& metadata,
                                   Error* error)
 {
-  if (buffer.version != SAVE_STATE_VERSION)
+  if (buffer.version < ARCADE_SAVE_STATE_MINIMUM_VERSION || buffer.version > SAVE_STATE_VERSION)
   {
     Error::SetStringFmt(error, TRANSLATE_FS("System", "This save state uses format version {}; this build uses {}."),
                         buffer.version, SAVE_STATE_VERSION);
@@ -5998,10 +5999,11 @@ bool System::PreflightArcadeState(const SaveStateBuffer& buffer, const Arcade::S
     return false;
   }
 
-  if (metadata.identity != GetArcadeIdentity())
+  if (metadata.identity != GetArcadeIdentity(buffer.version))
   {
     ERROR_LOG("Arcade state identity {} does not match the running machine {}.",
-              Arcade::SaveState::FormatHash(metadata.identity), Arcade::SaveState::FormatHash(GetArcadeIdentity()));
+              Arcade::SaveState::FormatHash(metadata.identity),
+              Arcade::SaveState::FormatHash(GetArcadeIdentity(buffer.version)));
     Error::SetStringView(error, TRANSLATE_SV("System", "This save state was created with a different ROM, BIOS, "
                                                        "media or machine configuration (including the CPU clock)."));
     return false;

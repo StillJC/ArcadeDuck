@@ -23,6 +23,7 @@
 #include "core/cpu_core.h"
 #include "core/dma.h"
 #include "core/host.h"
+#include "core/save_state_version.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "core/settings.h"
@@ -89,6 +90,13 @@ static constexpr u32 SHARED_RAM_BASE = 0x080000;
 static constexpr u32 SHARED_RAM_END = SHARED_RAM_BASE + PSX_SHARED_WINDOW_SIZE - 1;
 static constexpr u32 BOARD_CONTROL_BASE = 0x1bff08;
 static constexpr u32 BOARD_CONTROL_END = 0x1bff0f;
+
+// First save-state version that stores the settings DAC outputs.
+static constexpr u32 SETTINGS_DAC_STATE_VERSION = 73;
+static_assert(SETTINGS_DAC_STATE_VERSION <= SAVE_STATE_VERSION);
+
+// Settings DAC channels carrying the red, green and blue video gain.
+static constexpr std::array<u8, 3> SETTINGS_DAC_VIDEO_GAIN_CHANNELS = {{6, 7, 8}};
 
 static constexpr u32 GUN_INTERFACE_READ_BASE = 0x780000;
 static constexpr u32 GUN_INTERFACE_READ_END = 0x78000f;
@@ -268,6 +276,9 @@ struct RuntimeState
   u8 h8_settings_address = 0;
   u8 h8_settings_value = 0;
   u8 h8_settings_bit = 0;
+  // Settings DAC outputs, indexed by the high nibble of the channel address. The sub-CPU programs
+  // channels 6-8 (addresses 60h/70h/80h) with the RGB video gain, which games ramp for fades.
+  std::array<u8, 16> h8_settings_dac{};
 
   bool h8_rtc_ce = false;
   bool h8_rtc_clk = false;
@@ -1646,7 +1657,10 @@ void H8SettingsSetClock(RuntimeState& runtime, bool state)
     runtime.h8_settings_bit++;
 
     if (runtime.h8_settings_bit == 16)
+    {
       runtime.h8_settings_bit = 0;
+      runtime.h8_settings_dac[runtime.h8_settings_address >> 4] = runtime.h8_settings_value;
+    }
   }
 
   runtime.h8_settings_clk = state;
@@ -3311,6 +3325,8 @@ void ResetH8(RuntimeState& runtime, bool reset_led_board = true)
   runtime.h8_settings_address = 0;
   runtime.h8_settings_value = 0;
   runtime.h8_settings_bit = 0;
+  // Full-scale outputs (unity video gain) until the sub-CPU programs the DAC during boot.
+  runtime.h8_settings_dac.fill(UINT8_C(0xFF));
 
   ResetH8RTC(runtime);
   // H8/3002 reset defaults used by the System 12 firmware before it programs
@@ -3824,6 +3840,22 @@ void Shutdown()
 bool IsActive()
 {
   return s_runtime.has_value();
+}
+
+bool GetVideoGain(std::array<float, 3>* gain)
+{
+  if (!s_runtime)
+    return false;
+
+  bool unity = true;
+  for (size_t i = 0; i < SETTINGS_DAC_VIDEO_GAIN_CHANNELS.size(); i++)
+  {
+    const u8 value = s_runtime->h8_settings_dac[SETTINGS_DAC_VIDEO_GAIN_CHANNELS[i]];
+    (*gain)[i] = static_cast<float>(value) / 255.0f;
+    unity = unity && (value == UINT8_C(0xFF));
+  }
+
+  return !unity;
 }
 
 void SetVBlank(bool state)
@@ -4561,6 +4593,11 @@ bool DoState(StateWrapper& sw)
   sw.Do(&r.h8_settings_address);
   sw.Do(&r.h8_settings_value);
   sw.Do(&r.h8_settings_bit);
+  // Version 72 states have no DAC state; restore full brightness.
+  if (sw.IsReading() && sw.GetVersion() < SETTINGS_DAC_STATE_VERSION)
+    r.h8_settings_dac.fill(UINT8_C(0xFF));
+  else
+    sw.DoArray(r.h8_settings_dac.data(), r.h8_settings_dac.size());
   sw.Do(&r.h8_rtc_ce);
   sw.Do(&r.h8_rtc_clk);
   sw.Do(&r.h8_rtc_data);
