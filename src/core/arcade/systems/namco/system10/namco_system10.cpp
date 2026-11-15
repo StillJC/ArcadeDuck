@@ -21,6 +21,7 @@
 #include "core/arcade/systems/namco/system10/namco_system10_punchpad.h"
 
 #include "core/arcade/arcade_database.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_save_state.h"
 #include "core/arcade/devices/storage/atapi_cdrom.h"
 #include "core/arcade/devices/jvs/jvs_bus.h"
@@ -37,7 +38,6 @@
 #include "common/error.h"
 #include "common/file_system.h"
 #include "common/log.h"
-#include "common/minizip_helpers.h"
 #include "common/path.h"
 #include "common/sha1_digest.h"
 #include "util/cd_image.h"
@@ -2399,8 +2399,8 @@ bool ReadU32Register(u32 reg, u32 byte_offset, u32 width, u32* value)
   return true;
 }
 
-bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom,
-                       std::vector<u8>* data, Error* error)
+bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::GameDefinition& game,
+                       const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data, Error* error)
 {
   const bool supported_raw_size =
     (rom.size == MemNRawNAND::K9F2808_RAW_IMAGE_SIZE || rom.size == MemNRawNAND::K9F5608_RAW_IMAGE_SIZE);
@@ -2414,117 +2414,11 @@ bool LoadRawNANDMember(const char* archive_path, const Arcade::Database::ROMDefi
     return false;
   }
 
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Namco System 10 set archive '{}'.", archive_path);
-    return false;
-  }
-
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Namco System 10 set archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Namco System 10 set archive '{}'.",
-                          archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 10 NAND '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 10 NAND '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress System 10 NAND '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      data->resize(rom.size);
-      size_t read_offset = 0;
-      while (read_offset < data->size())
-      {
-        const int bytes_read =
-          unzReadCurrentFile(zf, data->data() + read_offset, static_cast<unsigned>(data->size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading System 10 NAND '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for System 10 NAND '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "System 10 NAND '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Namco System 10 set archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Namco System 10 set archive '{}' does not contain required NAND '{}'.", archive_path,
-                      rom.name);
-  return false;
+  return Arcade::LoadGameROM(archive_path, game, rom, data, error);
 }
 
-bool LoadSimpleROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom,
-                         std::span<u8> destination, Error* error)
+bool LoadSimpleROMMember(const char* archive_path, const Arcade::Database::GameDefinition& game,
+                         const Arcade::Database::ROMDefinition& rom, std::span<u8> destination, Error* error)
 {
   if (rom.interleave != 1 || rom.group_size != 1 || rom.skip != 0 || rom.word_swap || !rom.segments.empty() ||
       rom.offset > destination.size() || rom.size > (destination.size() - rom.offset))
@@ -2533,112 +2427,12 @@ bool LoadSimpleROMMember(const char* archive_path, const Arcade::Database::ROMDe
     return false;
   }
 
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Namco System 10 set archive '{}'.", archive_path);
+  std::vector<u8> data;
+  if (!Arcade::LoadGameROM(archive_path, game, rom, &data, error))
     return false;
-  }
 
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Namco System 10 set archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Namco System 10 set archive '{}'.",
-                          archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 10 ROM '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 10 ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress System 10 ROM '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      std::span<u8> output = destination.subspan(rom.offset, rom.size);
-      size_t read_offset = 0;
-      while (read_offset < output.size())
-      {
-        const int bytes_read =
-          unzReadCurrentFile(zf, output.data() + read_offset, static_cast<unsigned>(output.size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading System 10 ROM '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for System 10 ROM '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(output.data(), output.size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "System 10 ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Namco System 10 set archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Namco System 10 set archive '{}' does not contain required ROM '{}'.", archive_path,
-                      rom.name);
-  return false;
+  std::copy(data.begin(), data.end(), destination.begin() + rom.offset);
+  return true;
 }
 
 } // namespace
@@ -2708,7 +2502,7 @@ std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
   content.program_flash.resize(MEMM_PROGRAM_FLASH_SIZE, UINT8_C(0xff));
   content.data_rom.resize(MEMM_DATA_ROM_SIZE, UINT8_C(0xff));
 
-  if (!LoadSimpleROMMember(archive_path, *flash_rom,
+  if (!LoadSimpleROMMember(archive_path, game, *flash_rom,
                            std::span<u8>(content.program_flash.data(), content.program_flash.size()), error))
   {
     return std::nullopt;
@@ -2716,7 +2510,7 @@ std::optional<MemMLoadedContent> LoadMrDriller2Content(const char* archive_path,
 
   for (const Arcade::Database::ROMDefinition* rom : data_roms)
   {
-    if (!LoadSimpleROMMember(archive_path, *rom,
+    if (!LoadSimpleROMMember(archive_path, game, *rom,
                              std::span<u8>(content.data_rom.data(), content.data_rom.size()), error))
     {
       return std::nullopt;
@@ -2803,7 +2597,7 @@ std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const
 
   for (size_t index = 0; index < nand_region_count; index++)
   {
-    if (!LoadRawNANDMember(archive_path, *nand_roms[index], &content.nands[index], error))
+    if (!LoadRawNANDMember(archive_path, game, *nand_roms[index], &content.nands[index], error))
       return std::nullopt;
   }
 
@@ -2818,14 +2612,14 @@ std::optional<MemNLoadedContent> LoadMemNContent(const char* archive_path, const
     }
 
     content.nonlinear_table.resize(nonlinear_rom->size);
-    if (!LoadSimpleROMMember(archive_path, *nonlinear_rom, std::span<u8>(content.nonlinear_table), error))
+    if (!LoadSimpleROMMember(archive_path, game, *nonlinear_rom, std::span<u8>(content.nonlinear_table), error))
       return std::nullopt;
   }
 
   if (pdrive_rom)
   {
     content.pdrive_firmware.resize(pdrive_rom->size);
-    if (!LoadSimpleROMMember(archive_path, *pdrive_rom, std::span<u8>(content.pdrive_firmware), error))
+    if (!LoadSimpleROMMember(archive_path, game, *pdrive_rom, std::span<u8>(content.pdrive_firmware), error))
       return std::nullopt;
   }
 
@@ -2900,7 +2694,7 @@ std::optional<MemNLoadedContent> LoadExperimentalMemNProbeContent(
 
   for (size_t index = 0; index < nand_region_count; index++)
   {
-    if (!LoadRawNANDMember(archive_path, *nand_roms[index], &content.nands[index], error))
+    if (!LoadRawNANDMember(archive_path, game, *nand_roms[index], &content.nands[index], error))
       return std::nullopt;
   }
 
