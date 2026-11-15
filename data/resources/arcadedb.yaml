@@ -3264,8 +3264,8 @@ controlLayouts:
       - { key: "Down", displayName: "Down", kind: "button" }
       - { key: "Left", displayName: "Left", kind: "button" }
       - { key: "Right", displayName: "Right", kind: "button" }
-      - { key: "Button1", displayName: "Suck", kind: "button" }
-      - { key: "Button2", displayName: "Spit", kind: "button" }
+      - { key: "Button1", displayName: "Button 1 — Suck", kind: "button" }
+      - { key: "Button2", displayName: "Button 2 — Spit", kind: "button" }
 
   medalnt:
     displayName: "Medal no Tatsujin"
