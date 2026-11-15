@@ -30,6 +30,7 @@
 #include "core/cpu_core.h"
 #include "core/host.h"
 #include "core/interrupt_controller.h"
+#include "core/settings.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 
@@ -305,6 +306,7 @@ struct RuntimeState
   u32 trackball_command_length = 0;
 
   bool cyberlead_cabinet = false;
+  bool cyberlead_led_enabled = false;
   bool jvs_addressed = false;
   Arcade::JVS::Bus jvs_bus;
   Arcade::JVS::NamcoCyberLead cyberlead;
@@ -1222,6 +1224,7 @@ void CreateExpansionBoard(RuntimeState& runtime)
   runtime.mgexio.reset();
   runtime.cabinet_inputs = &FindCabinetInputs(runtime.set_name);
   runtime.cyberlead_cabinet = HasCyberLeadCabinet(runtime.set_name);
+  runtime.cyberlead_led_enabled = false;
 
   // A Cyber Lead cabinet connects its JVS I/O through a full EXIO board.
   ExpansionBoard type = runtime.memn_profile ? runtime.memn_profile->expansion : ExpansionBoard::None;
@@ -1242,7 +1245,9 @@ void CreateExpansionBoard(RuntimeState& runtime)
   runtime.jvs_bus.Reset();
   runtime.cyberlead.Reset();
   runtime.jvs_addressed = false;
-  if (runtime.cyberlead_cabinet)
+  runtime.cyberlead_led_enabled =
+    runtime.cyberlead_cabinet && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
+  if (runtime.cyberlead_led_enabled)
   {
     // The LED PCB keeps the data games program into it with the set's NVRAM.
     const std::string flash_path =
@@ -3710,7 +3715,11 @@ bool IsSaveReadinessPending(std::string* message)
 void AppendStateIdentity(std::string* record)
 {
   if (s_runtime.has_value() && s_runtime->cyberlead_cabinet)
+  {
     *record += fmt::format("cyberlead_led={}\n", s_runtime->cyberlead.IsLEDPresent() ? "present" : "absent");
+    if (!s_runtime->cyberlead_led_enabled)
+      *record += "cyberlead_led_hardware=disabled\n";
+  }
 }
 
 // Deadlines are restored by TimingEvents; only activation is established here.
