@@ -376,12 +376,13 @@ bool GPU::HandleRenderPolygonCommand()
       SetDrawMode(texpage_attribute);
     else if (IsCXD8561QMode())
     {
-      // Type-2 polygon TPage updates dither (9), draw-to-displayed-field (10),
-      // and the Type-2 texture-page/rectangle-flip state carried in bits 12/13.
+      // Type-2 polygon TPage updates dither and texture-page/rectangle-flip state.
+      // Draw-to-displayed-field remains controlled by GP0(E1h).
       static constexpr u16 TYPE2_POLYGON_TEXPAGE_MASK =
-        static_cast<u16>(GPUDrawModeReg::POLYGON_TEXPAGE_MASK |
-                         (1u << 9) | (1u << 10) | (1u << 12) | (1u << 13));
-      SetDrawMode(static_cast<u16>(texpage_attribute & TYPE2_POLYGON_TEXPAGE_MASK));
+        static_cast<u16>(GPUDrawModeReg::POLYGON_TEXPAGE_MASK | (1u << 9) | (1u << 12) | (1u << 13));
+      static constexpr u16 DRAW_TO_DISPLAYED_FIELD = (1u << 10);
+      SetDrawMode(static_cast<u16>((texpage_attribute & TYPE2_POLYGON_TEXPAGE_MASK) |
+                                   (m_draw_mode.mode_reg.bits & DRAW_TO_DISPLAYED_FIELD)));
     }
     else
       SetDrawMode((texpage_attribute & GPUDrawModeReg::POLYGON_TEXPAGE_MASK) |

@@ -21,10 +21,8 @@ constexpr std::array<ArcadeControllerTypeInfo, 7> s_controller_type_infos = {{
   {ArcadeControllerType::Mahjong, "mahjong", "Mahjong Panel", "mahjong"},
 }};
 
-constexpr std::array<std::pair<std::string_view, std::string_view>, 7> s_layout_aliases = {{
+constexpr std::array<std::pair<std::string_view, std::string_view>, 5> s_layout_aliases = {{
   {"glpracr2", "glpracr"},
-  {"tekken3", "tekken"},
-  {"tektagt", "tekken"},
   {"sfex2", "sfex"},
   {"fgtlayer", "sfex"},
   {"soulclbr", "souledge"},

@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 
 Log_SetChannel(NamcoSystem12);
 
@@ -44,6 +45,7 @@ static constexpr std::array<u8, SHA1Digest::DIGEST_SIZE> LED_FIRMWARE_SHA1 = {
 };
 
 NamcoCyberLead* s_active = nullptr;
+std::atomic<bool> s_led_hardware_active{false};
 
 // JVS 70/02 program date, from ROM offset 186A.
 static constexpr std::array<u8, 8> PROGRAM_DATE = {
@@ -80,9 +82,10 @@ std::vector<u8> ReadZipMember(const std::string& archive_path, const char* membe
   if (unzLocateFile(zf, member, 2) == UNZ_OK && unzOpenCurrentFile(zf) == UNZ_OK)
   {
     unz_file_info64 file_info = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK)
+    if (unzGetCurrentFileInfo64(zf, &file_info, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK &&
+        file_info.uncompressed_size == LED_FIRMWARE_SIZE)
     {
-      data.resize(static_cast<size_t>(file_info.uncompressed_size));
+      data.resize(LED_FIRMWARE_SIZE);
       size_t read_offset = 0;
       while (read_offset < data.size())
       {
@@ -92,9 +95,11 @@ std::vector<u8> ReadZipMember(const std::string& archive_path, const char* membe
           break;
         read_offset += static_cast<size_t>(bytes_read);
       }
-      if (unzCloseCurrentFile(zf) != UNZ_OK || read_offset != data.size())
+      if (read_offset != data.size())
         data.clear();
     }
+    if (unzCloseCurrentFile(zf) != UNZ_OK)
+      data.clear();
   }
 
   unzClose(zf);
@@ -215,10 +220,8 @@ bool NamcoCyberLead::IsLEDSaveReady() const
   if (!m_led_device.HasFirmware())
     return true;
 
-  // The LED data is in place once the game has switched the LED to display mode (71/08) after the last upload
-  // that changed the flash, or when every committed upload since the handshake rewrote identical data.
-  // An installed board can also report its data as present (profile result 1) without any upload or 71/08, and a
-  // game which ends setup with 71/04 after the query does not upload in that setup.
+  // LED data is settled after 71/08, an unchanged upload, or a board-reported
+  // installed profile. Some games finish setup with 71/04 and no upload.
   const bool data_settled =
     m_link.mode_since_last_change ||
     (!m_link.flash_changed_since_handshake &&
@@ -226,8 +229,7 @@ bool NamcoCyberLead::IsLEDSaveReady() const
   if (!m_link.handshake_complete || !data_settled)
     return false;
 
-  // Every LED transaction can program the flash (71/08 display mode writes settings too), so saving waits for an
-  // idle link.
+  // 71/08 can also write flash settings; save only when the link is idle.
   return m_link.state == LinkState::Idle && !m_led_device.IsFlashOperationActive();
 }
 
@@ -245,6 +247,12 @@ NamcoCyberLead* NamcoCyberLead::GetActive()
 void NamcoCyberLead::SetActive(NamcoCyberLead* device)
 {
   s_active = device;
+  s_led_hardware_active.store(device != nullptr, std::memory_order_release);
+}
+
+bool NamcoCyberLead::IsLEDHardwareActive()
+{
+  return s_led_hardware_active.load(std::memory_order_acquire);
 }
 
 bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)
@@ -350,6 +358,16 @@ u32 NamcoCyberLead::ReadPlayerInputs(u32 player) const
   set_if_pressed(UINT32_C(0x00000080), "Start");
   if (player == 0 && ArcadeInput::IsOperatorPressed("Service"))
     value |= UINT32_C(0x00000040);
+
+  if (m_buttons_on_direction_lines)
+  {
+    set_if_pressed(UINT32_C(0x00000020), "Button1");
+    set_if_pressed(UINT32_C(0x00000010), "Button2");
+    set_if_pressed(UINT32_C(0x00000008), "Button3");
+    set_if_pressed(UINT32_C(0x00000004), "Button4");
+    return value;
+  }
+
   set_if_pressed(UINT32_C(0x00000020), "Up");
   set_if_pressed(UINT32_C(0x00000010), "Down");
   set_if_pressed(UINT32_C(0x00000008), "Left");
@@ -862,14 +880,13 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
 
       case UINT8_C(0x30): // subtract from coin counter
       {
-        // Ver1.03 (0B9C) numbers the slots from 0, and on a bad slot reports
-        // 02 without consuming the amount bytes.
+        // JVS coin slots are numbered from 1.
         if (index >= commands_end)
           return result;
 
-        const u8 slot = packet[index++];
+        const u8 slot_number = packet[index++];
         produce_response = true;
-        if (slot >= m_coin_counter.size())
+        if (slot_number == 0 || slot_number > m_coin_counter.size())
         {
           AppendResponseByte(response, response_length, UINT8_C(0x02));
           break;
@@ -878,6 +895,7 @@ NamcoCyberLead::PacketResult NamcoCyberLead::ProcessPacket(std::span<const u8> p
         if ((index + 2) > commands_end)
           return result;
 
+        const u32 slot = slot_number - 1u;
         const u16 amount = static_cast<u16>((static_cast<u16>(packet[index]) << 8) | packet[index + 1]);
         index += 2;
         AppendResponseByte(response, response_length, UINT8_C(0x01));

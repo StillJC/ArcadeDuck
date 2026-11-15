@@ -906,6 +906,7 @@ void MainWindow::updateCyberLeadLEDWindow()
   const bool want_window =
     s_system_valid &&
     g_settings.arcade_namco_system12_cyber_lead_led_mode == 3 &&
+    Arcade::JVS::NamcoCyberLead::IsLEDHardwareActive() &&
     IsCyberLeadGame(s_current_game_serial.toStdString());
 
   if (!want_window)
@@ -1860,13 +1861,13 @@ void MainWindow::onGameListEntryContextMenuRequested(const QPoint& point)
         for (const Arcade::Database::GameDefinition* const clone : clones)
         {
           const bool is_gnet = parent_system->machine_handler == "taito_gnet";
-          std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) :
-                                            Arcade::Database::GetIndexedArchivePath(clone->archive_name);
-          if (is_gnet && clone_path.empty())
-            continue;
+          std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) : entry->path;
           if (clone_path.empty())
-            clone_path = entry->path;
-          if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone))
+            continue;
+
+          const auto search_scope = is_gnet ? Arcade::Database::ROMArchiveSearchScope::AllDirectories :
+                                              Arcade::Database::ROMArchiveSearchScope::SameDirectory;
+          if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone, search_scope))
           {
             INFO_LOG("Clone '{}' suppressed for parent '{}': required ROMs could not be resolved using archive anchor "
                      "'{}'.",

@@ -171,7 +171,7 @@ def compare_relationships(blocks: Dict[str, GameBlock], order: List[str], mame: 
 
 def print_report(blocks, order, mame, mismatches, unresolved):
     print(f"ArcadeDuck games:       {len(order)}")
-    print(f"Matched in MAME:        {sum(1 for name in order if name in mame)}")
+    print(f"Matched in reference:   {sum(1 for name in order if name in mame)}")
     print(f"Existing parent fields: {sum(1 for name in order if blocks[name].parent)}")
     print(f"Parent mismatches:      {len(mismatches)}")
     print(f"Unresolved entries:     {len(unresolved)}")
@@ -266,6 +266,10 @@ def parse_args():
         help="Use an existing MAME -listxml XML file instead of launching MAME.",
     )
     parser.add_argument(
+        "--hbmame-listxml",
+        help="Supplement missing MAME entries with an HBMAME -listxml XML file. MAME entries take precedence.",
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="Update parent fields in arcadedb.yaml. Without this option the tool is audit-only.",
@@ -283,6 +287,13 @@ def main():
             raise RuntimeError("No games were found in the ArcadeDuck database.")
 
         mame = load_mame_relationships(args, set(blocks))
+        if args.hbmame_listxml:
+            missing = set(blocks) - set(mame)
+            with Path(args.hbmame_listxml).open("rb") as stream:
+                hbmame = parse_mame_stream(stream, missing)
+            print(f"Supplemented by HBMAME: {len(hbmame)}")
+            mame.update(hbmame)
+
         mismatches, unresolved = compare_relationships(blocks, order, mame)
         print_report(blocks, order, mame, mismatches, unresolved)
 

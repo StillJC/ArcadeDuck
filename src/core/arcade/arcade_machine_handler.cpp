@@ -384,9 +384,7 @@ public:
 
   void PrepareSharedHardware() const override
   {
-    // COH-700 uses CXD8654Q and COH-716 uses CXD8561CQ, both with 2 MiB VRAM.
-    // ArcadeDuck's current type-2 arcade GPU mode is the closest existing
-    // hardware seam and is already used for CXD8654Q-class ZN-2/G-Net boards.
+    // COH-700/CXD8654Q and COH-716/CXD8561CQ use the shared arcade type-2 GPU path.
     GPU::SetCXD8561QMode(true);
   }
 
@@ -458,7 +456,8 @@ public:
       context.canonical_game_id == "sfex" || context.canonical_game_id == "sfexu" ||
       context.canonical_game_id == "sfexa" || context.canonical_game_id == "sfexj" ||
       context.canonical_game_id == "sfexp" || context.canonical_game_id == "sfexpu1" ||
-      context.canonical_game_id == "sfexpj" || context.canonical_game_id == "sfexpj1";
+      context.canonical_game_id == "sfexpj" || context.canonical_game_id == "sfexpj1" ||
+      context.canonical_game_id == "sfex01" || context.canonical_game_id == "sfexp01";
 
     const bool profile_matches =
       (supported_coh1000c && context.game_definition->hardware_profile == "coh1000c") ||
@@ -1168,6 +1167,7 @@ public:
     const bool ordinary_supported =
       context.canonical_game_id == "glpracr2" || context.canonical_game_id == "glpracr2j" ||
       context.canonical_game_id == "doapp" || context.canonical_game_id == "doappk" ||
+      context.canonical_game_id == "doapp01" || context.canonical_game_id == "doapp02" ||
       context.canonical_game_id == "shngmtkb" || context.canonical_game_id == "tondemo" ||
       context.canonical_game_id == "glpracr3" || context.canonical_game_id == "glpracr3j" ||
       context.canonical_game_id == "flamegun" || context.canonical_game_id == "flamegunj" ||

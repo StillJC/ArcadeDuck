@@ -94,15 +94,15 @@ u16 NamcoEMIO102::ReadAnalog(u32 channel) const
 
     case 1:
       if (!ArcadeInput::HasAnalogControl(0, "Brake"))
-        return UINT16_C(0x5E00);
+        return UINT16_C(0x7E00);
       return ScalePedal(ArcadeInput::GetAnalogValue(0, "Brake"),
-                        UINT16_C(0x5E00), UINT16_C(0x3E00));
+                        UINT16_C(0x7E00), UINT16_C(0x3E00));
 
     case 2:
       if (!ArcadeInput::HasAnalogControl(0, "Accelerator"))
-        return UINT16_C(0x9A00);
+        return UINT16_C(0xED80);
       return ScalePedal(ArcadeInput::GetAnalogValue(0, "Accelerator"),
-                        UINT16_C(0x9A00), UINT16_C(0x4680));
+                        UINT16_C(0xED80), UINT16_C(0x4680));
 
     default:
       return UINT16_C(0x8000);

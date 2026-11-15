@@ -30,6 +30,9 @@ public:
 
   std::string GenerateChromaSmoothingFragmentShader();
 
+  /// Scales the display image by a per-channel video output gain.
+  std::string GenerateVideoGainFragmentShader();
+
 private:
   void WriteDisplayUniformBuffer(std::stringstream& ss);
 };

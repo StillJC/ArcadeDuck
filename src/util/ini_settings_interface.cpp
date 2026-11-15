@@ -95,6 +95,14 @@ bool INISettingsInterface::Load(Error* error /* = nullptr */)
   return (err == SI_OK);
 }
 
+void INISettingsInterface::CopyFrom(const INISettingsInterface& source)
+{
+  CSimpleIniA::TNamesDepend sections;
+  source.m_ini.GetAllSections(sections);
+  for (const auto& section : sections)
+    SetKeyValueList(section.pItem, source.GetKeyValueList(section.pItem));
+}
+
 bool INISettingsInterface::Save(Error* error /* = nullptr */)
 {
   if (m_filename.empty())

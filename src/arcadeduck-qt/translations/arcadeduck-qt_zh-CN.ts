@@ -6,12 +6,12 @@
     <message>
         <location filename="../aboutdialog.cpp" line="65"/>
         <source>ArcadeDuck is a free and open-source emulator focused on PlayStation 1-based arcade hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck 是一款免费开源的模拟器，专注于基于 PlayStation 1 的街机硬件。</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="66"/>
         <source>Project contact</source>
-        <translation type="unfinished"></translation>
+        <translation>项目联系信息</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="68"/>
@@ -1378,12 +1378,12 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.ui" line="48"/>
         <source>WASAPI RAW Output:</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 输出：</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="55"/>
         <source>Bypass Windows audio processing</source>
-        <translation type="unfinished"></translation>
+        <translation>绕过 Windows 音频处理</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="114"/>
@@ -1590,7 +1590,7 @@ QFile::exists: %2</translation>
         <location filename="../audiosettingswidget.cpp" line="332"/>
         <source>Automatic</source>
         <extracomment>Preserve the %1 variable, adapt the latter ms (and/or any possible spaces in between) to your language&apos;s ruleset.</extracomment>
-        <translation type="unfinished">自动</translation>
+        <translation>自动</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="345"/>
@@ -1701,22 +1701,22 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.cpp" line="125"/>
         <source>The buffer size determines the size of the chunks of audio which will be pulled by the host. Smaller values reduce the output latency, but may cause hitches if the emulation speed is inconsistent. Low Latency mode ignores this setting and automatically requests the selected backend/device minimum instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>缓冲区大小决定主机每次获取的音频数据块大小。较小的值可降低输出延迟，但如果模拟速度不稳定，可能导致声音卡顿。低延迟模式会忽略此设置，并自动请求所选音频后端或设备支持的最小值。</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 输出</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>Disabled</source>
-        <translation type="unfinished">禁用</translation>
+        <translation>禁用</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="131"/>
         <source>Requests Windows RAW shared-mode output through Cubeb/WASAPI, bypassing optional Windows audio signal processing while retaining driver, hardware, and always-on processing. This does not enable exclusive mode or lower ArcadeDuck&apos;s configured Low Latency target. If RAW is unsupported, Cubeb continues with normal shared-mode output.</source>
-        <translation type="unfinished"></translation>
+        <translation>通过 Cubeb/WASAPI 请求 Windows RAW 共享模式输出，绕过 Windows 可选的音频信号处理，但保留驱动程序、硬件和始终启用的处理。这不会启用独占模式，也不会降低 ArcadeDuck 配置的低延迟目标。如果设备不支持 RAW，Cubeb 将继续使用普通共享模式输出。</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="137"/>
@@ -2844,43 +2844,43 @@ You cannot undo this action.</source>
     <message>
         <location filename="../coverdownloaddialog.ui" line="14"/>
         <source>Download Game Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>下载游戏美术资源</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="38"/>
         <source>ArcadeDuck can download curated default artwork for supported arcade games. Manually assigned cover images always take priority and are never overwritten.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck 可以为受支持的街机游戏下载精选默认插图。手动指定的封面始终优先，绝不会被覆盖。</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="52"/>
         <source>Default Artwork:</source>
-        <translation type="unfinished"></translation>
+        <translation>默认美术资源：</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="60"/>
         <source>Clear Logo</source>
-        <translation type="unfinished"></translation>
+        <translation>透明背景徽标</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="65"/>
         <source>2D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>2D 盒封</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="70"/>
         <source>3D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>3D 盒封</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="80"/>
         <source>Download Missing fetches the selected artwork type only for games that do not already have a manually assigned cover or cached artwork of that type. Artwork is stored locally for future use.</source>
-        <translation type="unfinished"></translation>
+        <translation>“下载缺失项”仅为尚未手动指定封面、且没有缓存该类型插图的游戏下载所选插图类型。插图会保存在本地供以后使用。</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="115"/>
         <location filename="../coverdownloaddialog.cpp" line="104"/>
         <source>Download Missing</source>
-        <translation type="unfinished"></translation>
+        <translation>下载缺失项</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="125"/>
@@ -6459,27 +6459,27 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6717"/>
         <source>Artwork Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>美术资源设置</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6720"/>
         <source>Audio</source>
-        <translation type="unfinished">声音</translation>
+        <translation>声音</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6731"/>
         <source>Bezels Directory</source>
-        <translation type="unfinished">边框目录</translation>
+        <translation>边框目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6737"/>
         <source>Bypasses optional Windows audio signal processing when Cubeb is using WASAPI. RAW remains shared mode; it does not enable exclusive output or change ArcadeDuck&apos;s Low Latency target.</source>
-        <translation type="unfinished"></translation>
+        <translation>当 Cubeb 使用 WASAPI 时，绕过 Windows 可选的音频信号处理。RAW 仍为共享模式，不会启用独占输出，也不会改变 ArcadeDuck 的低延迟目标。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6740"/>
         <source>Cache Directory</source>
-        <translation type="unfinished">缓存目录</translation>
+        <translation>缓存目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6742"/>
@@ -6489,7 +6489,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6791"/>
         <source>Crosshairs Directory</source>
-        <translation type="unfinished">准星目录</translation>
+        <translation>准星目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6802"/>
@@ -6504,22 +6504,22 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6828"/>
         <source>Download Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>下载美术资源</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6829"/>
         <source>Downloads curated ArcadeDuck artwork and lets you choose Clear Logo, 2D Box, or 3D Box.</source>
-        <translation type="unfinished"></translation>
+        <translation>下载精选 ArcadeDuck 插图，并可选择透明徽标、2D 盒图或 3D 盒图。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6846"/>
         <source>Enable System Link</source>
-        <translation type="unfinished"></translation>
+        <translation>启用系统联机</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6858"/>
         <source>Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal single-cabinet operation.</source>
-        <translation type="unfinished"></translation>
+        <translation>启用受支持的联机街机硬件使用的网络传输功能。仅使用一台机台时，请保持禁用。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6859"/>
@@ -6529,7 +6529,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6864"/>
         <source>Enter the IPv4 address of the host machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>请输入主机的 IPv4 地址。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6873"/>
@@ -6539,7 +6539,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6883"/>
         <source>Folders</source>
-        <translation type="unfinished">文件夹</translation>
+        <translation>文件夹</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6884"/>
@@ -6554,32 +6554,32 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6912"/>
         <source>Graphics</source>
-        <translation type="unfinished">图像</translation>
+        <translation>图像</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6920"/>
         <source>Host IPv4 Address</source>
-        <translation type="unfinished"></translation>
+        <translation>主机 IPv4 地址</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6921"/>
         <source>Hotkeys</source>
-        <translation type="unfinished">热键</translation>
+        <translation>热键</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6924"/>
         <source>IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck instances are running on the same PC.</source>
-        <translation type="unfinished"></translation>
+        <translation>系统联机会话的主机 IPv4 地址。如果同一台电脑运行多个 ArcadeDuck 实例，请使用 127.0.0.1。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6934"/>
         <source>Interface</source>
-        <translation type="unfinished">界面</translation>
+        <translation>界面</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6979"/>
         <source>Network</source>
-        <translation type="unfinished"></translation>
+        <translation>网络</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6995"/>
@@ -6589,7 +6589,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6998"/>
         <source>Operator</source>
-        <translation type="unfinished">运营者</translation>
+        <translation>运营者</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7017"/>
@@ -6614,12 +6614,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7035"/>
         <source>Port</source>
-        <translation type="unfinished"></translation>
+        <translation>端口</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7036"/>
         <source>Post-Processing</source>
-        <translation type="unfinished">后处理</translation>
+        <translation>后处理</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7052"/>
@@ -6659,7 +6659,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7098"/>
         <source>Save States Directory</source>
-        <translation type="unfinished">存档目录</translation>
+        <translation>存档目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7108"/>
@@ -6689,7 +6689,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7113"/>
         <source>Screenshots Directory</source>
-        <translation type="unfinished">屏幕截图目录</translation>
+        <translation>屏幕截图目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7114"/>
@@ -6879,12 +6879,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7198"/>
         <source>System Link</source>
-        <translation type="unfinished">系统联机</translation>
+        <translation>系统联机</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7199"/>
         <source>TCP port shared by all ArcadeDuck instances participating in the same system-link group. All cabinets must use the same port.</source>
-        <translation type="unfinished"></translation>
+        <translation>同一系统联机组中的所有 ArcadeDuck 实例共用的 TCP 端口。所有机台必须使用相同端口。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7217"/>
@@ -6909,12 +6909,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7242"/>
         <source>Videos Directory</source>
-        <translation type="unfinished">视频目录</translation>
+        <translation>视频目录</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7243"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 输出</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7255"/>
@@ -7802,7 +7802,7 @@ It requires framebuffer fetch, feedback loops, or rasterizer order views.</sourc
     <message>
         <location filename="../gamelistmodel.cpp" line="757"/>
         <source>System</source>
-        <translation type="unfinished">系统</translation>
+        <translation>系统</translation>
     </message>
     <message>
         <location filename="../gamelistmodel.cpp" line="765"/>
@@ -11029,7 +11029,7 @@ This action cannot be undone.</source>
     <message>
         <location filename="../mainwindow.ui" line="642"/>
         <source>Show Arcade Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>显示街机输出信号</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="787"/>
@@ -11039,7 +11039,7 @@ This action cannot be undone.</source>
     <message>
         <location filename="../mainwindow.ui" line="808"/>
         <source>Download Game &amp;Artwork...</source>
-        <translation type="unfinished"></translation>
+        <translation>下载游戏美术资源(&amp;A)...</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="813"/>
@@ -12112,22 +12112,22 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
     <message>
         <location filename="../operatorsettingswidget.ui" line="26"/>
         <source>External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>机台外部输出</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="30"/>
         <source>Enable external cabinet outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>启用机台外部输出</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="35"/>
         <source>Protocol:</source>
-        <translation type="unfinished"></translation>
+        <translation>协议：</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="43"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to compatible external software. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>将受支持的机台灯光、后坐力及其他物理反馈输出到兼容的外部软件。更改将在下次启动游戏时生效。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="52"/>
@@ -12179,42 +12179,42 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
         <location filename="../operatorsettingswidget.cpp" line="36"/>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>MAME Win32</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="37"/>
         <source>MAME TCP (Port 8000)</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME TCP（端口 8000）</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="38"/>
         <source>Both</source>
-        <translation type="unfinished"></translation>
+        <translation>两者</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Enable External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>启用机台外部输出</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Disabled</source>
-        <translation type="unfinished">禁用</translation>
+        <translation>禁用</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="56"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to external software. The internal Debug -&gt; Show Arcade Outputs monitor remains available when external publishing is disabled. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>将受支持的机台灯光、后坐力及其他物理反馈输出到外部软件。即使关闭外部输出，仍可使用内置的“调试 -&gt; 显示街机输出”监视器。更改将在下次启动游戏时生效。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>External Output Protocol</source>
-        <translation type="unfinished"></translation>
+        <translation>外部输出协议</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="61"/>
         <source>MAME Win32 uses the standard Windows MAME output message protocol. MAME TCP uses the standard network output protocol on TCP port 8000. Both enables both transports. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32 使用标准 Windows MAME 输出消息协议。MAME TCP 使用 TCP 端口 8000 上的标准网络输出协议。选择“两者”可同时启用两种传输方式。更改将在下次启动游戏时生效。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="65"/>
@@ -12323,27 +12323,27 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="40"/>
         <source>ArcadeDuck loads user ReShade FX shaders recursively from the user shader folder. Use Effect Packages to browse and install packages from ReShade&apos;s official package catalog, or copy your own .fx/.fxh files and textures into the folder manually.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck 会递归加载用户着色器文件夹中的 ReShade FX 着色器。可使用“效果包”浏览并安装 ReShade 官方目录中的软件包，或手动将 .fx/.fxh 文件和纹理复制到该文件夹。</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="48"/>
         <source>Effect Packages...</source>
-        <translation type="unfinished"></translation>
+        <translation>特效包...</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="49"/>
         <source>Open Shader Folder</source>
-        <translation type="unfinished"></translation>
+        <translation>打开着色器文件夹</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="50"/>
         <source>Reload Shaders</source>
-        <translation type="unfinished">重新加载着色器</translation>
+        <translation>重新加载着色器</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="72"/>
         <source>ReShade</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade</translation>
     </message>
 </context>
 <context>
@@ -12623,219 +12623,223 @@ URL: %1</translation>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1625"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1662"/>
         <source>ReShade Effect Packages</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade 特效包</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="331"/>
         <source>Packages are downloaded from ReShade&apos;s official EffectPackages.ini catalog. ArcadeDuck can automatically preflight each effect with its actual ReShadeFX loader and disable effects that use unsupported constructs. A successful preflight does not guarantee identical behavior on every graphics backend.</source>
-        <translation type="unfinished"></translation>
+        <translation>软件包从 ReShade 官方 EffectPackages.ini 目录下载。ArcadeDuck 可使用实际的 ReShadeFX 加载器预先检查每个效果，并禁用使用不受支持结构的效果。预检成功并不保证在所有图形后端上的行为完全一致。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Package</source>
-        <translation type="unfinished"></translation>
+        <translation>软件包</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Status</source>
-        <translation type="unfinished"></translation>
+        <translation>状态</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="359"/>
         <source>Effects to install:</source>
-        <translation type="unfinished"></translation>
+        <translation>要安装的特效：</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="376"/>
         <source>Refresh Catalog</source>
-        <translation type="unfinished"></translation>
+        <translation>刷新目录</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="377"/>
         <source>Check Compatibility</source>
-        <translation type="unfinished"></translation>
+        <translation>检查兼容性</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="378"/>
         <source>Repository</source>
-        <translation type="unfinished"></translation>
+        <translation>代码仓库</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="379"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Install</source>
-        <translation type="unfinished"></translation>
+        <translation>安装</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="380"/>
         <source>Remove</source>
-        <translation type="unfinished">删除</translation>
+        <translation>删除</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="407"/>
         <source>HTTP support is unavailable in this build.</source>
-        <translation type="unfinished"></translation>
+        <translation>此版本不支持 HTTP。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="452"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>Download Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>下载失败</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="453"/>
         <source>The download failed with HTTP status %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>下载失败，HTTP 状态码为 %1。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>The server returned an empty response.</source>
-        <translation type="unfinished"></translation>
+        <translation>服务器返回了空响应。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="652"/>
         <source>Downloading the official ReShade effect package catalog...</source>
-        <translation type="unfinished"></translation>
+        <translation>正在下载 ReShade 官方特效包目录…</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="660"/>
         <source>Catalog Error</source>
-        <translation type="unfinished"></translation>
+        <translation>目录错误</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="692"/>
         <source>Loaded %1 packages from the official ReShade catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>已从 ReShade 官方目录加载 %1 个包。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="725"/>
         <source>Unsupported</source>
-        <translation type="unfinished">不支持</translation>
+        <translation>不支持</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="727"/>
         <source>Compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>兼容</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="729"/>
         <source>%1 compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>兼容：%1</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Installed</source>
-        <translation type="unfinished"></translation>
+        <translation>已安装</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Available</source>
-        <translation type="unfinished"></translation>
+        <translation>可用</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="783"/>
         <source>
 
 This package is installed locally but is no longer listed in the current catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>
+
+此软件包已安装在本地，但不再列于当前目录中。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="800"/>
         <source>  [Compatible]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [兼容]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="805"/>
         <source>  [Unsupported]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [不支持]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="810"/>
         <source>  [Unknown]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [未知]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="847"/>
         <source>This package does not provide an individual effect list; all shader files will be installed.</source>
-        <translation type="unfinished"></translation>
+        <translation>此包未提供单独的特效列表；将安装所有着色器文件。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="848"/>
         <source>Effect selection is unavailable for this installed package.</source>
-        <translation type="unfinished"></translation>
+        <translation>无法为此已安装的包选择特效。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Update / Reinstall</source>
-        <translation type="unfinished"></translation>
+        <translation>更新 / 重新安装</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="862"/>
         <source>Compatibility preflight: %1 compatible, %2 unsupported, %3 unknown. Unsupported and unknown effects are disabled.</source>
-        <translation type="unfinished"></translation>
+        <translation>兼容性预检：%1 个兼容，%2 个不支持，%3 个未知。不支持和未知的特效将被禁用。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="870"/>
         <source>Compatibility has not been checked for this package yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>尚未检查此包的兼容性。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="890"/>
         <source>Checking compatibility for %1...</source>
-        <translation type="unfinished"></translation>
+        <translation>正在检查 %1 的兼容性…</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1171"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1598"/>
         <source>Compatibility Check Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>兼容性检查失败</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1209"/>
         <source>Downloading %1...</source>
-        <translation type="unfinished">下载中%1…</translation>
+        <translation>下载中%1…</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1608"/>
         <source>Install Package</source>
-        <translation type="unfinished"></translation>
+        <translation>安装软件包</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1609"/>
         <source>No compatible effects are selected for installation.</source>
-        <translation type="unfinished"></translation>
+        <translation>未选择要安装的兼容特效。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1617"/>
         <source>Package Installation Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>软件包安装失败</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1626"/>
         <source>%1 was installed successfully.</source>
-        <translation type="unfinished"></translation>
+        <translation>已成功安装 %1。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1641"/>
         <source>Remove Package</source>
-        <translation type="unfinished"></translation>
+        <translation>移除软件包</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1642"/>
         <source>Remove %1 and the shader/texture files recorded in its ArcadeDuck package manifest?
 
 Shaders from this package that are currently in a post-processing chain may fail to reload.</source>
-        <translation type="unfinished"></translation>
+        <translation>要删除 %1 以及其 ArcadeDuck 软件包清单中记录的着色器和纹理文件吗？
+
+此软件包中正在后处理链中使用的着色器可能无法重新加载。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1654"/>
         <source>Package Removal Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>软件包移除失败</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1663"/>
         <source>%1 was removed.</source>
-        <translation type="unfinished"></translation>
+        <translation>已移除 %1。</translation>
     </message>
 </context>
 <context>
@@ -13406,27 +13410,28 @@ Restart the game after changing a switch.</source>
         <location filename="../settingswindow.cpp" line="282"/>
         <source>Namco System 11 physical DIP SW2 switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Namco System 11 的物理 DIP SW2 开关。
+更改开关后请重新启动游戏。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="284"/>
         <source>DIP1 Test (SW2:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP1 测试 (SW2:1)：</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="286"/>
         <source>Physical DIP SW2:1. This is separate from the cabinet Test switch/hotkey.</source>
-        <translation type="unfinished"></translation>
+        <translation>物理 DIP 开关 SW2:1。它独立于机台的测试开关或快捷键。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="287"/>
         <source>DIP2 Freeze (SW2:2):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP2 冻结 (SW2:2)：</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="289"/>
         <source>Physical DIP SW2:2. Freezes game execution when enabled by the game hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>物理 DIP 开关 SW2:2。如果游戏硬件支持，启用后会暂停游戏执行。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="294"/>
@@ -13446,80 +13451,82 @@ Restart the game after changing a switch.</source>
         <location filename="../settingswindow.cpp" line="309"/>
         <source>Bust-A-Move 2 COH-1002E motherboard S551 DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bust-A-Move 2 COH-1002E 主板上的 S551 DIP 开关。
+更改开关后请重新启动游戏。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="312"/>
         <source>Generic Cab (Unsupported)</source>
-        <translation type="unfinished"></translation>
+        <translation>通用机台（不支持）</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="313"/>
         <location filename="../settingswindow.cpp" line="320"/>
         <source>Dedicated Cab</source>
-        <translation type="unfinished"></translation>
+        <translation>专用机台</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="317"/>
         <source>Cabinet Type (S551:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>机台类型 (S551:1)：</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="321"/>
         <source>Physical motherboard DIP S551:1 exists, but Generic Cab support is currently disabled in ArcadeDuck. Bust-A-Move 2 is fixed to the verified Dedicated Cab wiring.</source>
-        <translation type="unfinished"></translation>
+        <translation>主板上确实存在物理 DIP 开关 S551:1，但 ArcadeDuck 目前禁用了 Generic Cab 支持。Bust-A-Move 2 固定使用已经验证的 Dedicated Cab 接线方式。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="327"/>
         <source>English</source>
-        <translation type="unfinished"></translation>
+        <translation>英语</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="328"/>
         <source>Japanese (2)</source>
-        <translation type="unfinished"></translation>
+        <translation>日语（2）</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="329"/>
         <source>Korean</source>
-        <translation type="unfinished"></translation>
+        <translation>韩语</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="330"/>
         <location filename="../settingswindow.cpp" line="344"/>
         <source>Japanese</source>
-        <translation type="unfinished"></translation>
+        <translation>日语</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="342"/>
         <source>Region (S551:3-4):</source>
-        <translation type="unfinished"></translation>
+        <translation>区域 (S551:3-4)：</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="345"/>
         <source>Physical motherboard DIP S551:3-4 region encoding used by Bust-A-Move 2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bust-A-Move 2 用于设置区域编码的主板物理 DIP 开关 S551:3-4。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="350"/>
         <source>Sony ZN motherboard S551 physical DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sony ZN 主板上的物理 S551 DIP 开关。
+更改开关后请重新启动游戏。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="358"/>
         <source>Game Test Mode (S551:4):</source>
-        <translation type="unfinished"></translation>
+        <translation>游戏测试模式 (S551:4)：</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="360"/>
         <source>Physical motherboard DIP S551:4 used by this hardware profile for game test mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>此硬件配置使用主板物理 DIP 开关 S551:4 进入游戏测试模式。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="365"/>
         <source>No physical DIP switch settings are available for this game.</source>
-        <translation type="unfinished"></translation>
+        <translation>此游戏没有可用的实体 DIP 开关设置。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="285"/>

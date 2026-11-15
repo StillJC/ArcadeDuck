@@ -81,6 +81,9 @@ void Bus::QueueResponse(std::span<const u8> payload)
   m_response_read = 0;
   m_response_length = 0;
 
+  if (payload.size() > 254)
+    return;
+
   std::array<u8, 260> packet{};
   u32 packet_length = 0;
   packet[packet_length++] = MasterAddress;
@@ -101,7 +104,10 @@ void Bus::QueueResponse(std::span<const u8> payload)
     if (value == Sync || value == Escape)
     {
       if ((m_response_length + 2) > m_response.size())
-        break;
+      {
+        m_response_length = 0;
+        return;
+      }
 
       m_response[m_response_length++] = Escape;
       m_response[m_response_length++] = static_cast<u8>(value - 1);
@@ -109,7 +115,10 @@ void Bus::QueueResponse(std::span<const u8> payload)
     else
     {
       if (m_response_length >= m_response.size())
-        break;
+      {
+        m_response_length = 0;
+        return;
+      }
 
       m_response[m_response_length++] = value;
     }

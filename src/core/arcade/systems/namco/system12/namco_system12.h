@@ -5,6 +5,7 @@
 
 #include "core/types.h"
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -52,6 +53,10 @@ bool Initialize(LoadedContent content, Error* error);
 void Reset();
 void Shutdown();
 bool IsActive();
+
+/// RGB video gain (0..1) that the sub-CPU sets through the board's settings DAC. Returns false when the gain
+/// is unity or System 12 is not running.
+bool GetVideoGain(std::array<float, 3>* gain);
 
 /// Save states cover every configuration except the Kart Duel link board.
 bool SupportsSaveStates(const Arcade::Database::GameDefinition& game);

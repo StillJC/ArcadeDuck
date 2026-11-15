@@ -11,7 +11,14 @@
 
 class SettingsInterface;
 
+namespace Arcade {
+struct ArcadeGameControlProfile;
+}
+
 namespace ArcadeInput {
+
+void CopyControllerConfiguration(SettingsInterface* dest_si, const SettingsInterface& src_si,
+                                 const Arcade::ArcadeGameControlProfile* target_profile = nullptr);
 
 static constexpr u32 NUM_LIGHTGUN_PRESENTATION_PORTS = 3;
 

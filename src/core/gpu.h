@@ -674,8 +674,10 @@ protected:
 
   bool RenderDisplay(GPUTexture* target, const GSVector4i display_rect, const GSVector4i draw_rect, bool postfx);
 
-  bool Deinterlace(u32 field, u32 line_skip);
-  bool DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip);
+  /// line_band is the height of one VRAM line in display texture rows (the resolution scale for upscaled VRAM).
+  bool Deinterlace(u32 field, u32 line_skip, u32 line_band = 1);
+  bool DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip,
+                               u32 line_band);
   bool DeinterlaceSetTargetSize(u32 width, u32 height, bool preserve);
   void DestroyDeinterlaceTextures();
   bool ApplyChromaSmoothing();
@@ -688,6 +690,9 @@ protected:
 
   std::unique_ptr<GPUPipeline> m_chroma_smoothing_pipeline;
   std::unique_ptr<GPUTexture> m_chroma_smoothing_texture;
+
+  /// Board-level video output gain (System 12 settings DAC), applied to the display image before scaling.
+  std::unique_ptr<GPUPipeline> m_video_gain_pipeline;
 
   std::unique_ptr<GPUPipeline> m_display_pipeline;
   std::unique_ptr<GPUPipeline> m_display_fsr1_rcas_pipeline;

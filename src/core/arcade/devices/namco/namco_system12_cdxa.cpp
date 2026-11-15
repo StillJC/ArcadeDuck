@@ -930,7 +930,8 @@ bool System12CDXA::WritePSX(uint32_t width, uint32_t exp1_offset, uint32_t value
 
   if (exp1_offset >= UINT32_C(0x007F8000) && exp1_offset <= UINT32_C(0x007F80FF))
   {
-    WriteVolumeControl(static_cast<uint8_t>(exp1_offset));
+    // Volume pins are encoded in the 16-bit word offset.
+    WriteVolumeControl(static_cast<uint8_t>((exp1_offset - UINT32_C(0x007F8000)) >> 1));
     return true;
   }
 

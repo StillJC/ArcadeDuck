@@ -18,10 +18,12 @@
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
 #include "core/arcade/arcade_output.h"
+#include "core/arcade/arcade_rom_loader.h"
 #include "core/bus.h"
 #include "core/cpu_core.h"
 #include "core/dma.h"
 #include "core/host.h"
+#include "core/save_state_version.h"
 #include "core/system.h"
 #include "core/timing_event.h"
 #include "core/settings.h"
@@ -45,7 +47,6 @@ extern "C" {
 
 #include "util/state_wrapper.h"
 #include "common/path.h"
-#include "common/minizip_helpers.h"
 #include "common/sha1_digest.h"
 #include "common/string_util.h"
 #include "common/timer.h"
@@ -61,6 +62,7 @@ extern "C" {
 #include <ctime>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -88,6 +90,13 @@ static constexpr u32 SHARED_RAM_BASE = 0x080000;
 static constexpr u32 SHARED_RAM_END = SHARED_RAM_BASE + PSX_SHARED_WINDOW_SIZE - 1;
 static constexpr u32 BOARD_CONTROL_BASE = 0x1bff08;
 static constexpr u32 BOARD_CONTROL_END = 0x1bff0f;
+
+// First save-state version that stores the settings DAC outputs.
+static constexpr u32 SETTINGS_DAC_STATE_VERSION = 73;
+static_assert(SETTINGS_DAC_STATE_VERSION <= SAVE_STATE_VERSION);
+
+// Settings DAC channels carrying the red, green and blue video gain.
+static constexpr std::array<u8, 3> SETTINGS_DAC_VIDEO_GAIN_CHANNELS = {{6, 7, 8}};
 
 static constexpr u32 GUN_INTERFACE_READ_BASE = 0x780000;
 static constexpr u32 GUN_INTERFACE_READ_END = 0x78000f;
@@ -237,6 +246,7 @@ struct RuntimeState
   bool h8_jvs_rts = false;
   Arcade::JVS::Bus h8_jvs_bus;
   Arcade::JVS::NamcoCyberLead h8_cyberlead;
+  bool cyberlead_led_enabled = false;
   u64 h8_cyberlead_deferred_clocks = 0;
   Arcade::JVS::NamcoFCA10 h8_fca10;
   Arcade::JVS::Chain h8_jvs_chain;
@@ -266,6 +276,9 @@ struct RuntimeState
   u8 h8_settings_address = 0;
   u8 h8_settings_value = 0;
   u8 h8_settings_bit = 0;
+  // Settings DAC outputs, indexed by the high nibble of the channel address. The sub-CPU programs
+  // channels 6-8 (addresses 60h/70h/80h) with the RGB video gain, which games ramp for fades.
+  std::array<u8, 16> h8_settings_dac{};
 
   bool h8_rtc_ce = false;
   bool h8_rtc_clk = false;
@@ -445,6 +458,90 @@ bool LoadEEPROM(RuntimeState& runtime, Error* error)
   }
   else
   {
+    if (runtime.content.set_name == "kartduel")
+    {
+      // Preserve the initialized settings block together with the steering calibration.
+      static constexpr size_t KART_DUEL_DEFAULTS_OFFSET = 0x0140;
+      static constexpr std::array<u8, 0xBC> KART_DUEL_DEFAULTS = {{
+        0x02, 0x01, 0x00, 0xFB, 0x00, 0x14, 0x05, 0x03, 0x03, 0x02, 0x06, 0x04,
+        0x04, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02,
+        0x02, 0x02, 0x98, 0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7E, 0xFF, 0x20,
+        0x26, 0x11, 0x11, 0x03, 0x23, 0x03, 0x38, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0xC8, 0x6D, 0x01, 0xFD, 0x02, 0x02, 0x01, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x20, 0x20, 0x20, 0x20, 0x20, 0x5F, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x4B, 0x44, 0x32, 0x01, 0x01, 0x01, 0x06, 0x04, 0x04, 0x02, 0x02,
+        0x02, 0x02, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      }};
+      static_assert(KART_DUEL_DEFAULTS_OFFSET + KART_DUEL_DEFAULTS.size() <= EEPROM_SIZE);
+      std::memcpy(s_eeprom.data() + KART_DUEL_DEFAULTS_OFFSET, KART_DUEL_DEFAULTS.data(), KART_DUEL_DEFAULTS.size());
+    }
+    else if (runtime.content.set_name == "technodr")
+    {
+      // Default settings and calibration captured before starting a course.
+      static constexpr std::array<u8, 0x250> TECHNO_DRIVE_DEFAULTS = {{
+        0x4D, 0x31, 0x33, 0x38, 0x4A, 0x50, 0x31, 0x00, 0x00, 0x00, 0x05, 0x00,
+        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5E, 0x40, 0x12,
+        0xC0, 0x81, 0x00, 0x00, 0x00, 0x00, 0xB0, 0x03, 0x5E, 0x2A, 0x2A, 0x00,
+        0x01, 0x02, 0x4A, 0x24, 0x47, 0x4E, 0x54, 0x03, 0x04, 0x05, 0xEC, 0x22,
+        0x45, 0x44, 0x40, 0x06, 0x07, 0x08, 0x8E, 0x21, 0x43, 0x53, 0x5D, 0x09,
+        0x0A, 0x0B, 0x30, 0x20, 0x45, 0x4D, 0x5D, 0x0C, 0x0D, 0x0E, 0xD2, 0x1E,
+        0x37, 0x36, 0x35, 0x00, 0x01, 0x02, 0x74, 0x1D, 0x48, 0x4F, 0x49, 0x03,
+        0x04, 0x05, 0x16, 0x1C, 0x5A, 0x49, 0x4E, 0x06, 0x07, 0x08, 0xB8, 0x1A,
+        0x47, 0x45, 0x52, 0x09, 0x0A, 0x0B, 0x5A, 0x19, 0x54, 0x44, 0x23, 0x0C,
+        0x0D, 0x0E, 0x5A, 0x19, 0x5E, 0x2A, 0x2A, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x43, 0x53, 0x5D, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x45, 0x4D, 0x5D, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x5E, 0x2A, 0x2A, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x43, 0x53, 0x5D, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x45, 0x4D, 0x5D, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x5E, 0x2A, 0x2A, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x43, 0x53, 0x5D, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x45, 0x4D, 0x5D, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x45, 0x44, 0x40, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4B, 0x2E, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x54, 0x59, 0x5A, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x45, 0x44, 0x40, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4B, 0x2E, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x54, 0x59, 0x5A, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x45, 0x44, 0x40, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4B, 0x2E, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x54, 0x59, 0x5A, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x54, 0x44, 0x23, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4E, 0x41, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x4E, 0x45, 0x4C, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x54, 0x44, 0x23, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4E, 0x41, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x4E, 0x45, 0x4C, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x54, 0x44, 0x23, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4E, 0x41, 0x49, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x4E, 0x45, 0x4C, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x37, 0x36, 0x35, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4D, 0x2E, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x55, 0x4D, 0x41, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x37, 0x36, 0x35, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4D, 0x2E, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x55, 0x4D, 0x41, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x37, 0x36, 0x35, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x4D, 0x2E, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x55, 0x4D, 0x41, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x48, 0x4F, 0x49, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x5A, 0x49, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x47, 0x45, 0x52, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x48, 0x4F, 0x49, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x5A, 0x49, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x47, 0x45, 0x52, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0x48, 0x4F, 0x49, 0x00, 0x4A, 0x24, 0x00, 0x00,
+        0x5A, 0x49, 0x4E, 0x00, 0x8E, 0x21, 0x00, 0x00, 0x47, 0x45, 0x52, 0x00,
+        0xE2, 0x1D, 0x00, 0x00, 0xEE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+      }};
+      static_assert(TECHNO_DRIVE_DEFAULTS.size() <= EEPROM_SIZE);
+      std::memcpy(s_eeprom.data(), TECHNO_DRIVE_DEFAULTS.data(), TECHNO_DRIVE_DEFAULTS.size());
+    }
+
     if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
         !FileSystem::CreateDirectory(runtime.persistence_directory.c_str(), false) ||
         !FileSystem::WriteBinaryFile(runtime.eeprom_path.c_str(), s_eeprom.data(), s_eeprom.size()))
@@ -547,116 +644,6 @@ void WriteEEPROM(RuntimeState& runtime, u32 width, u32 offset, u32 value)
   if (changed)
     runtime.eeprom_dirty = true;
 
-}
-
-// System12 AT28C16
-bool LoadROMMember(const char* archive_path, const Arcade::Database::ROMDefinition& rom, std::vector<u8>* data,
-                   Error* error)
-{
-  unzFile zf = MinizipHelpers::OpenUnzFile(archive_path);
-  if (!zf)
-  {
-    Error::SetStringFmt(error, "Failed to open Namco System 12 set archive '{}'.", archive_path);
-    return false;
-  }
-
-  if (unzGoToFirstFile(zf) != UNZ_OK)
-  {
-    unzClose(zf);
-    Error::SetStringFmt(error, "Namco System 12 set archive '{}' is empty or unreadable.", archive_path);
-    return false;
-  }
-
-  for (;;)
-  {
-    unz_file_info64 file_info = {};
-    char member_name[512] = {};
-    if (unzGetCurrentFileInfo64(zf, &file_info, member_name, sizeof(member_name), nullptr, 0, nullptr, 0) != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed to read file information from Namco System 12 set archive '{}'.",
-                          archive_path);
-      return false;
-    }
-
-    member_name[sizeof(member_name) - 1] = '\0';
-    if (StringUtil::EqualNoCase(member_name, rom.name))
-    {
-      if (file_info.uncompressed_size != rom.size)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 12 ROM '{}' has size {}, expected {} bytes.", rom.name,
-                            file_info.uncompressed_size, rom.size);
-        return false;
-      }
-      if (rom.has_crc32 && static_cast<u32>(file_info.crc) != rom.crc32)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "System 12 ROM '{}' has CRC32 {:08x}, expected {:08x}.", rom.name,
-                            static_cast<u32>(file_info.crc), rom.crc32);
-        return false;
-      }
-      if (unzOpenCurrentFile(zf) != UNZ_OK)
-      {
-        unzClose(zf);
-        Error::SetStringFmt(error, "Failed to decompress System 12 ROM '{}' from '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      data->resize(rom.size);
-      size_t read_offset = 0;
-      while (read_offset < data->size())
-      {
-        const int bytes_read = unzReadCurrentFile(zf, data->data() + read_offset,
-                                                  static_cast<unsigned>(data->size() - read_offset));
-        if (bytes_read <= 0)
-        {
-          unzCloseCurrentFile(zf);
-          unzClose(zf);
-          Error::SetStringFmt(error, "Failed reading System 12 ROM '{}' from '{}'.", rom.name, archive_path);
-          return false;
-        }
-        read_offset += static_cast<size_t>(bytes_read);
-      }
-
-      const int close_result = unzCloseCurrentFile(zf);
-      unzClose(zf);
-      if (close_result != UNZ_OK)
-      {
-        Error::SetStringFmt(error, "CRC validation failed for System 12 ROM '{}' in '{}'.", rom.name, archive_path);
-        return false;
-      }
-
-      if (!rom.sha1.empty())
-      {
-        auto digest = SHA1Digest::GetDigest(std::span<const u8>(data->data(), data->size()));
-        const std::string digest_string = SHA1Digest::DigestToString(digest);
-        if (!StringUtil::EqualNoCase(digest_string, rom.sha1))
-        {
-          Error::SetStringFmt(error, "System 12 ROM '{}' has SHA-1 {}, expected {}.", rom.name, digest_string,
-                              rom.sha1);
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    const int next_result = unzGoToNextFile(zf);
-    if (next_result == UNZ_END_OF_LIST_OF_FILE)
-      break;
-    if (next_result != UNZ_OK)
-    {
-      unzClose(zf);
-      Error::SetStringFmt(error, "Failed while reading Namco System 12 set archive '{}'.", archive_path);
-      return false;
-    }
-  }
-
-  unzClose(zf);
-  Error::SetStringFmt(error, "Namco System 12 set archive '{}' does not contain required ROM '{}'.", archive_path,
-                      rom.name);
-  return false;
 }
 
 size_t ComputeRangeExtent(u32 offset, u32 length, u32 group_size, u32 skip)
@@ -856,7 +843,6 @@ void UpdateH8RTCRegisters(RuntimeState& runtime)
 static constexpr u32 TECHNODR_PRINT_WIDTH = 576;
 static constexpr u32 TECHNODR_PRINT_CELL_WIDTH = 12;
 static constexpr u32 TECHNODR_PRINT_LINE_HEIGHT = 24;
-static constexpr u32 TECHNODR_PRINT_MARGIN = 12;
 
 bool DecodeTechnoDrivePrintCharacter(std::span<const u8> data, size_t* offset, ImWchar* codepoint, u32* cells)
 {
@@ -890,75 +876,333 @@ bool DecodeTechnoDrivePrintCharacter(std::span<const u8> data, size_t* offset, I
 
 void DrawTechnoDrivePrintGlyph(std::vector<u32>& page, u32 page_height, const unsigned char* atlas_pixels,
                                int atlas_width, int atlas_height, const ImFont* font, ImWchar codepoint,
-                               u32 x, u32 y)
+                               u32 x, u32 y, u32 scale = 1, bool white = false)
 {
   const ImFontGlyph* const glyph = font->FindGlyph(codepoint);
   if (!glyph)
     return;
 
-  const int source_x0 = static_cast<int>((glyph->U0 * static_cast<float>(atlas_width)) + 0.5f);
-  const int source_y0 = static_cast<int>((glyph->V0 * static_cast<float>(atlas_height)) + 0.5f);
-  const int source_x1 = static_cast<int>((glyph->U1 * static_cast<float>(atlas_width)) + 0.5f);
-  const int source_y1 = static_cast<int>((glyph->V1 * static_cast<float>(atlas_height)) + 0.5f);
-  const int dest_x0 = static_cast<int>(x) + static_cast<int>(glyph->X0);
-  const int dest_y0 = static_cast<int>(y) + static_cast<int>(glyph->Y0);
+  const int sx0 = static_cast<int>(glyph->U0 * atlas_width + 0.5f);
+  const int sy0 = static_cast<int>(glyph->V0 * atlas_height + 0.5f);
+  const int sx1 = static_cast<int>(glyph->U1 * atlas_width + 0.5f);
+  const int sy1 = static_cast<int>(glyph->V1 * atlas_height + 0.5f);
+  const int dx0 = static_cast<int>(x) + static_cast<int>(glyph->X0 * scale);
+  const int dy0 = static_cast<int>(y) + static_cast<int>(glyph->Y0 * scale);
+  const int dx1 = static_cast<int>(x) + static_cast<int>(glyph->X1 * scale);
+  const int dy1 = static_cast<int>(y) + static_cast<int>(glyph->Y1 * scale);
+  if (sx1 <= sx0 || sy1 <= sy0 || dx1 <= dx0 || dy1 <= dy0)
+    return;
 
-  for (int source_y = source_y0; source_y < source_y1; source_y++)
+  for (int dy = std::max(0, dy0); dy < std::min<int>(dy1, static_cast<int>(page_height)); dy++)
   {
-    const int dest_y = dest_y0 + (source_y - source_y0);
-    if (source_y < 0 || source_y >= atlas_height || dest_y < 0 || dest_y >= static_cast<int>(page_height))
+    const int sy = sy0 + (dy - dy0) * (sy1 - sy0) / (dy1 - dy0);
+    if (sy < 0 || sy >= atlas_height)
       continue;
-
-    for (int source_x = source_x0; source_x < source_x1; source_x++)
+    for (int dx = std::max(0, dx0); dx < std::min<int>(dx1, TECHNODR_PRINT_WIDTH); dx++)
     {
-      const int dest_x = dest_x0 + (source_x - source_x0);
-      if (source_x < 0 || source_x >= atlas_width || dest_x < 0 ||
-          dest_x >= static_cast<int>(TECHNODR_PRINT_WIDTH))
-      {
+      const int sx = sx0 + (dx - dx0) * (sx1 - sx0) / (dx1 - dx0);
+      if (sx < 0 || sx >= atlas_width)
         continue;
-      }
-
-      const u8 alpha = atlas_pixels[source_y * atlas_width + source_x];
-      if (alpha == 0)
-        continue;
-
-      const u32 shade = UINT32_C(0xFF) - alpha;
-      page[static_cast<size_t>(dest_y) * TECHNODR_PRINT_WIDTH + static_cast<u32>(dest_x)] =
-        UINT32_C(0xFF000000) | shade | (shade << 8) | (shade << 16);
+      const u32 alpha = std::max<u32>(atlas_pixels[sy * atlas_width + sx],
+                                     atlas_pixels[sy * atlas_width + std::max(sx0, sx - 1)]);
+      u32& pixel = page[static_cast<size_t>(dy) * TECHNODR_PRINT_WIDTH + dx];
+      const u32 shade = ((pixel & 0xFF) * (255 - alpha) + (white ? 255 : 0) * alpha) / 255;
+      pixel = UINT32_C(0xFF000000) | shade | (shade << 8) | (shade << 16);
     }
   }
 }
 
-void DrawTechnoDrivePrintMarker(std::vector<u32>& page, u32 page_height, u32 column, u32 y)
+bool ReadTechnoDrivePrintCharacter(std::span<const u8> job, size_t* offset, ImWchar* codepoint, u32* cells,
+                                  std::array<u8, 3>* control = nullptr)
 {
-  const u32 x0 = TECHNODR_PRINT_MARGIN + (column * TECHNODR_PRINT_CELL_WIDTH);
-  const u32 y0 = y + 4;
-  for (u32 py = y0; py < std::min<u32>(y0 + TECHNODR_PRINT_CELL_WIDTH, page_height); py++)
+  while (*offset < job.size())
   {
-    for (u32 px = x0; px < std::min<u32>(x0 + TECHNODR_PRINT_CELL_WIDTH, TECHNODR_PRINT_WIDTH); px++)
-      page[static_cast<size_t>(py) * TECHNODR_PRINT_WIDTH + px] = UINT32_C(0xFF000000);
+    const u8 value = job[*offset];
+    if (value == UINT8_C(0x0D))
+    {
+      (*offset)++;
+      continue;
+    }
+    if (value == UINT8_C(0x0A))
+    {
+      (*offset)++;
+      *codepoint = static_cast<ImWchar>('\n');
+      *cells = 0;
+      return true;
+    }
+    if (value != UINT8_C(0x1B))
+      return DecodeTechnoDrivePrintCharacter(job, offset, codepoint, cells);
+
+    if ((job.size() - *offset) < 2)
+      return false;
+    const u8 command = job[*offset + 1];
+    *offset += 2;
+    if (command == UINT8_C(0x10) || command == UINT8_C(0x11) || command == UINT8_C(0x12))
+    {
+      if ((job.size() - *offset) < 2)
+        return false;
+      const std::array<u8, 3> parameters = {command, job[*offset], job[*offset + 1]};
+      *offset += 2;
+      if (control)
+      {
+        *control = parameters;
+        *codepoint = 0;
+        *cells = 0;
+        return true;
+      }
+    }
+    else if (command == UINT8_C(0x15))
+    {
+      if (*offset >= job.size())
+        return false;
+      const u8 parameter = job[(*offset)++];
+      if (control)
+      {
+        *control = {command, parameter, 0};
+        *codepoint = 0;
+        *cells = 0;
+        return true;
+      }
+    }
+    else if (command == UINT8_C(0x13))
+    {
+      if (*offset >= job.size())
+        return false;
+      const u8 glyph = job[(*offset)++];
+      if (control)
+        *control = {command, glyph, 0};
+      *cells = 1;
+      if (glyph >= UINT8_C(0x08) && glyph <= UINT8_C(0x11))
+        *codepoint = static_cast<ImWchar>('0' + glyph - UINT8_C(0x08));
+      else if (glyph >= UINT8_C(0x18) && glyph <= UINT8_C(0x1C))
+        *codepoint = static_cast<ImWchar>('A' + glyph - UINT8_C(0x18));
+      else
+      {
+        // Custom printer glyphs use host-font substitutes.
+        switch (glyph)
+        {
+          case UINT8_C(0x01): *codepoint = static_cast<ImWchar>(0x25A0); break;
+          case UINT8_C(0x12): *codepoint = static_cast<ImWchar>('.'); break;
+          case UINT8_C(0x13): *codepoint = static_cast<ImWchar>('['); break;
+          case UINT8_C(0x14): *codepoint = static_cast<ImWchar>(']'); break;
+          case UINT8_C(0x15): *codepoint = static_cast<ImWchar>('%'); break;
+          case UINT8_C(0x16): *codepoint = static_cast<ImWchar>('+'); break;
+          case UINT8_C(0x17): *codepoint = static_cast<ImWchar>('-'); break;
+          default: *codepoint = static_cast<ImWchar>('?'); break;
+        }
+      }
+      return true;
+    }
   }
+  return false;
+}
+
+struct TechnoDrivePrintImage
+{
+  u32 width = 0;
+  u32 height = 0;
+  std::vector<u16> pixels;
+};
+
+bool LoadTechnoDrivePrintTIM(std::span<const u8> rom, size_t offset, TechnoDrivePrintImage* image)
+{
+  const auto read16 = [&rom](size_t p) { return static_cast<u16>(rom[p] | (static_cast<u16>(rom[p + 1]) << 8)); };
+  const auto read32 = [&read16](size_t p) { return static_cast<u32>(read16(p)) | (static_cast<u32>(read16(p + 2)) << 16); };
+  if (offset > rom.size() || (rom.size() - offset) < 8 || read32(offset) != 0x10)
+    return false;
+  const u32 flags = read32(offset + 4);
+  const u32 mode = flags & 3;
+  if ((flags & ~UINT32_C(0x0B)) != 0 || mode == 3 || (mode < 2 && (flags & 8) == 0))
+    return false;
+  offset += 8;
+  size_t palette_offset = 0;
+  if ((flags & 8) != 0)
+  {
+    if ((rom.size() - offset) < 12)
+      return false;
+    const u32 size = read32(offset);
+    const u32 colors = (mode == 0) ? 16 : 256;
+    if (size < (12 + colors * 2) || size > (rom.size() - offset))
+      return false;
+    palette_offset = offset + 12;
+    offset += size;
+  }
+  if ((rom.size() - offset) < 12)
+    return false;
+  const u32 size = read32(offset);
+  const u32 words = read16(offset + 8);
+  const u32 height = read16(offset + 10);
+  if (words == 0 || words > 1024 || height == 0 || height > 1024 ||
+      size != (12 + words * height * 2) || size > (rom.size() - offset))
+    return false;
+  const u32 width = words * ((mode == 0) ? 4 : (mode == 1) ? 2 : 1);
+  image->width = width;
+  image->height = height;
+  image->pixels.resize(static_cast<size_t>(width) * height);
+  for (u32 y = 0; y < height; y++)
+  {
+    for (u32 x = 0; x < width; x++)
+    {
+      const size_t row = offset + 12 + static_cast<size_t>(y) * words * 2;
+      u16 color;
+      if (mode == 0)
+      {
+        const u8 index = (rom[row + x / 2] >> ((x & 1) * 4)) & 15;
+        color = read16(palette_offset + index * 2);
+      }
+      else if (mode == 1)
+      {
+        color = read16(palette_offset + rom[row + x] * 2);
+      }
+      else
+      {
+        color = read16(row + x * 2);
+      }
+      image->pixels[static_cast<size_t>(y) * width + x] = color;
+    }
+  }
+  return true;
+}
+
+static constexpr std::array<std::u16string_view, 16> TECHNODR_EXERCISES = {
+  u"", u"高速適応力", u"度胸", u"スピン走行", u"車幅感覚", u"ジャンプ技術", u"スムーズ走行",
+  u"動体視力", u"パワー制御能力", u"連続集中走行", u"決断力", u"状況判断", u"思考リンク走行",
+  u"誘導反射", u"反応速度", u"バック走行"};
+
+static constexpr std::array<std::u16string_view, 3> TECHNODR_CATEGORIES = {u"手技", u"足技", u"実技"};
+
+// Advice indices select HLE substitutes; the original printer text bank is unavailable.
+static constexpr std::array<std::array<std::u16string_view, 3>, 16> TECHNODR_PRINT_ADVICE = {{
+  {u"", u"", u""},
+  {u"遠くの進路を見て、次の障害物を早めに見つけよう。",
+   u"大きく切り返さず、小さなハンドル操作で進路を修正しよう。",
+   u"接触せずに走れる速さから始め、少しずつ速度を上げよう。"},
+  {u"芸能界に入り、アッコを敵に回せ。紅白のとき生放送で宣戦布告せよ",
+   u"今すぐ銀行に行き、お子様銀行発行紙幣を貯金せよ",
+   u"頑固な店主がいるラーメン屋へ行き、大盛りを注文して残せ"},
+  {u"車の向きが変わり始めたら、早めにハンドルを戻そう。",
+   u"アクセルを踏み続けず、姿勢が乱れたら速度を落とそう。",
+   u"同じコーナーを繰り返し走り、切り返すタイミングを覚えよう。"},
+  {u"車の左右の端を意識し、通り抜ける場所の中央を狙おう。",
+   u"狭い場所では速度を落とし、車幅とすき間を見比べよう。",
+   u"入口の手前で向きを整え、通過中の急な操作を減らそう。"},
+  {u"踏み切る位置を確認し、毎回同じ場所から跳んでみよう。",
+   u"助走の速度をそろえ、着地までの距離を比べよう。",
+   u"着地点を先に見て、空中で慌てず姿勢を整えよう。"},
+  {u"アクセルもブレーキも少しずつ動かし、急な加減速を減らそう。",
+   u"カーブの手前で速度を整え、一定の操作で曲がろう。",
+   u"ハンドルを戻すときもゆっくり動かし、車の揺れを抑えよう。"},
+  {u"動く目標を目で追い、進む方向を見失わないようにしよう。",
+   u"目の前だけでなく、画面全体の動きを確認しよう。",
+   u"目標が動いた後の位置を予想して、少し早く操作しよう。"},
+  {u"ペダルを踏む量と車の反応を確かめ、必要な力を覚えよう。",
+   u"強く踏むことより、狙った量を一定に保つことを意識しよう。",
+   u"弱い操作から練習し、目標に近づくまで少しずつ力を加えよう。"},
+  {u"次の旗を早めに見つけ、順番に目標を切り替えよう。",
+   u"一度のミスを引きずらず、すぐ次の目標に意識を戻そう。",
+   u"最後まで同じリズムを保ち、操作が雑にならないようにしよう。"},
+  {u"選べる進路を早めに確認し、迷う時間を短くしよう。",
+   u"状況が変わったら、前の判断にこだわらず進路を選び直そう。",
+   u"判断と操作を分けて練習し、決めてから素早く動かそう。"},
+  {u"目標の位置と周囲の動きを確認してから操作を始めよう。",
+   u"成功したときの状況を覚え、次の判断に役立てよう。",
+   u"一つの場所を見続けず、周囲の変化にも注意を向けよう。"},
+  {u"問題を落ち着いて読み、答えを決めてから進路を選ぼう。",
+   u"計算中も車の位置を確認し、操作がおろそかにならないようにしよう。",
+   u"簡単な問題で操作の流れを覚え、判断と運転をつなげよう。"},
+  {u"目標の動きを予想し、追いかけるだけの操作を減らそう。",
+   u"狙いが外れたら、小さく修正して中心に戻そう。",
+   u"目標を見ることとハンドル操作のタイミングをそろえよう。"},
+  {u"合図が出る場所に注意を向け、操作の準備をしておこう。",
+   u"合図を確かめてから素早く動き、早すぎる操作を減らそう。",
+   u"毎回同じ姿勢で構え、合図から操作までの流れを覚えよう。"},
+  {u"後ろ向きの移動とハンドルの関係を、低い速度で確かめよう。",
+   u"次に通る場所を先に見て、余裕を持って向きを変えよう。",
+   u"大きく切り返さず、少しずつ修正して接触を減らそう。"}
+}};
+
+// Transcribed from the supplied courage receipt; its individual variant ID is unknown.
+static constexpr std::u16string_view TECHNODR_COURAGE_ANALYSIS =
+  u"【度胸に問題あり】\n\n"
+  u"他人と比べて、度胸が劣ってますね。やーい、怖がり。"
+  u"まあ、車に乗ること自体が最初は怖いものですが、恐怖心があっては何においても上達は望めません。"
+  u"まずは、度胸をつけるために“恥ずかしいめ”に遭いましょう。\n"
+  u"手始めに、べん髪（ラーメンマンの髪形）にして、珍味の訪問販売でもしてみますか。"
+  u"恥ずかしがってはいけません。度胸のある人たち、例えばスタントマンやボクサーは皆こうやって自分に勝ち、"
+  u"悟りを開き度胸を身につけていったのです。";
+
+static constexpr std::array<std::u16string_view, 4> TECHNODR_ANALYSIS_TEXT = {
+  u"今回の測定では、次の技術を重点的に練習しましょう。\n［",
+  u"］\n無理に速さを求めず、正確な操作を安定して続けることを目指しましょう。\n",
+  u"今回の測定で力を発揮した技術は［",
+  u"］です。得意な操作の感覚を覚え、ほかの課題でも落ち着いて操作しましょう。"};
+
+static constexpr std::u16string_view TECHNODR_GENERIC_ANALYSIS =
+  u"測定結果を振り返り、各課題の記録と操作の安定性を確認しましょう。"
+  u"得意な技術を生かしながら、苦手な課題を繰り返し練習しましょう。";
+
+std::u16string TechnoDrivePrintAnalysis(u8 group, u8 variant)
+{
+  u32 exercise = 0;
+  if (group == 2 || group == 3 || group == 5 || group == 7)
+    exercise = variant;
+  else if (group == 6 && variant > 0 && variant <= 45)
+    exercise = (variant - 1) / 3 + 1;
+
+  if (exercise == 2 && group == 6)
+    return std::u16string(TECHNODR_COURAGE_ANALYSIS);
+  if (exercise > 0 && exercise < TECHNODR_EXERCISES.size())
+  {
+    std::u16string result(TECHNODR_ANALYSIS_TEXT[(group == 5) ? 2 : 0]);
+    result += TECHNODR_EXERCISES[exercise];
+    result += TECHNODR_ANALYSIS_TEXT[(group == 5) ? 3 : 1];
+    if (group != 5)
+      result += TECHNODR_PRINT_ADVICE[exercise][(variant - 1) % 3];
+    return result;
+  }
+  return std::u16string(TECHNODR_GENERIC_ANALYSIS);
 }
 
 bool RenderTechnoDrivePrintPage(std::span<const u8> job, std::vector<u32>* pixels, u32* page_height)
 {
-  u32 line_count = 1;
-  for (const u8 value : job)
-    line_count += (value == UINT8_C(0x0A)) ? 1 : 0;
+  if (!s_runtime)
+    return false;
 
-  *page_height = std::max<u32>(TECHNODR_PRINT_MARGIN * 2 + line_count * TECHNODR_PRINT_LINE_HEIGHT,
-                               TECHNODR_PRINT_LINE_HEIGHT * 8);
-  pixels->assign(static_cast<size_t>(TECHNODR_PRINT_WIDTH) * *page_height, UINT32_C(0xFFFFFFFF));
-
+  ImFontGlyphRangesBuilder range_builder;
+  range_builder.AddChar(static_cast<ImWchar>('?'));
+  range_builder.AddChar(static_cast<ImWchar>(' '));
+  const auto add_text = [&range_builder](std::u16string_view text) {
+    for (const char16_t c : text)
+      range_builder.AddChar(static_cast<ImWchar>(c));
+  };
+  for (const auto text : TECHNODR_EXERCISES)
+    add_text(text);
+  for (const auto text : TECHNODR_CATEGORIES)
+    add_text(text);
+  for (const auto& exercise : TECHNODR_PRINT_ADVICE)
+    for (const auto advice : exercise)
+      add_text(advice);
+  for (const auto text : TECHNODR_ANALYSIS_TEXT)
+    add_text(text);
+  add_text(TECHNODR_COURAGE_ANALYSIS);
+  add_text(TECHNODR_GENERIC_ANALYSIS);
+  add_text(u"テクノドライブ運転技術革命指導書現在の運転技術レベル総合評価解析結果トレーニングメニューnamco");
+  size_t offset = 0;
+  ImWchar codepoint;
+  u32 cells;
+  while (ReadTechnoDrivePrintCharacter(job, &offset, &codepoint, &cells))
+  {
+    if (codepoint != static_cast<ImWchar>('\n'))
+      range_builder.AddChar(codepoint);
+  }
+  ImVector<ImWchar> glyph_ranges;
+  range_builder.BuildRanges(&glyph_ranges);
   ImFontAtlas atlas;
   const std::string font_path =
     EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "NotoSansJP-Regular.ttf");
-  ImFont* font = atlas.AddFontFromFileTTF(font_path.c_str(), 20.0f, nullptr, atlas.GetGlyphRangesJapanese());
-  if (!font)
-    font = atlas.AddFontDefault();
+  ImFont* font = atlas.AddFontFromFileTTF(font_path.c_str(), 24.0f, nullptr, glyph_ranges.Data);
   if (!font)
     return false;
-
   unsigned char* atlas_pixels = nullptr;
   int atlas_width = 0;
   int atlas_height = 0;
@@ -966,64 +1210,331 @@ bool RenderTechnoDrivePrintPage(std::span<const u8> job, std::vector<u32>* pixel
   if (!atlas_pixels || atlas_width <= 0 || atlas_height <= 0)
     return false;
 
-  u32 x = TECHNODR_PRINT_MARGIN;
-  u32 y = TECHNODR_PRINT_MARGIN;
-  size_t offset = 0;
-  while (offset < job.size())
-  {
-    const u8 value = job[offset];
-    if (value == UINT8_C(0x0A))
+  // TH1/VER.B TIMs: title halves, event-score digits and the split namco wordmark.
+  TechnoDrivePrintImage title_left, title_right, digits, zero, wordmark;
+  const auto& content = s_runtime->content;
+  const auto load_image = [](std::span<const u8> rom, size_t address, u32 width, u32 height,
+                             TechnoDrivePrintImage* image) {
+    if (!LoadTechnoDrivePrintTIM(rom, address, image) || image->width != width || image->height != height)
     {
-      offset++;
-      x = TECHNODR_PRINT_MARGIN;
+      image->pixels.clear();
+      return false;
+    }
+    return true;
+  };
+  const bool title_left_loaded = load_image(content.banked_rom, 0xC27B2C, 256, 136, &title_left);
+  const bool title_right_loaded = load_image(content.banked_rom, 0xC30550, 204, 121, &title_right);
+  const bool digits_loaded = load_image(content.program_rom, 0x39510, 204, 210, &digits);
+  const bool zero_loaded = load_image(content.program_rom, 0x3E8FC, 68, 70, &zero);
+  const bool wordmark_loaded = load_image(content.banked_rom, 0xC0FFA8, 168, 194, &wordmark);
+  if (!title_left_loaded || !title_right_loaded || !digits_loaded || !zero_loaded || !wordmark_loaded)
+    WARNING_LOG("Techno Drive printer ROM artwork could not be decoded; using text fallbacks");
+
+  static constexpr u32 MAX_HEIGHT = 16384;
+  static constexpr u32 LEFT = 24;
+  static constexpr u32 RIGHT = TECHNODR_PRINT_WIDTH - LEFT;
+  u32 required_height = 0;
+  bool valid = true;
+  const auto layout = [&](bool draw) {
+    u32 x = LEFT;
+    u32 y = 12;
+    bool score = false;
+    u32 score_row = 0;
+    u32 score_top = 0;
+    bool analysis_section = false;
+    bool training_section = false;
+    std::array<u8, 16> advice_seen{};
+    size_t cursor = 0;
+    const auto reserve = [&](u32 bottom) {
+      if (bottom > MAX_HEIGHT)
+      {
+        valid = false;
+        return false;
+      }
+      required_height = std::max(required_height, bottom);
+      return true;
+    };
+    const auto rect = [&](u32 px, u32 py, u32 width, u32 height, u32 color) {
+      if (!reserve(py + height) || !draw)
+        return;
+      for (u32 dy = py; dy < py + height; dy++)
+        for (u32 dx = px; dx < std::min<u32>(px + width, TECHNODR_PRINT_WIDTH); dx++)
+          (*pixels)[static_cast<size_t>(dy) * TECHNODR_PRINT_WIDTH + dx] = color;
+    };
+    const auto text = [&](std::u16string_view value, u32 px, u32 py, u32 scale, bool white) {
+      if (!reserve(py + TECHNODR_PRINT_LINE_HEIGHT * scale))
+        return;
+      for (const char16_t c : value)
+      {
+        if (draw)
+          DrawTechnoDrivePrintGlyph(*pixels, *page_height, atlas_pixels, atlas_width, atlas_height,
+                                   font, static_cast<ImWchar>(c), px, py, scale, white);
+        px += TECHNODR_PRINT_CELL_WIDTH * ((c < 0x100) ? 1 : 2) * scale;
+      }
+    };
+    const auto paragraph = [&](std::u16string_view value) {
+      u32 px = LEFT + 16;
+      for (const char16_t c : value)
+      {
+        const u32 width = TECHNODR_PRINT_CELL_WIDTH * ((c < 0x100) ? 1 : 2);
+        if (c == u'\n' || px + width > RIGHT - 16)
+        {
+          y += TECHNODR_PRINT_LINE_HEIGHT;
+          px = LEFT + 16;
+          if (c == u'\n')
+            continue;
+        }
+        text(std::u16string_view(&c, 1), px, y, 1, false);
+        px += width;
+      }
       y += TECHNODR_PRINT_LINE_HEIGHT;
-      continue;
-    }
-    if (value == UINT8_C(0x0D))
-    {
-      offset++;
-      continue;
-    }
-
-    if (value == UINT8_C(0x1B) && (offset + 1) < job.size())
-    {
-      const u8 command = job[offset + 1];
-      offset += 2;
-      if (command == UINT8_C(0x10) || command == UINT8_C(0x11) || command == UINT8_C(0x12))
+      x = LEFT;
+    };
+    const auto centered = [&](std::u16string_view value, u32 py, bool white) {
+      u32 width = 0;
+      for (const char16_t c : value)
+        width += TECHNODR_PRINT_CELL_WIDTH * ((c < 0x100) ? 1 : 2);
+      text(value, (width < TECHNODR_PRINT_WIDTH) ? (TECHNODR_PRINT_WIDTH - width) / 2 : LEFT, py, 1, white);
+    };
+    const auto bar = [&](std::u16string_view value) {
+      rect(LEFT, y, RIGHT - LEFT, 30, UINT32_C(0xFF000000));
+      centered(value, y + 2, true);
+      y += 36;
+      x = LEFT;
+    };
+    const auto image = [&](const TechnoDrivePrintImage& source, u32 sx, u32 sy, u32 sw, u32 sh,
+                           u32 dx, u32 dy, u32 dw, u32 dh, bool mask) {
+      if (source.pixels.empty() || sw == 0 || sh == 0 || dw == 0 || dh == 0 ||
+          sx > source.width || sw > source.width - sx || sy > source.height || sh > source.height - sy)
+        return false;
+      if (!reserve(dy + dh) || !draw)
+        return true;
+      for (u32 py = 0; py < dh; py++)
       {
-        offset = std::min(job.size(), offset + 2);
+        for (u32 px = 0; px < dw && dx + px < TECHNODR_PRINT_WIDTH; px++)
+        {
+          const u16 color = source.pixels[static_cast<size_t>(sy + py * sh / dh) * source.width + sx + px * sw / dw];
+          if (color == 0)
+            continue;
+          const u32 r = color & 31;
+          const u32 g = (color >> 5) & 31;
+          const u32 b = (color >> 10) & 31;
+          const u32 ink = mask ? (std::max({r, g, b}) * 255 / 31) :
+                                (255 - (r * 77 + g * 150 + b * 29) * 255 / (31 * 256));
+          const u32 shade = 255 - ink;
+          (*pixels)[static_cast<size_t>(dy + py) * TECHNODR_PRINT_WIDTH + dx + px] =
+            UINT32_C(0xFF000000) | shade | (shade << 8) | (shade << 16);
+        }
       }
-      else if (command == UINT8_C(0x13))
-      {
-        if (offset < job.size())
-          DrawTechnoDrivePrintMarker(*pixels, *page_height, job[offset++], y);
-      }
-      else if (command == UINT8_C(0x15))
-      {
-        if (offset < job.size())
-          offset++;
-      }
-      continue;
-    }
+      return true;
+    };
 
-    ImWchar codepoint = static_cast<ImWchar>('?');
-    u32 cells = 1;
-    if (!DecodeTechnoDrivePrintCharacter(job, &offset, &codepoint, &cells))
-      break;
-
-    if ((x + cells * TECHNODR_PRINT_CELL_WIDTH) > (TECHNODR_PRINT_WIDTH - TECHNODR_PRINT_MARGIN))
+    while (cursor < job.size() && valid)
     {
-      x = TECHNODR_PRINT_MARGIN;
-      y += TECHNODR_PRINT_LINE_HEIGHT;
+      std::array<u8, 3> control{};
+      ImWchar c;
+      u32 character_cells;
+      if (!ReadTechnoDrivePrintCharacter(job, &cursor, &c, &character_cells, &control))
+        break;
+      if (control[0] == UINT8_C(0x12))
+      {
+        if (control[1] == 1)
+        {
+          switch (control[2])
+          {
+            case 1:
+              if (!title_left.pixels.empty() && !title_right.pixels.empty())
+              {
+                image(title_left, 0, 0, 256, 136, 58, y, 256, 136, false);
+                image(title_right, 0, 0, 204, 121, 314, y + 15, 204, 121, false);
+                y += 144;
+              }
+              else
+              {
+                centered(u"テクノドライブ", y, false);
+                y += 32;
+              }
+              centered(u"運転技術革命指導書", y, false);
+              y += 30;
+              x = LEFT;
+              break;
+            case 2: bar(u"現在の運転技術レベル"); break;
+            case 3:
+              score_top = y;
+              bar(u"総合評価");
+              score = true;
+              score_row = 0;
+              x = 54;
+              break;
+            case 4:
+              bar(u"解析結果");
+              analysis_section = true;
+              training_section = false;
+              break;
+            case 5:
+              bar(u"トレーニングメニュー");
+              analysis_section = false;
+              training_section = true;
+              break;
+            case 6:
+              y += 12;
+              if (!wordmark.pixels.empty())
+              {
+                image(wordmark, 0, 3, 168, 55, 36, y, 252, 83, true);
+                image(wordmark, 0, 99, 168, 55, 288, y, 252, 83, true);
+              }
+              else
+              {
+                text(u"namco", 198, y, 3, false);
+              }
+              y += 100;
+              x = LEFT;
+              break;
+            case 8:
+              if (score)
+              {
+                rect(LEFT, score_top + 30, 1, y - score_top - 30, UINT32_C(0xFF000000));
+                rect(RIGHT - 1, score_top + 30, 1, y - score_top - 30, UINT32_C(0xFF000000));
+                rect(LEFT, y, RIGHT - LEFT, 1, UINT32_C(0xFF000000));
+                y += 12;
+                score = false;
+                x = LEFT;
+              }
+              break;
+            default: break;
+          }
+        }
+        else if (control[1] == 2 && control[2] > 0 && control[2] < TECHNODR_EXERCISES.size())
+        {
+          const u32 category = (control[2] - 1) % 3;
+          rect(LEFT, y, RIGHT - LEFT, 28, UINT32_C(0xFF000000));
+          rect(LEFT + 96, y + 2, RIGHT - LEFT - 98, 24, UINT32_C(0xFFFFFFFF));
+          text(TECHNODR_CATEGORIES[category], LEFT + 22, y, 1, true);
+          text(TECHNODR_EXERCISES[control[2]], LEFT + 110, y, 1, false);
+          y += 32;
+          x = LEFT;
+        }
+        continue;
+      }
+      if (control[0] == UINT8_C(0x11))
+      {
+        if (analysis_section && control[1] > 0 && control[1] < UINT8_C(0x10))
+        {
+          paragraph(TechnoDrivePrintAnalysis(control[1], control[2]));
+        }
+        else if (training_section && control[1] > UINT8_C(0x10) && control[1] <= UINT8_C(0x1F) &&
+                 control[2] != 0)
+        {
+          const u32 exercise = control[1] - UINT8_C(0x10);
+          u32 choice = (control[2] - 1) % 3;
+          u8& seen = advice_seen[exercise];
+          while (seen != 7 && (seen & (1 << choice)) != 0)
+            choice = (choice + 1) % 3;
+          seen |= static_cast<u8>(1 << choice);
+          paragraph(TECHNODR_PRINT_ADVICE[exercise][choice]);
+        }
+        continue;
+      }
+      if (control[0] != 0 && control[0] != UINT8_C(0x13))
+        continue;
+      if (c == static_cast<ImWchar>('\n'))
+      {
+        y += (score && score_row++ == 0) ? 54 : TECHNODR_PRINT_LINE_HEIGHT;
+        x = score ? 42 : LEFT;
+        continue;
+      }
+      if (score && c == static_cast<ImWchar>(0x2503))
+        continue;
+      if (c == static_cast<ImWchar>(0x2501))
+      {
+        rect(x, y + 12, character_cells * TECHNODR_PRINT_CELL_WIDTH, 1, UINT32_C(0xFF000000));
+        x += character_cells * TECHNODR_PRINT_CELL_WIDTH;
+        continue;
+      }
+      if (score && score_row > 0 && control[0] == UINT8_C(0x13) &&
+          control[1] >= 1 && control[1] <= 4)
+      {
+        // The ROM selects quarter, half and three-quarter symbols before the full ones.
+        const u32 fraction = (control[1] == 1) ? 4 : 5 - control[1];
+        if (!reserve(y + 20))
+          break;
+        if (draw)
+        {
+          for (s32 dy = -8; dy < 8; dy++)
+          {
+            for (s32 dx = -8; dx < 8; dx++)
+            {
+              const s32 radius = dx * dx + dy * dy;
+              if (radius > 49 || dx + 8 >= static_cast<s32>(fraction * 4))
+                continue;
+              bool ink = dx >= 0;
+              if (dx * dx + (dy + 4) * (dy + 4) <= 16)
+                ink = false;
+              if (dx * dx + (dy - 4) * (dy - 4) <= 16)
+                ink = true;
+              if (dx * dx + (dy + 4) * (dy + 4) <= 2)
+                ink = true;
+              if (dx * dx + (dy - 4) * (dy - 4) <= 2)
+                ink = false;
+              if (radius >= 36)
+                ink = true;
+              if (ink && (x + dx + 8) < RIGHT)
+                (*pixels)[static_cast<size_t>(y + dy + 12) * TECHNODR_PRINT_WIDTH + x + dx + 8] =
+                  UINT32_C(0xFF000000);
+            }
+          }
+        }
+        x += 24;
+        continue;
+      }
+      if (score && score_row == 0 && control[0] == UINT8_C(0x13) &&
+          control[1] >= UINT8_C(0x08) && control[1] <= UINT8_C(0x11))
+      {
+        const u32 digit = control[1] - UINT8_C(0x08);
+        const TechnoDrivePrintImage& source = (digit == 0) ? zero : digits;
+        const u32 sx = (digit == 0) ? 0 : ((digit - 1) % 3) * 68;
+        const u32 sy = (digit == 0) ? 0 : ((digit - 1) / 3) * 70;
+        if (!image(source, sx, sy, 68, 70, x, y, 37, 40, true))
+        {
+          const char16_t character = static_cast<char16_t>(c);
+          text(std::u16string_view(&character, 1), x, y, 2, false);
+        }
+        x += 38;
+        continue;
+      }
+      const u32 scale = (score && score_row == 0 && (c == '.' || c == '%')) ? 2 : 1;
+      u32 width = character_cells * TECHNODR_PRINT_CELL_WIDTH * scale;
+      if (scale > 1)
+      {
+        const ImFontGlyph* const glyph = font->FindGlyph(c);
+        if (glyph)
+          width = std::max<u32>(width, static_cast<u32>(glyph->AdvanceX * scale + 0.5f));
+      }
+      if ((x + width) > RIGHT)
+      {
+        x = LEFT;
+        y += TECHNODR_PRINT_LINE_HEIGHT;
+      }
+      if (!reserve(y + TECHNODR_PRINT_LINE_HEIGHT * scale))
+        break;
+      if (draw)
+      {
+        const u32 text_y = y + ((score && score_row == 0 && scale == 1) ? 14 : 0);
+        DrawTechnoDrivePrintGlyph(*pixels, *page_height, atlas_pixels, atlas_width, atlas_height, font, c, x, text_y,
+                                 scale, false);
+      }
+      x += width;
     }
-    if ((y + TECHNODR_PRINT_LINE_HEIGHT) >= *page_height)
-      break;
+    reserve(y + 32);
+  };
 
-    DrawTechnoDrivePrintGlyph(*pixels, *page_height, atlas_pixels, atlas_width, atlas_height, font, codepoint, x, y);
-    x += cells * TECHNODR_PRINT_CELL_WIDTH;
-  }
-
-  return true;
+  layout(false);
+  if (!valid)
+    return false;
+  *page_height = required_height;
+  pixels->assign(static_cast<size_t>(TECHNODR_PRINT_WIDTH) * *page_height, UINT32_C(0xFFFFFFFF));
+  layout(true);
+  return valid;
 }
 
 void SaveTechnoDrivePrintJob(std::span<const u8> job)
@@ -1145,7 +1656,10 @@ void H8SettingsSetClock(RuntimeState& runtime, bool state)
     runtime.h8_settings_bit++;
 
     if (runtime.h8_settings_bit == 16)
+    {
       runtime.h8_settings_bit = 0;
+      runtime.h8_settings_dac[runtime.h8_settings_address >> 4] = runtime.h8_settings_value;
+    }
   }
 
   runtime.h8_settings_clk = state;
@@ -2716,7 +3230,8 @@ void H8SchedulerCallback(void*, TickCount ticks, TickCount ticks_late)
 
 }
 
-void ResetH8(RuntimeState& runtime)
+// Preserve the separate Cyber Lead LED board during main-board resets.
+void ResetH8(RuntimeState& runtime, bool reset_led_board = true)
 {
   if (!runtime.h8_cpu)
     return;
@@ -2792,7 +3307,8 @@ void ResetH8(RuntimeState& runtime)
 
   runtime.h8_jvs_rts = false;
   ResetH8JVSProtocol(runtime);
-  runtime.h8_cyberlead.ResetLED();
+  if (reset_led_board)
+    runtime.h8_cyberlead.ResetLED();
   runtime.h8_sci1_ssr_read = 0;
   runtime.h8_sci1_rx_busy = false;
   runtime.h8_sci1_rx_clocks_remaining = 0;
@@ -2808,6 +3324,8 @@ void ResetH8(RuntimeState& runtime)
   runtime.h8_settings_address = 0;
   runtime.h8_settings_value = 0;
   runtime.h8_settings_bit = 0;
+  // Full-scale outputs (unity video gain) until the sub-CPU programs the DAC during boot.
+  runtime.h8_settings_dac.fill(UINT8_C(0xFF));
 
   ResetH8RTC(runtime);
   // H8/3002 reset defaults used by the System 12 firmware before it programs
@@ -3033,7 +3551,7 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
     }
 
     std::vector<u8> member_data;
-    if (!LoadROMMember(archive_path, rom, &member_data, error) ||
+    if (!Arcade::LoadGameROM(archive_path, game, rom, &member_data, error) ||
         !PlaceROM(rom, member_data, destination, error))
     {
       return std::nullopt;
@@ -3079,8 +3597,6 @@ std::optional<LoadedContent> LoadSystem12Content(const char* archive_path,
              chd_sha1_string);
   }
 
-  if (content.io_board == "cyberlead")
-    content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
 
   INFO_LOG("Loaded System 12 set '{}' profile='{}': program={} banked={} sub={} c352={} alternate_bank={}",
            game.id, game.hardware_profile, content.program_rom.size(), content.banked_rom.size(),
@@ -3127,14 +3643,8 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
   }
 
-  // Point Blank 2 / Gunbarl register their DMA5 completion callback after the
-  // ROM-board transfer can already complete in the current System 12 model.
-  // Their program then waits forever for the missed completion callback.
-  //
-  // Apply the established family compatibility workaround at the loaded-ROM
-  // boundary rather than inventing behavior for the System 12 no-op strobes or
-  // changing generic PSX DMA timing. Guard the original instruction so a
-  // different program revision cannot be patched accidentally.
+  // Point Blank 2 / Gunbarl wait for a DMA5 completion already consumed during startup.
+  // Guard the ROM branch opcode so this workaround cannot patch another revision.
   if (content.set_name == "ptblank2" || content.set_name == "gunbarl")
   {
     static constexpr size_t PB2_DMA_WAIT_BRANCH_OFFSET = 0x331C4;
@@ -3161,10 +3671,8 @@ bool Initialize(LoadedContent content, Error* error)
     INFO_LOG("Applied Point Blank 2/Gunbarl DMA completion-wait compatibility patch set='{}' offset={:08X}",
              content.set_name, static_cast<u32>(PB2_DMA_WAIT_BRANCH_OFFSET));
   }
-  // Truck Kyosokyoku has a startup race between status initialization and
-  // DMA5. Match MAME's truckk_state::machine_start() workaround exactly:
-  // move the five status-initialization instructions ahead of the two
-  // instructions which start DMA5.
+  // Truck Kyosokyoku starts DMA5 before its status words are initialized.
+  // Match the instruction order used by MAME's truckk_state::machine_start().
   if (content.set_name == "truckk")
   {
     static constexpr size_t TRUCK_DMA_START_OFFSET = 0x376E4;
@@ -3198,6 +3706,10 @@ bool Initialize(LoadedContent content, Error* error)
 
   RuntimeState runtime;
   runtime.content = std::move(content);
+  runtime.cyberlead_led_enabled = runtime.content.io_board == "cyberlead" &&
+                                  g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
+  if (runtime.cyberlead_led_enabled)
+    runtime.content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
   if (HasLinkBoard(runtime.content))
   {
     runtime.hsc = std::make_unique<Arcade::Namco::System12HSC>();
@@ -3208,6 +3720,7 @@ bool Initialize(LoadedContent content, Error* error)
   runtime.buttons_on_direction_lines = runtime.content.input_profile == "mdhorse" ||
                                        runtime.content.input_profile == "pacapp" ||
                                        runtime.content.input_profile == "pacapp2";
+  runtime.h8_cyberlead.SetButtonsOnDirectionLines(runtime.buttons_on_direction_lines);
 
   if (UsesCDXA(runtime))
   {
@@ -3230,7 +3743,7 @@ bool Initialize(LoadedContent content, Error* error)
     return false;
 
   runtime.h8_cpu = std::make_unique<h8_system_t>();
-  if (!runtime.content.cyberlead_led_firmware.empty() &&
+  if (runtime.cyberlead_led_enabled && !runtime.content.cyberlead_led_firmware.empty() &&
       !runtime.h8_cyberlead.InitializeLEDFlash(std::span<const u8>(runtime.content.cyberlead_led_firmware),
                                               Path::Combine(runtime.persistence_directory, "cl1-leda.ic5")))
   {
@@ -3238,15 +3751,12 @@ bool Initialize(LoadedContent content, Error* error)
   }
 
   s_runtime = std::move(runtime);
-  if (s_runtime->content.io_board == "cyberlead")
+  if (s_runtime->cyberlead_led_enabled)
     Arcade::JVS::NamcoCyberLead::SetActive(&s_runtime->h8_cyberlead);
   ArcadeInput::SetOperatorServiceMinimumHold(SERVICE_MINIMUM_HOLD_MS);
   Reset();
 
-  INFO_LOG(
-    "Namco System 12 base board initialized for '{}'. H8/3002 instruction-state timing is active; "
-    "external H8 wait-state refinement, JVS edge cases and protected ROM-board capabilities remain staged follow-up work.",
-    s_runtime->content.set_name);
+  INFO_LOG("Namco System 12 initialized for '{}'", s_runtime->content.set_name);
   return true;
 }
 
@@ -3331,6 +3841,22 @@ bool IsActive()
   return s_runtime.has_value();
 }
 
+bool GetVideoGain(std::array<float, 3>* gain)
+{
+  if (!s_runtime)
+    return false;
+
+  bool unity = true;
+  for (size_t i = 0; i < SETTINGS_DAC_VIDEO_GAIN_CHANNELS.size(); i++)
+  {
+    const u8 value = s_runtime->h8_settings_dac[SETTINGS_DAC_VIDEO_GAIN_CHANNELS[i]];
+    (*gain)[i] = static_cast<float>(value) / 255.0f;
+    unity = unity && (value == UINT8_C(0xFF));
+  }
+
+  return !unity;
+}
+
 void SetVBlank(bool state)
 {
   if (!s_runtime)
@@ -3385,11 +3911,11 @@ void EndMainBoardReset()
   if (!s_runtime)
     return;
 
-  // InternalReset() has already reset H8/board/timing state. The PSX main RAM
-  // is restored by System::FrameDone after that reset. Inhibit another cold
-  // transition until a normal user/power reset starts a fresh lifecycle.
+  // Restart the H8 to restore work variables overwritten by the BIOS RAM test.
+  // Preserve shared RAM and the Cyber Lead LED board.
   s_runtime->mainboard_reset_pending = false;
   s_runtime->boot_warm_reset_completed = true;
+  ResetH8(*s_runtime, false);
 
   INFO_LOG("System12 RAM-preserving warm boot resumed machine='{}'",
            s_runtime->content.machine_config);
@@ -3688,6 +4214,12 @@ bool WriteEXP1(u32 width, u32 offset, u32 value)
 
           if (runtime.cold_boot_config_finalize_words == BOARD_CONFIG_FINALIZE_WORDS)
           {
+            // The H8 leaves reset at this write. Retire the scheduler interval
+            // that elapsed while it was held so its first quantum starts here
+            // instead of at the previous scheduler boundary.
+            if (runtime.h8_timing_event && runtime.h8_timing_event->IsActive())
+              runtime.h8_timing_event->InvokeEarly(true);
+
             runtime.cold_boot_h8_released = true;
             INFO_LOG(
               "System12 cold-boot H8 release machine='{}' "
@@ -3971,7 +4503,11 @@ bool IsSaveReadinessPending(std::string* message)
 void AppendStateIdentity(std::string* record)
 {
   if (s_runtime.has_value() && s_runtime->content.io_board == "cyberlead")
+  {
     *record += fmt::format("cyberlead_led={}\n", s_runtime->h8_cyberlead.IsLEDPresent() ? "present" : "absent");
+    if (!s_runtime->cyberlead_led_enabled)
+      *record += "cyberlead_led_hardware=disabled\n";
+  }
 }
 
 void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
@@ -4056,6 +4592,11 @@ bool DoState(StateWrapper& sw)
   sw.Do(&r.h8_settings_address);
   sw.Do(&r.h8_settings_value);
   sw.Do(&r.h8_settings_bit);
+  // Version 72 states have no DAC state; restore full brightness.
+  if (sw.IsReading() && sw.GetVersion() < SETTINGS_DAC_STATE_VERSION)
+    r.h8_settings_dac.fill(UINT8_C(0xFF));
+  else
+    sw.DoArray(r.h8_settings_dac.data(), r.h8_settings_dac.size());
   sw.Do(&r.h8_rtc_ce);
   sw.Do(&r.h8_rtc_clk);
   sw.Do(&r.h8_rtc_data);
