@@ -10,6 +10,8 @@
 #include "common/error.h"
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -717,6 +719,71 @@ void GenerateAudioFrame(s32* left, s32* right)
 
   *left = s_state.last_output_left;
   *right = s_state.last_output_right;
+}
+
+static void DoADSPStateBytes(void* ctx, void* data, size_t size)
+{
+  static_cast<StateWrapper*>(ctx)->DoBytes(data, size);
+}
+
+// The ROM and core callbacks are reconstructed by Initialize(). States are taken between core runs. Diagnostic
+// flags are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !s_state.cpu || s_state.in_cpu_run || !sw.DoMarker("AcclaimRAX"))
+    return false;
+
+  if (!adsp2181_do_state(s_state.cpu, DoADSPStateBytes, &sw, sw.IsReading() ? 1 : 0) || sw.HasError())
+    return false;
+
+  for (auto& bank : s_state.external_ram)
+    sw.DoArray(bank.data(), bank.size());
+  sw.DoArray(s_state.control_regs.data(), s_state.control_regs.size());
+  sw.Do(&s_state.host_in);
+  sw.Do(&s_state.host_out);
+  sw.Do(&s_state.pf0);
+  sw.Do(&s_state.ram_bank);
+  sw.Do(&s_state.rom_bank);
+  sw.Do(&s_state.cycle_fraction);
+  sw.Do(&s_state.audio_target_cycles);
+  sw.Do(&s_state.host_target_cycles);
+  sw.Do(&s_state.host_tick_fraction);
+  sw.Do(&s_state.last_host_sync_ticks);
+  sw.Do(&s_state.last_ticks_per_second);
+  sw.Do(&s_state.board_cycles);
+  sw.Do(&s_state.bdma_pending);
+  sw.Do(&s_state.bdma_due_cycle);
+  sw.Do(&s_state.bdma_final_source);
+  sw.Do(&s_state.sport_active);
+  sw.Do(&s_state.sport_ireg);
+  sw.Do(&s_state.sport_inc);
+  sw.Do(&s_state.sport_size);
+  sw.Do(&s_state.sport_base);
+  sw.Do(&s_state.sport_sample_rate);
+  sw.Do(&s_state.sport_period_cycles);
+  sw.Do(&s_state.sport_due_cycle);
+  sw.Do(&s_state.output_sample_phase);
+
+  u32 queued = static_cast<u32>(s_state.audio_queue.size());
+  sw.Do(&queued);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || queued > MAX_AUDIO_QUEUE_FRAMES)
+      return false;
+    s_state.audio_queue.resize(queued);
+  }
+  for (auto& frame : s_state.audio_queue)
+  {
+    sw.Do(&frame.first);
+    sw.Do(&frame.second);
+  }
+  sw.Do(&s_state.last_output_left);
+  sw.Do(&s_state.last_output_right);
+
+  if (sw.IsReading() && (sw.HasError() || s_state.ram_bank >= s_state.external_ram.size() || s_state.sport_ireg >= 8))
+    return false;
+
+  return !sw.HasError();
 }
 
 } // namespace SonyZN::AcclaimRAX

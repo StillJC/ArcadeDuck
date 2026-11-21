@@ -23,6 +23,7 @@
 #include "core/arcade/systems/konami/gq/konami_gq_scsi.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
 #include "core/arcade/systems/namco/system11/namco_system11.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "core/arcade/systems/sony/zn/sony_zn.h"
 #include "mdec.h"
 #include "settings.h"
@@ -961,6 +962,11 @@ void Bus::SetExpansionROM(std::vector<u8> data)
   s_exp1_rom = std::move(data);
 }
 
+u32 Bus::GetEXP1Base()
+{
+  return s_MEMCTRL.exp1_base;
+}
+
 bool Bus::ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value)
 {
   address &= CPU::PHYSICAL_MEMORY_ADDRESS_MASK;
@@ -1157,6 +1163,11 @@ u32 Bus::BIOSReadHandler(VirtualMemoryAddress address)
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
   }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadProgramROM(width, address & (BIOS_MIRROR_SIZE - 1));
+  }
 
   // TODO: Configurable mirroring.
   const u32 offset = address & UINT32_C(0x7FFFF);
@@ -1280,6 +1291,11 @@ u32 Bus::EXP1ReadHandler(VirtualMemoryAddress address)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     return NamcoSystem11::ReadBankedROM(width, offset);
+  }
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP1(width, offset);
   }
   if (Konami::IsGQActive())
   {
@@ -1423,6 +1439,14 @@ void Bus::EXP1WriteHandler(VirtualMemoryAddress address, u32 value)
     const u32 offset = address & EXP1_MASK;
     const u32 width = u32(1) << static_cast<u32>(size);
     if (SonyZN::WriteEXP1(width, offset, value))
+      return;
+  }
+
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 offset = address & EXP1_MASK;
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP1(width, offset, value))
       return;
   }
 
@@ -1665,6 +1689,12 @@ u32 Bus::EXP3ReadHandler(VirtualMemoryAddress address)
     return SonyZN::ReadEXP3(width, offset);
   }
 
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    return NamcoSystem12::ReadEXP3(width, offset);
+  }
+
   if (NamcoSystem11::IsActive() && offset >= 0x04000 && offset <= 0x0ffff)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
@@ -1695,6 +1725,16 @@ void Bus::EXP3WriteHandler(VirtualMemoryAddress address, u32 value)
   {
     const u32 width = u32(1) << static_cast<u32>(size);
     SonyZN::WriteEXP3(width, offset, value);
+    return;
+  }
+
+  if (NamcoSystem12::IsActive())
+  {
+    const u32 width = u32(1) << static_cast<u32>(size);
+    if (NamcoSystem12::WriteEXP3(width, offset, value))
+      return;
+
+    // The ordinary System 12 banked ROM aperture is read-only.
     return;
   }
 
@@ -1820,7 +1860,21 @@ void Bus::HWHandlers::MemCtrlWrite(PhysicalMemoryAddress address, u32 value)
 
   value = FIXUP_WORD_WRITE_VALUE(size, offset, value);
 
-  const u32 write_mask = (index == 8) ? COMDELAY::WRITE_MASK : MEMDELAY::WRITE_MASK;
+  u32 write_mask = MEMDELAY::WRITE_MASK;
+  switch (index)
+  {
+    case 0:
+    case 1:
+      write_mask = 0xFFFFFFFFu;
+      break;
+
+    case 8:
+      write_mask = COMDELAY::WRITE_MASK;
+      break;
+
+    default:
+      break;
+  }
   const u32 new_value = (s_MEMCTRL.regs[index] & ~write_mask) | (value & write_mask);
   if (s_MEMCTRL.regs[index] != new_value)
   {

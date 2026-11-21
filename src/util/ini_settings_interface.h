@@ -19,6 +19,7 @@ public:
   const std::string& GetFileName() const { return m_filename; }
 
   bool Load(Error* error = nullptr);
+  void CopyFrom(const INISettingsInterface& source);
   bool Save(Error* error = nullptr) override;
 
   void Clear() override;

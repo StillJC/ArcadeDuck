@@ -15,6 +15,7 @@
 #include "core/arcade/systems/sony/zn/acclaim_ata.h"
 #include "core/arcade/systems/sony/zn/time_warner_ata.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "mdec.h"
 #include "pad.h"
 #include "spu.h"
@@ -901,6 +902,15 @@ TickCount DMA::TransferDeviceToMemory(u32 address, u32 increment, u32 word_count
     if (s_state.transfer_buffer.size() < word_count)
       s_state.transfer_buffer.resize(word_count);
     dest_pointer = s_state.transfer_buffer.data();
+
+    // A device may write fewer words than requested (System 12 ROM board DMA past the end of ROM), so seed the
+    // buffer with the current RAM contents to leave the untouched words unchanged when it is copied back.
+    u32 seed_address = address;
+    for (u32 i = 0; i < word_count; i++)
+    {
+      std::memcpy(&s_state.transfer_buffer[i], &Bus::g_ram[seed_address], sizeof(u32));
+      seed_address = (seed_address + increment) & mask;
+    }
   }
 
   // Read from device.
@@ -930,6 +940,10 @@ TickCount DMA::TransferDeviceToMemory(u32 address, u32 increment, u32 word_count
       else if (SonyZN::TimeWarnerATA::IsActive())
       {
         SonyZN::TimeWarnerATA::DMARead(dest_pointer, word_count);
+      }
+      else if (NamcoSystem12::IsActive())
+      {
+        NamcoSystem12::DMARead(dest_pointer, word_count);
       }
       else if (KonamiGQScsi::IsActive())
       {

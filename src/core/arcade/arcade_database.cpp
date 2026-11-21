@@ -652,6 +652,7 @@ bool ParseSystem(const ryml::ConstNodeRef& node)
       !GetString(node, "machineHandler", &definition.machine_handler, true) ||
       !GetString(node, "biosProfile", &definition.bios_profile) ||
       !GetUnsigned(node, "releaseYear", &definition.release_year) ||
+      !GetUnsigned(node, "cpuClockPercent", &definition.cpu_clock_percent) ||
       !GetUnsigned(node, "maxPlayers", &definition.max_players) ||
       !GetBool(node, "supportsLightgun", &definition.supports_lightgun) ||
       !GetBool(node, "supportsTrackball", &definition.supports_trackball) ||
@@ -665,6 +666,11 @@ bool ParseSystem(const ryml::ConstNodeRef& node)
   if (definition.max_players == 0)
   {
     ERROR_LOG("Arcade system '{}' must support at least one player.", definition.id);
+    return false;
+  }
+  if (definition.cpu_clock_percent < 10 || definition.cpu_clock_percent > 1000)
+  {
+    ERROR_LOG("Arcade system '{}' field 'cpuClockPercent' must be between 10 and 1000.", definition.id);
     return false;
   }
 
@@ -1548,7 +1554,8 @@ std::string GetIndexedArchivePath(std::string_view archive_name)
   return FindIndexedArchivePath(archive_name);
 }
 
-std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game)
+std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game,
+                                                  ROMArchiveSearchScope scope)
 {
   std::vector<std::string> paths;
   const auto add_path = [&paths](std::string path) {
@@ -1578,8 +1585,11 @@ std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path,
     filename.append(".").append(alternate_extension);
     add_path(Path::Combine(archive_directory, filename));
 
-    for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
-      add_path(std::move(indexed_path));
+    if (scope == ROMArchiveSearchScope::AllDirectories)
+    {
+      for (std::string& indexed_path : FindIndexedArchivePaths(archive_name))
+        add_path(std::move(indexed_path));
+    }
   };
 
   const GameDefinition* current = &game;

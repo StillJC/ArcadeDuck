@@ -11,12 +11,22 @@ add_library(core
   arcade/arcade_database.h
   arcade/arcade_input.cpp
   arcade/arcade_input.h
+  arcade/arcade_link.cpp
+  arcade/arcade_link.h
   arcade/arcade_machine_handler.cpp
   arcade/arcade_machine_handler.h
   arcade/arcade_rom_loader.cpp
   arcade/arcade_rom_loader.h
   arcade/arcade_output.cpp
+  arcade/arcade_save_state.cpp
   arcade/arcade_output.h
+  arcade/arcade_save_state.h
+  arcade/devices/audio/namco_c352_state.cpp
+  arcade/devices/cpu/h8_3002_state.cpp
+  arcade/devices/jvs/jvs_state.cpp
+  arcade/devices/cpu/h8_300h_state.h
+  arcade/devices/cpu/z80_state.cpp
+  arcade/devices/cpu/z80_state.h
   arcade/arcade_output_network.cpp
   arcade/arcade_output_network.h
   arcade/arcade_output_win32.cpp
@@ -95,6 +105,26 @@ add_library(core
   arcade/devices/audio/k054539.h
   arcade/devices/audio/ymf271.cpp
   arcade/devices/audio/ymf271.h
+  arcade/devices/jvs/jvs_bus.cpp
+  arcade/devices/jvs/jvs_bus.h
+  arcade/devices/jvs/jvs_chain.cpp
+  arcade/devices/jvs/jvs_chain.h
+  arcade/devices/jvs/namco_cyberlead.cpp
+  arcade/devices/jvs/namco_cyberlead.h
+  arcade/devices/jvs/namco_cyberlead_led.cpp
+  arcade/devices/jvs/namco_cyberlead_led.h
+  arcade/devices/jvs/namco_fca10.cpp
+  arcade/devices/jvs/namco_fca10.h
+  arcade/devices/jvs/namco_emio102.cpp
+  arcade/devices/jvs/namco_emio102.h
+  arcade/devices/jvs/namco_empri101.cpp
+  arcade/devices/jvs/namco_empri101.h
+  arcade/devices/cpu/sh7014.cpp
+  arcade/devices/cpu/sh7014.h
+  arcade/devices/namco/namco_system12_cdxa.cpp
+  arcade/devices/namco/namco_system12_cdxa.h
+  arcade/devices/namco/namco_system12_hsc.cpp
+  arcade/devices/namco/namco_system12_hsc.h
   arcade/devices/security/cat702.cpp
   arcade/devices/storage/chd_hard_disk.cpp
   arcade/devices/storage/chd_hard_disk.h
@@ -113,6 +143,9 @@ add_library(core
   arcade/third_party/ymfm/ymfm_ssg.h
   arcade/third_party/z80_superzazu/z80.cpp
   arcade/third_party/z80_superzazu/z80.h
+  arcade/third_party/sh2/sh2.cpp
+  arcade/third_party/sh2/sh2.h
+  arcade/third_party/sh2/LICENSE
   arcade/systems/sony/zn/acclaim_ata.cpp
   arcade/systems/sony/zn/acclaim_ata.h
   arcade/systems/sony/zn/time_warner_ata.cpp
@@ -178,6 +211,7 @@ add_library(core
   arcade/third_party/m37710/m37710op.h
   arcade/third_party/musashi/m68k.h
   arcade/third_party/musashi/m68k_bus.cpp
+  arcade/third_party/musashi/m68k_state.cpp
   arcade/third_party/musashi/m68k_bus.h
   arcade/third_party/musashi/m68kconf.h
   arcade/third_party/musashi/m68kcpu.c
@@ -192,6 +226,18 @@ add_library(core
   arcade/systems/konami/gv/konami_gv_scsi.h
   arcade/systems/namco/system11/namco_system11.cpp
   arcade/systems/namco/system11/namco_system11.h
+  arcade/third_party/h8_300h/emu.c
+  arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+  arcade/third_party/h8_300h/config.h
+  arcade/third_party/h8_300h/device.h
+  arcade/third_party/h8_300h/ir.h
+  arcade/third_party/h8_300h/logger.h
+  arcade/third_party/h8_300h/registers.h
+  arcade/third_party/h8_300h/rtc.h
+  arcade/third_party/h8_300h/system.h
+  arcade/third_party/h8_300h/types.h
+  arcade/systems/namco/system12/namco_system12.cpp
+  arcade/systems/namco/system12/namco_system12.h
   legacy_pad_state.cpp
   legacy_pad_state.h
   mdec.cpp
@@ -241,6 +287,8 @@ set_source_files_properties(
   arcade/third_party/m37710/m37710o2.cpp
   arcade/third_party/m37710/m37710o3.cpp
   arcade/third_party/adsp2181/adsp2181_core.c
+  arcade/third_party/h8_300h/emu.c
+  arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
   arcade/third_party/musashi/m68kcpu.c
   arcade/third_party/musashi/m68kops.c
   PROPERTIES SKIP_PRECOMPILE_HEADERS ON
@@ -286,9 +334,22 @@ if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   )
 
   set_source_files_properties(
+    arcade/third_party/h8_300h/emu.c
+    arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+    PROPERTIES COMPILE_OPTIONS "/wd4018;/wd4100;/wd4244;/wd4245;/wd4702"
+  )
+
+  set_source_files_properties(
     arcade/third_party/musashi/m68kcpu.c
     arcade/third_party/musashi/m68kops.c
     PROPERTIES COMPILE_OPTIONS "/wd4101;/wd4189;/wd4244;/wd4245;/wd4702"
+  )
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    arcade/third_party/h8_300h/emu.c
+    arcade/third_party/h8_300h/h8_arcadeduck_stubs.c
+    PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-unused-function;-Wno-sign-compare"
   )
 endif()
 target_include_directories(core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/..")

@@ -946,13 +946,20 @@ std::string GPUShaderGen::GenerateInterleavedFieldExtractFragmentShader()
 {
   std::stringstream ss;
   WriteHeader(ss);
-  DeclareUniformBuffer(ss, {"uint2 u_src_offset", "uint u_line_skip"}, true);
+  DeclareUniformBuffer(ss, {"uint2 u_src_offset", "uint u_line_skip", "uint u_line_band"}, true);
   DeclareTexture(ss, "samp0", 0, false);
 
   DeclareFragmentEntryPoint(ss, 0, 1, {}, true);
   ss << R"(
 {
-  uint2 tcoord = u_src_offset + uint2(uint(v_pos.x), uint(v_pos.y) << u_line_skip);
+  uint row = uint(v_pos.y);
+  uint src_row = row << u_line_skip;
+
+  // Skipped fields are u_line_band rows tall: one VRAM line at the internal resolution.
+  IF_BRANCH (u_line_skip != 0u && u_line_band != 1u)
+    src_row = (((row / u_line_band) << u_line_skip) * u_line_band) + (row % u_line_band);
+
+  uint2 tcoord = u_src_offset + uint2(uint(v_pos.x), src_row);
   o_col0 = LOAD_TEXTURE(samp0, int2(tcoord), 0);
 }
 )";
@@ -1114,6 +1121,23 @@ float3 SampleVRAMAverage2x2(uint2 icoords)
   float y = RGBToYUV(p).x;
   float2 uv = RGBToYUV(s).yz;
   o_col0 = float4(YUVToRGB(float3(y, uv)), 1.0);
+}
+)";
+
+  return ss.str();
+}
+
+std::string GPUShaderGen::GenerateVideoGainFragmentShader()
+{
+  std::stringstream ss;
+  WriteHeader(ss);
+  DeclareUniformBuffer(ss, {"uint2 u_sample_offset", "uint2 u_pad", "float4 u_gain"}, true);
+  DeclareTexture(ss, "samp0", 0);
+  DeclareFragmentEntryPoint(ss, 0, 1, {}, true);
+  ss << R"(
+{
+  uint2 icoords = uint2(v_pos.xy) + u_sample_offset;
+  o_col0 = float4(LOAD_TEXTURE(samp0, int2(icoords), 0).rgb * u_gain.rgb, 1.0);
 }
 )";
 

@@ -5,6 +5,8 @@
 // Modified for ArcadeDuck by StillJC, 2026.
 
 #include "imgui_overlays.h"
+#include "core/arcade/arcade_database.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
 #include "core/arcade/arcade_output.h"
 #include "cdrom.h"
 #include "cpu_core_private.h"
@@ -41,6 +43,7 @@
 #include "imgui_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -216,6 +219,223 @@ void ImGuiManager::RenderDebugWindows()
     if (g_settings.debugging.show_arcade_outputs)
       Arcade::Output::DrawDebugWindow();
   }
+}
+
+static bool IsCyberLeadLEDGame()
+{
+  // Asked every presented frame; the answer only changes with the game.
+  thread_local std::string s_serial;
+  thread_local bool s_result = false;
+  const std::string& serial = System::GetGameSerial();
+  if (serial == s_serial)
+    return s_result;
+
+  s_serial = serial;
+  s_result = Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(serial);
+  return s_result;
+}
+
+struct CyberLeadLEDSnapshot
+{
+  std::array<u8, 96 * 16> pixels{};
+  std::array<u32, 4> levels{};
+  u16 start_address = 0;
+  u32 scroll_x = 0;
+  u32 scroll_y = 0;
+  u64 generation = 0;
+  bool valid = false;
+};
+
+static std::mutex s_cyber_lead_led_snapshot_mutex;
+static CyberLeadLEDSnapshot s_cyber_lead_led_snapshot;
+
+// CPU-thread copy of what the shared snapshot currently holds.
+static std::string s_cyber_lead_led_snapshot_serial;
+static u64 s_cyber_lead_led_snapshot_generation = 0;
+static bool s_cyber_lead_led_snapshot_valid = false;
+
+// Bumped whenever the shared snapshot changes, so the LED window can skip repaints.
+static std::atomic<u64> s_cyber_lead_led_snapshot_version{0};
+
+static void UpdateCyberLeadLEDSnapshot()
+{
+  // Only the attached panel and the separate LED window read the snapshot.
+  if (!Arcade::JVS::NamcoCyberLead::IsLEDHardwareActive() ||
+      g_settings.arcade_namco_system12_cyber_lead_led_mode == 0 || !IsCyberLeadLEDGame())
+  {
+    if (s_cyber_lead_led_snapshot_valid)
+    {
+      const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+      s_cyber_lead_led_snapshot = {};
+      s_cyber_lead_led_snapshot_valid = false;
+      s_cyber_lead_led_snapshot_version.fetch_add(1, std::memory_order_release);
+    }
+    return;
+  }
+
+  const Arcade::JVS::NamcoCyberLead* const device = Arcade::JVS::NamcoCyberLead::GetActive();
+  if (s_cyber_lead_led_snapshot_valid && device)
+  {
+    const Arcade::JVS::NamcoCyberLeadLEDDevice::FrameState& frame = device->GetLEDDevice().GetFrameState();
+    if (frame.valid && frame.generation == s_cyber_lead_led_snapshot_generation &&
+        System::GetGameSerial() == s_cyber_lead_led_snapshot_serial)
+    {
+      return;
+    }
+  }
+
+  CyberLeadLEDSnapshot snapshot;
+  snapshot.valid = device && device->CopyLEDFrame(std::span<u8>(snapshot.pixels.data(), snapshot.pixels.size()),
+                                                  &snapshot.levels, &snapshot.start_address, &snapshot.scroll_x,
+                                                  &snapshot.scroll_y, &snapshot.generation);
+  s_cyber_lead_led_snapshot_serial = System::GetGameSerial();
+  s_cyber_lead_led_snapshot_generation = snapshot.generation;
+  s_cyber_lead_led_snapshot_valid = snapshot.valid;
+
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  s_cyber_lead_led_snapshot = snapshot;
+  s_cyber_lead_led_snapshot_version.fetch_add(1, std::memory_order_release);
+}
+
+static bool CopyCyberLeadLEDSnapshot(CyberLeadLEDSnapshot* snapshot)
+{
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  if (!s_cyber_lead_led_snapshot.valid)
+    return false;
+
+  *snapshot = s_cyber_lead_led_snapshot;
+  return true;
+}
+
+namespace ImGuiManager {
+bool CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels);
+u64 GetCyberLeadLEDSnapshotVersion();
+}
+
+u64 ImGuiManager::GetCyberLeadLEDSnapshotVersion()
+{
+  return s_cyber_lead_led_snapshot_version.load(std::memory_order_acquire);
+}
+
+bool ImGuiManager::CopyCyberLeadLEDFrameSnapshot(std::span<u8> pixels)
+{
+  const std::lock_guard lock(s_cyber_lead_led_snapshot_mutex);
+  if (!s_cyber_lead_led_snapshot.valid || pixels.size() < s_cyber_lead_led_snapshot.pixels.size())
+    return false;
+
+  std::copy(s_cyber_lead_led_snapshot.pixels.begin(), s_cyber_lead_led_snapshot.pixels.end(), pixels.begin());
+  return true;
+}
+
+static void DrawCyberLeadLEDAttached(float scale)
+{
+  static constexpr u32 WIDTH = 96;
+  static constexpr u32 HEIGHT = 16;
+
+  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
+  if (mode != 1 && mode != 2)
+    return;
+
+  CyberLeadLEDSnapshot snapshot;
+  if (!CopyCyberLeadLEDSnapshot(&snapshot))
+    return;
+
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  if (display.x <= 0.0f || display.y <= 0.0f || !g_gpu)
+    return;
+
+  GSVector4i panel_rect;
+  if (!g_gpu->CalculateCyberLeadLEDAttachedRect(
+        static_cast<s32>(display.x), static_cast<s32>(display.y), !g_settings.debugging.show_vram, true, &panel_rect))
+  {
+    return;
+  }
+
+  const float grid_width = static_cast<float>(panel_rect.width());
+  const float grid_height = static_cast<float>(panel_rect.height());
+  const float grid_x = static_cast<float>(panel_rect.x);
+  const float grid_y = static_cast<float>(panel_rect.y);
+  const float nominal_cell = std::max(
+    1.0f, std::floor(std::min(grid_width / static_cast<float>(WIDTH), grid_height / static_cast<float>(HEIGHT))));
+  const s32 gap = static_cast<s32>(
+    std::clamp(std::round(nominal_cell * 0.12f), 1.0f, std::max(nominal_cell - 1.0f, 1.0f)));
+  const float pad = std::max(2.0f, std::ceil(scale * 4.0f));
+
+  ImDrawList* const dl = ImGui::GetBackgroundDrawList();
+  dl->AddRectFilled(ImVec2(grid_x, grid_y), ImVec2(grid_x + grid_width, grid_y + grid_height),
+                    IM_COL32(0, 0, 0, 255));
+
+  static constexpr std::array<std::array<ImU32, 4>, 9> COLOR_PALETTES = {{
+    {{IM_COL32(20, 16, 8, 255), IM_COL32(96, 64, 8, 255), IM_COL32(208, 128, 8, 255),
+      IM_COL32(255, 210, 64, 255)}},
+    {{IM_COL32(20, 5, 5, 255), IM_COL32(96, 8, 8, 255), IM_COL32(208, 20, 12, 255),
+      IM_COL32(255, 64, 48, 255)}},
+    {{IM_COL32(20, 10, 4, 255), IM_COL32(96, 40, 4, 255), IM_COL32(208, 88, 8, 255),
+      IM_COL32(255, 160, 32, 255)}},
+    {{IM_COL32(20, 18, 4, 255), IM_COL32(96, 80, 4, 255), IM_COL32(208, 176, 8, 255),
+      IM_COL32(255, 240, 64, 255)}},
+    {{IM_COL32(4, 18, 6, 255), IM_COL32(8, 80, 12, 255), IM_COL32(16, 176, 24, 255),
+      IM_COL32(64, 255, 80, 255)}},
+    {{IM_COL32(4, 16, 18, 255), IM_COL32(8, 72, 80, 255), IM_COL32(16, 160, 176, 255),
+      IM_COL32(64, 240, 255, 255)}},
+    {{IM_COL32(4, 6, 20, 255), IM_COL32(8, 20, 96, 255), IM_COL32(16, 48, 208, 255),
+      IM_COL32(64, 112, 255, 255)}},
+    {{IM_COL32(12, 5, 20, 255), IM_COL32(52, 12, 96, 255), IM_COL32(120, 24, 208, 255),
+      IM_COL32(200, 80, 255, 255)}},
+    {{IM_COL32(12, 12, 12, 255), IM_COL32(72, 72, 72, 255), IM_COL32(176, 176, 176, 255),
+      IM_COL32(255, 255, 255, 255)}},
+  }};
+  const auto& colors =
+    COLOR_PALETTES[std::min<u8>(g_settings.arcade_namco_system12_cyber_lead_led_color, 8)];
+
+  for (u32 y = 0; y < HEIGHT; y++)
+  {
+    const s32 cell_top = panel_rect.y + ((static_cast<s32>(y) * panel_rect.height()) / static_cast<s32>(HEIGHT));
+    const s32 cell_bottom =
+      panel_rect.y + ((static_cast<s32>(y + 1) * panel_rect.height()) / static_cast<s32>(HEIGHT));
+    const s32 dot_bottom = std::max(cell_top + 1, cell_bottom - gap);
+    for (u32 x = 0; x < WIDTH; x++)
+    {
+      const s32 cell_left = panel_rect.x + ((static_cast<s32>(x) * panel_rect.width()) / static_cast<s32>(WIDTH));
+      const s32 cell_right =
+        panel_rect.x + ((static_cast<s32>(x + 1) * panel_rect.width()) / static_cast<s32>(WIDTH));
+      const s32 dot_right = std::max(cell_left + 1, cell_right - gap);
+      const float dot_size = static_cast<float>(std::min(dot_right - cell_left, dot_bottom - cell_top));
+      const u8 level = snapshot.pixels[(y * WIDTH) + x] & 3;
+      dl->AddRectFilled(ImVec2(static_cast<float>(cell_left), static_cast<float>(cell_top)),
+                        ImVec2(static_cast<float>(dot_right), static_cast<float>(dot_bottom)), colors[level],
+                        std::min(1.0f, dot_size * 0.2f));
+    }
+  }
+
+  if (g_settings.debugging.show_arcade_outputs)
+  {
+    ImFont* const font = ImGuiManager::GetStandardFont();
+    const float font_size = font->FontSize;
+    const float side_space = grid_x;
+    if (side_space > (font_size * 10.0f))
+    {
+      const float text_x = pad;
+      const float text_y = grid_y + pad;
+      LargeString meta;
+      meta.append_format("gen={} start={:04X}\nscroll={},{} lit={}",
+                         snapshot.generation, snapshot.start_address, snapshot.scroll_x, snapshot.scroll_y,
+                         snapshot.levels[1] + snapshot.levels[2] + snapshot.levels[3]);
+      ImDrawList* const debug_dl = ImGui::GetForegroundDrawList();
+      debug_dl->AddText(font, font_size, ImVec2(text_x, text_y), IM_COL32(255, 208, 96, 255), "CYBER LEAD LED");
+      debug_dl->AddText(font, font_size, ImVec2(text_x, text_y + font_size + 2.0f),
+                        IM_COL32(255, 255, 255, 255), meta.c_str(), meta.end_ptr());
+    }
+  }
+}
+
+void ImGuiManager::RenderCabinetOverlays()
+{
+  if (System::GetState() == System::State::Shutdown)
+    return;
+
+  UpdateCyberLeadLEDSnapshot();
+  DrawCyberLeadLEDAttached(ImGuiManager::GetGlobalScale());
 }
 
 void ImGuiManager::RenderTextOverlays()
@@ -821,6 +1041,10 @@ void SaveStateSelectorUI::RefreshList(const std::string& serial)
     }
   }
 
+  // Global slots are not game-specific, so arcade games do not offer them.
+  if (System::IsArcadeSaveStateSession())
+    return;
+
   for (s32 i = 1; i <= System::GLOBAL_SAVE_STATE_SLOTS; i++)
   {
     std::string path(System::GetGlobalSaveStateFileName(i));
@@ -895,7 +1119,7 @@ void SaveStateSelectorUI::SelectNextSlot(bool open_selector)
   if (s_current_slot >= total_slots)
   {
     s_current_slot -= total_slots;
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
       s_current_slot_global = false;
@@ -921,7 +1145,7 @@ void SaveStateSelectorUI::SelectPreviousSlot(bool open_selector)
   s_current_slot--;
   if (s_current_slot < 0)
   {
-    s_current_slot_global = !s_current_slot_global;
+    s_current_slot_global = !s_current_slot_global && !System::IsArcadeSaveStateSession();
     s_current_slot += s_current_slot_global ? System::GLOBAL_SAVE_STATE_SLOTS : System::PER_GAME_SAVE_STATE_SLOTS;
     if (System::GetGameSerial().empty() && !s_current_slot_global)
     {
@@ -1159,7 +1383,7 @@ void SaveStateSelectorUI::LoadCurrentSlot()
     if (FileSystem::FileExists(path.c_str()))
     {
       Error error;
-      if (!System::LoadState(path.c_str(), &error, true))
+      if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
       {
         Host::AddKeyedOSDMessage("LoadState",
                                  fmt::format(TRANSLATE_FS("OSDMessage", "Failed to load state from slot {0}:\n{1}"),
@@ -1193,7 +1417,7 @@ void SaveStateSelectorUI::SaveCurrentSlot()
   if (std::string path = GetCurrentSlotPath(); !path.empty())
   {
     Error error;
-    if (!System::SaveState(path.c_str(), &error, g_settings.create_save_state_backups))
+    if (!System::SaveStateWhenReady(path.c_str(), &error, g_settings.create_save_state_backups))
     {
       Host::AddIconOSDMessage("SaveState", ICON_EMOJI_WARNING,
                               fmt::format(TRANSLATE_FS("OSDMessage", "Failed to save state to slot {0}:\n{1}"),

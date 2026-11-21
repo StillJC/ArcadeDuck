@@ -8,6 +8,7 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
 
 namespace SonyZN::TaitoFX1ASound {
 
@@ -21,5 +22,6 @@ u8 MasterCommRead();
 void MasterCommWrite(u8 value);
 
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::TaitoFX1ASound

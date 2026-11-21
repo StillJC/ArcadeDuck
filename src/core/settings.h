@@ -86,7 +86,7 @@ struct Settings
   bool start_fullscreen : 1 = false;
   bool pause_on_focus_loss : 1 = false;
   bool pause_on_controller_disconnection : 1 = false;
-  bool save_state_on_exit : 1 = true;
+  bool save_state_on_exit : 1 = false;
   bool create_save_state_backups : 1 = DEFAULT_SAVE_STATE_BACKUPS;
   bool confim_power_off : 1 = true;
   bool load_devices_from_save_states : 1 = false;
@@ -227,6 +227,21 @@ struct Settings
   // Namco System 11 physical DIP SW2 bank.
   bool arcade_namco_system11_dip_test : 1 = false;
   bool arcade_namco_system11_dip_freeze : 1 = false;
+
+  // Namco System 12 Cyber Lead LED panel: mode 0 off, 1 above game, 2 below game,
+  // 3 separate window; size 1 small, 2 medium, 3 large; color 0-8 selects the presentation tint.
+  bool arcade_namco_system12_cyber_lead_led_hardware_enabled : 1 = false;
+  u8 arcade_namco_system12_cyber_lead_led_mode = 0;
+  u8 arcade_namco_system12_cyber_lead_led_size = 2;
+  u8 arcade_namco_system12_cyber_lead_led_color = 0;
+  std::string arcade_namco_system12_cyber_lead_led_monitor;
+  bool arcade_namco_system12_cyber_lead_led_borderless_fullscreen : 1 = false;
+
+  u32 GetNamcoSystem12CyberLeadLEDWidthPercentage() const
+  {
+    return (arcade_namco_system12_cyber_lead_led_size <= 1) ? 50 :
+           ((arcade_namco_system12_cyber_lead_led_size >= 3) ? 100 : 75);
+  }
 
   // Common Sony ZN motherboard S551 settings used outside the Video System profile.
   bool arcade_sony_zn_bios_service_mode : 1 = false;

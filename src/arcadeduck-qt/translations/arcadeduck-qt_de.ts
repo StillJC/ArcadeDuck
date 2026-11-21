@@ -6,12 +6,12 @@
     <message>
         <location filename="../aboutdialog.cpp" line="65"/>
         <source>ArcadeDuck is a free and open-source emulator focused on PlayStation 1-based arcade hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck ist ein kostenloser Open-Source-Emulator für Arcade-Hardware auf Basis der PlayStation 1.</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="66"/>
         <source>Project contact</source>
-        <translation type="unfinished"></translation>
+        <translation>Projektkontakt</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="67"/>
@@ -1393,12 +1393,12 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.ui" line="48"/>
         <source>WASAPI RAW Output:</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI-RAW-Ausgabe:</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="55"/>
         <source>Bypass Windows audio processing</source>
-        <translation type="unfinished"></translation>
+        <translation>Windows-Audioverarbeitung umgehen</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="79"/>
@@ -1574,22 +1574,22 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.cpp" line="125"/>
         <source>The buffer size determines the size of the chunks of audio which will be pulled by the host. Smaller values reduce the output latency, but may cause hitches if the emulation speed is inconsistent. Low Latency mode ignores this setting and automatically requests the selected backend/device minimum instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>Die Puffergröße legt fest, wie große Audioblöcke der Host abruft. Kleinere Werte verringern die Ausgabelatenz, können aber bei schwankender Emulationsgeschwindigkeit zu Aussetzern führen. Im Modus „Niedrige Latenz“ wird diese Einstellung ignoriert und stattdessen automatisch das Minimum des gewählten Backends bzw. Geräts angefordert.</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI-RAW-Ausgabe</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>Disabled</source>
-        <translation type="unfinished">Deaktiviert</translation>
+        <translation>Deaktiviert</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="131"/>
         <source>Requests Windows RAW shared-mode output through Cubeb/WASAPI, bypassing optional Windows audio signal processing while retaining driver, hardware, and always-on processing. This does not enable exclusive mode or lower ArcadeDuck&apos;s configured Low Latency target. If RAW is unsupported, Cubeb continues with normal shared-mode output.</source>
-        <translation type="unfinished"></translation>
+        <translation>Fordert über Cubeb/WASAPI den Windows-RAW-Ausgabemodus mit gemeinsamer Gerätenutzung an. Optionale Windows-Audioeffekte werden umgangen; Treiber-, Hardware- und dauerhaft aktive Verarbeitung bleibt erhalten. Dies aktiviert weder den exklusiven Modus noch senkt es das eingestellte Latenzziel von ArcadeDuck. Wird RAW nicht unterstützt, verwendet Cubeb die normale gemeinsame Ausgabe.</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="137"/>
@@ -1702,7 +1702,7 @@ QFile::exists: %2</translation>
         <location filename="../audiosettingswidget.cpp" line="332"/>
         <source>Automatic</source>
         <extracomment>Preserve the %1 variable, adapt the latter ms (and/or any possible spaces in between) to your language&apos;s ruleset.</extracomment>
-        <translation type="unfinished">Automatisch</translation>
+        <translation>Automatisch</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="345"/>
@@ -2846,37 +2846,37 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
     <message>
         <location filename="../coverdownloaddialog.ui" line="14"/>
         <source>Download Game Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>Spielgrafiken herunterladen</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="38"/>
         <source>ArcadeDuck can download curated default artwork for supported arcade games. Manually assigned cover images always take priority and are never overwritten.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck kann ausgewählte Standardgrafiken für unterstützte Arcade-Spiele herunterladen. Manuell zugewiesene Cover haben immer Vorrang und werden niemals überschrieben.</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="52"/>
         <source>Default Artwork:</source>
-        <translation type="unfinished"></translation>
+        <translation>Standardgrafik:</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="60"/>
         <source>Clear Logo</source>
-        <translation type="unfinished"></translation>
+        <translation>Freigestelltes Logo</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="65"/>
         <source>2D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>2D-Cover</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="70"/>
         <source>3D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>3D-Cover</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="80"/>
         <source>Download Missing fetches the selected artwork type only for games that do not already have a manually assigned cover or cached artwork of that type. Artwork is stored locally for future use.</source>
-        <translation type="unfinished"></translation>
+        <translation>„Fehlende herunterladen“ lädt den gewählten Grafiktyp nur für Spiele ohne manuell zugewiesenes Cover oder zwischengespeicherte Grafik dieses Typs. Die Grafiken werden zur späteren Verwendung lokal gespeichert.</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="103"/>
@@ -2887,7 +2887,7 @@ Diese Aktion kann nicht rückgängig gemacht werden.</translation>
         <location filename="../coverdownloaddialog.ui" line="115"/>
         <location filename="../coverdownloaddialog.cpp" line="104"/>
         <source>Download Missing</source>
-        <translation type="unfinished"></translation>
+        <translation>Fehlende herunterladen</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="125"/>
@@ -4272,7 +4272,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6717"/>
         <source>Artwork Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>Grafikeinstellungen</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6719"/>
@@ -4282,7 +4282,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6720"/>
         <source>Audio</source>
-        <translation type="unfinished">Audio</translation>
+        <translation>Audio</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6727"/>
@@ -4292,17 +4292,17 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6731"/>
         <source>Bezels Directory</source>
-        <translation type="unfinished">Bezel-Verzeichnis</translation>
+        <translation>Bezel-Verzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6737"/>
         <source>Bypasses optional Windows audio signal processing when Cubeb is using WASAPI. RAW remains shared mode; it does not enable exclusive output or change ArcadeDuck&apos;s Low Latency target.</source>
-        <translation type="unfinished"></translation>
+        <translation>Umgeht optionale Windows-Audioeffekte, wenn Cubeb WASAPI verwendet. RAW bleibt im gemeinsamen Modus; es aktiviert keine exklusive Ausgabe und ändert nicht das Latenzziel von ArcadeDuck.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6740"/>
         <source>Cache Directory</source>
-        <translation type="unfinished">Cache-Verzeichnis</translation>
+        <translation>Cache-Verzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6742"/>
@@ -4422,7 +4422,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6791"/>
         <source>Crosshairs Directory</source>
-        <translation type="unfinished">Fadenkreuz-Verzeichnis</translation>
+        <translation>Fadenkreuz-Verzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6802"/>
@@ -4467,12 +4467,12 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6828"/>
         <source>Download Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>Grafiken herunterladen</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6829"/>
         <source>Downloads curated ArcadeDuck artwork and lets you choose Clear Logo, 2D Box, or 3D Box.</source>
-        <translation type="unfinished"></translation>
+        <translation>Lädt ausgewählte ArcadeDuck-Grafiken herunter. Zur Auswahl stehen Clear Logo, 2D-Box und 3D-Box.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6844"/>
@@ -4482,7 +4482,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6846"/>
         <source>Enable System Link</source>
-        <translation type="unfinished"></translation>
+        <translation>Systemverbindung aktivieren</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6848"/>
@@ -4502,7 +4502,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6858"/>
         <source>Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal single-cabinet operation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Aktiviert die Netzwerkübertragung für unterstützte miteinander verbundene Arcade-Geräte. Bei normalem Betrieb mit einem einzelnen Automaten deaktiviert lassen.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6862"/>
@@ -4517,7 +4517,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6864"/>
         <source>Enter the IPv4 address of the host machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>Geben Sie die IPv4-Adresse des Hostcomputers ein.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6866"/>
@@ -4552,7 +4552,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6883"/>
         <source>Folders</source>
-        <translation type="unfinished">Ordner</translation>
+        <translation>Ordner</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6884"/>
@@ -4582,27 +4582,27 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6912"/>
         <source>Graphics</source>
-        <translation type="unfinished">Grafik</translation>
+        <translation>Grafik</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6920"/>
         <source>Host IPv4 Address</source>
-        <translation type="unfinished"></translation>
+        <translation>IPv4-Adresse des Hosts</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6921"/>
         <source>Hotkeys</source>
-        <translation type="unfinished">Tastenkürzel</translation>
+        <translation>Tastenkürzel</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6924"/>
         <source>IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck instances are running on the same PC.</source>
-        <translation type="unfinished"></translation>
+        <translation>IPv4-Adresse des Hosts für die System-Link-Sitzung. Verwenden Sie 127.0.0.1, wenn mehrere ArcadeDuck-Instanzen auf demselben PC laufen.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6934"/>
         <source>Interface</source>
-        <translation type="unfinished">Oberfläche</translation>
+        <translation>Oberfläche</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6935"/>
@@ -4677,7 +4677,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6979"/>
         <source>Network</source>
-        <translation type="unfinished"></translation>
+        <translation>Netzwerk</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6987"/>
@@ -4687,7 +4687,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6998"/>
         <source>Operator</source>
-        <translation type="unfinished">Betreiber</translation>
+        <translation>Betreiber</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7017"/>
@@ -4722,12 +4722,12 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7035"/>
         <source>Port</source>
-        <translation type="unfinished"></translation>
+        <translation>Port</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7036"/>
         <source>Post-Processing</source>
-        <translation type="unfinished">Nachbearbeitung</translation>
+        <translation>Nachbearbeitung</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7039"/>
@@ -4847,7 +4847,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7098"/>
         <source>Save States Directory</source>
-        <translation type="unfinished">Save-State-Verzeichnis</translation>
+        <translation>Save-State-Verzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7102"/>
@@ -4892,7 +4892,7 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7113"/>
         <source>Screenshots Directory</source>
-        <translation type="unfinished">Screenshot-Verzeichnis</translation>
+        <translation>Screenshot-Verzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7114"/>
@@ -5057,12 +5057,12 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7198"/>
         <source>System Link</source>
-        <translation type="unfinished">System-Link</translation>
+        <translation>System-Link</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7199"/>
         <source>TCP port shared by all ArcadeDuck instances participating in the same system-link group. All cabinets must use the same port.</source>
-        <translation type="unfinished"></translation>
+        <translation>TCP-Port für alle ArcadeDuck-Instanzen derselben System-Link-Gruppe. Alle Automaten müssen denselben Port verwenden.</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7205"/>
@@ -5122,12 +5122,12 @@ Diese Datei kann mehrere Gigabyte groß sein, achte also auf die Abnutzung der S
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7242"/>
         <source>Videos Directory</source>
-        <translation type="unfinished">Videoverzeichnis</translation>
+        <translation>Videoverzeichnis</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7243"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI-RAW-Ausgabe</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7244"/>
@@ -7800,7 +7800,7 @@ Er erfordert Framebuffer Fetch, Feedback Loops oder Rasterizer Order Views.</tra
     <message>
         <location filename="../gamelistmodel.cpp" line="757"/>
         <source>System</source>
-        <translation type="unfinished">System</translation>
+        <translation>System</translation>
     </message>
     <message>
         <location filename="../gamelistmodel.cpp" line="758"/>
@@ -10704,7 +10704,7 @@ Rekursives Durchsuchen benötigt mehr Zeit, erkennt allerdings auch Dateien in U
     <message>
         <location filename="../mainwindow.ui" line="808"/>
         <source>Download Game &amp;Artwork...</source>
-        <translation type="unfinished"></translation>
+        <translation>Spiel&amp;grafiken herunterladen...</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="813"/>
@@ -10901,7 +10901,7 @@ Rekursives Durchsuchen benötigt mehr Zeit, erkennt allerdings auch Dateien in U
     <message>
         <location filename="../mainwindow.ui" line="642"/>
         <source>Show Arcade Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>Arcade-Ausgänge anzeigen</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="650"/>
@@ -12126,22 +12126,22 @@ Vorhandenes Abbild &apos;{}&apos; wird verwendet; dies kann zu Instabilität fü
     <message>
         <location filename="../operatorsettingswidget.ui" line="26"/>
         <source>External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>Externe Automaten-Ausgänge</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="30"/>
         <source>Enable external cabinet outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>Externe Automaten-Ausgänge aktivieren</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="35"/>
         <source>Protocol:</source>
-        <translation type="unfinished"></translation>
+        <translation>Protokoll:</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="43"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to compatible external software. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>Gibt unterstützte Automatenlampen, Rückstoßsignale und andere physische Rückmeldungen an kompatible externe Software weiter. Änderungen werden beim nächsten Spielstart wirksam.</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="52"/>
@@ -12193,42 +12193,42 @@ Vorhandenes Abbild &apos;{}&apos; wird verwendet; dies kann zu Instabilität fü
         <location filename="../operatorsettingswidget.cpp" line="36"/>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>MAME Win32</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="37"/>
         <source>MAME TCP (Port 8000)</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME TCP (Port 8000)</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="38"/>
         <source>Both</source>
-        <translation type="unfinished"></translation>
+        <translation>Beide</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Enable External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>Externe Automaten-Ausgänge aktivieren</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Disabled</source>
-        <translation type="unfinished">Deaktiviert</translation>
+        <translation>Deaktiviert</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="56"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to external software. The internal Debug -&gt; Show Arcade Outputs monitor remains available when external publishing is disabled. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>Gibt unterstützte Automatenlampen, Rückstoßsignale und andere physische Rückmeldungen an externe Software weiter. Die interne Anzeige unter Debuggen -&gt; Arcade-Ausgaben anzeigen bleibt auch bei deaktivierter externer Ausgabe verfügbar. Änderungen werden beim nächsten Spielstart wirksam.</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>External Output Protocol</source>
-        <translation type="unfinished"></translation>
+        <translation>Externes Ausgabeprotokoll</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="61"/>
         <source>MAME Win32 uses the standard Windows MAME output message protocol. MAME TCP uses the standard network output protocol on TCP port 8000. Both enables both transports. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32 verwendet das standardmäßige Windows-MAME-Ausgabeprotokoll. MAME TCP verwendet das standardmäßige Netzwerkausgabeprotokoll auf TCP-Port 8000. „Beide“ aktiviert beide Übertragungsarten. Änderungen werden beim nächsten Spielstart wirksam.</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="65"/>
@@ -12337,27 +12337,27 @@ Vorhandenes Abbild &apos;{}&apos; wird verwendet; dies kann zu Instabilität fü
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="40"/>
         <source>ArcadeDuck loads user ReShade FX shaders recursively from the user shader folder. Use Effect Packages to browse and install packages from ReShade&apos;s official package catalog, or copy your own .fx/.fxh files and textures into the folder manually.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuck lädt benutzerdefinierte ReShade-FX-Shader rekursiv aus dem Shader-Ordner. Über „Effektpakete“ können Sie Pakete aus dem offiziellen ReShade-Katalog suchen und installieren oder eigene .fx/.fxh-Dateien und Texturen manuell in den Ordner kopieren.</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="48"/>
         <source>Effect Packages...</source>
-        <translation type="unfinished"></translation>
+        <translation>Effektpakete...</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="49"/>
         <source>Open Shader Folder</source>
-        <translation type="unfinished"></translation>
+        <translation>Shader-Ordner öffnen</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="50"/>
         <source>Reload Shaders</source>
-        <translation type="unfinished">Shader neu laden</translation>
+        <translation>Shader neu laden</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="72"/>
         <source>ReShade</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade</translation>
     </message>
 </context>
 <context>
@@ -12637,219 +12637,223 @@ URL: %1</translation>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1625"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1662"/>
         <source>ReShade Effect Packages</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade-Effektpakete</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="331"/>
         <source>Packages are downloaded from ReShade&apos;s official EffectPackages.ini catalog. ArcadeDuck can automatically preflight each effect with its actual ReShadeFX loader and disable effects that use unsupported constructs. A successful preflight does not guarantee identical behavior on every graphics backend.</source>
-        <translation type="unfinished"></translation>
+        <translation>Pakete werden aus dem offiziellen ReShade-Katalog EffectPackages.ini heruntergeladen. ArcadeDuck kann jeden Effekt mit seinem tatsächlichen ReShadeFX-Loader vorab prüfen und Effekte mit nicht unterstützten Konstrukten deaktivieren. Eine erfolgreiche Prüfung garantiert nicht auf jedem Grafik-Backend identisches Verhalten.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Package</source>
-        <translation type="unfinished"></translation>
+        <translation>Paket</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Status</source>
-        <translation type="unfinished"></translation>
+        <translation>Status</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="359"/>
         <source>Effects to install:</source>
-        <translation type="unfinished"></translation>
+        <translation>Zu installierende Effekte:</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="376"/>
         <source>Refresh Catalog</source>
-        <translation type="unfinished"></translation>
+        <translation>Katalog aktualisieren</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="377"/>
         <source>Check Compatibility</source>
-        <translation type="unfinished"></translation>
+        <translation>Kompatibilität prüfen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="378"/>
         <source>Repository</source>
-        <translation type="unfinished"></translation>
+        <translation>Repository</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="379"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Install</source>
-        <translation type="unfinished"></translation>
+        <translation>Installieren</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="380"/>
         <source>Remove</source>
-        <translation type="unfinished">Entfernen</translation>
+        <translation>Entfernen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="407"/>
         <source>HTTP support is unavailable in this build.</source>
-        <translation type="unfinished"></translation>
+        <translation>HTTP-Unterstützung ist in dieser Version nicht verfügbar.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="452"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>Download Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Download fehlgeschlagen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="453"/>
         <source>The download failed with HTTP status %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>Der Download ist mit HTTP-Status %1 fehlgeschlagen.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>The server returned an empty response.</source>
-        <translation type="unfinished"></translation>
+        <translation>Der Server hat eine leere Antwort zurückgegeben.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="652"/>
         <source>Downloading the official ReShade effect package catalog...</source>
-        <translation type="unfinished"></translation>
+        <translation>Der offizielle ReShade-Effektpaketkatalog wird heruntergeladen...</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="660"/>
         <source>Catalog Error</source>
-        <translation type="unfinished"></translation>
+        <translation>Katalogfehler</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="692"/>
         <source>Loaded %1 packages from the official ReShade catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 Pakete aus dem offiziellen ReShade-Katalog geladen.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="725"/>
         <source>Unsupported</source>
-        <translation type="unfinished">Nicht unterstützt</translation>
+        <translation>Nicht unterstützt</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="727"/>
         <source>Compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>Kompatibel</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="729"/>
         <source>%1 compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 kompatibel</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Installed</source>
-        <translation type="unfinished"></translation>
+        <translation>Installiert</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Available</source>
-        <translation type="unfinished"></translation>
+        <translation>Verfügbar</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="783"/>
         <source>
 
 This package is installed locally but is no longer listed in the current catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>
+
+Dieses Paket ist lokal installiert, wird aber im aktuellen Katalog nicht mehr aufgeführt.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="800"/>
         <source>  [Compatible]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [Kompatibel]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="805"/>
         <source>  [Unsupported]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [Nicht unterstützt]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="810"/>
         <source>  [Unknown]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [Unbekannt]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="847"/>
         <source>This package does not provide an individual effect list; all shader files will be installed.</source>
-        <translation type="unfinished"></translation>
+        <translation>Dieses Paket enthält keine Liste einzelner Effekte; alle Shader-Dateien werden installiert.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="848"/>
         <source>Effect selection is unavailable for this installed package.</source>
-        <translation type="unfinished"></translation>
+        <translation>Für dieses installierte Paket ist keine Effektauswahl verfügbar.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Update / Reinstall</source>
-        <translation type="unfinished"></translation>
+        <translation>Aktualisieren / Neu installieren</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="862"/>
         <source>Compatibility preflight: %1 compatible, %2 unsupported, %3 unknown. Unsupported and unknown effects are disabled.</source>
-        <translation type="unfinished"></translation>
+        <translation>Kompatibilitätsprüfung: %1 kompatibel, %2 nicht unterstützt, %3 unbekannt. Nicht unterstützte und unbekannte Effekte werden deaktiviert.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="870"/>
         <source>Compatibility has not been checked for this package yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>Die Kompatibilität dieses Pakets wurde noch nicht geprüft.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="890"/>
         <source>Checking compatibility for %1...</source>
-        <translation type="unfinished"></translation>
+        <translation>Kompatibilität von %1 wird geprüft...</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1171"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1598"/>
         <source>Compatibility Check Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Kompatibilitätsprüfung fehlgeschlagen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1209"/>
         <source>Downloading %1...</source>
-        <translation type="unfinished">Herunterladen %1…</translation>
+        <translation>Herunterladen %1…</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1608"/>
         <source>Install Package</source>
-        <translation type="unfinished"></translation>
+        <translation>Paket installieren</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1609"/>
         <source>No compatible effects are selected for installation.</source>
-        <translation type="unfinished"></translation>
+        <translation>Es wurden keine kompatiblen Effekte zur Installation ausgewählt.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1617"/>
         <source>Package Installation Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Paketinstallation fehlgeschlagen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1626"/>
         <source>%1 was installed successfully.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 wurde erfolgreich installiert.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1641"/>
         <source>Remove Package</source>
-        <translation type="unfinished"></translation>
+        <translation>Paket entfernen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1642"/>
         <source>Remove %1 and the shader/texture files recorded in its ArcadeDuck package manifest?
 
 Shaders from this package that are currently in a post-processing chain may fail to reload.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 und die in seinem ArcadeDuck-Paketmanifest aufgeführten Shader- und Texturdateien entfernen?
+
+Shader dieses Pakets, die derzeit in einer Nachbearbeitungskette verwendet werden, können möglicherweise nicht erneut geladen werden.</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1654"/>
         <source>Package Removal Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>Entfernen des Pakets fehlgeschlagen</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1663"/>
         <source>%1 was removed.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 wurde entfernt.</translation>
     </message>
 </context>
 <context>
@@ -13391,27 +13395,28 @@ Starten Sie das Spiel nach dem Ändern eines Schalters neu.</translation>
         <location filename="../settingswindow.cpp" line="282"/>
         <source>Namco System 11 physical DIP SW2 switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physische DIP-Schalter SW2 des Namco System 11.
+Nach dem Ändern eines Schalters das Spiel neu starten.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="284"/>
         <source>DIP1 Test (SW2:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP1 Test (SW2:1):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="286"/>
         <source>Physical DIP SW2:1. This is separate from the cabinet Test switch/hotkey.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physischer DIP-Schalter SW2:1. Er ist vom Testschalter bzw. dessen Tastenkürzel am Automaten unabhängig.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="287"/>
         <source>DIP2 Freeze (SW2:2):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP2 Einfrieren (SW2:2):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="289"/>
         <source>Physical DIP SW2:2. Freezes game execution when enabled by the game hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physischer DIP-Schalter SW2:2. Hält die Spielausführung an, wenn dies von der Spielhardware unterstützt wird.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="294"/>
@@ -13431,80 +13436,82 @@ Starten Sie das Spiel nach dem Ändern eines Schalters neu.</translation>
         <location filename="../settingswindow.cpp" line="309"/>
         <source>Bust-A-Move 2 COH-1002E motherboard S551 DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP-Schalter S551 auf dem Bust-A-Move-2-Mainboard COH-1002E.
+Nach dem Ändern eines Schalters das Spiel neu starten.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="312"/>
         <source>Generic Cab (Unsupported)</source>
-        <translation type="unfinished"></translation>
+        <translation>Standardautomat (nicht unterstützt)</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="313"/>
         <location filename="../settingswindow.cpp" line="320"/>
         <source>Dedicated Cab</source>
-        <translation type="unfinished"></translation>
+        <translation>Spezialautomat</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="317"/>
         <source>Cabinet Type (S551:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>Automatentyp (S551:1):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="321"/>
         <source>Physical motherboard DIP S551:1 exists, but Generic Cab support is currently disabled in ArcadeDuck. Bust-A-Move 2 is fixed to the verified Dedicated Cab wiring.</source>
-        <translation type="unfinished"></translation>
+        <translation>Der physische Mainboard-DIP-Schalter S551:1 ist vorhanden, aber die Unterstützung für „Generic Cab“ ist in ArcadeDuck derzeit deaktiviert. Bust-A-Move 2 verwendet fest die überprüfte „Dedicated Cab“-Verkabelung.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="327"/>
         <source>English</source>
-        <translation type="unfinished"></translation>
+        <translation>Englisch</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="328"/>
         <source>Japanese (2)</source>
-        <translation type="unfinished"></translation>
+        <translation>Japanisch (2)</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="329"/>
         <source>Korean</source>
-        <translation type="unfinished"></translation>
+        <translation>Koreanisch</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="330"/>
         <location filename="../settingswindow.cpp" line="344"/>
         <source>Japanese</source>
-        <translation type="unfinished"></translation>
+        <translation>Japanisch</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="342"/>
         <source>Region (S551:3-4):</source>
-        <translation type="unfinished"></translation>
+        <translation>Region (S551:3-4):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="345"/>
         <source>Physical motherboard DIP S551:3-4 region encoding used by Bust-A-Move 2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physische Mainboard-DIP-Schalter S551:3-4 für die Regionscodierung von Bust-A-Move 2.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="350"/>
         <source>Sony ZN motherboard S551 physical DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physische DIP-Schalter S551 auf dem Sony-ZN-Mainboard.
+Nach dem Ändern eines Schalters das Spiel neu starten.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="358"/>
         <source>Game Test Mode (S551:4):</source>
-        <translation type="unfinished"></translation>
+        <translation>Spieltestmodus (S551:4):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="360"/>
         <source>Physical motherboard DIP S551:4 used by this hardware profile for game test mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>Physischer Mainboard-DIP-Schalter S551:4, den dieses Hardwareprofil für den Spieltestmodus verwendet.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="365"/>
         <source>No physical DIP switch settings are available for this game.</source>
-        <translation type="unfinished"></translation>
+        <translation>Für dieses Spiel sind keine physischen DIP-Schaltereinstellungen verfügbar.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="285"/>
@@ -13945,7 +13952,13 @@ Möchten Sie fortfahren?</translation>
 Your dump is incomplete, you must add the SBI file to run this game.
 
 The name of the SBI file must match the name of the disc image.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sie versuchen, ein durch libcrypt geschütztes Spiel ohne SBI-Datei zu starten:
+
+{0}: {1}
+
+Ihr Disc-Abbild ist unvollständig. Sie müssen die SBI-Datei hinzufügen, um das Spiel zu starten.
+
+Der Name der SBI-Datei muss mit dem Namen des Disc-Abbilds übereinstimmen.</translation>
     </message>
     <message numerus="yes">
         <location filename="../../core/system.cpp" line="3888"/>

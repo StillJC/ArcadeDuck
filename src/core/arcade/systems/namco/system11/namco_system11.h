@@ -10,6 +10,11 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
+
+namespace Arcade::SaveState {
+struct NVRAMComponent;
+}
 
 namespace Arcade::Database {
 struct FirmwareDefinition;
@@ -83,5 +88,8 @@ void WriteKEYCUS(u32 width, u32 offset, u32 value);
 void WriteBankRegister(u32 width, u32 offset, u32 value);
 void WriteBankUpperRegister(u32 width, u32 offset, u32 value);
 void WriteGunOutput(u32 width, u32 offset, u32 value);
+
+bool DoState(StateWrapper& sw);
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
 
 } // namespace NamcoSystem11

@@ -160,6 +160,10 @@ bool CanUseFastmemForAddress(VirtualMemoryAddress address);
 
 void SetExpansionROM(std::vector<u8> data);
 
+/// Returns the current PSX Expansion 1 base register. System 12 later loaders
+/// use this bus state to select motherboard program ROM as the DMA5 source.
+u32 GetEXP1Base();
+
 /// Reads one instruction word from executable EXP1 ROM without applying bus timing or peripheral side effects.
 /// Currently used by Sony ZN, whose game program can execute directly from the expansion ROM window.
 bool ReadEXP1InstructionWord(PhysicalMemoryAddress address, u32* value);

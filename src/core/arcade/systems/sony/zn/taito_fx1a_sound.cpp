@@ -11,11 +11,14 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
+#include "core/arcade/devices/cpu/z80_state.h"
 #include "core/arcade/third_party/z80_superzazu/z80.h"
 #include "core/system.h"
 
 #include "common/error.h"
 #include "common/log.h"
+
+#include "util/state_wrapper.h"
 
 #include <array>
 #include <memory>
@@ -747,6 +750,68 @@ void GenerateAudioFrame(s32* left, s32* right)
   // output after bringing the sound timeline to the requested point.
   *left = s_state.ym_last_left;
   *right = s_state.ym_last_right;
+}
+
+// The YM2610B uses ymfm's own state record. Diagnostic counters are excluded.
+bool DoState(StateWrapper& sw)
+{
+  if (!s_state.active || !s_ym2610 || !sw.DoMarker("FX1ASound"))
+    return false;
+
+  if (!Arcade::Z80State::DoState(sw, s_state.cpu))
+    return false;
+
+  sw.DoArray(s_state.ram.data(), s_state.ram.size());
+  sw.Do(&s_state.sound_bank);
+  sw.Do(&s_state.cpu_reset_asserted);
+  sw.DoArray(s_state.slave_data.data(), s_state.slave_data.size());
+  sw.DoArray(s_state.master_data.data(), s_state.master_data.size());
+  sw.Do(&s_state.main_mode);
+  sw.Do(&s_state.sub_mode);
+  sw.Do(&s_state.status);
+  sw.Do(&s_state.nmi_enabled);
+  sw.Do(&s_state.nmi_asserted);
+  sw.DoArray(s_state.ym_timer_clocks.data(), s_state.ym_timer_clocks.size());
+  sw.Do(&s_state.ym_busy_clocks);
+  sw.Do(&s_state.ym_irq_asserted);
+  sw.Do(&s_state.ym_native_sample_rate);
+  sw.Do(&s_state.ym_native_phase);
+  sw.Do(&s_state.ym_last_left);
+  sw.Do(&s_state.ym_last_right);
+  sw.Do(&s_state.cycle_balance);
+  sw.Do(&s_state.audio_cycle_fraction);
+  sw.Do(&s_state.audio_target_cycles);
+  sw.Do(&s_state.host_target_cycles);
+  sw.Do(&s_state.scheduled_target_cycles);
+  sw.Do(&s_state.host_tick_fraction);
+  sw.Do(&s_state.last_host_sync_ticks);
+  sw.Do(&s_state.last_ticks_per_second);
+
+  std::vector<uint8_t> ym_state;
+  if (!sw.IsReading())
+  {
+    ymfm::ymfm_saved_state saved(ym_state, true);
+    s_ym2610->save_restore(saved);
+  }
+  u32 ym_size = static_cast<u32>(ym_state.size());
+  sw.Do(&ym_size);
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || ym_size > 0x100000)
+      return false;
+    ym_state.resize(ym_size);
+  }
+  sw.DoBytes(ym_state.data(), ym_state.size());
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || s_state.sound_bank > 0x07)
+      return false;
+
+    ymfm::ymfm_saved_state restored(ym_state, false);
+    s_ym2610->save_restore(restored);
+  }
+
+  return !sw.HasError();
 }
 
 } // namespace SonyZN::TaitoFX1ASound

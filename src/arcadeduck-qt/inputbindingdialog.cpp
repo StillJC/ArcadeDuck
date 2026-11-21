@@ -287,6 +287,12 @@ void InputBindingDialog::inputManagerHookCallback(InputBindingKey key, float val
   if (!isListeningForInput())
     return;
 
+  if (m_section_name != "Hotkeys" && !m_new_bindings.empty() &&
+      m_new_bindings.front().MaskDirection() != key.MaskDirection())
+  {
+    return;
+  }
+
   float initial_value = value;
   float min_value = value;
   auto it = std::find_if(m_value_ranges.begin(), m_value_ranges.end(),

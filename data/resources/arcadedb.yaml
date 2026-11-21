@@ -80,6 +80,7 @@ systems:
     machineHandler: "namco_system12"
     biosProfile: ""
     releaseYear: 1997
+    cpuClockPercent: 148
     maxPlayers: 2
     supportsLightgun: true
     supportsTrackball: false
@@ -87,8 +88,8 @@ systems:
     supportsNetwork: true
     properties:
       mainCPU: "CXD8661R-compatible R3000A"
-      systemRAM: "0x200000"
-      soundCPU: "Namco C76 / H8 variants"
+      systemRAM: "0x400000 (COH-700/700B), 0x1000000 (COH-716)"
+      soundCPU: "H8/3002 family"
       sound: "Namco C352"
       archivePolicy: "complete_non_merged"
 
@@ -1693,6 +1694,69 @@ controlLayouts:
         displayName: "Button 4 — Right Kick"
         kind: "button"
 
+  tekken3:
+    displayName: "Tekken 3"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1 — Left Punch"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Right Punch"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 3 — Left Kick"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 4 — Right Kick"
+        kind: "button"
+
+  tektagt:
+    displayName: "Tekken Tag Tournament"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1 — Left Punch"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 — Right Punch"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 3 — Left Kick"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 4 — Right Kick"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 5 — Tag"
+        kind: "button"
+
   xevi3dg:
     displayName: "Xevious 3D/G"
     controllerType: "arcade"
@@ -1729,7 +1793,10 @@ controlLayouts:
         displayName: "Button 1 — Left"
         kind: "button"
       - key: "Button2"
-        displayName: "Button 2 — Right"
+        displayName: "Button 2 — OK / Horn"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 — Right"
         kind: "button"
       - key: "Start"
         displayName: "Start / OK / Horn — Confirm / sound horn"
@@ -1738,8 +1805,20 @@ controlLayouts:
   aquarush:
     displayName: "Aqua Rush"
     controllerType: "arcade"
-    joystickMode: "none"
+    joystickMode: "eight_way"
     bindings:
+      - key: "Up"
+        displayName: "Up - Test menu up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down - Test menu down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left - Test menu left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right - Test menu right"
+        kind: "button"
       - key: "Button1"
         displayName: "Button 1 — Raise/extend the left bubble column"
         kind: "button"
@@ -2023,6 +2102,78 @@ controlLayouts:
         displayName: "Button 6 — Wrestling action not yet assigned"
         kind: "button"
 
+  questff:
+    displayName: "Quest for Fame"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "SelectUp"
+        displayName: "Up Select / 1P Left Choose"
+        kind: "button"
+      - key: "SelectDown"
+        displayName: "Down Select / 1P Right Choose"
+        kind: "button"
+      - key: "Enter"
+        displayName: "Enter / 1P Determine"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Drum"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Guitar"
+        kind: "button"
+      - key: "Button3"
+        displayName: "2P Right Choose"
+        kind: "button"
+      - key: "Button4"
+        displayName: "2P Left Choose"
+        kind: "button"
+      - key: "Button5"
+        displayName: "2P Determine"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
+  ujlnow:
+    displayName: "Um Jammer Lammy NOW!"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Up"
+        displayName: "Up Select"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down Select"
+        kind: "button"
+      - key: "Left"
+        displayName: "Joe Switch (J)"
+        kind: "button"
+      - key: "Right"
+        displayName: "Chin Switch (C)"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Circle / Enter"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Cross"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Triangle"
+        kind: "button"
+      - key: "Button7"
+        displayName: "Square"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
+        kind: "button"
+      - key: "Start"
+        displayName: "Start"
+        kind: "button"
+
   truckk:
     displayName: "Truck Kyosokyoku"
     controllerType: "driving"
@@ -2044,7 +2195,7 @@ controlLayouts:
         displayName: "Horn — Sound horn"
         kind: "button"
       - key: "MusicPrevious"
-        displayName: "Previous Music — Previous music track"
+        displayName: "Music Back — Previous music track"
         kind: "button"
       - key: "MusicNext"
         displayName: "Next Music — Next music track"
@@ -2057,6 +2208,9 @@ controlLayouts:
         kind: "button"
       - key: "Enter"
         displayName: "Enter / Confirm — Confirm"
+        kind: "button"
+      - key: "Coin"
+        displayName: "Coin"
         kind: "button"
 
   ftimpact:
@@ -2803,6 +2957,60 @@ controlLayouts:
       - { key: "Button3", displayName: "Button 3 - Bomb / Activate", kind: "button" }
       - { key: "Coin", displayName: "Coin", kind: "button" }
       - { key: "Start", displayName: "Start", kind: "button" }
+
+  arcade_generic:
+    displayName: "Generic 6-Button Arcade"
+    controllerType: "arcade"
+    joystickMode: "eight_way"
+    bindings:
+      - key: "Up"
+        displayName: "Up"
+        kind: "button"
+      - key: "Down"
+        displayName: "Down"
+        kind: "button"
+      - key: "Left"
+        displayName: "Left"
+        kind: "button"
+      - key: "Right"
+        displayName: "Right"
+        kind: "button"
+      - key: "Button1"
+        displayName: "Button 1"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4"
+        kind: "button"
+      - key: "Button5"
+        displayName: "Button 5"
+        kind: "button"
+      - key: "Button6"
+        displayName: "Button 6"
+        kind: "button"
+
+  pacapp:
+    displayName: "Paca Paca Passion / 2 / Special"
+    controllerType: "arcade"
+    joystickMode: "none"
+    bindings:
+      - key: "Button1"
+        displayName: "Button 1 - Yellow"
+        kind: "button"
+      - key: "Button2"
+        displayName: "Button 2 - Red"
+        kind: "button"
+      - key: "Button3"
+        displayName: "Button 3 - Blue"
+        kind: "button"
+      - key: "Button4"
+        displayName: "Button 4 - Green"
+        kind: "button"
 
 games:
   powyak96:
@@ -5253,8 +5461,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5279,6 +5487,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3a:
     archive: "tekken3a.zip"
@@ -5298,8 +5507,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5324,6 +5533,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3b:
     archive: "tekken3b.zip"
@@ -5343,8 +5553,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5369,6 +5579,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3c:
     archive: "tekken3c.zip"
@@ -5388,8 +5599,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5414,6 +5625,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3d:
     archive: "tekken3d.zip"
@@ -5433,8 +5645,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5459,6 +5671,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ua:
     archive: "tekken3ua.zip"
@@ -5478,8 +5691,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5504,6 +5717,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ud:
     archive: "tekken3ud.zip"
@@ -5523,8 +5737,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5549,6 +5763,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3ja:
     archive: "tekken3ja.zip"
@@ -5568,8 +5783,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5594,6 +5809,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3jd:
     archive: "tekken3jd.zip"
@@ -5613,8 +5829,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5639,6 +5855,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tekken3je1:
     archive: "tekken3je1.zip"
@@ -5658,8 +5875,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
+        - { type: "arcade", joystick: "eight_way", layout: "tekken3" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1c00000, width: 32, endianness: "little" }
@@ -5684,6 +5901,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   lbgrande:
     archive: "lbgrande.zip"
@@ -5723,6 +5941,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   toukon3:
     archive: "toukon3.zip"
@@ -5802,6 +6021,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrab:
     archive: "soulclbrab.zip"
@@ -5843,6 +6063,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrac:
     archive: "soulclbrac.zip"
@@ -5884,6 +6105,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrub:
     archive: "soulclbrub.zip"
@@ -5925,6 +6147,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbruc:
     archive: "soulclbruc.zip"
@@ -5966,6 +6189,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrja2:
     archive: "soulclbrja2.zip"
@@ -6007,6 +6231,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjb:
     archive: "soulclbrjb.zip"
@@ -6048,6 +6273,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   soulclbrjc:
     archive: "soulclbrjc.zip"
@@ -6089,6 +6315,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeiz:
     archive: "ehrgeiz.zip"
@@ -6132,6 +6359,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizua:
     archive: "ehrgeizua.zip"
@@ -6176,6 +6404,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ehrgeizja:
     archive: "ehrgeizja.zip"
@@ -6220,6 +6449,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   sws98:
     archive: "sws98.zip"
@@ -6262,6 +6492,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   aplarail:
     archive: "aplarail.zip"
@@ -6303,6 +6534,7 @@ games:
       machineConfig: "aplarail"
       inputProfile: "aplarail"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mdhorse:
     archive: "mdhorse.zip"
@@ -6344,6 +6576,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
 
   technodr:
     archive: "technodr.zip"
@@ -6517,6 +6750,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   fgtlayerja:
     archive: "fgtlayerja.zip"
@@ -6561,6 +6795,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   pacapp:
     archive: "pacapp.zip"
@@ -6577,6 +6812,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -6742,6 +6981,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   tektagt:
     archive: "tektagt.zip"
@@ -6760,8 +7000,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6788,6 +7028,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtc1a:
     archive: "tektagtc1a.zip"
@@ -6807,8 +7048,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6841,6 +7082,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtub:
     archive: "tektagtub.zip"
@@ -6860,8 +7102,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6888,6 +7130,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtuc1:
     archive: "tektagtuc1.zip"
@@ -6907,8 +7150,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6935,6 +7178,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   tektagtja3:
     archive: "tektagtja3.zip"
@@ -6954,8 +7198,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -6983,6 +7227,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjb:
@@ -7003,8 +7248,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7031,6 +7276,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   tektagtjc1:
@@ -7051,8 +7297,8 @@ games:
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
     controls:
       ports:
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
-        - { type: "arcade", joystick: "eight_way", layout: "tekken" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
+        - { type: "arcade", joystick: "eight_way", layout: "tektagt" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x3800000, width: 32, endianness: "little" }
@@ -7079,6 +7325,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
+      ioBoard: "cyberlead"
 
   ghlpanic:
     archive: "ghlpanic.zip"
@@ -7170,6 +7417,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -7226,6 +7477,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   mrdrillrja2:
     archive: "mrdrillrja2.zip"
@@ -7264,6 +7516,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   ujlnow:
     archive: "ujlnow.zip"
@@ -7280,6 +7533,9 @@ games:
     minPlayers: 1
     maxPlayers: 1
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "ujlnow" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x2000000, width: 32, endianness: "little" }
@@ -7304,6 +7560,45 @@ games:
       machineConfig: "cdxa_pcb"
       inputProfile: "ujlnow"
       stateClass: "namcos12_cdxa_state"
+
+  questff:
+    archive: "questff.zip"
+    title: "Quest for Fame"
+    system: "namco_system12"
+    manufacturer: "Virtual Music / Namco"
+    year: 1999
+    region: "Japan"
+    revision: "QF2/VER.A"
+    boardCode: "QF2"
+    hardwareProfile: "cdxa_pcb"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 1
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "questff" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x1000000, width: 32, endianness: "little" }
+      - { id: "sub", size: 0x80000, width: 8, endianness: "native" }
+      - { id: "c352", size: 0x1000000, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "qf2vera.2l", size: 0x200000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x936778e1", sha1: "2afe556ef4888bbe422c2f92d7b6bd85beffc229", groupSize: 1, skip: 1 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "qf2vera.2p", size: 0x200000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0x429ff82e", sha1: "958e4d61bd9bd0515f837e9c2b910f1581426214", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "qf1rom0l.ic12", size: 0x800000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x3319164f", sha1: "3d673af952203b362f52f83f805f8a24e4864489", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "qf1rom0u.ic11", size: 0x800000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xd892c93e", sha1: "0d7dbf4ff45f823bbc0b4fdbfb2693e18beced45", groupSize: 1, skip: 1 }
+      - { role: "sub_001", region: "sub", name: "qf2vera.11s", size: 0x80000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x843f6ed9", sha1: "fdbd352e6fdbf48112ef67dcc7f34e41e00f017a", groupSize: 2, skip: 0 }
+      - { role: "c352_001", region: "c352", name: "qf1wave0.ic2", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x3f7b9afa", sha1: "b7ecef7447476937c99591b495f859ac6abf3e30", groupSize: 1, skip: 0 }
+    media:
+      - { role: "cdxa_pcb:ata:0:cdrom_001", type: "chd_cdrom", name: "qf1-a", sha1: "c65ac9bb0571e463a2f6a23cff396ca19430ca15", required: true, readOnly: true, companion: true }
+    properties:
+      sourceDriver: "namcos12.cpp"
+      machineConfig: "questff"
+      inputProfile: "questff"
+      stateClass: "namcos12_cdxa_state"
+      emulationFlags: "MACHINE_IMPERFECT_CONTROLS"
 
   kaiunqz:
     archive: "kaiunqz.zip"
@@ -7345,6 +7640,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
 
   pacappsp:
     archive: "pacappsp.zip"
@@ -7361,6 +7657,10 @@ games:
     minPlayers: 1
     maxPlayers: 2
     display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
+        - { type: "arcade", joystick: "none", layout: "pacapp" }
     romRegions:
       - { id: "maincpu:rom", size: 0x400000, width: 32, endianness: "little" }
       - { id: "bankedroms", size: 0x1800000, width: 32, endianness: "little" }
@@ -7417,6 +7717,7 @@ games:
       machineConfig: "coh700"
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
 
   golgo13:
     archive: "golgo13.zip"
@@ -7505,6 +7806,7 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   truckk:
@@ -7722,6 +8024,7 @@ games:
       machineConfig: "coh716"
       inputProfile: "namcos12"
       stateClass: "namcos12_altbank_state"
+      ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
 
   ts2:
@@ -8227,6 +8530,58 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  sfex01:
+    archive: "sfex01.zip"
+    title: "Street Fighter EX (Enable Hidden Characters)"
+    parent: "sfex"
+    system: "capcom_zn1"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1996
+    region: "Europe"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002c"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x2400000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-13.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0x50033af6", sha1: "486d92ff6c7f1e54f8e0ef41cd9116eca0e10e1a", biosVariant: "j", groupSize: 1, skip: 0 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "msm27c402zb.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0xf20f7fe5", sha1: "9aac7d3b3d0cc0bbbe4056164b73078dce41d91c", biosVariant: "e", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "sfee_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x092cfa2e", sha1: "8af38a3f4f89f661233995a672faf486e71b79bc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "sfe-05m_s01.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xee9ab584", sha1: "82c31637d58fabf41a29bc55f2c23e97a13c6520", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "sfe-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x999de60c", sha1: "092882698c411fc5c3bcb43105bf1886f94b8e40", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "sfe-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x76117b0a", sha1: "027233199170fa6e5b32f28da2031638c6d3d14a", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "sfe-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0xa36bbec5", sha1: "fa22ea50d4d8bed2ded97a346f61b2f5f68769b9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "sfe-09m.3k", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x62c424cc", sha1: "ea19c49b486473b150dbf8541286e225655496db", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "sfe-10m.4k", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0x83791a8b", sha1: "534969797640834ca692c11d0ce7c3a060fc7e4b", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "sfe_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x1908475c", sha1: "99f68cff2d92f5697eec0846201f6fb317d5dc08", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "sfe_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x95c1e2e0", sha1: "383bbe9613798a3ac6944d18768280a840994e40", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "sfe-01m.3b", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0xf5afff0d", sha1: "7f9ac32ba0a3d9c6fef367e36a92d47c9ac1feb3", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp04", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe0dc24ae", sha1: "17d6e3dc11308195f4c46a6cd8093db9eaf584e5", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
   sfexu:
     archive: "sfexu.zip"
     title: "Street Fighter EX"
@@ -8416,6 +8771,58 @@ games:
       - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
       - { role: "countryrom_001", region: "countryrom", name: "sfpu_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x4617adc2", sha1: "200307904349ad7e5d7d76d8c904b6b10424c7ef", groupSize: 1, skip: 0 }
       - { role: "bankedroms_001", region: "bankedroms", name: "sfp-05m.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xac7dcc5e", sha1: "216de2de691a9bd7982d5d6b5b1e3e35ff381a2f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "sfp-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x1d504758", sha1: "bd56141aba35dbb5b318445ba5db12eff7442221", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "sfp-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x0f585f30", sha1: "24ffdbc360f8eddb702905c99d315614327861a7", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "sfp-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x65eabc61", sha1: "bbeb3bcd8dd8f7f88ed82412a81134a3d6f6ffd9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "sfp-09m.3k", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x15f8b71e", sha1: "efb28fbe750f443550ee9718385355aae7e858c9", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "sfp-10m.4k", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xc1ecf652", sha1: "616e14ff63d38272730c810b933a6b3412e2da17", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "sfe_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x1908475c", sha1: "99f68cff2d92f5697eec0846201f6fb317d5dc08", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "sfe_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x95c1e2e0", sha1: "383bbe9613798a3ac6944d18768280a840994e40", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "sfe-01m.3b", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0xf5afff0d", sha1: "7f9ac32ba0a3d9c6fef367e36a92d47c9ac1feb3", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp04", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe0dc24ae", sha1: "17d6e3dc11308195f4c46a6cd8093db9eaf584e5", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  sfexp01:
+    archive: "sfexp01.zip"
+    title: "Street Fighter EX Plus (Enable Hidden Characters)"
+    parent: "sfexp"
+    system: "capcom_zn1"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1997
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002c"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x2400000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-13.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0x50033af6", sha1: "486d92ff6c7f1e54f8e0ef41cd9116eca0e10e1a", biosVariant: "j", groupSize: 1, skip: 0 }
+      - { role: "maincpu:rom_002", region: "maincpu:rom", name: "msm27c402zb.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: false, crc32: "0xf20f7fe5", sha1: "9aac7d3b3d0cc0bbbe4056164b73078dce41d91c", biosVariant: "e", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xbb7ba033", sha1: "966f3aee5d00e1312c455f855915d621e6cb0672", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "sfpu_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x4617adc2", sha1: "200307904349ad7e5d7d76d8c904b6b10424c7ef", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "sfp-05m_s01.3h", size: 0x400000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x449cf487", sha1: "1bad501d328169e04dab371b669e2952541db408", groupSize: 1, skip: 0 }
       - { role: "bankedroms_002", region: "bankedroms", name: "sfp-06m.4h", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0x1d504758", sha1: "bd56141aba35dbb5b318445ba5db12eff7442221", groupSize: 1, skip: 0 }
       - { role: "bankedroms_003", region: "bankedroms", name: "sfp-07m.5h", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x0f585f30", sha1: "24ffdbc360f8eddb702905c99d315614327861a7", groupSize: 1, skip: 0 }
       - { role: "bankedroms_004", region: "bankedroms", name: "sfp-08m.2k", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x65eabc61", sha1: "bbeb3bcd8dd8f7f88ed82412a81134a3d6f6ffd9", groupSize: 1, skip: 0 }
@@ -10827,6 +11234,7 @@ games:
 
   rcdego:
     archive: "rcdego.zip"
+    parent: "gobyrc"
     title: "RC de Go!"
     system: "taito_gnet"
     manufacturer: "Taito"
@@ -11266,6 +11674,7 @@ games:
 
   zokuotena:
     archive: "zokuotena.zip"
+    parent: "zokuoten"
     title: "Zoku Otenamihaiken"
     system: "taito_gnet"
     manufacturer: "Success"
@@ -11652,6 +12061,56 @@ games:
       - { role: "cat702_1_001", region: "cat702_1", name: "cp10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7808fcef", sha1: "3c3fb8227b05dace042dc1429b9f2355b1a15638", groupSize: 1, skip: 0 }
       - { role: "countryrom_001", region: "countryrom", name: "ex2e_04.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x77e1622b", sha1: "626a6718e7e843b09075b652d4fcbd9c86eea02b", groupSize: 1, skip: 0 }
       - { role: "bankedroms_001", region: "bankedroms", name: "ex2-05m.3h", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x78726b17", sha1: "2da449df335ef133ebc3997bbad73ef4137f4771", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "ex2-06m.4h", size: 0x800000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0xbe1075ed", sha1: "36dc673372f30f8b3ff5689ae568c5cd01fe2c07", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "ex2-07m.5h", size: 0x800000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x6496c6ed", sha1: "054bcecbb04033abea14d9ffe6634b2bd11ca88b", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "ex2-08m.2k", size: 0x800000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0x3194132e", sha1: "d1324fcf0a8528fc683791d6342697a7e08674f4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "ex2-09m.3k", size: 0x400000, offset: 0x2000000, interleave: 1, wordSwap: false, required: true, crc32: "0x075ae585", sha1: "6b88851db618fc3e96f1d740c46c1bc5be0ee21b", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "ex2_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x9489875e", sha1: "1fc9985ff98232c63ea8d05a69f7d77cdf72919f", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "ex2-01m.3a", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x14a5bb0e", sha1: "dfe3c3a53bd4c58743d8039b5344d3afbe2a9c24", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp08", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xa63d6fa6", sha1: "68995438a1e90ff9aa59090e7e031d51c68c4d73", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh3002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  sfex2s01:
+    archive: "sfex2s01.zip"
+    title: "Street Fighter EX2 (Enable Hidden Characters)"
+    parent: "sfex2"
+    system: "capcom_zn2"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1998
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x3000000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-59.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe860ea8b", sha1: "66e7e1d4e426466b8f48a2ba055a91b475569504", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7808fcef", sha1: "3c3fb8227b05dace042dc1429b9f2355b1a15638", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "ex2u_04a.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x8dc5317f", sha1: "c35224caf70662a0e45a74cbead294a51f9b9e16", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "ex2-05m_s01.3h", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xb78cdfd2", sha1: "64b53a777af2c943b023011afe1919aba452a6d1", groupSize: 1, skip: 0 }
       - { role: "bankedroms_002", region: "bankedroms", name: "ex2-06m.4h", size: 0x800000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0xbe1075ed", sha1: "36dc673372f30f8b3ff5689ae568c5cd01fe2c07", groupSize: 1, skip: 0 }
       - { role: "bankedroms_003", region: "bankedroms", name: "ex2-07m.5h", size: 0x800000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x6496c6ed", sha1: "054bcecbb04033abea14d9ffe6634b2bd11ca88b", groupSize: 1, skip: 0 }
       - { role: "bankedroms_004", region: "bankedroms", name: "ex2-08m.2k", size: 0x800000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0x3194132e", sha1: "d1324fcf0a8528fc683791d6342697a7e08674f4", groupSize: 1, skip: 0 }
@@ -12374,6 +12833,58 @@ games:
       stateClass: "capcom_zn_state"
       emulationFlags: "MACHINE_SUPPORTS_SAVE"
 
+  sfex2p01:
+    archive: "sfex2p01.zip"
+    title: "Street Fighter EX2 Plus (Enable Hidden Characters)"
+    parent: "sfex2p"
+    system: "capcom_zn2"
+    manufacturer: "Capcom / Arika / Yumeji (hack)"
+    year: 1999
+    region: "US"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh3002c"
+    cpuClockPercent: 148
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+        - { type: "arcade", joystick: "eight_way", layout: "sfex" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "countryrom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "bankedroms", size: 0x3000000, width: 32, endianness: "little" }
+      - { id: "audiocpu", size: 0x40000, width: 8, endianness: "native" }
+      - { id: "qsound", size: 0x400000, width: 8, endianness: "native" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-59.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0xe860ea8b", sha1: "66e7e1d4e426466b8f48a2ba055a91b475569504", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "cp10.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7808fcef", sha1: "3c3fb8227b05dace042dc1429b9f2355b1a15638", groupSize: 1, skip: 0 }
+      - { role: "countryrom_001", region: "countryrom", name: "x2pu_04.2h", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x2938118c", sha1: "4bdeeb9aa3dd54ef44aa3fc73d78d65297b1ed25", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "x2p-05mp_s01.3h", size: 0x800000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x08e6a6f4", sha1: "b18bb531fade80a6639cd6202c6e490f8a3144bd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "x2p-06m.4h", size: 0x800000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x4cd53a45", sha1: "39499ea6c9aa51c71f4fe44cc02f93d5a39e14ec", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "x2p-07m.5h", size: 0x800000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x11207c2a", sha1: "0182652819f1c3a36e7b42e34ef86d2455a2dd90", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "x2p-08m.2k", size: 0x800000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0x3560c2cc", sha1: "8b0ce22d954387f7bb032b5220d1014ef68741e8", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "x2p-09m.3k", size: 0x800000, offset: 0x2000000, interleave: 1, wordSwap: false, required: true, crc32: "0x344aa227", sha1: "69dc6f511939bf7fa25c2531ecf307a7565fe7a8", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "x2p-10m.4k", size: 0x800000, offset: 0x2800000, interleave: 1, wordSwap: false, required: true, crc32: "0x2eef5931", sha1: "e5227529fb68eeb1b2f25813694173a75d906b52", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_001", region: "audiocpu", name: "x2p_02.2e", size: 0x20000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x3705de5e", sha1: "847007ca271da64bf13ffbf496d4291429eee27a", groupSize: 1, skip: 0 }
+      - { role: "audiocpu_002", region: "audiocpu", name: "x2p_03.3e", size: 0x20000, offset: 0x20000, interleave: 1, wordSwap: false, required: true, crc32: "0x6ae828f6", sha1: "41c54165e87b846a845da581f408b96979288158", groupSize: 1, skip: 0 }
+      - { role: "qsound_001", region: "qsound", name: "x2p-01m.3a", size: 0x400000, offset: 0x0, interleave: 2, wordSwap: true, required: true, crc32: "0x14a5bb0e", sha1: "dfe3c3a53bd4c58743d8039b5344d3afbe2a9c24", groupSize: 2, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "cp12", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x7cc2ed68", sha1: "a409ae837665700bdc4e3aa7c41a418d5b792940", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh3002c"
+      inputProfile: "capcom6b"
+      stateClass: "capcom_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
   sfex2pu:
     archive: "sfex2pu.zip"
     title: "Street Fighter EX2 Plus"
@@ -12997,6 +13508,98 @@ games:
       - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
       - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.bin", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xbbe04cef", sha1: "f2dae4810ca78075fc3007a6001531a455235a2e", groupSize: 1, skip: 1 }
       - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.bin", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0xb614d7e6", sha1: "373756d9b88b45c677e987ee1e5cb2d5446ecfe8", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "doapp-3.219", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x1c6540f3", sha1: "8631fde93a1da6325d7b31c7edf12c964f0ac4fc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_007", region: "bankedroms", name: "doapp-4.220", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xf83bacf7", sha1: "5bd66da993f0db966581dde80dd7e5b377754412", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_008", region: "bankedroms", name: "doapp-5.221", size: 0x400000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0xe11e8b71", sha1: "b1d1b9532b5f074ce216a603436d5674d136865d", groupSize: 1, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "mg05", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x5748a4ca", sha1: "c88d73f6a646a9ddefdfd84cba70d591759c069f", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002m"
+      inputProfile: "zn2p"
+      stateClass: "tecmo_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  doapp02:
+    archive: "doapp02.zip"
+    title: "Dead Or Alive ++ (Kasumi Sexy Hack)"
+    parent: "doapp"
+    system: "tecmo_tps"
+    manufacturer: "Tecmo / Yumeji (hack)"
+    year: 1998
+    region: "Japan/USA/Export"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002m"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "bankedroms", size: 0x2800000, width: 32, endianness: "little" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-61.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x69ffbcb4", sha1: "03eb2febfab3fcde716defff291babd9392de965", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.bin", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xbbe04cef", sha1: "f2dae4810ca78075fc3007a6001531a455235a2e", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.s02", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0xcb236b2f", sha1: "b4e69abed13d9166ab0e329e2d1119fbea9e396c", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_006", region: "bankedroms", name: "doapp-3.219", size: 0x400000, offset: 0x1000000, interleave: 1, wordSwap: false, required: true, crc32: "0x1c6540f3", sha1: "8631fde93a1da6325d7b31c7edf12c964f0ac4fc", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_007", region: "bankedroms", name: "doapp-4.220", size: 0x400000, offset: 0x1400000, interleave: 1, wordSwap: false, required: true, crc32: "0xf83bacf7", sha1: "5bd66da993f0db966581dde80dd7e5b377754412", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_008", region: "bankedroms", name: "doapp-5.221", size: 0x400000, offset: 0x1800000, interleave: 1, wordSwap: false, required: true, crc32: "0xe11e8b71", sha1: "b1d1b9532b5f074ce216a603436d5674d136865d", groupSize: 1, skip: 0 }
+      - { role: "cat702_2_001", region: "cat702_2", name: "mg05", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x5748a4ca", sha1: "c88d73f6a646a9ddefdfd84cba70d591759c069f", groupSize: 1, skip: 0 }
+    undumpedRoms:
+      - { role: "upd78081_001", region: "upd78081", name: "78081g503.ic655", size: 0x2000, required: true }
+    properties:
+      sourceDriver: "zn.cpp"
+      machineConfig: "coh1002m"
+      inputProfile: "zn2p"
+      stateClass: "tecmo_zn_state"
+      emulationFlags: "MACHINE_SUPPORTS_SAVE"
+
+  doapp01:
+    archive: "doapp01.zip"
+    title: "Dead Or Alive ++ (Enable Hidden Characters)"
+    parent: "doapp"
+    system: "tecmo_tps"
+    manufacturer: "Tecmo / Yumeji (hack)"
+    year: 1998
+    region: "Japan/USA/Export"
+    revision: "HBMAME Hack"
+    hardwareProfile: "coh1002m"
+    setFormat: "non_merged"
+    status: "working"
+    minPlayers: 1
+    maxPlayers: 2
+    display: { orientation: "horizontal", aspectNumerator: 4, aspectDenominator: 3, screens: 1 }
+    controls:
+      ports:
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+        - { type: "arcade", joystick: "eight_way", layout: "doapp" }
+    romRegions:
+      - { id: "maincpu:rom", size: 0x80000, width: 32, endianness: "little" }
+      - { id: "cat702_1", size: 0x8, width: 8, endianness: "native" }
+      - { id: "upd78081", size: 0x2000, width: 8, endianness: "native" }
+      - { id: "bankedroms", size: 0x2800000, width: 32, endianness: "little" }
+      - { id: "cat702_2", size: 0x8, width: 8, endianness: "native" }
+    roms:
+      - { role: "maincpu:rom_001", region: "maincpu:rom", name: "m534002c-61.ic353", size: 0x80000, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x69ffbcb4", sha1: "03eb2febfab3fcde716defff291babd9392de965", groupSize: 1, skip: 0 }
+      - { role: "cat702_1_001", region: "cat702_1", name: "mg01.ic652", size: 0x8, offset: 0x0, interleave: 1, wordSwap: false, required: true, crc32: "0x50dc8322", sha1: "cef4011c6c06d6fce546e1db5d9fbae155eabf57", groupSize: 1, skip: 0 }
+      - { role: "bankedroms_001", region: "bankedroms", name: "doapp119.s01", size: 0x100000, offset: 0x1, interleave: 2, wordSwap: false, required: true, crc32: "0xf3691595", sha1: "470ea8989229b6400cb7adac30939a2f635dccd9", groupSize: 1, skip: 1 }
+      - { role: "bankedroms_002", region: "bankedroms", name: "doapp120.s01", size: 0x100000, offset: 0x0, interleave: 2, wordSwap: false, required: true, crc32: "0x3a8e9786", sha1: "8632bcba3ecd42c112885821792c78f7b0f51cd9", groupSize: 1, skip: 1 }
       - { role: "bankedroms_003", region: "bankedroms", name: "doapp-0.216", size: 0x400000, offset: 0x400000, interleave: 1, wordSwap: false, required: true, crc32: "0xacc6c539", sha1: "a744567a3d75634098b1749103307981be9acbdd", groupSize: 1, skip: 0 }
       - { role: "bankedroms_004", region: "bankedroms", name: "doapp-1.217", size: 0x400000, offset: 0x800000, interleave: 1, wordSwap: false, required: true, crc32: "0x14b961c4", sha1: "3fae1fcb4665ba8bad391881b26c2d087718d42f", groupSize: 1, skip: 0 }
       - { role: "bankedroms_005", region: "bankedroms", name: "doapp-2.218", size: 0x400000, offset: 0xc00000, interleave: 1, wordSwap: false, required: true, crc32: "0x134f698f", sha1: "6422972cf5d30a0f09f0c20f042691d5969207b4", groupSize: 1, skip: 0 }

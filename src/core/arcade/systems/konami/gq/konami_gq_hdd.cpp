@@ -68,4 +68,9 @@ void ClearWriteOverlay()
   s_disk.ClearWriteOverlay();
 }
 
+bool DoState(StateWrapper& sw)
+{
+  return s_disk.DoWriteOverlayState(sw);
+}
+
 } // namespace KonamiGQHDD

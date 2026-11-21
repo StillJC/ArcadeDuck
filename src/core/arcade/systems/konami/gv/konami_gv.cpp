@@ -5,6 +5,8 @@
 #include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_rom_loader.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/arcade_save_state.h"
+#include "core/arcade/systems/konami/gv/konami_gv_cdrom.h"
 #include "core/arcade/systems/konami/gv/konami_gv_scsi.h"
 
 #include "common/error.h"
@@ -121,6 +123,7 @@ struct GVRuntimeState
   std::array<u8, 0x80> default_eeprom;
   std::array<u8, 0x80> eeprom;
   std::string eeprom_path;
+  Arcade::SaveState::PersistentFile eeprom_file;
   bool eeprom_dirty = false;
   bool eeprom_write_enabled = false;
   bool eeprom_di = false;
@@ -144,6 +147,7 @@ struct GVRuntimeState
   std::string persistence_directory;
   std::vector<u8> sharp_flash;
   std::string sharp_flash_path;
+  Arcade::SaveState::PersistentFile sharp_flash_file;
   SharpFlashMode sharp_flash_mode = SharpFlashMode::ReadArray;
   u16 sharp_flash_status = 0x0080;
   u64 sharp_flash_busy_until_ticks = 0;
@@ -153,6 +157,7 @@ struct GVRuntimeState
   BtChampFirstBootState btchamp_first_boot_state = BtChampFirstBootState::Inactive;
   std::array<std::vector<u8>, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash;
   std::array<std::string, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_paths;
+  std::array<Arcade::SaveState::PersistentFile, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_files;
   std::array<FujitsuFlashMode, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_modes = {};
   std::array<bool, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_dirty = {};
   u32 fujitsu_flash_address = 0;
@@ -313,6 +318,10 @@ static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
     }
   }
 
+  // The file now holds exactly the in-memory contents, whether loaded or freshly written.
+  runtime.eeprom_file.SetPath(runtime.eeprom_path);
+  runtime.eeprom_file.RecordDiskContents(runtime.eeprom);
+
   VERBOSE_LOG("KonamiGV.EEPROM {} canonical_set='{}' path='{}'",
            persistence_exists ? "loaded_persistence" : "initialized_default_persistence", runtime.set_name,
            runtime.eeprom_path);
@@ -321,7 +330,7 @@ static bool LoadEEPROM(GVRuntimeState& runtime, Error* error)
 
 static void SaveEEPROM(GVRuntimeState& runtime)
 {
-  if (!runtime.eeprom_dirty)
+  if (!runtime.eeprom_dirty || Arcade::SaveState::IsRestoring())
     return;
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
   if (!FileSystem::CreateDirectory(nvram_root.c_str(), false) ||
@@ -331,6 +340,7 @@ static void SaveEEPROM(GVRuntimeState& runtime)
     ERROR_LOG("KonamiGV.EEPROM save_failed path='{}'", runtime.eeprom_path);
     return;
   }
+  runtime.eeprom_file.RecordDiskContents(runtime.eeprom);
   runtime.eeprom_dirty = false;
   VERBOSE_LOG("KonamiGV.EEPROM saved path='{}'", runtime.eeprom_path);
 }
@@ -458,6 +468,8 @@ static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
              runtime.sharp_flash_path);
   }
   ArmBtChampFirstBootRecovery(runtime);
+  runtime.sharp_flash_file.SetPath(runtime.sharp_flash_path);
+  runtime.sharp_flash_file.RecordDiskContents(runtime.sharp_flash);
 
   VERBOSE_LOG("KonamiGV.SharpFlash {} canonical_set='{}' path='{}'",
            persistence_exists ? "loaded_persistence" : "initialized_erased_persistence", runtime.set_name,
@@ -467,7 +479,7 @@ static bool InitializeSharpFlash(GVRuntimeState& runtime, Error* error)
 
 static void SaveSharpFlash(GVRuntimeState& runtime)
 {
-  if (!runtime.sharp_flash_active || !runtime.sharp_flash_dirty)
+  if (!runtime.sharp_flash_active || !runtime.sharp_flash_dirty || Arcade::SaveState::IsRestoring())
     return;
 
   const std::string nvram_root(Path::Combine(EmuFolders::DataRoot, "nvram"));
@@ -479,6 +491,7 @@ static void SaveSharpFlash(GVRuntimeState& runtime)
     return;
   }
 
+  runtime.sharp_flash_file.RecordDiskContents(runtime.sharp_flash);
   runtime.sharp_flash_dirty = false;
   VERBOSE_LOG("KonamiGV.SharpFlash saved path='{}'", runtime.sharp_flash_path);
 }
@@ -872,6 +885,12 @@ static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
   if (needs_media_seed && !PopulateSimpsonsFujitsuFlashFromMedia(runtime, error))
     return false;
 
+  // After loading or seeding, every chip file holds exactly the in-memory contents.
+  for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+  {
+    runtime.fujitsu_flash_files[chip].SetPath(runtime.fujitsu_flash_paths[chip]);
+    runtime.fujitsu_flash_files[chip].RecordDiskContents(runtime.fujitsu_flash[chip]);
+  }
   ResetFujitsuFlash(runtime);
   VERBOSE_LOG("KonamiGV.FujitsuFlash selected canonical_set='{}' hardware_profile='{}' path0='{}'", runtime.set_name,
            runtime.hardware_profile, runtime.fujitsu_flash_paths[0]);
@@ -880,7 +899,7 @@ static bool InitializeFujitsuFlash(GVRuntimeState& runtime, Error* error)
 
 static void SaveFujitsuFlash(GVRuntimeState& runtime)
 {
-  if (!runtime.fujitsu_flash_active)
+  if (!runtime.fujitsu_flash_active || Arcade::SaveState::IsRestoring())
     return;
 
   bool needs_save = false;
@@ -907,6 +926,7 @@ static void SaveFujitsuFlash(GVRuntimeState& runtime)
       ERROR_LOG("KonamiGV.FujitsuFlash save_failed path='{}'", runtime.fujitsu_flash_paths[chip]);
       continue;
     }
+    runtime.fujitsu_flash_files[chip].RecordDiskContents(runtime.fujitsu_flash[chip]);
     runtime.fujitsu_flash_dirty[chip] = false;
     VERBOSE_LOG("KonamiGV.FujitsuFlash saved path='{}'", runtime.fujitsu_flash_paths[chip]);
   }
@@ -2477,15 +2497,42 @@ void NotifyGVDeferredEXP1Access(GVDeferredEXP1Range range, u32 physical_address,
   }
 }
 
+void GetGVNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components)
+{
+  if (!s_gv_runtime)
+    return;
+
+  static constexpr std::array<std::string_view, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_ids = {
+    {"flash0", "flash1", "flash2", "flash3"}};
+  const GVRuntimeState& r = *s_gv_runtime;
+  components->push_back({"eeprom", r.eeprom, &r.eeprom_file});
+  if (r.sharp_flash_active)
+    components->push_back({"flash", r.sharp_flash, &r.sharp_flash_file});
+  if (r.fujitsu_flash_active)
+  {
+    for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
+      components->push_back({fujitsu_ids[chip], r.fujitsu_flash[chip], &r.fujitsu_flash_files[chip]});
+  }
+}
+
+// NVRAM contents are not stored; they must already match the save's fingerprints. EEPROM and flash commands
+// in progress are restored as protocol state and complete against those identical contents. Flash erase and
+// program apply immediately when the command is accepted, so busy status is the only deferred effect.
+// Host input values (buttons, light gun position, trackball deltas, Tokimeki sensor settings) and host
+// persistence bookkeeping keep their current values.
 bool DoGVState(StateWrapper& sw)
 {
   if (!s_gv_runtime)
-    return true;
-  GVRuntimeState& r = *s_gv_runtime;
-  if (!KonamiGVScsi::DoState(sw))
     return false;
-  sw.DoBytes(r.eeprom.data(), r.eeprom.size());
-  sw.Do(&r.eeprom_dirty);
+
+  GVRuntimeState& r = *s_gv_runtime;
+  if (!sw.DoMarker("GVSCSI") || !KonamiGVScsi::DoState(sw))
+    return false;
+  if (!sw.DoMarker("GVCDROM") || !KonamiGVCDROM::DoState(sw))
+    return false;
+
+  if (!sw.DoMarker("GVEEPROM"))
+    return false;
   sw.Do(&r.eeprom_write_enabled);
   sw.Do(&r.eeprom_di);
   sw.Do(&r.eeprom_do);
@@ -2500,104 +2547,108 @@ bool DoGVState(StateWrapper& sw)
   sw.Do(&r.eeprom_write_bits);
   sw.Do(&r.eeprom_write_address);
   sw.Do(&r.eeprom_write_all);
+  if (sw.IsReading() &&
+      (r.eeprom_shift_count > 9 || r.eeprom_read_bits < 0 || r.eeprom_read_bits > 16 || r.eeprom_write_bits < 0 ||
+       r.eeprom_write_bits > 16 || r.eeprom_read_address >= 0x40 || r.eeprom_write_address >= 0x40))
+  {
+    return false;
+  }
+
+  if (!sw.DoMarker("GVFlash"))
+    return false;
+  bool sharp_flash_active = r.sharp_flash_active;
+  bool fujitsu_flash_active = r.fujitsu_flash_active;
+  sw.Do(&sharp_flash_active);
+  sw.Do(&fujitsu_flash_active);
+  if (sharp_flash_active != r.sharp_flash_active || fujitsu_flash_active != r.fujitsu_flash_active)
+    return false;
+
   if (r.sharp_flash_active)
   {
-    sw.DoBytes(r.sharp_flash.data(), r.sharp_flash.size());
     u8 sharp_flash_mode = static_cast<u8>(r.sharp_flash_mode);
+    u8 btchamp_first_boot_state = static_cast<u8>(r.btchamp_first_boot_state);
     sw.Do(&sharp_flash_mode);
     sw.Do(&r.sharp_flash_status);
     sw.Do(&r.sharp_flash_busy_until_ticks);
     sw.Do(&r.sharp_flash_master_lock);
-    sw.Do(&r.sharp_flash_dirty);
-    u8 btchamp_first_boot_state = static_cast<u8>(r.btchamp_first_boot_state);
     sw.Do(&btchamp_first_boot_state);
     if (sw.IsReading())
     {
-      if (sharp_flash_mode > static_cast<u8>(SharpFlashMode::SetMaster))
+      if (sharp_flash_mode > static_cast<u8>(SharpFlashMode::SetMaster) ||
+          btchamp_first_boot_state > static_cast<u8>(BtChampFirstBootState::HoldingTest))
       {
-        ResetSharpFlash(r);
-      }
-      else
-      {
-        r.sharp_flash_mode = static_cast<SharpFlashMode>(sharp_flash_mode);
+        return false;
       }
 
-      if (btchamp_first_boot_state > static_cast<u8>(BtChampFirstBootState::HoldingTest))
-        r.btchamp_first_boot_state = BtChampFirstBootState::Inactive;
-      else
-        r.btchamp_first_boot_state = static_cast<BtChampFirstBootState>(btchamp_first_boot_state);
+      r.sharp_flash_mode = static_cast<SharpFlashMode>(sharp_flash_mode);
+      r.btchamp_first_boot_state = static_cast<BtChampFirstBootState>(btchamp_first_boot_state);
     }
   }
+
   if (r.fujitsu_flash_active)
   {
-    std::array<u8, GV_FUJITSU_FLASH_CHIP_COUNT> fujitsu_flash_modes;
     for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
     {
-      sw.DoBytes(r.fujitsu_flash[chip].data(), r.fujitsu_flash[chip].size());
-      fujitsu_flash_modes[chip] = static_cast<u8>(r.fujitsu_flash_modes[chip]);
-      sw.Do(&fujitsu_flash_modes[chip]);
-      sw.Do(&r.fujitsu_flash_dirty[chip]);
+      u8 mode = static_cast<u8>(r.fujitsu_flash_modes[chip]);
+      sw.Do(&mode);
+      if (sw.IsReading())
+      {
+        if (mode > static_cast<u8>(FujitsuFlashMode::EraseSelect))
+          return false;
+        r.fujitsu_flash_modes[chip] = static_cast<FujitsuFlashMode>(mode);
+      }
     }
     sw.Do(&r.fujitsu_flash_address);
+  }
+
+  if (!sw.DoMarker("GVCabinet"))
+    return false;
+  {
+    std::lock_guard<std::mutex> lock(s_trackball_mutex);
+    sw.DoArray(r.trackball_x.data(), r.trackball_x.size());
+    sw.DoArray(r.trackball_y.data(), r.trackball_y.size());
+    sw.Do(&r.trackball_counter_x);
+    sw.Do(&r.trackball_counter_y);
+    sw.Do(&r.trackball_start_x);
+    sw.Do(&r.trackball_start_y);
+    sw.Do(&r.trackball_reset_active);
+  }
+  sw.Do(&r.watchdog_frames_remaining);
+
+  bool tokimeki_enabled = r.tokimeki_enabled;
+  sw.Do(&tokimeki_enabled);
+  if (tokimeki_enabled != r.tokimeki_enabled)
+    return false;
+
+  if (r.tokimeki_enabled)
+  {
+    sw.Do(&r.tokimeki_device_check_value);
+    sw.Do(&r.tokimeki_device_check_clock);
+    sw.Do(&r.tokimeki_heartbeat_signal);
+    sw.Do(&r.tokimeki_heartbeat_frames_remaining);
+    sw.Do(&r.tokimeki_heartbeat_pulse_frames_remaining);
+    sw.Do(&r.tokimeki_serial_value);
+    sw.Do(&r.tokimeki_serial_length);
+    sw.Do(&r.tokimeki_serial_clock);
+    sw.Do(&r.tokimeki_serial_sensor_id);
+    sw.Do(&r.tokimeki_serial_sensor_data);
+    sw.Do(&r.tokimeki_printer_bit);
+    sw.DoArray(r.tokimeki_printer_data.data(), r.tokimeki_printer_data.size());
+    sw.Do(&r.tokimeki_printer_current_bit);
+    sw.Do(&r.tokimeki_printer_current_byte);
+    sw.Do(&r.tokimeki_printer_pulse_start_ticks);
+    sw.Do(&r.tokimeki_printer_busy);
+    sw.Do(&r.tokimeki_printer_busy_frames_remaining);
     if (sw.IsReading())
     {
-      bool invalid_mode = false;
-      for (u32 chip = 0; chip < GV_FUJITSU_FLASH_CHIP_COUNT; chip++)
-      {
-        if (fujitsu_flash_modes[chip] > static_cast<u8>(FujitsuFlashMode::EraseSelect))
-          invalid_mode = true;
-        else
-          r.fujitsu_flash_modes[chip] = static_cast<FujitsuFlashMode>(fujitsu_flash_modes[chip]);
-      }
-      if (invalid_mode)
-        ResetFujitsuFlash(r);
+      if (r.tokimeki_printer_current_byte > r.tokimeki_printer_data.size() || r.tokimeki_printer_current_bit > 8)
+        return false;
+
+      // The captured page is host presentation, rebuilt from the next print.
+      ResetTokimekiPrinterPresentation(r);
     }
   }
-  sw.DoBytes(r.buttons.data(), sizeof(r.buttons));
-  sw.DoBytes(r.trackball_pending_x.data(), sizeof(r.trackball_pending_x));
-  sw.DoBytes(r.trackball_pending_y.data(), sizeof(r.trackball_pending_y));
-  sw.DoBytes(r.trackball_x.data(), sizeof(r.trackball_x));
-  sw.DoBytes(r.trackball_y.data(), sizeof(r.trackball_y));
-  sw.Do(&r.trackball_counter_x);
-  sw.Do(&r.trackball_counter_y);
-  sw.Do(&r.trackball_start_x);
-  sw.Do(&r.trackball_start_y);
-  sw.Do(&r.trackball_reset_active);
-  sw.Do(&r.trackball_sensitivity);
-  sw.DoBytes(r.lightgun_normalized_x.data(), sizeof(r.lightgun_normalized_x));
-  sw.DoBytes(r.lightgun_normalized_y.data(), sizeof(r.lightgun_normalized_y));
-  sw.DoBytes(r.lightgun_trigger.data(), sizeof(r.lightgun_trigger));
-  sw.DoBytes(r.lightgun_offscreen.data(), sizeof(r.lightgun_offscreen));
-  sw.DoBytes(r.lightgun_shoot_offscreen.data(), sizeof(r.lightgun_shoot_offscreen));
-  sw.Do(&r.watchdog_frames_remaining);
-  sw.Do(&r.tokimeki_enabled);
-  sw.Do(&r.tokimeki_device_check_value);
-  sw.Do(&r.tokimeki_device_check_clock);
-  sw.Do(&r.tokimeki_excitement_level);
-  sw.Do(&r.tokimeki_heartbeat_rate);
-  sw.Do(&r.tokimeki_heartbeat_signal);
-  sw.Do(&r.tokimeki_heartbeat_frames_remaining);
-  sw.Do(&r.tokimeki_heartbeat_pulse_frames_remaining);
-  sw.Do(&r.tokimeki_gsr_value);
-  sw.Do(&r.tokimeki_serial_value);
-  sw.Do(&r.tokimeki_serial_length);
-  sw.Do(&r.tokimeki_serial_clock);
-  sw.Do(&r.tokimeki_serial_sensor_id);
-  sw.Do(&r.tokimeki_serial_sensor_data);
-  sw.Do(&r.tokimeki_printer_bit);
-  sw.DoBytes(r.tokimeki_printer_data.data(), r.tokimeki_printer_data.size());
-  sw.Do(&r.tokimeki_printer_current_bit);
-  sw.Do(&r.tokimeki_printer_current_byte);
-  sw.Do(&r.tokimeki_printer_pulse_start_ticks);
-  sw.Do(&r.tokimeki_printer_busy);
-  sw.Do(&r.tokimeki_printer_busy_frames_remaining);
-  if (sw.IsReading())
-    ResetTokimekiPrinterPresentation(r);
-  if (sw.IsReading() && (r.eeprom_shift_count > 9 || r.eeprom_read_bits < 0 || r.eeprom_read_bits > 16 ||
-                         r.eeprom_write_bits < 0 || r.eeprom_write_bits > 16))
-  {
-    ResetEEPROMProtocol(r);
-  }
+
   return !sw.HasError();
 }
 

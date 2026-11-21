@@ -11,7 +11,14 @@
 
 class SettingsInterface;
 
+namespace Arcade {
+struct ArcadeGameControlProfile;
+}
+
 namespace ArcadeInput {
+
+void CopyControllerConfiguration(SettingsInterface* dest_si, const SettingsInterface& src_si,
+                                 const Arcade::ArcadeGameControlProfile* target_profile = nullptr);
 
 static constexpr u32 NUM_LIGHTGUN_PRESENTATION_PORTS = 3;
 
@@ -33,12 +40,16 @@ struct LightgunPresentationState
   u32 sinden_border_width = 4;
 };
 
-void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std::string_view game_id = {});
+void RegisterBindings(SettingsInterface& si, SettingsInterface& operator_si, std::string_view game_id = {},
+                      SettingsInterface* game_si = nullptr);
 bool IsDigitalPressed(u32 port, std::string_view key);
 bool HasDigitalControl(u32 port, std::string_view key);
 float GetAnalogValue(u32 port, std::string_view key);
 bool HasAnalogControl(u32 port, std::string_view key);
 bool IsOperatorPressed(std::string_view key);
+
+// Keeps Service asserted for at least this long in emulated time after a press (0 disables).
+void SetOperatorServiceMinimumHold(u32 milliseconds);
 LightgunPresentationState GetLightgunPresentationState();
 void SetLightgunViewport(float left, float top, float right, float bottom, float border_x, float border_y);
 void ResyncWindowedPointer(float x, float y);

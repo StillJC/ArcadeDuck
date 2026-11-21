@@ -15,6 +15,8 @@
 #include <array>
 #include <functional>
 
+class StateWrapper;
+
 namespace MN10200 {
 
 class Core
@@ -42,6 +44,8 @@ public:
 
   u32 GetPC() const { return m_pc & 0x00ffffffu; }
   u16 GetPSW() const { return m_psw; }
+
+  bool DoState(StateWrapper& sw);
 
 private:
   static constexpr u32 NUM_PRESCALERS = 2;

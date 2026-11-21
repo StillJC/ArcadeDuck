@@ -5,6 +5,8 @@
 
 #include "core/types.h"
 
+class StateWrapper;
+
 namespace MusashiBus {
 
 struct Callbacks
@@ -19,5 +21,8 @@ struct Callbacks
 
 void SetCallbacks(const Callbacks& callbacks);
 void ClearCallbacks();
+
+/// Serializes the global Musashi CPU context and its execution counters. Callbacks are not saved.
+bool DoCPUState(StateWrapper& sw);
 
 } // namespace MusashiBus

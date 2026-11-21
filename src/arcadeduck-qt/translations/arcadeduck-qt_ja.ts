@@ -6,12 +6,12 @@
     <message>
         <location filename="../aboutdialog.cpp" line="65"/>
         <source>ArcadeDuck is a free and open-source emulator focused on PlayStation 1-based arcade hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuckは、PlayStation 1をベースとしたアーケード基板向けの無料オープンソースエミュレーターです。</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="66"/>
         <source>Project contact</source>
-        <translation type="unfinished"></translation>
+        <translation>プロジェクトへのお問い合わせ</translation>
     </message>
     <message>
         <location filename="../aboutdialog.cpp" line="67"/>
@@ -1386,12 +1386,12 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.ui" line="48"/>
         <source>WASAPI RAW Output:</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 出力:</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="55"/>
         <source>Bypass Windows audio processing</source>
-        <translation type="unfinished"></translation>
+        <translation>Windows のオーディオ処理をバイパスする</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.ui" line="79"/>
@@ -1552,22 +1552,22 @@ QFile::exists: %2</translation>
     <message>
         <location filename="../audiosettingswidget.cpp" line="125"/>
         <source>The buffer size determines the size of the chunks of audio which will be pulled by the host. Smaller values reduce the output latency, but may cause hitches if the emulation speed is inconsistent. Low Latency mode ignores this setting and automatically requests the selected backend/device minimum instead.</source>
-        <translation type="unfinished"></translation>
+        <translation>バッファーサイズは、ホストが取得する音声データの単位を決定します。値を小さくすると出力遅延は減りますが、エミュレーション速度が不安定な場合に音切れが発生することがあります。低遅延モードではこの設定を無視し、選択したバックエンドまたはデバイスの最小値を自動的に要求します。</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 出力</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="130"/>
         <source>Disabled</source>
-        <translation type="unfinished"></translation>
+        <translation>無効</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="131"/>
         <source>Requests Windows RAW shared-mode output through Cubeb/WASAPI, bypassing optional Windows audio signal processing while retaining driver, hardware, and always-on processing. This does not enable exclusive mode or lower ArcadeDuck&apos;s configured Low Latency target. If RAW is unsupported, Cubeb continues with normal shared-mode output.</source>
-        <translation type="unfinished"></translation>
+        <translation>Cubeb/WASAPIを介してWindowsのRAW共有モード出力を要求します。Windowsの任意の音声処理を回避しますが、ドライバー、ハードウェア、常時有効な処理は維持されます。排他モードは有効にならず、ArcadeDuckで設定した低遅延の目標値も下がりません。RAWが非対応の場合、Cubebは通常の共有モード出力を使用します。</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="135"/>
@@ -1675,7 +1675,7 @@ QFile::exists: %2</translation>
         <location filename="../audiosettingswidget.cpp" line="332"/>
         <source>Automatic</source>
         <extracomment>Preserve the %1 variable, adapt the latter ms (and/or any possible spaces in between) to your language&apos;s ruleset.</extracomment>
-        <translation type="unfinished">自動</translation>
+        <translation>自動</translation>
     </message>
     <message>
         <location filename="../audiosettingswidget.cpp" line="345"/>
@@ -2840,37 +2840,37 @@ You cannot undo this action.</source>
     <message>
         <location filename="../coverdownloaddialog.ui" line="14"/>
         <source>Download Game Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>ゲームのアートワークをダウンロード</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="38"/>
         <source>ArcadeDuck can download curated default artwork for supported arcade games. Manually assigned cover images always take priority and are never overwritten.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuckは、対応するアーケードゲーム向けに選定された標準アートワークをダウンロードできます。手動で設定したカバー画像が常に優先され、上書きされることはありません。</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="52"/>
         <source>Default Artwork:</source>
-        <translation type="unfinished"></translation>
+        <translation>デフォルトのアートワーク:</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="60"/>
         <source>Clear Logo</source>
-        <translation type="unfinished"></translation>
+        <translation>背景透過ロゴ</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="65"/>
         <source>2D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>2D ボックス</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="70"/>
         <source>3D Box</source>
-        <translation type="unfinished"></translation>
+        <translation>3D ボックス</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="80"/>
         <source>Download Missing fetches the selected artwork type only for games that do not already have a manually assigned cover or cached artwork of that type. Artwork is stored locally for future use.</source>
-        <translation type="unfinished"></translation>
+        <translation>「不足分をダウンロード」は、手動設定のカバーや指定種類のキャッシュ済み画像がないゲームに限り、選択した種類のアートワークを取得します。画像は今後の使用に備えてローカルに保存されます。</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="103"/>
@@ -2881,7 +2881,7 @@ You cannot undo this action.</source>
         <location filename="../coverdownloaddialog.ui" line="115"/>
         <location filename="../coverdownloaddialog.cpp" line="104"/>
         <source>Download Missing</source>
-        <translation type="unfinished"></translation>
+        <translation>不足分をダウンロード</translation>
     </message>
     <message>
         <location filename="../coverdownloaddialog.ui" line="125"/>
@@ -5251,7 +5251,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6979"/>
         <source>Network</source>
-        <translation type="unfinished"></translation>
+        <translation>ネットワーク</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6980"/>
@@ -5326,7 +5326,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6998"/>
         <source>Operator</source>
-        <translation type="unfinished">オペレーター</translation>
+        <translation>オペレーター</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7000"/>
@@ -5883,7 +5883,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6717"/>
         <source>Artwork Settings</source>
-        <translation type="unfinished"></translation>
+        <translation>アートワーク設定</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6719"/>
@@ -5893,12 +5893,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6720"/>
         <source>Audio</source>
-        <translation type="unfinished">オーディオ</translation>
+        <translation>オーディオ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6731"/>
         <source>Bezels Directory</source>
-        <translation type="unfinished">ベゼルディレクトリ</translation>
+        <translation>ベゼルディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6732"/>
@@ -5918,12 +5918,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6737"/>
         <source>Bypasses optional Windows audio signal processing when Cubeb is using WASAPI. RAW remains shared mode; it does not enable exclusive output or change ArcadeDuck&apos;s Low Latency target.</source>
-        <translation type="unfinished"></translation>
+        <translation>CubebがWASAPIを使用している場合、Windowsの任意の音声処理を回避します。RAWは共有モードのままで、排他出力を有効にしたりArcadeDuckの低遅延目標値を変更したりしません。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6740"/>
         <source>Cache Directory</source>
-        <translation type="unfinished">キャッシュディレクトリ</translation>
+        <translation>キャッシュディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6742"/>
@@ -6043,7 +6043,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6791"/>
         <source>Crosshairs Directory</source>
-        <translation type="unfinished">照準ディレクトリ</translation>
+        <translation>照準ディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6802"/>
@@ -6078,12 +6078,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6828"/>
         <source>Download Artwork</source>
-        <translation type="unfinished"></translation>
+        <translation>アートワークをダウンロード</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6829"/>
         <source>Downloads curated ArcadeDuck artwork and lets you choose Clear Logo, 2D Box, or 3D Box.</source>
-        <translation type="unfinished"></translation>
+        <translation>選定されたArcadeDuckアートワークをダウンロードし、クリアロゴ、2Dボックス、3Dボックスから選択できます。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6836"/>
@@ -6103,7 +6103,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6846"/>
         <source>Enable System Link</source>
-        <translation type="unfinished"></translation>
+        <translation>システムリンクを有効にする</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6848"/>
@@ -6143,7 +6143,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6858"/>
         <source>Enables the network transport used by supported linked arcade hardware. Leave this disabled for normal single-cabinet operation.</source>
-        <translation type="unfinished"></translation>
+        <translation>対応するアーケード筐体間のリンク接続に使用するネットワーク通信を有効にします。筐体を1台だけ使用する場合は無効のままにしてください。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6859"/>
@@ -6153,7 +6153,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6864"/>
         <source>Enter the IPv4 address of the host machine.</source>
-        <translation type="unfinished"></translation>
+        <translation>ホストマシンのIPv4アドレスを入力してください。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6869"/>
@@ -6173,7 +6173,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6883"/>
         <source>Folders</source>
-        <translation type="unfinished">フォルダ</translation>
+        <translation>フォルダ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6884"/>
@@ -6218,7 +6218,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6912"/>
         <source>Graphics</source>
-        <translation type="unfinished">グラフィック</translation>
+        <translation>グラフィック</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6915"/>
@@ -6238,17 +6238,17 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6920"/>
         <source>Host IPv4 Address</source>
-        <translation type="unfinished"></translation>
+        <translation>ホストの IPv4 アドレス</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6921"/>
         <source>Hotkeys</source>
-        <translation type="unfinished">ホットキー</translation>
+        <translation>ホットキー</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6924"/>
         <source>IPv4 address of the host machine for the system-link session. Use 127.0.0.1 when multiple ArcadeDuck instances are running on the same PC.</source>
-        <translation type="unfinished"></translation>
+        <translation>システムリンクセッションのホストマシンのIPv4アドレスです。同じPCで複数のArcadeDuckを実行する場合は127.0.0.1を使用してください。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6929"/>
@@ -6258,7 +6258,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6934"/>
         <source>Interface</source>
-        <translation type="unfinished">インターフェース</translation>
+        <translation>インターフェース</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="6936"/>
@@ -6413,12 +6413,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7035"/>
         <source>Port</source>
-        <translation type="unfinished"></translation>
+        <translation>ポート</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7036"/>
         <source>Post-Processing</source>
-        <translation type="unfinished">ポストプロセス</translation>
+        <translation>ポストプロセス</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7039"/>
@@ -6518,7 +6518,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7098"/>
         <source>Save States Directory</source>
-        <translation type="unfinished">ステートセーブディレクトリ</translation>
+        <translation>ステートセーブディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7102"/>
@@ -6548,7 +6548,7 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7113"/>
         <source>Screenshots Directory</source>
-        <translation type="unfinished">スクリーンショットディレクトリ</translation>
+        <translation>スクリーンショットディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7114"/>
@@ -6768,12 +6768,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7198"/>
         <source>System Link</source>
-        <translation type="unfinished">システムリンク</translation>
+        <translation>システムリンク</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7199"/>
         <source>TCP port shared by all ArcadeDuck instances participating in the same system-link group. All cabinets must use the same port.</source>
-        <translation type="unfinished"></translation>
+        <translation>同じシステムリンクグループに参加するArcadeDuckインスタンス共通のTCPポートです。すべての筐体で同じポートを使用してください。</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7205"/>
@@ -6808,12 +6808,12 @@ Error was:</source>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7242"/>
         <source>Videos Directory</source>
-        <translation type="unfinished">ビデオディレクトリ</translation>
+        <translation>ビデオディレクトリ</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7243"/>
         <source>WASAPI RAW Output</source>
-        <translation type="unfinished"></translation>
+        <translation>WASAPI RAW 出力</translation>
     </message>
     <message>
         <location filename="../../core/fullscreen_ui.cpp" line="7244"/>
@@ -7792,7 +7792,7 @@ It requires framebuffer fetch, feedback loops, or rasterizer order views.</sourc
     <message>
         <location filename="../gamelistmodel.cpp" line="757"/>
         <source>System</source>
-        <translation type="unfinished">システム</translation>
+        <translation>システム</translation>
     </message>
     <message>
         <location filename="../gamelistmodel.cpp" line="758"/>
@@ -10914,7 +10914,7 @@ Scanning recursively takes more time, but will identify files in subdirectories.
     <message>
         <location filename="../mainwindow.ui" line="642"/>
         <source>Show Arcade Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>アーケード出力を表示</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="650"/>
@@ -10961,7 +10961,7 @@ Scanning recursively takes more time, but will identify files in subdirectories.
     <message>
         <location filename="../mainwindow.ui" line="808"/>
         <source>Download Game &amp;Artwork...</source>
-        <translation type="unfinished"></translation>
+        <translation>ゲームのアートワークをダウンロード(&amp;A)...</translation>
     </message>
     <message>
         <location filename="../mainwindow.ui" line="813"/>
@@ -12117,22 +12117,22 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
     <message>
         <location filename="../operatorsettingswidget.ui" line="26"/>
         <source>External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>筐体の外部出力</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="30"/>
         <source>Enable external cabinet outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>筐体の外部出力を有効にする</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="35"/>
         <source>Protocol:</source>
-        <translation type="unfinished"></translation>
+        <translation>プロトコル:</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="43"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to compatible external software. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>対応する筐体のランプ、反動などの物理フィードバックを外部ソフトウェアに送信します。変更は次にゲームを起動したときに反映されます。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.ui" line="52"/>
@@ -12184,42 +12184,42 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
         <location filename="../operatorsettingswidget.cpp" line="36"/>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>MAME Win32</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="37"/>
         <source>MAME TCP (Port 8000)</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME TCP（ポート8000）</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="38"/>
         <source>Both</source>
-        <translation type="unfinished"></translation>
+        <translation>両方</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Enable External Cabinet Outputs</source>
-        <translation type="unfinished"></translation>
+        <translation>筐体の外部出力を有効にする</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="55"/>
         <source>Disabled</source>
-        <translation type="unfinished"></translation>
+        <translation>無効</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="56"/>
         <source>Publishes supported cabinet lamps, recoil, and other physical feedback to external software. The internal Debug -&gt; Show Arcade Outputs monitor remains available when external publishing is disabled. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>対応する筐体のランプ、反動などの物理フィードバックを外部ソフトウェアに送信します。外部への送信を無効にしても、内部の「デバッグ -&gt; アーケード出力を表示」モニターは利用できます。変更は次にゲームを起動したときに反映されます。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="60"/>
         <source>External Output Protocol</source>
-        <translation type="unfinished"></translation>
+        <translation>外部出力プロトコル</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="61"/>
         <source>MAME Win32 uses the standard Windows MAME output message protocol. MAME TCP uses the standard network output protocol on TCP port 8000. Both enables both transports. Changes take effect the next time a game starts.</source>
-        <translation type="unfinished"></translation>
+        <translation>MAME Win32はWindowsの標準MAME出力メッセージプロトコルを使用します。MAME TCPはTCPポート8000で標準のネットワーク出力プロトコルを使用します。「両方」を選ぶと両方式が有効になります。変更は次にゲームを起動したときに反映されます。</translation>
     </message>
     <message>
         <location filename="../operatorsettingswidget.cpp" line="65"/>
@@ -12328,27 +12328,27 @@ Using existing image &apos;{}&apos;, this may result in instability.</source>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="40"/>
         <source>ArcadeDuck loads user ReShade FX shaders recursively from the user shader folder. Use Effect Packages to browse and install packages from ReShade&apos;s official package catalog, or copy your own .fx/.fxh files and textures into the folder manually.</source>
-        <translation type="unfinished"></translation>
+        <translation>ArcadeDuckはユーザーのシェーダーフォルダーからReShade FXシェーダーを再帰的に読み込みます。「エフェクトパッケージ」でReShade公式カタログのパッケージを探してインストールするか、.fx/.fxhファイルやテクスチャを手動でフォルダーにコピーしてください。</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="48"/>
         <source>Effect Packages...</source>
-        <translation type="unfinished"></translation>
+        <translation>エフェクトパッケージ...</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="49"/>
         <source>Open Shader Folder</source>
-        <translation type="unfinished"></translation>
+        <translation>シェーダーフォルダーを開く</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="50"/>
         <source>Reload Shaders</source>
-        <translation type="unfinished">シェーダーを再読み込み</translation>
+        <translation>シェーダーを再読み込み</translation>
     </message>
     <message>
         <location filename="../postprocessingsettingswidget.cpp" line="72"/>
         <source>ReShade</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade</translation>
     </message>
 </context>
 <context>
@@ -12628,219 +12628,223 @@ URL は次のとおりです: %1</translation>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1625"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1662"/>
         <source>ReShade Effect Packages</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade エフェクトパッケージ</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="331"/>
         <source>Packages are downloaded from ReShade&apos;s official EffectPackages.ini catalog. ArcadeDuck can automatically preflight each effect with its actual ReShadeFX loader and disable effects that use unsupported constructs. A successful preflight does not guarantee identical behavior on every graphics backend.</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージはReShade公式のEffectPackages.iniカタログからダウンロードされます。ArcadeDuckは実際のReShadeFXローダーで各エフェクトを事前検査し、未対応の構文を使うエフェクトを無効にできます。検査に成功しても、すべてのグラフィックスバックエンドで同じ動作になるとは限りません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Package</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージ</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="343"/>
         <source>Status</source>
-        <translation type="unfinished"></translation>
+        <translation>状態</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="359"/>
         <source>Effects to install:</source>
-        <translation type="unfinished"></translation>
+        <translation>インストールするエフェクト:</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="376"/>
         <source>Refresh Catalog</source>
-        <translation type="unfinished"></translation>
+        <translation>カタログを更新</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="377"/>
         <source>Check Compatibility</source>
-        <translation type="unfinished"></translation>
+        <translation>互換性を確認</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="378"/>
         <source>Repository</source>
-        <translation type="unfinished"></translation>
+        <translation>リポジトリ</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="379"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Install</source>
-        <translation type="unfinished"></translation>
+        <translation>インストール</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="380"/>
         <source>Remove</source>
-        <translation type="unfinished">削除</translation>
+        <translation>削除</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="407"/>
         <source>HTTP support is unavailable in this build.</source>
-        <translation type="unfinished"></translation>
+        <translation>このビルドではHTTPに対応していません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="452"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>Download Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>ダウンロードに失敗しました</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="453"/>
         <source>The download failed with HTTP status %1.</source>
-        <translation type="unfinished"></translation>
+        <translation>HTTPステータス %1 によりダウンロードに失敗しました。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="459"/>
         <source>The server returned an empty response.</source>
-        <translation type="unfinished"></translation>
+        <translation>サーバーから空の応答が返されました。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="652"/>
         <source>Downloading the official ReShade effect package catalog...</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade公式エフェクトパッケージカタログをダウンロードしています...</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="660"/>
         <source>Catalog Error</source>
-        <translation type="unfinished"></translation>
+        <translation>カタログエラー</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="692"/>
         <source>Loaded %1 packages from the official ReShade catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>ReShade公式カタログから%1個のパッケージを読み込みました。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="725"/>
         <source>Unsupported</source>
-        <translation type="unfinished">非対応</translation>
+        <translation>非対応</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="727"/>
         <source>Compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>互換性あり</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="729"/>
         <source>%1 compatible</source>
-        <translation type="unfinished"></translation>
+        <translation>互換: %1</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Installed</source>
-        <translation type="unfinished"></translation>
+        <translation>インストール済み</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="733"/>
         <source>Available</source>
-        <translation type="unfinished"></translation>
+        <translation>利用可能</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="783"/>
         <source>
 
 This package is installed locally but is no longer listed in the current catalog.</source>
-        <translation type="unfinished"></translation>
+        <translation>
+
+このパッケージはローカルにインストールされていますが、現在のカタログには掲載されていません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="800"/>
         <source>  [Compatible]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [互換]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="805"/>
         <source>  [Unsupported]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [非対応]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="810"/>
         <source>  [Unknown]</source>
-        <translation type="unfinished"></translation>
+        <translation>  [不明]</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="847"/>
         <source>This package does not provide an individual effect list; all shader files will be installed.</source>
-        <translation type="unfinished"></translation>
+        <translation>このパッケージには個別のエフェクト一覧がないため、すべてのシェーダーファイルをインストールします。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="848"/>
         <source>Effect selection is unavailable for this installed package.</source>
-        <translation type="unfinished"></translation>
+        <translation>このインストール済みパッケージではエフェクトを選択できません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="856"/>
         <source>Update / Reinstall</source>
-        <translation type="unfinished"></translation>
+        <translation>更新 / 再インストール</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="862"/>
         <source>Compatibility preflight: %1 compatible, %2 unsupported, %3 unknown. Unsupported and unknown effects are disabled.</source>
-        <translation type="unfinished"></translation>
+        <translation>互換性チェック: 対応 %1、非対応 %2、不明 %3。非対応および不明なエフェクトは無効になります。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="870"/>
         <source>Compatibility has not been checked for this package yet.</source>
-        <translation type="unfinished"></translation>
+        <translation>このパッケージの互換性はまだ確認されていません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="890"/>
         <source>Checking compatibility for %1...</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 の互換性を確認しています...</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1171"/>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1598"/>
         <source>Compatibility Check Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>互換性チェックに失敗しました</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1209"/>
         <source>Downloading %1...</source>
-        <translation type="unfinished">ダウンロード中 %1...</translation>
+        <translation>ダウンロード中 %1...</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1608"/>
         <source>Install Package</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージをインストール</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1609"/>
         <source>No compatible effects are selected for installation.</source>
-        <translation type="unfinished"></translation>
+        <translation>インストールする互換エフェクトが選択されていません。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1617"/>
         <source>Package Installation Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージのインストールに失敗しました</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1626"/>
         <source>%1 was installed successfully.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 を正常にインストールしました。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1641"/>
         <source>Remove Package</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージを削除</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1642"/>
         <source>Remove %1 and the shader/texture files recorded in its ArcadeDuck package manifest?
 
 Shaders from this package that are currently in a post-processing chain may fail to reload.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1と、そのArcadeDuckパッケージマニフェストに記録されたシェーダー／テクスチャファイルを削除しますか？
+
+現在ポストプロセスチェーンで使用中のこのパッケージのシェーダーは、再読み込みに失敗する可能性があります。</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1654"/>
         <source>Package Removal Failed</source>
-        <translation type="unfinished"></translation>
+        <translation>パッケージの削除に失敗しました</translation>
     </message>
     <message>
         <location filename="../reshadepackagemanagerdialog.cpp" line="1663"/>
         <source>%1 was removed.</source>
-        <translation type="unfinished"></translation>
+        <translation>%1 を削除しました。</translation>
     </message>
 </context>
 <context>
@@ -13411,27 +13415,28 @@ Restart the game after changing a switch.</source>
         <location filename="../settingswindow.cpp" line="282"/>
         <source>Namco System 11 physical DIP SW2 switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Namco System 11の物理DIPスイッチSW2です。
+スイッチを変更した後はゲームを再起動してください。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="284"/>
         <source>DIP1 Test (SW2:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP1 テスト (SW2:1):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="286"/>
         <source>Physical DIP SW2:1. This is separate from the cabinet Test switch/hotkey.</source>
-        <translation type="unfinished"></translation>
+        <translation>物理DIPスイッチSW2:1です。筐体のテストスイッチやホットキーとは別のものです。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="287"/>
         <source>DIP2 Freeze (SW2:2):</source>
-        <translation type="unfinished"></translation>
+        <translation>DIP2 フリーズ (SW2:2):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="289"/>
         <source>Physical DIP SW2:2. Freezes game execution when enabled by the game hardware.</source>
-        <translation type="unfinished"></translation>
+        <translation>物理DIPスイッチSW2:2です。ゲームのハードウェアが対応している場合、実行を停止します。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="294"/>
@@ -13451,80 +13456,82 @@ Restart the game after changing a switch.</source>
         <location filename="../settingswindow.cpp" line="309"/>
         <source>Bust-A-Move 2 COH-1002E motherboard S551 DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bust-A-Move 2のCOH-1002EマザーボードにあるDIPスイッチS551です。
+スイッチを変更した後はゲームを再起動してください。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="312"/>
         <source>Generic Cab (Unsupported)</source>
-        <translation type="unfinished"></translation>
+        <translation>汎用筐体 (非対応)</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="313"/>
         <location filename="../settingswindow.cpp" line="320"/>
         <source>Dedicated Cab</source>
-        <translation type="unfinished"></translation>
+        <translation>専用筐体</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="317"/>
         <source>Cabinet Type (S551:1):</source>
-        <translation type="unfinished"></translation>
+        <translation>筐体タイプ (S551:1):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="321"/>
         <source>Physical motherboard DIP S551:1 exists, but Generic Cab support is currently disabled in ArcadeDuck. Bust-A-Move 2 is fixed to the verified Dedicated Cab wiring.</source>
-        <translation type="unfinished"></translation>
+        <translation>物理マザーボードDIPスイッチS551:1は存在しますが、ArcadeDuckでは現在Generic Cabへの対応が無効です。Bust-A-Move 2には検証済みのDedicated Cab配線が固定で使用されます。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="327"/>
         <source>English</source>
-        <translation type="unfinished"></translation>
+        <translation>英語</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="328"/>
         <source>Japanese (2)</source>
-        <translation type="unfinished"></translation>
+        <translation>日本語 (2)</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="329"/>
         <source>Korean</source>
-        <translation type="unfinished"></translation>
+        <translation>韓国語</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="330"/>
         <location filename="../settingswindow.cpp" line="344"/>
         <source>Japanese</source>
-        <translation type="unfinished"></translation>
+        <translation>日本語</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="342"/>
         <source>Region (S551:3-4):</source>
-        <translation type="unfinished"></translation>
+        <translation>地域 (S551:3-4):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="345"/>
         <source>Physical motherboard DIP S551:3-4 region encoding used by Bust-A-Move 2.</source>
-        <translation type="unfinished"></translation>
+        <translation>Bust-A-Move 2の地域コード設定に使用する物理マザーボードDIPスイッチS551:3-4です。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="350"/>
         <source>Sony ZN motherboard S551 physical DIP switches.
 Restart the game after changing a switch.</source>
-        <translation type="unfinished"></translation>
+        <translation>Sony ZNマザーボードの物理DIPスイッチS551です。
+スイッチを変更した後はゲームを再起動してください。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="358"/>
         <source>Game Test Mode (S551:4):</source>
-        <translation type="unfinished"></translation>
+        <translation>ゲームテストモード (S551:4):</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="360"/>
         <source>Physical motherboard DIP S551:4 used by this hardware profile for game test mode.</source>
-        <translation type="unfinished"></translation>
+        <translation>このハードウェア設定でゲームのテストモードに使用する物理マザーボードDIPスイッチS551:4です。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="365"/>
         <source>No physical DIP switch settings are available for this game.</source>
-        <translation type="unfinished"></translation>
+        <translation>このゲームには物理DIPスイッチの設定がありません。</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="285"/>
@@ -14028,7 +14035,13 @@ SBIファイルの追加方法についてはREADMEを確認してください�
 Your dump is incomplete, you must add the SBI file to run this game.
 
 The name of the SBI file must match the name of the disc image.</source>
-        <translation type="unfinished"></translation>
+        <translation>SBIファイルなしでlibcrypt保護されたゲームを起動しようとしています：
+
+{0}: {1}
+
+ディスクイメージが不完全です。このゲームを起動するにはSBIファイルを追加してください。
+
+SBIファイルの名前はディスクイメージの名前と一致する必要があります。</translation>
     </message>
     <message>
         <location filename="../../core/system.cpp" line="4622"/>

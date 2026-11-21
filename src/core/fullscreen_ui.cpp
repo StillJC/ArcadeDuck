@@ -10,6 +10,7 @@
 #include "arcade/arcade_database.h"
 #include "arcade/arcade_machine_handler.h"
 #include "arcade/arcade_rom_loader.h"
+#include "arcade/arcade_save_state.h"
 #include "game_list.h"
 #include "gpu.h"
 #include "host.h"
@@ -283,7 +284,7 @@ static void SwitchToSettings();
 static void SwitchToGameSettings();
 static void SwitchToGameSettings(const GameList::Entry* entry);
 static void SwitchToGameSettingsForPath(const std::string& path);
-static void SwitchToGameSettingsForSerial(std::string_view serial);
+static bool SwitchToGameSettingsForSet(std::string_view serial, std::string_view path);
 static void DrawSettingsWindow();
 static void DrawSummarySettingsPage();
 static void DrawInterfaceSettingsPage();
@@ -417,7 +418,11 @@ struct SaveStateListEntry
   time_t timestamp;
   s32 slot;
   bool global;
+  bool duplicate = false;
 };
+
+// Arcade-only entry that opens Save As instead of writing a slot.
+static constexpr s32 SAVE_AS_ENTRY_SLOT = -2;
 
 static void InitializePlaceholderSaveStateListEntry(SaveStateListEntry* li, const std::string& serial, s32 slot,
                                                     bool global);
@@ -434,6 +439,8 @@ static bool OpenLoadStateSelectorForGameResume(const GameList::Entry* entry);
 static void DrawResumeStateSelector();
 static void DoLoadState(std::string path);
 static void DoSaveState(s32 slot, bool global);
+static void DoSaveNamedState();
+static void PopulateArcadeSaveStateListEntries(const std::string& serial);
 
 static std::vector<SaveStateListEntry> s_save_state_selector_slots;
 static std::string s_save_state_selector_game_path;
@@ -1573,6 +1580,12 @@ void FullscreenUI::BeginInputBinding(SettingsInterface* bsi, InputBindingInfo::T
     // holding the settings lock here will protect the input binding list
     auto lock = Host::GetSettingsLock();
 
+    if (s_input_binding_section != "Hotkeys" && !s_input_binding_new_bindings.empty() &&
+        s_input_binding_new_bindings.front().MaskDirection() != key.MaskDirection())
+    {
+      return InputInterceptHook::CallbackResult::StopProcessingEvent;
+    }
+
     float initial_value = value;
     float min_value = value;
     auto it = std::find_if(s_input_binding_value_ranges.begin(), s_input_binding_value_ranges.end(),
@@ -2373,37 +2386,37 @@ void FullscreenUI::SwitchToSettings()
   QueueResetFocus(FocusResetType::ViewChanged);
 }
 
-void FullscreenUI::SwitchToGameSettingsForSerial(std::string_view serial)
+bool FullscreenUI::SwitchToGameSettingsForSet(std::string_view serial, std::string_view path)
 {
   const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(serial);
   if (!game)
-    return;
+    return false;
+
+  Error error;
+  std::unique_ptr<INISettingsInterface> settings = System::LoadGameSettings(game->id, &error);
+  if (!settings)
+  {
+    ImGuiFullscreen::OpenInfoMessageDialog(FSUI_STR("Error"), std::string(error.GetDescription()));
+    return false;
+  }
 
   if (s_current_main_window != MainWindowType::Settings)
     s_settings_return_window = s_current_main_window;
 
-  s_game_settings_entry.reset();
-  s_game_settings_interface = std::make_unique<INISettingsInterface>(System::GetGameSettingsPath(game->id));
-  s_game_settings_interface->Load();
+  s_game_settings_entry = std::make_unique<GameList::Entry>();
+  s_game_settings_entry->serial = game->id;
+  s_game_settings_entry->path = path;
+  s_game_settings_entry->title = game->title;
+  s_game_settings_interface = std::move(settings);
   s_current_main_window = MainWindowType::Settings;
   s_settings_page = SettingsPage::Interface;
   QueueResetFocus(FocusResetType::ViewChanged);
+  return true;
 }
 
 void FullscreenUI::SwitchToGameSettings()
 {
-  if (System::GetGameSerial().empty())
-    return;
-
-  auto lock = GameList::GetLock();
-  const GameList::Entry* entry = GameList::GetEntryForPath(System::GetDiscPath());
-  if (!entry)
-  {
-    SwitchToGameSettingsForSerial(System::GetGameSerial());
-    return;
-  }
-
-  SwitchToGameSettings(entry);
+  SwitchToGameSettingsForSet(System::GetGameSerial(), System::GetDiscPath());
 }
 
 void FullscreenUI::SwitchToGameSettingsForPath(const std::string& path)
@@ -2422,9 +2435,11 @@ void FullscreenUI::SwitchToGameSettings(const GameList::Entry* entry)
   if (!game)
     return;
 
-  SwitchToGameSettingsForSerial(game->id);
-  s_game_settings_entry = std::make_unique<GameList::Entry>(*entry);
-  s_game_settings_entry->serial = game->id;
+  if (SwitchToGameSettingsForSet(game->id, entry->path))
+  {
+    *s_game_settings_entry = *entry;
+    s_game_settings_entry->serial = game->id;
+  }
 }
 
 void FullscreenUI::PopulateGraphicsAdapterList()
@@ -2727,7 +2742,7 @@ static bool ArcadeGameSupportsSaveStates(const Arcade::Database::GameDefinition*
     return false;
 
   const Arcade::Database::SystemDefinition* system = Arcade::Database::GetSystem(game->system_id);
-  return system && Arcade::MachineHandlerSupportsSaveStates(system->machine_handler);
+  return system && Arcade::MachineHandlerSupportsSaveStates(system->machine_handler, *game);
 }
 
 static std::string GetArcadeControllerDescription(const Arcade::ArcadePortProfile& port)
@@ -5337,6 +5352,12 @@ u32 FullscreenUI::PopulateSaveStateListEntries(const std::string& title, const s
     }
   }
 
+  if (!serial.empty() && Arcade::Database::GetGame(serial))
+  {
+    PopulateArcadeSaveStateListEntries(serial);
+    return static_cast<u32>(s_save_state_selector_slots.size());
+  }
+
   if (!serial.empty())
   {
     for (s32 i = 1; i <= System::PER_GAME_SAVE_STATE_SLOTS; i++)
@@ -5355,6 +5376,72 @@ u32 FullscreenUI::PopulateSaveStateListEntries(const std::string& title, const s
   }
 
   return static_cast<u32>(s_save_state_selector_slots.size());
+}
+
+void FullscreenUI::PopulateArcadeSaveStateListEntries(const std::string& serial)
+{
+  // Arcade saves are identified by their metadata; there are no global slots.
+  if (!s_save_state_selector_loading)
+  {
+    SaveStateListEntry li;
+    li.title = FSUI_STR("Save As...");
+    li.summary = FSUI_STR("Creates an independent named save that does not use a slot.");
+    li.timestamp = 0;
+    li.slot = SAVE_AS_ENTRY_SLOT;
+    li.global = false;
+    s_save_state_selector_slots.push_back(std::move(li));
+
+    for (s32 i = 1; i <= System::PER_GAME_SAVE_STATE_SLOTS; i++)
+    {
+      SaveStateListEntry slot_li;
+      InitializeSaveStateListEntryFromSerial(&slot_li, serial, i, false);
+      s_save_state_selector_slots.push_back(std::move(slot_li));
+    }
+
+    return;
+  }
+
+  for (Arcade::SaveState::Entry& entry : Arcade::SaveState::FindSaves(serial))
+  {
+    SaveStateListEntry li;
+    if (!InitializeSaveStateListEntryFromPath(&li, entry.path, entry.metadata.slot, false))
+      continue;
+
+    if (entry.metadata.slot == Arcade::SaveState::SLOT_NONE)
+    {
+      li.title = fmt::format("{}##named_{}",
+                             entry.metadata.label.empty() ? Path::GetFileTitle(entry.path) :
+                                                            std::string_view(entry.metadata.label),
+                             Path::GetFileName(entry.path));
+    }
+    else if (entry.duplicate_slot)
+    {
+      li.duplicate = true;
+      li.title = fmt::format(FSUI_FSTR("{0} (duplicate) - {1}##dup_{1}"), ImGuiFullscreen::RemoveHash(li.title),
+                             Path::GetFileName(entry.path));
+      li.summary = FSUI_STR("More than one save claims this slot. Convert one to a named save or delete it.");
+    }
+
+    s_save_state_selector_slots.push_back(std::move(li));
+  }
+}
+
+void FullscreenUI::DoSaveNamedState()
+{
+  OpenInputStringDialog(FSUI_ICONSTR(ICON_FA_SAVE, "Save As"), FSUI_STR("Enter a name for this save."), std::string(),
+                        FSUI_ICONSTR(ICON_FA_SAVE, "Save"), [](std::string label) {
+                          if (label.empty())
+                            return;
+
+                          Host::RunOnCPUThread([label = std::move(label)]() {
+                            Error error;
+                            if (!System::SaveNamedStateWhenReady(label, &error))
+                            {
+                              ShowToast(std::string(), fmt::format(TRANSLATE_FS("System", "Failed to save state: {}"),
+                                                                   error.GetDescription()));
+                            }
+                          });
+                        });
 }
 
 bool FullscreenUI::OpenLoadStateSelectorForGame(const std::string& game_path)
@@ -5526,8 +5613,8 @@ void FullscreenUI::DrawSaveStateSelector(bool is_loading)
         const float title_height =
           g_large_font->FontSize + ImGui::GetStyle().FramePadding.y * 2.0f + ImGui::GetStyle().WindowPadding.y * 2.0f;
         const float height =
-          title_height +
-          LayoutScale(LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY + (LAYOUT_MENU_BUTTON_Y_PADDING * 2.0f)) * 3.0f;
+          title_height + LayoutScale(LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY + (LAYOUT_MENU_BUTTON_Y_PADDING * 2.0f)) *
+                           (entry.duplicate ? 4.0f : 3.0f);
         ImGui::SetNextWindowSize(ImVec2(width, height));
         ImGui::SetNextWindowPos(ImGui::GetIO().DisplaySize * 0.5f, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::OpenPopup(entry.title.c_str());
@@ -5546,8 +5633,29 @@ void FullscreenUI::DrawSaveStateSelector(bool is_loading)
           {
             if (is_loading)
               DoLoadState(std::move(entry.path));
+            else if (entry.slot == SAVE_AS_ENTRY_SLOT)
+              DoSaveNamedState();
             else
               DoSaveState(entry.slot, entry.global);
+
+            closed = true;
+            was_close_not_back = true;
+          }
+
+          if (entry.duplicate && ActiveButton(FSUI_ICONSTR(ICON_FA_FOLDER_PLUS, "Convert to Named Save"), false, true,
+                                              LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY))
+          {
+            Error error;
+            if (Arcade::SaveState::RewriteSlot(entry.path.c_str(), Arcade::SaveState::SLOT_NONE,
+                                               Path::GetFileTitle(entry.path), &error))
+            {
+              ShowToast({}, fmt::format(FSUI_FSTR("{} is now a named save."), Path::GetFileName(entry.path)));
+            }
+            else
+            {
+              ShowToast({}, fmt::format(FSUI_FSTR("Failed to convert {}: {}"), Path::GetFileName(entry.path),
+                                        error.GetDescription()));
+            }
 
             closed = true;
             was_close_not_back = true;
@@ -5862,7 +5970,7 @@ void FullscreenUI::DoLoadState(std::string path)
       else
       {
         Error error;
-        if (!System::LoadState(path.c_str(), &error, true))
+        if (!System::LoadState(path.c_str(), &error, true) && !System::WasLoadRejectionReported())
         {
           ShowToast(std::string(),
                     fmt::format(TRANSLATE_FS("System", "Failed to load state: {}"), error.GetDescription()));
@@ -5892,7 +6000,7 @@ void FullscreenUI::DoSaveState(s32 slot, bool global)
     std::string filename(global ? System::GetGlobalSaveStateFileName(slot) :
                                   System::GetGameSaveStateFileName(System::GetGameSerial(), slot));
     Error error;
-    if (!System::SaveState(filename.c_str(), &error, g_settings.create_save_state_backups))
+    if (!System::SaveStateWhenReady(filename.c_str(), &error, g_settings.create_save_state_backups))
     {
       ShowToast(std::string(), fmt::format(TRANSLATE_FS("System", "Failed to save state: {}"), error.GetDescription()));
     }
@@ -6492,19 +6600,24 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
   {
     for (const Arcade::Database::GameDefinition* const clone : Arcade::Database::GetClones(game->id))
     {
-      std::string clone_path = Arcade::Database::GetIndexedArchivePath(clone->archive_name);
+      const bool is_gnet = system->machine_handler == "taito_gnet";
+      std::string clone_path = is_gnet ? GameList::GetGNetGamePath(clone->id) : entry->path;
       if (clone_path.empty())
-        clone_path = entry->path;
-      if (!Arcade::CanResolveGameROMs(clone_path, *clone))
         continue;
 
-      std::string label = fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, clone->title);
+      const auto search_scope = is_gnet ? Arcade::Database::ROMArchiveSearchScope::AllDirectories :
+                                          Arcade::Database::ROMArchiveSearchScope::SameDirectory;
+      if (Arcade::Database::IsArchivePath(clone_path) && !Arcade::CanResolveGameROMs(clone_path, *clone, search_scope))
+        continue;
+
+      std::string label = clone->title;
       if (!clone->region.empty())
         label.append(fmt::format(" - {}", clone->region));
       if (!clone->revision.empty())
         label.append(fmt::format(" - {}", clone->revision));
       label.append(fmt::format(" [{}]", clone->id));
-      options.emplace_back(std::move(label), false);
+      options.emplace_back(fmt::format("{} Start Clone: {}", ICON_FA_PLAY_CIRCLE, label), false);
+      options.emplace_back(fmt::format("{} Clone Properties: {}", ICON_FA_WRENCH, label), false);
       clone_launch_options.push_back({std::move(clone_path), clone->id});
     }
   }
@@ -6542,8 +6655,12 @@ void FullscreenUI::HandleGameListOptions(const GameList::Entry* entry)
         default:
           if (index >= 5 && index < reset_play_time_index)
           {
-            CloneLaunchOption& clone = clone_launch_options[static_cast<size_t>(index - 5)];
-            DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+            const size_t clone_option = static_cast<size_t>(index - 5);
+            CloneLaunchOption& clone = clone_launch_options[clone_option / 2];
+            if ((clone_option % 2) == 0)
+              DoStartPath(std::move(clone.path), {}, std::move(clone.game_id));
+            else
+              SwitchToGameSettingsForSet(clone.game_id, clone.path);
           }
           else if (index == reset_play_time_index)
           {

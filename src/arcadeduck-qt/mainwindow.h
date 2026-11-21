@@ -34,6 +34,7 @@ class AutoUpdaterDialog;
 class CheatManagerWindow;
 class DebuggerWindow;
 class MemoryScannerWindow;
+class CyberLeadLEDWindow;
 
 struct SystemBootParameters;
 
@@ -238,6 +239,8 @@ private:
   void setBezelAspectRatioLockEnabled(bool enabled);
   void applyBezelAspectRatioToCurrentWindow();
   bool isBezelAspectRatioLockActive() const;
+  void updateCyberLeadLEDWindow();
+  void destroyCyberLeadLEDWindow();
 
   SettingsWindow* getSettingsWindow();
   void doSettings(const char* category = nullptr);
@@ -272,6 +275,12 @@ private:
   std::shared_ptr<SystemBootParameters> getSystemBootParameters(std::string file,
                                                                std::string arcade_game_id = {});
   std::optional<bool> promptForResumeState(const std::string& save_state_path);
+
+  /// Shutdown resume state of the highlighted game list entry, if that game supports save states and one exists.
+  std::string getSelectedEntryResumeStatePath(std::string* game_path) const;
+
+  /// Idle toolbar Resume follows the highlighted game; while a game starts or runs the button is Power Off.
+  void updateResumeAction();
   void startFile(std::string path, std::optional<std::string> save_path);
   void startArcadeSet(const QString& path);
 
@@ -281,6 +290,7 @@ private:
 
   DisplayWidget* m_display_widget = nullptr;
   DisplayContainer* m_display_container = nullptr;
+  CyberLeadLEDWindow* m_cyber_lead_led_window = nullptr;
 
   QProgressBar* m_status_progress_widget = nullptr;
   QLabel* m_status_renderer_widget = nullptr;
@@ -309,6 +319,7 @@ private:
   bool m_bezel_resize_correction_pending = false;
 #endif
   bool m_save_states_invalidated = false;
+  bool m_emulation_idle = true;
   bool m_was_paused_on_surface_loss = false;
   bool m_is_closing = false;
 

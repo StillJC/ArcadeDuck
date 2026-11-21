@@ -9,6 +9,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <cstdint>
 
@@ -784,6 +786,61 @@ u32 Core::get_cmem(u8 addr)
 			return (cvar << 16);
 		return cvar;
 	}
+}
+
+bool Core::DoState(StateWrapper& sw)
+{
+  sw.Do(&macc);
+  sw.Do(&macc_read);
+  sw.Do(&macc_write);
+  sw.DoArray(cmem, std::size(cmem));
+  sw.DoArray(dmem0, std::size(dmem0));
+  sw.DoArray(dmem1, std::size(dmem1));
+  sw.DoArray(si, std::size(si));
+  sw.DoArray(so, std::size(so));
+  sw.Do(&st0);
+  sw.Do(&st1);
+  sw.Do(&sti);
+  sw.Do(&aacc);
+  sw.Do(&xoa);
+  sw.Do(&xba);
+  sw.Do(&xwr);
+  sw.Do(&xrd);
+  sw.Do(&txrd);
+  sw.Do(&creg);
+  sw.Do(&pc);
+  sw.Do(&hpc);
+  sw.Do(&ca);
+  sw.Do(&id);
+  sw.Do(&ba0);
+  sw.Do(&ba1);
+  sw.Do(&rptc);
+  sw.Do(&rptc_next);
+  sw.Do(&sa);
+  sw.Do(&xm_adr);
+  sw.DoBytes(host, sizeof(host));
+  sw.Do(&hidx);
+  sw.Do(&allow_update);
+  sw.DoArray(update, std::size(update));
+  sw.Do(&update_counter_head);
+  sw.Do(&update_counter_tail);
+  sw.DoArray(m_program.data(), m_program.size());
+  sw.DoArray(m_external_ram.data(), m_external_ram.size());
+  sw.Do(&icount);
+  sw.Do(&m_reset_released);
+
+  if (sw.IsReading())
+  {
+    if (sw.HasError() || hidx >= std::size(host) || update_counter_head >= std::size(update) ||
+        update_counter_tail >= std::size(update))
+    {
+      return false;
+    }
+
+    cache_flush();
+  }
+
+  return !sw.HasError();
 }
 
 void Core::cache_flush()

@@ -5,6 +5,8 @@
 
 #include "common/log.h"
 
+#include "util/state_wrapper.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1352,6 +1354,110 @@ void Chip::GetOutput(s32* left, s32* right) const
     *left = m_last_left;
   if (right)
     *right = m_last_right;
+}
+
+// Waveform/exponent tables derive from Initialize(). Group connection data is stored as-is so lazily rebuilt
+// groups resume exactly. Diagnostic flags are excluded.
+bool Chip::DoState(StateWrapper& sw)
+{
+  if (!sw.DoMarker("YMF271"))
+    return false;
+
+  for (Slot& slot : m_slots)
+  {
+    sw.Do(&slot.active);
+    sw.Do(&slot.key_on);
+    sw.Do(&slot.ext_enable);
+    sw.Do(&slot.ext_output);
+    sw.Do(&slot.lfo_frequency);
+    sw.Do(&slot.lfo_waveform);
+    sw.Do(&slot.pms);
+    sw.Do(&slot.ams);
+    sw.Do(&slot.multiple);
+    sw.Do(&slot.detune);
+    sw.Do(&slot.total_level);
+    sw.Do(&slot.key_scale);
+    sw.Do(&slot.attack_rate);
+    sw.Do(&slot.decay1_rate);
+    sw.Do(&slot.decay2_rate);
+    sw.Do(&slot.release_rate);
+    sw.Do(&slot.decay1_level);
+    sw.Do(&slot.block);
+    sw.Do(&slot.fns_high);
+    sw.Do(&slot.fns);
+    sw.Do(&slot.feedback);
+    sw.Do(&slot.waveform);
+    sw.Do(&slot.accumulate);
+    sw.Do(&slot.algorithm);
+    sw.DoBytes(slot.channel_level, sizeof(slot.channel_level));
+    sw.Do(&slot.start_address);
+    sw.Do(&slot.end_address);
+    sw.Do(&slot.loop_address);
+    sw.Do(&slot.alternate_loop);
+    sw.Do(&slot.fs);
+    sw.Do(&slot.pcm_12bit);
+    sw.Do(&slot.source_note);
+    sw.Do(&slot.source_block);
+    sw.Do(&slot.phase);
+    sw.Do(&slot.step);
+    sw.Do(&slot.key_code);
+    sw.Do(&slot.lfo_counter);
+    sw.Do(&slot.lfo_position);
+    sw.Do(&slot.pcm_ended);
+    sw.Do(&slot.modulator_count);
+    sw.DoArray(slot.modulator_slots.data(), slot.modulator_slots.size());
+    sw.Do(&slot.feedback_head);
+    sw.Do(&slot.feedback_target);
+    sw.Do(&slot.carrier);
+    sw.Do(&slot.output);
+    sw.Do(&slot.accumulation);
+    sw.DoArray(slot.feedback_history.data(), slot.feedback_history.size());
+    sw.Do(&slot.envelope_state);
+    sw.Do(&slot.envelope_attenuation);
+
+    if (sw.IsReading())
+    {
+      // Block is a 4-bit register field; larger values would make the pitch shifts undefined.
+      if (sw.HasError() || slot.block > 0x0fu || slot.modulator_count > slot.modulator_slots.size() ||
+          slot.feedback_target >= static_cast<s8>(m_slots.size()) || slot.feedback_target < -1 ||
+          slot.envelope_state > EnvelopeState::Release)
+      {
+        return false;
+      }
+      for (u32 i = 0; i < slot.modulator_count; i++)
+      {
+        if (slot.modulator_slots[i] >= m_slots.size())
+          return false;
+      }
+    }
+  }
+  for (Group& group : m_groups)
+  {
+    sw.Do(&group.sync);
+    sw.Do(&group.pfm);
+    sw.Do(&group.dirty);
+  }
+  sw.DoArray(m_address.data(), m_address.size());
+  sw.Do(&m_native_phase);
+  sw.Do(&m_eg_counter);
+  sw.Do(&m_eg_phase);
+  sw.Do(&m_end_status);
+  sw.Do(&m_timer_status);
+  sw.Do(&m_timer_a);
+  sw.Do(&m_timer_b);
+  sw.Do(&m_timer_control);
+  sw.Do(&m_timer_a_running);
+  sw.Do(&m_timer_b_running);
+  sw.Do(&m_timer_a_cycles);
+  sw.Do(&m_timer_b_cycles);
+  sw.Do(&m_master_cycle_fraction);
+  sw.Do(&m_external_address);
+  sw.Do(&m_external_read);
+  sw.Do(&m_external_read_latch);
+  sw.Do(&m_last_left);
+  sw.Do(&m_last_right);
+
+  return !sw.HasError();
 }
 
 } // namespace YMF271

@@ -13,6 +13,11 @@
 #include <vector>
 
 class Error;
+class StateWrapper;
+
+namespace Arcade::SaveState {
+struct NVRAMComponent;
+}
 
 namespace Arcade::Database {
 struct FirmwareDefinition;
@@ -239,6 +244,12 @@ void PrepareForTimingEpochReset();
 void Reset();
 void Shutdown();
 bool IsActive();
+
+/// Board section for save states. Supported for every board except Bust-A-Move 2, the Tecmo GR2 link and the
+/// G-Net communication board.
+bool DoState(StateWrapper& sw);
+void GetNVRAMComponents(std::vector<Arcade::SaveState::NVRAMComponent>* components);
+bool CanSaveState(Error* error);
 bool IsMawasundaActive();
 void AddMawasundaHandleDelta(u32 player, s32 delta);
 void ApplySPUOutputGain(s32* left, s32* right);

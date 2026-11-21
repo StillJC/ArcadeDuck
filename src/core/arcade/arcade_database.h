@@ -118,6 +118,7 @@ struct SystemDefinition
   std::string machine_handler;
   std::string bios_profile;
   u16 release_year = 0;
+  u16 cpu_clock_percent = 100;
   u8 max_players = 1;
   bool supports_lightgun = false;
   bool supports_trackball = false;
@@ -240,7 +241,15 @@ const GameDefinition* IdentifyGamePath(std::string_view path);
 void ClearArchivePathIndex();
 void IndexArchivePath(std::string_view path);
 std::string GetIndexedArchivePath(std::string_view archive_name);
-std::vector<std::string> GetROMArchiveSearchPaths(std::string_view archive_path, const GameDefinition& game);
+enum class ROMArchiveSearchScope : u8
+{
+  AllDirectories,
+  SameDirectory,
+};
+
+std::vector<std::string> GetROMArchiveSearchPaths(
+  std::string_view archive_path, const GameDefinition& game,
+  ROMArchiveSearchScope scope = ROMArchiveSearchScope::AllDirectories);
 
 const ROMDefinition* GetROMByRole(const GameDefinition& game, std::string_view role);
 const MediaDefinition* GetMediaByRole(const GameDefinition& game, std::string_view role);

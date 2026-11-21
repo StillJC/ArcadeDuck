@@ -9,6 +9,8 @@
 
 class Error;
 
+class StateWrapper;
+
 namespace SonyZN::AtlusZN1Sound {
 
 bool Initialize(std::vector<u8> sound_program, std::vector<u8> ymz280b_rom, Error* error);
@@ -18,5 +20,6 @@ bool IsActive();
 
 void MainCommandWrite(u16 value);
 void GenerateAudioFrame(s32* left, s32* right);
+bool DoState(StateWrapper& sw);
 
 } // namespace SonyZN::AtlusZN1Sound

@@ -5,7 +5,10 @@
 // Modified for ArcadeDuck by StillJC, 2026.
 
 #include "gpu.h"
+#include "core/arcade/arcade_database.h"
 #include "core/arcade/arcade_input.h"
+#include "core/arcade/devices/jvs/namco_cyberlead.h"
+#include "core/arcade/systems/namco/system12/namco_system12.h"
 #include "dma.h"
 #include "gpu_shadergen.h"
 #include "host.h"
@@ -68,6 +71,20 @@ static std::mutex s_screenshot_threads_mutex;
 static constexpr double ARCADE_CROSSHAIR_TIMEOUT_SECONDS = 3.0;
 static constexpr float ARCADE_CROSSHAIR_MOVEMENT_THRESHOLD_PIXELS = 1.0f;
 static constexpr float BUILTIN_ARCADE_CROSSHAIR_SIZE_PIXELS = 32.0f;
+
+static bool IsCyberLeadLEDGame()
+{
+  // Asked every presented frame; the answer only changes with the game.
+  thread_local std::string s_serial;
+  thread_local bool s_result = false;
+  const std::string& serial = System::GetGameSerial();
+  if (serial == s_serial)
+    return s_result;
+
+  s_serial = serial;
+  s_result = Arcade::JVS::NamcoCyberLead::IsCyberLeadGame(serial);
+  return s_result;
+}
 
 struct ArcadeCrosshairActivity
 {
@@ -186,11 +203,9 @@ static void SetArcadeGPUHardwareMode(bool gq_mode, bool cxd8561q_mode, bool use_
 {
   s_gq_gpu_mode = gq_mode;
   s_cxd8561q_gpu_mode = cxd8561q_mode;
-  // Physical population and address decoder range are separate on the v2 GPU.
-  // CXD8538Q/type-1 exposes its 2 MiB layout directly; CXD8561Q/type-2 starts
-  // with the upper Y address bit gated until GP1(09h).0 enables it.
+  // Type-1 and type-2 arcade GPUs expose their populated 2 MiB VRAM directly.
   g_vram_height = use_2mb_vram ? VRAM_GQ_HEIGHT : VRAM_HEIGHT;
-  g_vram_address_height = gq_mode ? g_vram_height : VRAM_HEIGHT;
+  g_vram_address_height = (gq_mode || cxd8561q_mode) ? g_vram_height : VRAM_HEIGHT;
   g_vram_height_mask = g_vram_address_height - 1;
   g_vram_size = VRAM_WIDTH * g_vram_height * sizeof(u16);
 
@@ -641,6 +656,24 @@ u32 GPU::ReadRegister(u32 offset)
       if (IsCommandCompletionPending())
         s_command_tick_event.InvokeEarly();
 
+      // Type-2 reports the selected interlaced display field through GPUSTAT
+      // bits 13 and 31. Use the already-advanced display-field state for readback.
+      // With the interlace bit set in a 240-line mode the field still alternates every frame;
+      // System 12 games wait for it to toggle in their VSync routine.
+      // In 480i, bit 31 is the parity of the line being scanned out and reads 0 during vblank,
+      // so a VSync() waiting for it to change returns at the start of active display.
+      if (IsCXD8561QMode() && m_GPUSTAT.vertical_interlace)
+      {
+        const bool interleaved = m_GPUSTAT.InInterleaved480iMode();
+        const u32 field =
+          ZeroExtend32((interleaved ? m_crtc_state.interlaced_display_field : m_crtc_state.interlaced_field) & 1u);
+        const u32 line_lsb = interleaved ? BoolToUInt32(m_GPUSTAT.display_line_lsb) : field;
+        u32 stat = m_GPUSTAT.bits;
+        stat &= ~((1u << 13) | (1u << 31));
+        stat |= (field << 13) | (line_lsb << 31);
+        return stat;
+      }
+
       if (IsGQMode())
       {
         return (m_GPUSTAT.bits & ~GPUDrawModeReg::GQ_GPUSTAT_MASK) |
@@ -971,9 +1004,13 @@ void GPU::UpdateCRTCDisplayParameters()
     const u8 horizontal_resolution_index =
       m_GPUSTAT.horizontal_resolution_1.GetValue() | (m_GPUSTAT.horizontal_resolution_2.GetValue() << 2);
     const s32 logical_width = logical_widths[horizontal_resolution_index];
-    const s32 logical_height = m_GPUSTAT.pal_mode.GetValue() ?
+    const s32 logical_lines = m_GPUSTAT.pal_mode.GetValue() ?
       (m_GPUSTAT.vertical_resolution.GetValue() ? 512 : 256) :
       (m_GPUSTAT.vertical_resolution.GetValue() ? 480 : 240);
+    // A 240-line mode with the interlace bit set still scans out two fields per frame, so its envelope holds twice
+    // the lines, in the same output-line units as the interlaced source height below.
+    const s32 logical_height =
+      m_GPUSTAT.vertical_resolution.GetValue() ? logical_lines : (logical_lines << height_shift);
     const s32 horizontal_reference_start = m_GPUSTAT.pal_mode.GetValue() ? 0x27E : 0x260;
     const s32 vertical_reference_start = m_GPUSTAT.pal_mode.GetValue() ? 0x23 : 0x10;
 
@@ -992,6 +1029,10 @@ void GPU::UpdateCRTCDisplayParameters()
     s32 raw_vertical_origin = vertical_range_start - vertical_reference_start;
     s32 raw_vertical_lines = std::max(vertical_range_end - vertical_range_start, 0);
     s32 horizontal_source_width_clipped = horizontal_source_width;
+
+    // System 12 can phase-shift a full-width active raster without reducing its width.
+    if (NamcoSystem12::IsActive() && horizontal_origin > 0 && horizontal_source_width >= logical_width)
+      horizontal_origin = 0;
 
     if (horizontal_origin < 0)
     {
@@ -1279,6 +1320,7 @@ void GPU::CRTCTickEvent(TickCount ticks)
     {
       Timers::SetGate(HBLANK_TIMER_INDEX, false);
       InterruptController::SetLineState(InterruptController::IRQ::VBLANK, false);
+      NamcoSystem12::SetVBlank(false);
       m_crtc_state.in_vblank = false;
     }
 
@@ -1319,6 +1361,7 @@ void GPU::CRTCTickEvent(TickCount ticks)
 
       Timers::SetGate(HBLANK_TIMER_INDEX, new_vblank);
       InterruptController::SetLineState(InterruptController::IRQ::VBLANK, new_vblank);
+      NamcoSystem12::SetVBlank(new_vblank);
       m_crtc_state.in_vblank = new_vblank;
     }
 
@@ -1387,7 +1430,8 @@ void GPU::ConvertScreenCoordinatesToDisplayCoordinates(float window_x, float win
                                                        float* display_y) const
 {
   GSVector4i display_rc, draw_rc;
-  CalculateDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), true, true, &display_rc, &draw_rc);
+  CalculatePresentationDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), true, true,
+                                  &display_rc, &draw_rc);
 
   // convert coordinates to active display region, then to full display region
   const float scaled_display_x =
@@ -1671,49 +1715,10 @@ void GPU::WriteGP1(u32 value)
     }
     break;
 
-    case 0x09: // v2 VRAM Y-address gate / standard allow-texture-disable control
+    case 0x09: // Allow texture-disable control
     {
-      if (IsCXD8561QMode())
-      {
-        const bool upper_y_enabled = ConvertToBoolUnchecked(param & 0x01);
-        const u32 new_address_height =
-          (upper_y_enabled && g_vram_height > VRAM_HEIGHT) ? g_vram_height : static_cast<u32>(VRAM_HEIGHT);
-
-        if (g_vram_address_height != new_address_height)
-        {
-          // Finish work decoded with the old Y range before changing the address decoder.
-          FlushRender();
-          SynchronizeCRTC();
-
-          g_vram_address_height = new_address_height;
-          g_vram_height_mask = g_vram_address_height - 1;
-
-          // Renderer-facing decoded state must not retain references to the gated bank.
-          // Raw-latch persistence can be modeled separately if later hardware tests require it.
-          if (g_vram_address_height == VRAM_HEIGHT)
-          {
-            m_draw_mode.mode_reg.texture_page_y_base_high = 0;
-            m_draw_mode.palette_reg.bits &= DrawMode::PALETTE_MASK;
-            m_drawing_area.top &= VRAM_HEIGHT_MASK;
-            m_drawing_area.bottom &= VRAM_HEIGHT_MASK;
-            m_crtc_state.regs.display_address_start &= ~(UINT32_C(1) << 19);
-          }
-
-          m_draw_mode.texture_page_changed = true;
-          m_drawing_area_changed = true;
-          SetClampedDrawingArea();
-          InvalidateCLUT();
-          UpdateCRTCDisplayParameters();
-        }
-
-        DEBUG_LOG("CXD8561Q upper VRAM Y <- {} (addressable={}x{})", upper_y_enabled ? "enabled" : "disabled",
-                  static_cast<u32>(VRAM_WIDTH), g_vram_address_height);
-      }
-      else
-      {
-        m_set_texture_disable_mask = ConvertToBoolUnchecked(param & 0x01);
-        DEBUG_LOG("Set texture disable mask <- {}", m_set_texture_disable_mask ? "allowed" : "ignored");
-      }
+      m_set_texture_disable_mask = ConvertToBoolUnchecked(param & 0x01);
+      DEBUG_LOG("Set texture disable mask <- {}", m_set_texture_disable_mask ? "allowed" : "ignored");
     }
     break;
 
@@ -2228,6 +2233,28 @@ bool GPU::CompileDisplayPipelines(bool display, bool deinterlace, bool chroma_sm
 
       GL_OBJECT_NAME(m_display_fsr1_rcas_pipeline, "Display FSR1 RCAS Pipeline");
     }
+
+    m_video_gain_pipeline.reset();
+    {
+      plconfig.layout = GPUPipeline::Layout::SingleTextureAndPushConstants;
+      plconfig.SetTargetFormats(GPUTexture::Format::RGBA8);
+
+      std::unique_ptr<GPUShader> gain_vso = g_gpu_device->CreateShader(
+        GPUShaderStage::Vertex, shadergen.GetLanguage(), shadergen.GenerateScreenQuadVertexShader());
+      std::unique_ptr<GPUShader> gain_fso = g_gpu_device->CreateShader(
+        GPUShaderStage::Fragment, shadergen.GetLanguage(), shadergen.GenerateVideoGainFragmentShader());
+      if (!gain_vso || !gain_fso)
+        return false;
+
+      GL_OBJECT_NAME(gain_vso, "Video Gain Vertex Shader");
+      GL_OBJECT_NAME(gain_fso, "Video Gain Fragment Shader");
+      plconfig.vertex_shader = gain_vso.get();
+      plconfig.fragment_shader = gain_fso.get();
+      if (!(m_video_gain_pipeline = g_gpu_device->CreatePipeline(plconfig)))
+        return false;
+
+      GL_OBJECT_NAME(m_video_gain_pipeline, "Video Gain Pipeline");
+    }
   }
 
   if (deinterlace)
@@ -2382,8 +2409,8 @@ bool GPU::PresentDisplay()
 
   GSVector4i display_rect;
   GSVector4i draw_rect;
-  CalculateDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(), !g_settings.debugging.show_vram,
-                    true, &display_rect, &draw_rect);
+  CalculatePresentationDrawRect(g_gpu_device->GetWindowWidth(), g_gpu_device->GetWindowHeight(),
+                                  !g_settings.debugging.show_vram, true, &display_rect, &draw_rect);
 
   const float window_width = static_cast<float>(g_gpu_device->GetWindowWidth());
   const float window_height = static_cast<float>(g_gpu_device->GetWindowHeight());
@@ -2476,6 +2503,44 @@ bool GPU::RenderDisplay(GPUTexture* target, const GSVector4i display_rect, const
       display_texture_view_y = 0;
       display_texture = post_output_texture;
       display_texture->MakeReadyForSampling();
+    }
+  }
+
+  // System 12 fades by lowering the RGB gain of the video output stage, not through GPU drawing.
+  std::array<float, 3> video_gain;
+  std::unique_ptr<GPUTexture, GPUDevice::PooledTextureDeleter> video_gain_texture;
+  if (display_texture && m_video_gain_pipeline && display_texture_view_width > 0 && display_texture_view_height > 0 &&
+      NamcoSystem12::GetVideoGain(&video_gain))
+  {
+    const u32 gain_width = static_cast<u32>(display_texture_view_width);
+    const u32 gain_height = static_cast<u32>(display_texture_view_height);
+    video_gain_texture = g_gpu_device->FetchAutoRecycleTexture(gain_width, gain_height, 1, 1, 1,
+                                                               GPUTexture::Type::RenderTarget,
+                                                               GPUTexture::Format::RGBA8);
+    if (GPUTexture* gain_texture = video_gain_texture.get())
+    {
+      GL_SCOPE_FMT("ApplyVideoGain({},{},{})", video_gain[0], video_gain[1], video_gain[2]);
+      struct VideoGainUniforms
+      {
+        u32 sample_offset[2];
+        u32 pad[2];
+        float gain[4];
+      } uniforms = {{static_cast<u32>(display_texture_view_x), static_cast<u32>(display_texture_view_y)},
+                    {0, 0},
+                    {video_gain[0], video_gain[1], video_gain[2], 1.0f}};
+
+      g_gpu_device->InvalidateRenderTarget(gain_texture);
+      g_gpu_device->SetRenderTarget(gain_texture);
+      g_gpu_device->SetPipeline(m_video_gain_pipeline.get());
+      g_gpu_device->SetTextureSampler(0, display_texture, g_gpu_device->GetNearestSampler());
+      g_gpu_device->PushUniformBuffer(&uniforms, sizeof(uniforms));
+      g_gpu_device->SetViewportAndScissor(0, 0, gain_width, gain_height);
+      g_gpu_device->Draw(3, 0);
+      gain_texture->MakeReadyForSampling();
+
+      display_texture = gain_texture;
+      display_texture_view_x = 0;
+      display_texture_view_y = 0;
     }
   }
 
@@ -2801,7 +2866,7 @@ void GPU::DestroyDeinterlaceTextures()
   m_current_deinterlace_buffer = 0;
 }
 
-bool GPU::Deinterlace(u32 field, u32 line_skip)
+bool GPU::Deinterlace(u32 field, u32 line_skip, u32 line_band)
 {
   GPUTexture* src = m_display_texture;
   const u32 x = m_display_texture_view_x;
@@ -2817,7 +2882,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
         return true;
 
       // Still have to extract the field.
-      if (!DeinterlaceExtractField(0, src, x, y, width, height, line_skip)) [[unlikely]]
+      if (!DeinterlaceExtractField(0, src, x, y, width, height, line_skip, line_band)) [[unlikely]]
         return false;
 
       SetDisplayTexture(m_deinterlace_buffers[0].get(), m_display_depth_buffer, 0, 0, width, height);
@@ -2859,7 +2924,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
       const u32 this_buffer = m_current_deinterlace_buffer;
       m_current_deinterlace_buffer = (m_current_deinterlace_buffer + 1u) % NUM_BLEND_BUFFERS;
       GL_INS_FMT("Current buffer: {}", this_buffer);
-      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip) ||
+      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip, line_band) ||
           !DeinterlaceSetTargetSize(width, height, false)) [[unlikely]]
       {
         ClearDisplayTexture();
@@ -2891,7 +2956,7 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
       const u32 this_buffer = m_current_deinterlace_buffer;
       m_current_deinterlace_buffer = (m_current_deinterlace_buffer + 1u) % DEINTERLACE_BUFFER_COUNT;
       GL_INS_FMT("Current buffer: {}", this_buffer);
-      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip) ||
+      if (!DeinterlaceExtractField(this_buffer, src, x, y, width, height, line_skip, line_band) ||
           !DeinterlaceSetTargetSize(width, full_height, false)) [[unlikely]]
       {
         ClearDisplayTexture();
@@ -2922,7 +2987,8 @@ bool GPU::Deinterlace(u32 field, u32 line_skip)
   }
 }
 
-bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip)
+bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y, u32 width, u32 height, u32 line_skip,
+                                  u32 line_band)
 {
   if (!m_deinterlace_buffers[dst_bufidx] || m_deinterlace_buffers[dst_bufidx]->GetWidth() != width ||
       m_deinterlace_buffers[dst_bufidx]->GetHeight() != height)
@@ -2955,7 +3021,7 @@ bool GPU::DeinterlaceExtractField(u32 dst_bufidx, GPUTexture* src, u32 x, u32 y,
     g_gpu_device->SetRenderTarget(dst);
     g_gpu_device->SetPipeline(m_deinterlace_extract_pipeline.get());
     g_gpu_device->SetTextureSampler(0, src, g_gpu_device->GetNearestSampler());
-    const u32 uniforms[] = {x, y, line_skip};
+    const u32 uniforms[] = {x, y, line_skip, line_band};
     g_gpu_device->PushUniformBuffer(uniforms, sizeof(uniforms));
     g_gpu_device->SetViewportAndScissor(0, 0, width, height);
     g_gpu_device->Draw(3, 0);
@@ -3018,6 +3084,79 @@ bool GPU::ApplyChromaSmoothing()
   m_chroma_smoothing_texture->MakeReadyForSampling();
   SetDisplayTexture(m_chroma_smoothing_texture.get(), m_display_depth_buffer, 0, 0, width, height);
   return true;
+}
+
+bool GPU::CalculateCyberLeadLEDAttachedRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                             bool apply_aspect_ratio, GSVector4i* led_rect) const
+{
+  static constexpr s32 LED_ASPECT_WIDTH = 96;
+  static constexpr s32 LED_ASPECT_HEIGHT = 16;
+
+  const u32 mode = g_settings.arcade_namco_system12_cyber_lead_led_mode;
+  if (!Arcade::JVS::NamcoCyberLead::IsLEDHardwareActive() || !IsCyberLeadLEDGame() ||
+      (mode != 1 && mode != 2) || window_width < LED_ASPECT_WIDTH ||
+      window_height <= LED_ASPECT_HEIGHT)
+  {
+    return false;
+  }
+
+  const s32 width_percentage =
+    static_cast<s32>(g_settings.GetNamcoSystem12CyberLeadLEDWidthPercentage());
+  GSVector4i candidate_display_rect;
+  GSVector4i candidate_draw_rect;
+  s32 panel_height = 1;
+
+  // Panel height affects the final game width that the panel is sized from. Iterate to the
+  // stable 6:1 height; this converges quickly because the panel is much wider than it is tall.
+  for (u32 i = 0; i < 16; i++)
+  {
+    CalculateDrawRect(window_width, window_height - panel_height, apply_rotation, apply_aspect_ratio,
+                      &candidate_display_rect, &candidate_draw_rect);
+    const s32 panel_width = std::clamp(
+      ((candidate_draw_rect.width() * width_percentage) + 50) / 100, LED_ASPECT_WIDTH, window_width);
+    const s32 next_height = std::clamp(
+      ((panel_width * LED_ASPECT_HEIGHT) + (LED_ASPECT_WIDTH - 1)) / LED_ASPECT_WIDTH, LED_ASPECT_HEIGHT,
+      window_height - 1);
+    if (next_height == panel_height)
+      break;
+
+    panel_height = next_height;
+  }
+
+  CalculateDrawRect(window_width, window_height - panel_height, apply_rotation, apply_aspect_ratio,
+                    &candidate_display_rect, &candidate_draw_rect);
+  const s32 panel_width = std::clamp(
+    ((candidate_draw_rect.width() * width_percentage) + 50) / 100, LED_ASPECT_WIDTH, window_width);
+  const s32 panel_x = candidate_draw_rect.x + ((candidate_draw_rect.width() - panel_width) / 2);
+  const s32 panel_y = (mode == 1) ? 0 : (window_height - panel_height);
+  *led_rect = GSVector4i(panel_x, panel_y, panel_x + panel_width, panel_y + panel_height);
+  return true;
+}
+
+void GPU::CalculatePresentationDrawRect(s32 window_width, s32 window_height, bool apply_rotation,
+                                        bool apply_aspect_ratio, GSVector4i* display_rect,
+                                        GSVector4i* draw_rect) const
+{
+  s32 content_top = 0;
+  s32 content_height = window_height;
+
+  GSVector4i led_rect;
+  if (CalculateCyberLeadLEDAttachedRect(window_width, window_height, apply_rotation, apply_aspect_ratio, &led_rect))
+  {
+    content_height -= led_rect.height();
+    if (g_settings.arcade_namco_system12_cyber_lead_led_mode == 1)
+      content_top = led_rect.height();
+  }
+
+  CalculateDrawRect(window_width, content_height, apply_rotation, apply_aspect_ratio, display_rect, draw_rect);
+
+  if (content_top != 0)
+  {
+    display_rect->y += content_top;
+    display_rect->w += content_top;
+    draw_rect->y += content_top;
+    draw_rect->w += content_top;
+  }
 }
 
 void GPU::CalculateDrawRect(s32 window_width, s32 window_height, bool apply_rotation, bool apply_aspect_ratio,

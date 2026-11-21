@@ -83,12 +83,22 @@ void Initialize();
 void Reset();
 void Shutdown();
 
-bool DoState(StateWrapper& sw);
+/// In strict mode, the set of events active now must equal the saved set exactly; any difference fails the load.
+bool DoState(StateWrapper& sw, bool strict = false);
 
 bool IsRunningEvents();
 void CancelRunningEvent();
 void RunEvents();
 void CommitLeftoverTicks();
+
+/// Runs the events which are due from inside a branch/delay-slot pair. The CPU state is not resumable at this point,
+/// so deferred frame host work waits for the next RunEvents() at an instruction boundary.
+void RunEventsInsideInstructionPair();
+
+/// Defers the end-of-frame host work (message pump, input poll, execution exit) to the next RunEvents() at a
+/// resumable CPU boundary. The frame can end inside an instruction (GPU register reads synchronize the CRTC) or
+/// between a branch and its delay slot, where state saves and execution exits would capture partial CPU state.
+void DeferFrameHostWork();
 
 void UpdateCPUDowncount();
 

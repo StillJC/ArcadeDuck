@@ -136,7 +136,7 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
   start_fullscreen = si.GetBoolValue("Main", "StartFullscreen", false);
   pause_on_focus_loss = si.GetBoolValue("Main", "PauseOnFocusLoss", false);
   pause_on_controller_disconnection = si.GetBoolValue("Main", "PauseOnControllerDisconnection", false);
-  save_state_on_exit = si.GetBoolValue("Main", "SaveStateOnExit", true);
+  save_state_on_exit = si.GetBoolValue("Main", "SaveStateOnExit", false);
   create_save_state_backups = si.GetBoolValue("Main", "CreateSaveStateBackups", DEFAULT_SAVE_STATE_BACKUPS);
   confim_power_off = si.GetBoolValue("Main", "ConfirmPowerOff", true);
   load_devices_from_save_states = si.GetBoolValue("Main", "LoadDevicesFromSaveStates", false);
@@ -176,6 +176,32 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
     si.GetBoolValue("ArcadeMachine", "NamcoSystem11DIPTest", false);
   arcade_namco_system11_dip_freeze =
     si.GetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze", false);
+
+  arcade_namco_system12_cyber_lead_led_hardware_enabled =
+    si.GetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", false);
+
+  if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode"))
+  {
+    arcade_namco_system12_cyber_lead_led_mode = static_cast<u8>(
+      std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode", 0), 0, 3));
+  }
+  else if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition"))
+  {
+    const int legacy_position = si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDPosition", 1);
+    arcade_namco_system12_cyber_lead_led_mode = (legacy_position == 0) ? 0 : 1;
+  }
+  else
+  {
+    arcade_namco_system12_cyber_lead_led_mode = 0;
+  }
+  arcade_namco_system12_cyber_lead_led_size = static_cast<u8>(
+    std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", 2), 1, 3));
+  arcade_namco_system12_cyber_lead_led_color = static_cast<u8>(
+    std::clamp(si.GetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDColor", 0), 0, 8));
+  arcade_namco_system12_cyber_lead_led_monitor =
+    si.GetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor", "");
+  arcade_namco_system12_cyber_lead_led_borderless_fullscreen =
+    si.GetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen", false);
 
   arcade_sony_zn_bios_service_mode =
     si.GetBoolValue("ArcadeMachine", "SonyZNBIOSServiceMode", false);
@@ -507,6 +533,17 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
                     arcade_namco_system11_dip_test);
     si.SetBoolValue("ArcadeMachine", "NamcoSystem11DIPFreeze",
                     arcade_namco_system11_dip_freeze);
+
+    si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled",
+                    arcade_namco_system12_cyber_lead_led_hardware_enabled);
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
+                   arcade_namco_system12_cyber_lead_led_mode);
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", arcade_namco_system12_cyber_lead_led_size);
+    si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDColor", arcade_namco_system12_cyber_lead_led_color);
+    si.SetStringValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMonitor",
+                      arcade_namco_system12_cyber_lead_led_monitor.c_str());
+    si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDBorderlessFullscreen",
+                    arcade_namco_system12_cyber_lead_led_borderless_fullscreen);
 
     si.SetBoolValue("ArcadeMachine", "SonyZNBIOSServiceMode",
                     arcade_sony_zn_bios_service_mode);
