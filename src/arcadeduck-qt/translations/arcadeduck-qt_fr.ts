@@ -13110,6 +13110,53 @@ Voulez-vous créer ce répertoire ?</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>Ce jeu installe ses propres graphismes LED dans le panneau. Certains jeux demandent d&apos;abord à l&apos;exploitant s&apos;il faut les transférer ; si le transfert est refusé, le panneau conserve l&apos;animation d&apos;usine de la carte.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>Ce jeu active le panneau sans installer de graphismes ; le panneau affiche donc l&apos;animation d&apos;usine de la carte Cyber Lead.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>Ce jeu sélectionne directement les scènes du panneau sans installer de graphismes.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>Ce jeu n&apos;envoie aucune commande LED. Dans une borne Cyber Lead, le panneau affiche l&apos;animation d&apos;usine de la carte (par défaut de la borne) dès que le délai de configuration propre à la carte d&apos;E/S expire, environ une minute après que le jeu s&apos;est adressé à l&apos;E/S JVS de la borne.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>Panneau LED de la borne Namco Cyber Lead (matrice de 96 x 16 points). %1
+Les modes attachés réservent de l&apos;espace au-dessus ou en dessous de l&apos;image du jeu. La fenêtre séparée peut être placée sur un autre écran. L&apos;affichage basé sur le firmware nécessite namco_cyberlead_led.zip (ou cl1-leda.ic5 seul) dans le dossier BIOS.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>Borne d&apos;origine</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>Borne Cyber Lead</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>Borne :</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Connecte le jeu à la carte d&apos;E/S JVS d&apos;une borne Namco Cyber Lead. Le panneau LED n&apos;est disponible qu&apos;avec cette borne. Sur System 12, les commandes JVS de la borne remplacent les entrées de la carte mère ; sur System 10, le jeu décide s&apos;il lit les commandes JVS de la borne ou les entrées de sa propre carte. ArcadeDuck pilote les deux avec les mêmes affectations de manette. Redémarrez le jeu après avoir modifié ce paramètre.</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.cpp" line="74"/>
         <source>Summary</source>
         <translation>Résumé</translation>

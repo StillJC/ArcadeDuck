@@ -13095,6 +13095,53 @@ Do you want to create this directory?</source>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>이 게임은 자체 LED 그래픽을 패널에 설치합니다. 일부 게임은 먼저 운영자에게 전송 여부를 묻고, 전송을 거부하면 패널은 보드의 공장 기본 화면을 유지합니다.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>이 게임은 그래픽을 설치하지 않고 패널을 활성화하므로 패널에 사이버 리드 보드의 공장 기본 화면이 재생됩니다.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>이 게임은 그래픽을 설치하지 않고 패널의 장면을 직접 선택합니다.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>이 게임은 LED 명령을 보내지 않습니다. 사이버 리드 캐비닛에서는 게임이 캐비닛의 JVS I/O에 주소를 지정한 지 약 1분 후 I/O 보드 자체의 설정 대기 시간이 끝나면 보드의 공장 기본 화면(캐비닛 기본값)이 패널에 재생됩니다.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>남코 사이버 리드 캐비닛 LED 패널(96 x 16 도트 매트릭스). %1
+부착 모드는 게임 화면 위나 아래에 공간을 확보합니다. 별도 창은 다른 모니터에 배치할 수 있습니다. 펌웨어 기반 화면에는 BIOS 폴더에 namco_cyberlead_led.zip(또는 단독 cl1-leda.ic5)이 필요합니다.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>원래 캐비닛</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>사이버 리드 캐비닛</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>캐비닛:</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>게임을 남코 사이버 리드 캐비닛의 JVS I/O 보드에 연결합니다. LED 패널은 이 캐비닛에서만 사용할 수 있습니다. System 12에서는 캐비닛의 JVS 조작이 메인보드 입력을 대체하며, System 10에서는 캐비닛의 JVS 조작과 보드 자체 입력 중 무엇을 읽을지 게임이 결정합니다. ArcadeDuck은 두 가지 모두를 같은 컨트롤러 할당으로 조작합니다. 이 설정을 변경한 후 게임을 다시 시작하세요.</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.cpp" line="74"/>
         <source>Summary</source>
         <translation>개요</translation>

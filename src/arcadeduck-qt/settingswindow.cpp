@@ -399,10 +399,58 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
   }
   else if (has_cyber_lead_led)
   {
-    description->setText(tr("Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix).\n"
+    using Arcade::JVS::NamcoCyberLead;
+    const NamcoCyberLead::CabinetSupport cabinet_support = NamcoCyberLead::GetCabinetSupport(m_game_serial);
+
+    QString led_behavior;
+    switch (NamcoCyberLead::GetLEDCapability(m_game_serial))
+    {
+      case NamcoCyberLead::LEDCapability::Upload:
+        led_behavior = tr("This game installs its own LED graphics into the panel. Some games first ask the operator "
+                          "whether to transfer them; if the transfer is declined, the panel keeps the board's factory "
+                          "display.");
+        break;
+      case NamcoCyberLead::LEDCapability::Enable:
+        led_behavior = tr("This game enables the panel without installing graphics, so the panel plays the Cyber "
+                          "Lead board's factory display.");
+        break;
+      case NamcoCyberLead::LEDCapability::Control:
+        led_behavior = tr("This game selects the panel's scenes directly without installing graphics.");
+        break;
+      case NamcoCyberLead::LEDCapability::None:
+        led_behavior = tr("This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board's "
+                          "factory display (cabinet default) once the I/O board's own setup timeout expires, about a "
+                          "minute after the game addresses the cabinet's JVS I/O.");
+        break;
+    }
+
+    description->setText(tr("Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1\n"
                             "Attached modes reserve space above or below the game image. Separate Window can be "
                             "placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip "
-                            "(or loose cl1-leda.ic5) in the BIOS folder."));
+                            "(or loose cl1-leda.ic5) in the BIOS folder.")
+                           .arg(led_behavior));
+
+    if (cabinet_support == NamcoCyberLead::CabinetSupport::Compatible)
+    {
+      QComboBox* cabinet_combo = new QComboBox(group);
+      cabinet_combo->addItem(tr("Original Cabinet"), false);
+      cabinet_combo->addItem(tr("Cyber Lead Cabinet"), true);
+      cabinet_combo->setCurrentIndex(
+        getBoolValue("ArcadeMachine", "NamcoCyberLeadCabinet", false).value_or(false) ? 1 : 0);
+      connect(cabinet_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+              [this, cabinet_combo](int index) {
+                setBoolSettingValue("ArcadeMachine", "NamcoCyberLeadCabinet",
+                                    cabinet_combo->itemData(index).toBool());
+              });
+      const QString cabinet_label = tr("Cabinet:");
+      form->addRow(cabinet_label, cabinet_combo);
+      registerWidgetHelp(cabinet_combo, cabinet_label, tr("Original Cabinet"),
+                         tr("Connects the game to a Namco Cyber Lead cabinet's JVS I/O board. The LED panel is only "
+                            "available with this cabinet. On System 12 the cabinet's JVS controls replace the "
+                            "motherboard inputs; on System 10 the game decides whether it reads the cabinet's JVS "
+                            "controls or its own board inputs. ArcadeDuck drives both from the same controller "
+                            "bindings. Restart the game after changing this setting."));
+    }
 
     QCheckBox* hardware_check = new QCheckBox(group);
     hardware_check->setChecked(

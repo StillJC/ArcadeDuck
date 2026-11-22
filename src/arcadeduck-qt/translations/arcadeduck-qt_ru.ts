@@ -13351,6 +13351,53 @@ Do you want to create this directory?</source>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>Эта игра устанавливает в панель собственную LED-графику. Некоторые игры сначала спрашивают оператора, передавать ли данные; если передача отклонена, панель сохраняет заводскую программу платы.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>Эта игра включает панель без установки графики, поэтому панель показывает заводскую программу платы Cyber Lead.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>Эта игра напрямую выбирает сцены панели без установки графики.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>Эта игра не отправляет LED-команды. В корпусе Cyber Lead панель показывает заводскую программу платы (по умолчанию для корпуса), когда истекает собственный тайм-аут настройки платы ввода/вывода, примерно через минуту после того, как игра обратится к JVS-вводу/выводу корпуса.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>LED-панель корпуса Namco Cyber Lead (матрица 96 x 16 точек). %1
+Прикреплённые режимы резервируют место над или под изображением игры. Отдельное окно можно разместить на другом мониторе. Для отображения на основе прошивки нужен namco_cyberlead_led.zip (или отдельный cl1-leda.ic5) в папке BIOS.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>Исходный корпус</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>Корпус Cyber Lead</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>Корпус:</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Подключает игру к плате JVS-ввода/вывода корпуса Namco Cyber Lead. LED-панель доступна только с этим корпусом. В System 12 JVS-управление корпуса заменяет входы материнской платы; в System 10 игра сама решает, читать ли JVS-управление корпуса или собственные входы платы. ArcadeDuck управляет обоими через одни и те же назначения контроллера. Перезапустите игру после изменения этого параметра.</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.ui" line="20"/>
         <location filename="../settingswindow.cpp" line="529"/>
         <location filename="../settingswindow.cpp" line="547"/>

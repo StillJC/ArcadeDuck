@@ -13109,6 +13109,53 @@ Möchten Sie dieses Verzeichnis erstellen?</translation>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>Dieses Spiel installiert eigene LED-Grafiken auf der Anzeige. Manche Spiele fragen zuvor den Betreiber, ob die Daten übertragen werden sollen; wird die Übertragung abgelehnt, behält die Anzeige die Werksdarstellung der Platine.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>Dieses Spiel aktiviert die Anzeige, ohne Grafiken zu installieren; die Anzeige spielt daher die Werksdarstellung der Cyber-Lead-Platine ab.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>Dieses Spiel wählt die Szenen der Anzeige direkt aus, ohne Grafiken zu installieren.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>Dieses Spiel sendet keine LED-Befehle. In einem Cyber-Lead-Gehäuse spielt die Anzeige die Werksdarstellung der Platine ab (Gehäusestandard), sobald die eigene Einrichtungszeit der E/A-Platine abläuft, etwa eine Minute nachdem das Spiel die JVS-E/A des Gehäuses angesprochen hat.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>Namco Cyber Lead LED-Anzeige des Gehäuses (96 x 16 Punktmatrix). %1
+Angedockte Modi reservieren Platz über oder unter dem Spielbild. Das separate Fenster kann auf einem anderen Monitor platziert werden. Die firmwaregestützte Anzeige benötigt namco_cyberlead_led.zip (oder eine lose cl1-leda.ic5) im BIOS-Ordner.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>Originalgehäuse</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>Cyber-Lead-Gehäuse</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>Gehäuse:</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Verbindet das Spiel mit der JVS-E/A-Platine eines Namco-Cyber-Lead-Gehäuses. Die LED-Anzeige ist nur mit diesem Gehäuse verfügbar. Bei System 12 ersetzen die JVS-Bedienelemente des Gehäuses die Eingänge der Hauptplatine; bei System 10 entscheidet das Spiel, ob es die JVS-Bedienelemente des Gehäuses oder die eigenen Platineneingänge liest. ArcadeDuck steuert beide über dieselben Controller-Belegungen. Starten Sie das Spiel nach dem Ändern dieser Einstellung neu.</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.cpp" line="74"/>
         <source>Summary</source>
         <translation>Zusammenfassung</translation>

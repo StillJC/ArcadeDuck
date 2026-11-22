@@ -13106,6 +13106,53 @@ Do you want to create this directory?</source>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>Este juego instala sus propios gráficos LED en el panel. Algunos juegos preguntan antes al operador si desea transferirlos; si se rechaza la transferencia, el panel conserva la pantalla de fábrica de la placa.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>Este juego activa el panel sin instalar gráficos, por lo que el panel reproduce la pantalla de fábrica de la placa Cyber Lead.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>Este juego selecciona directamente las escenas del panel sin instalar gráficos.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>Este juego no envía comandos LED. En un mueble Cyber Lead el panel reproduce la pantalla de fábrica de la placa (predeterminada del mueble) cuando vence el propio tiempo de espera de configuración de la placa de E/S, aproximadamente un minuto después de que el juego se dirija a la E/S JVS del mueble.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>Panel LED del mueble Namco Cyber Lead (matriz de 96 x 16 puntos). %1
+Los modos acoplados reservan espacio encima o debajo de la imagen del juego. La ventana separada puede colocarse en otro monitor. La pantalla basada en el firmware necesita namco_cyberlead_led.zip (o cl1-leda.ic5 suelto) en la carpeta de BIOS.</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>Mueble original</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>Mueble Cyber Lead</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>Mueble:</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Conecta el juego a la placa de E/S JVS de un mueble Namco Cyber Lead. El panel LED solo está disponible con este mueble. En System 12 los controles JVS del mueble sustituyen a las entradas de la placa base; en System 10 el juego decide si lee los controles JVS del mueble o las entradas de su propia placa. ArcadeDuck controla ambos con las mismas asignaciones del mando. Reinicia el juego después de cambiar este ajuste.</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.ui" line="20"/>
         <location filename="../settingswindow.cpp" line="529"/>
         <location filename="../settingswindow.cpp" line="547"/>

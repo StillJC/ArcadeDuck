@@ -13095,6 +13095,53 @@ Do you want to create this directory?</source>
 <context>
     <name>SettingsWindow</name>
     <message>
+        <location filename="../settingswindow.cpp" line="409"/>
+        <source>This game installs its own LED graphics into the panel. Some games first ask the operator whether to transfer them; if the transfer is declined, the panel keeps the board&apos;s factory display.</source>
+        <translation>此游戏会向面板写入自己的 LED 图形。部分游戏会先询问操作员是否传输；如果拒绝传输，面板会保留主板的出厂画面。</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="414"/>
+        <source>This game enables the panel without installing graphics, so the panel plays the Cyber Lead board&apos;s factory display.</source>
+        <translation>此游戏在不写入图形的情况下启用面板，因此面板播放 Cyber Lead 主板的出厂画面。</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="418"/>
+        <source>This game selects the panel&apos;s scenes directly without installing graphics.</source>
+        <translation>此游戏直接选择面板的场景，不写入图形。</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="421"/>
+        <source>This game sends no LED commands. In a Cyber Lead cabinet the panel plays the board&apos;s factory display (cabinet default) once the I/O board&apos;s own setup timeout expires, about a minute after the game addresses the cabinet&apos;s JVS I/O.</source>
+        <translation>此游戏不发送 LED 命令。在 Cyber Lead 机台中，游戏寻址机台的 JVS I/O 约一分钟后，I/O 主板自身的设置超时结束，面板随即播放主板的出厂画面（机台默认）。</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="427"/>
+        <source>Namco Cyber Lead cabinet LED panel (96 x 16 dot matrix). %1
+Attached modes reserve space above or below the game image. Separate Window can be placed on another monitor. The firmware-backed display needs namco_cyberlead_led.zip (or loose cl1-leda.ic5) in the BIOS folder.</source>
+        <translation>南梦宫 Cyber Lead 机台 LED 面板（96 x 16 点阵）。%1
+附加模式会在游戏画面上方或下方预留空间。独立窗口可放置在其他显示器上。基于固件的显示需要在 BIOS 文件夹中放置 namco_cyberlead_led.zip（或单独的 cl1-leda.ic5）。</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="436"/>
+        <source>Original Cabinet</source>
+        <translation>原始机台</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="437"/>
+        <source>Cyber Lead Cabinet</source>
+        <translation>Cyber Lead 机台</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="445"/>
+        <source>Cabinet:</source>
+        <translation>机台：</translation>
+    </message>
+    <message>
+        <location filename="../settingswindow.cpp" line="448"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>将游戏连接到南梦宫 Cyber Lead 机台的 JVS I/O 主板。LED 面板仅在此机台中可用。在 System 12 上，机台的 JVS 控制会取代主板输入；在 System 10 上，由游戏决定读取机台的 JVS 控制还是主板自身的输入。ArcadeDuck 使用相同的控制器绑定驱动两者。更改此设置后请重新启动游戏。</translation>
+    </message>
+    <message>
         <location filename="../settingswindow.ui" line="20"/>
         <location filename="../settingswindow.cpp" line="529"/>
         <location filename="../settingswindow.cpp" line="547"/>
