@@ -79,7 +79,32 @@ public:
   static void SetActive(NamcoCyberLead* device);
   static bool IsLEDHardwareActive();
 
-  // True for database games whose cabinet uses the Cyber Lead I/O board.
+  // What the game software does with the LED board (database property cyberLeadLed).
+  enum class LEDCapability : u8
+  {
+    None,    // no LED commands; the panel can only play the board's factory display
+    Upload,  // installs its own LED data (71/02, 71/05, 71/06, 71/08)
+    Enable,  // closes LED setup without an upload (71/04), selecting the factory display
+    Control, // selects scenes with 71/01 control bytes without a profile
+  };
+
+  // Whether the game runs in a Cyber Lead cabinet. Native titles use the CL1-I/OB as their normal I/O board
+  // (ioBoard: cyberlead); compatible titles keep their own I/O unless the cabinet is selected in the game's
+  // settings (cyberLeadCabinet: compatible).
+  enum class CabinetSupport : u8
+  {
+    None,
+    Native,
+    Compatible,
+  };
+
+  static LEDCapability GetLEDCapability(std::string_view serial);
+  static CabinetSupport GetCabinetSupport(std::string_view serial);
+
+  // Whether the CL1-I/OB JVS node, and with it the LED PCB, is attached for this game.
+  static bool IsCabinetAttached(std::string_view serial, bool cabinet_selected);
+
+  // True for database games that can run in a Cyber Lead cabinet.
   static bool IsCyberLeadGame(std::string_view serial);
 
 private:

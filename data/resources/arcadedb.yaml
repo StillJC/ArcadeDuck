@@ -5835,6 +5835,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3a:
     archive: "tekken3a.zip"
@@ -5881,6 +5882,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3b:
     archive: "tekken3b.zip"
@@ -5927,6 +5929,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3c:
     archive: "tekken3c.zip"
@@ -5973,6 +5976,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3d:
     archive: "tekken3d.zip"
@@ -6019,6 +6023,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3ua:
     archive: "tekken3ua.zip"
@@ -6065,6 +6070,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3ud:
     archive: "tekken3ud.zip"
@@ -6111,6 +6117,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3ja:
     archive: "tekken3ja.zip"
@@ -6157,6 +6164,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3jd:
     archive: "tekken3jd.zip"
@@ -6203,6 +6211,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tekken3je1:
     archive: "tekken3je1.zip"
@@ -6249,6 +6258,7 @@ games:
       inputProfile: "tekken3"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   lbgrande:
     archive: "lbgrande.zip"
@@ -6289,6 +6299,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   toukon3:
     archive: "toukon3.zip"
@@ -6328,6 +6339,8 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       emulationFlags: "MACHINE_IMPERFECT_GRAPHICS"
+      cyberLeadLed: "none"
+      cyberLeadCabinet: "compatible"
 
   soulclbr:
     archive: "soulclbr.zip"
@@ -6369,6 +6382,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrab:
     archive: "soulclbrab.zip"
@@ -6411,6 +6425,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrac:
     archive: "soulclbrac.zip"
@@ -6453,6 +6468,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrub:
     archive: "soulclbrub.zip"
@@ -6495,6 +6511,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbruc:
     archive: "soulclbruc.zip"
@@ -6537,6 +6554,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrja2:
     archive: "soulclbrja2.zip"
@@ -6579,6 +6597,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrjb:
     archive: "soulclbrjb.zip"
@@ -6621,6 +6640,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   soulclbrjc:
     archive: "soulclbrjc.zip"
@@ -6663,6 +6683,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   ehrgeiz:
     archive: "ehrgeiz.zip"
@@ -6707,6 +6728,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   ehrgeizua:
     archive: "ehrgeizua.zip"
@@ -6752,6 +6774,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   ehrgeizja:
     archive: "ehrgeizja.zip"
@@ -6797,6 +6820,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   sws98:
     archive: "sws98.zip"
@@ -6840,6 +6864,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   aplarail:
     archive: "aplarail.zip"
@@ -6882,6 +6907,7 @@ games:
       inputProfile: "aplarail"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   mdhorse:
     archive: "mdhorse.zip"
@@ -6924,6 +6950,7 @@ games:
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   technodr:
     archive: "technodr.zip"
@@ -7009,6 +7036,8 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      cyberLeadLed: "enable"
+      cyberLeadCabinet: "compatible"
 
   tenkomorja1:
     archive: "tenkomorja1.zip"
@@ -7054,6 +7083,8 @@ games:
       machineConfig: "coh700b"
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
+      cyberLeadLed: "enable"
+      cyberLeadCabinet: "compatible"
 
   fgtlayer:
     archive: "fgtlayer.zip"
@@ -7098,6 +7129,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "control"
 
   fgtlayerja:
     archive: "fgtlayerja.zip"
@@ -7143,6 +7175,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   pacapp:
     archive: "pacapp.zip"
@@ -7185,6 +7218,8 @@ games:
       machineConfig: "coh700b"
       inputProfile: "pacapp"
       stateClass: "namcos12_state"
+      cyberLeadLed: "none"
+      cyberLeadCabinet: "compatible"
 
   ptblank2:
     archive: "ptblank2.zip"
@@ -7329,6 +7364,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tektagt:
     archive: "tektagt.zip"
@@ -7376,6 +7412,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tektagtc1a:
     archive: "tektagtc1a.zip"
@@ -7430,6 +7467,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tektagtub:
     archive: "tektagtub.zip"
@@ -7478,6 +7516,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tektagtuc1:
     archive: "tektagtuc1.zip"
@@ -7526,6 +7565,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   tektagtja3:
     archive: "tektagtja3.zip"
@@ -7576,6 +7616,7 @@ games:
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
+      cyberLeadLed: "upload"
 
   tektagtjb:
     archive: "tektagtjb.zip"
@@ -7625,6 +7666,7 @@ games:
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
+      cyberLeadLed: "upload"
 
   tektagtjc1:
     archive: "tektagtjc1.zip"
@@ -7673,6 +7715,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "tektagt_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   ghlpanic:
     archive: "ghlpanic.zip"
@@ -7787,6 +7830,8 @@ games:
       machineConfig: "coh700b"
       inputProfile: "pacapp2"
       stateClass: "namcos12_state"
+      cyberLeadLed: "none"
+      cyberLeadCabinet: "compatible"
 
   mrdrillr:
     archive: "mrdrillr.zip"
@@ -7825,6 +7870,7 @@ games:
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   mrdrillrja2:
     archive: "mrdrillrja2.zip"
@@ -7864,6 +7910,7 @@ games:
       inputProfile: "mrdrillr"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   ujlnow:
     archive: "ujlnow.zip"
@@ -7988,6 +8035,7 @@ games:
       inputProfile: "mdhorse"
       stateClass: "namcos12_altbank_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   pacappsp:
     archive: "pacappsp.zip"
@@ -8027,6 +8075,8 @@ games:
       machineConfig: "coh700b"
       inputProfile: "pacapp2"
       stateClass: "namcos12_state"
+      cyberLeadLed: "none"
+      cyberLeadCabinet: "compatible"
 
   aquarush:
     archive: "aquarush.zip"
@@ -8065,6 +8115,7 @@ games:
       inputProfile: "lbgrande"
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   golgo13:
     archive: "golgo13.zip"
@@ -8155,6 +8206,7 @@ games:
       stateClass: "namcos12_state"
       ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
+      cyberLeadLed: "upload"
 
   truckk:
     archive: "truckk.zip"
@@ -8373,6 +8425,7 @@ games:
       stateClass: "namcos12_altbank_state"
       ioBoard: "cyberlead"
       emulationFlags: "MACHINE_NOT_WORKING"
+      cyberLeadLed: "upload"
 
   ts2:
     archive: "ts2.zip"
@@ -14841,6 +14894,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Mr. Driller 2 (World, DR22 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   mrdrilr2j:
     archive: "mrdrilr2j.zip"
@@ -14880,6 +14934,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Mr. Driller 2 (Japan, DR21 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   mrdrilr2u:
     archive: "mrdrilr2u.zip"
@@ -14919,6 +14974,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Mr. Driller 2 (US, DR23 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   gahaha:
     archive: "gahaha.zip"
@@ -15188,6 +15244,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Kotoba no Puzzle Mojipittan (Japan, KPM1 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "enable"
 
   mrdrilrg:
     archive: "mrdrilrg.zip"
@@ -15227,6 +15284,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Mr. Driller G (Japan, DRG1 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "upload"
 
   chocovdr:
     archive: "chocovdr.zip"
@@ -15270,6 +15328,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Uchuu Daisakusen: Chocovader Contactee (Japan, CVC1 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "enable"
 
   gamshara:
     archive: "gamshara.zip"
@@ -15382,6 +15441,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Panikuru Panekuru (Japan, PPA1 Ver.A)"
       ioBoard: "cyberlead"
+      cyberLeadLed: "enable"
 
   puzzball:
     archive: "puzzball.zip"
@@ -15490,6 +15550,8 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Star Trigon (Japan, STT1 Ver.A)"
+      cyberLeadLed: "none"
+      cyberLeadCabinet: "compatible"
 
   sugorotc:
     archive: "sugorotc.zip"
@@ -16119,6 +16181,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin 2 (Japan, TK21 Ver.C)"
+      cyberLeadLed: "enable"
 
   taiko3:
     archive: "taiko3.zip"
@@ -16159,6 +16222,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin 3 (Japan, TK31 Ver.A)"
+      cyberLeadLed: "enable"
 
   taiko4:
     archive: "taiko4.zip"
@@ -16199,6 +16263,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin 4 (Japan, TK41 Ver.A)"
+      cyberLeadLed: "enable"
 
   taiko5:
     archive: "taiko5.zip"
@@ -16239,6 +16304,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin 5 (Japan, TK51 Ver.A)"
+      cyberLeadLed: "enable"
 
   taiko6:
     archive: "taiko6.zip"
@@ -16279,6 +16345,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin 6 (Japan, TK61 Ver.A)"
+      cyberLeadLed: "enable"
 
   taikort:
     archive: "taikort.zip"
@@ -16319,6 +16386,7 @@ games:
       stateClass: "namcos10_memn_state"
       emulationFlags: "MACHINE_NOT_WORKING | MACHINE_IMPERFECT_SOUND"
       mameDescription: "Taiko no Tatsujin RT: Nippon no Kokoro (Japan, TKN1 Ver.A)"
+      cyberLeadLed: "enable"
 
   g13jnr:
     archive: "g13jnr.zip"
@@ -16470,6 +16538,7 @@ games:
       stateClass: "namcos10_memp3_state"
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Seishun-Quiz Colorful High School (CHS1 Ver.A)"
+      cyberLeadLed: "enable"
 
   ippo:
     archive: "ippo.zip"

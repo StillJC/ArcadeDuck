@@ -246,6 +246,7 @@ struct RuntimeState
   bool h8_jvs_rts = false;
   Arcade::JVS::Bus h8_jvs_bus;
   Arcade::JVS::NamcoCyberLead h8_cyberlead;
+  bool cyberlead_cabinet = false;
   bool cyberlead_led_enabled = false;
   u64 h8_cyberlead_deferred_clocks = 0;
   Arcade::JVS::NamcoFCA10 h8_fca10;
@@ -3276,8 +3277,8 @@ void ResetH8(RuntimeState& runtime, bool reset_led_board = true)
   runtime.h8_rtc_scheduler_fraction = 0;
   runtime.h8_jvs_chain.Clear();
 
-  // Cyber Lead cabinets: the titles that send LED data to the panel (MAME cyberlead.cpp).
-  if (runtime.content.io_board == "cyberlead")
+  // A Cyber Lead cabinet is JVS-only: its CL1-I/OB replaces the motherboard JAMMA inputs.
+  if (runtime.cyberlead_cabinet)
   {
     runtime.h8_jvs.profile = JVSProfile::CyberLead;
   }
@@ -3706,8 +3707,10 @@ bool Initialize(LoadedContent content, Error* error)
 
   RuntimeState runtime;
   runtime.content = std::move(content);
-  runtime.cyberlead_led_enabled = runtime.content.io_board == "cyberlead" &&
-                                  g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
+  runtime.cyberlead_cabinet = Arcade::JVS::NamcoCyberLead::IsCabinetAttached(
+    runtime.content.set_name, g_settings.arcade_namco_cyber_lead_cabinet_selected);
+  runtime.cyberlead_led_enabled =
+    runtime.cyberlead_cabinet && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
   if (runtime.cyberlead_led_enabled)
     runtime.content.cyberlead_led_firmware = Arcade::JVS::NamcoCyberLead::LoadFactoryLEDFirmware();
   if (HasLinkBoard(runtime.content))
@@ -4502,7 +4505,7 @@ bool IsSaveReadinessPending(std::string* message)
 
 void AppendStateIdentity(std::string* record)
 {
-  if (s_runtime.has_value() && s_runtime->content.io_board == "cyberlead")
+  if (s_runtime.has_value() && s_runtime->cyberlead_cabinet)
   {
     *record += fmt::format("cyberlead_led={}\n", s_runtime->h8_cyberlead.IsLEDPresent() ? "present" : "absent");
     if (!s_runtime->cyberlead_led_enabled)

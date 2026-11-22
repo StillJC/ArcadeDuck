@@ -255,15 +255,48 @@ bool NamcoCyberLead::IsLEDHardwareActive()
   return s_led_hardware_active.load(std::memory_order_acquire);
 }
 
-bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)
+static std::string_view FindGameProperty(std::string_view serial, std::string_view name)
 {
   const Arcade::Database::GameDefinition* const game = Arcade::Database::GetGame(serial);
   if (!game)
-    return false;
+    return {};
 
-  return std::any_of(game->properties.begin(), game->properties.end(), [](const Arcade::Database::Property& property) {
-    return property.name == "ioBoard" && property.value == "cyberlead";
-  });
+  const auto it =
+    std::find_if(game->properties.begin(), game->properties.end(),
+                 [name](const Arcade::Database::Property& property) { return property.name == name; });
+  return (it != game->properties.end()) ? std::string_view(it->value) : std::string_view();
+}
+
+NamcoCyberLead::LEDCapability NamcoCyberLead::GetLEDCapability(std::string_view serial)
+{
+  const std::string_view value = FindGameProperty(serial, "cyberLeadLed");
+  if (value == "upload")
+    return LEDCapability::Upload;
+  if (value == "enable")
+    return LEDCapability::Enable;
+  if (value == "control")
+    return LEDCapability::Control;
+  return LEDCapability::None;
+}
+
+NamcoCyberLead::CabinetSupport NamcoCyberLead::GetCabinetSupport(std::string_view serial)
+{
+  if (FindGameProperty(serial, "ioBoard") == "cyberlead")
+    return CabinetSupport::Native;
+  if (FindGameProperty(serial, "cyberLeadCabinet") == "compatible")
+    return CabinetSupport::Compatible;
+  return CabinetSupport::None;
+}
+
+bool NamcoCyberLead::IsCabinetAttached(std::string_view serial, bool cabinet_selected)
+{
+  const CabinetSupport support = GetCabinetSupport(serial);
+  return support == CabinetSupport::Native || (support == CabinetSupport::Compatible && cabinet_selected);
+}
+
+bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)
+{
+  return GetCabinetSupport(serial) != CabinetSupport::None;
 }
 
 void NamcoCyberLead::Reset()

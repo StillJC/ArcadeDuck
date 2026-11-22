@@ -237,6 +237,10 @@ struct Settings
   std::string arcade_namco_system12_cyber_lead_led_monitor;
   bool arcade_namco_system12_cyber_lead_led_borderless_fullscreen : 1 = false;
 
+  // Attach the Cyber Lead cabinet (CL1-I/OB JVS I/O and LED PCB) to a game whose database entry marks it
+  // cyberLeadCabinet: compatible. Native Cyber Lead titles always use the cabinet.
+  bool arcade_namco_cyber_lead_cabinet_selected : 1 = false;
+
   u32 GetNamcoSystem12CyberLeadLEDWidthPercentage() const
   {
     return (arcade_namco_system12_cyber_lead_led_size <= 1) ? 50 :

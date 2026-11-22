@@ -179,6 +179,7 @@ void Settings::Load(SettingsInterface& si, SettingsInterface& controller_si)
 
   arcade_namco_system12_cyber_lead_led_hardware_enabled =
     si.GetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", false);
+  arcade_namco_cyber_lead_cabinet_selected = si.GetBoolValue("ArcadeMachine", "NamcoCyberLeadCabinet", false);
 
   if (si.ContainsValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode"))
   {
@@ -536,6 +537,7 @@ void Settings::Save(SettingsInterface& si, bool ignore_base) const
 
     si.SetBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled",
                     arcade_namco_system12_cyber_lead_led_hardware_enabled);
+    si.SetBoolValue("ArcadeMachine", "NamcoCyberLeadCabinet", arcade_namco_cyber_lead_cabinet_selected);
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDMode",
                    arcade_namco_system12_cyber_lead_led_mode);
     si.SetIntValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDSize", arcade_namco_system12_cyber_lead_led_size);

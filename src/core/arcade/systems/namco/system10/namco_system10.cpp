@@ -1149,17 +1149,6 @@ void CabinetIOEventCallback(void*, TickCount ticks, TickCount)
     s_runtime->cyberlead.AdvanceLED(static_cast<u32>(ticks), static_cast<u32>(System::GetTicksPerSecond()));
 }
 
-bool HasCyberLeadCabinet(std::string_view set_name)
-{
-  const Arcade::Database::GameDefinition* game = Arcade::Database::GetGame(set_name);
-  if (!game)
-    return false;
-
-  return std::any_of(game->properties.begin(), game->properties.end(), [](const Arcade::Database::Property& p) {
-    return p.name == "ioBoard" && p.value == "cyberlead";
-  });
-}
-
 u8 MGEXIOPortRead(void*, MGEXIOBoard::Port port)
 {
   return s_runtime->medal_cabinet.ReadPort(port);
@@ -1223,7 +1212,8 @@ void CreateExpansionBoard(RuntimeState& runtime)
   runtime.exio.reset();
   runtime.mgexio.reset();
   runtime.cabinet_inputs = &FindCabinetInputs(runtime.set_name);
-  runtime.cyberlead_cabinet = HasCyberLeadCabinet(runtime.set_name);
+  runtime.cyberlead_cabinet = Arcade::JVS::NamcoCyberLead::IsCabinetAttached(
+    runtime.set_name, g_settings.arcade_namco_cyber_lead_cabinet_selected);
   runtime.cyberlead_led_enabled = false;
 
   // A Cyber Lead cabinet connects its JVS I/O through a full EXIO board.
@@ -1241,6 +1231,11 @@ void CreateExpansionBoard(RuntimeState& runtime)
     runtime.cyberlead_cabinet = false;
     return;
   }
+
+  // The JVS master is the full EXIO's TMP95C061 on SC1. EXIO(G) leaves the MCU unpopulated, and the
+  // P-DRIVE stepping-motor board occupies SC1 when present.
+  if (type == ExpansionBoard::EXIOG || !runtime.pdrive_firmware.empty())
+    runtime.cyberlead_cabinet = false;
 
   runtime.jvs_bus.Reset();
   runtime.cyberlead.Reset();
