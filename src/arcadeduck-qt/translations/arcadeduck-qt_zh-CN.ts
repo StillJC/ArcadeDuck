@@ -13122,24 +13122,9 @@ Attached modes reserve space above or below the game image. Separate Window can 
 附加模式会在游戏画面上方或下方预留空间。独立窗口可放置在其他显示器上。基于固件的显示需要在 BIOS 文件夹中放置 namco_cyberlead_led.zip（或单独的 cl1-leda.ic5）。</translation>
     </message>
     <message>
-        <location filename="../settingswindow.cpp" line="436"/>
-        <source>Original Cabinet</source>
-        <translation>原始机台</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="437"/>
-        <source>Cyber Lead Cabinet</source>
-        <translation>Cyber Lead 机台</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="445"/>
-        <source>Cabinet:</source>
-        <translation>机台：</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="448"/>
-        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
-        <translation>将游戏连接到南梦宫 Cyber Lead 机台的 JVS I/O 主板。LED 面板仅在此机台中可用。在 System 12 上，机台的 JVS 控制会取代主板输入；在 System 10 上，由游戏决定读取机台的 JVS 控制还是主板自身的输入。ArcadeDuck 使用相同的控制器绑定驱动两者。更改此设置后请重新启动游戏。</translation>
+        <location filename="../settingswindow.cpp" line="444"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board and runs its LED firmware board. When disabled the game keeps its original I/O. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>将游戏连接到南梦宫 Cyber Lead 机台的 JVS I/O 主板并运行其 LED 固件主板。禁用时，游戏保留原有的 I/O。在 System 12 上，机台的 JVS 控制会取代主板输入；在 System 10 上，由游戏决定读取机台的 JVS 控制还是主板自身的输入。ArcadeDuck 使用相同的控制器绑定驱动两者。更改此设置后请重新启动游戏。</translation>
     </message>
     <message>
         <location filename="../settingswindow.ui" line="20"/>

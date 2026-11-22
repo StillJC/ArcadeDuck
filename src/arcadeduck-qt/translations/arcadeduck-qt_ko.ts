@@ -13122,24 +13122,9 @@ Attached modes reserve space above or below the game image. Separate Window can 
 부착 모드는 게임 화면 위나 아래에 공간을 확보합니다. 별도 창은 다른 모니터에 배치할 수 있습니다. 펌웨어 기반 화면에는 BIOS 폴더에 namco_cyberlead_led.zip(또는 단독 cl1-leda.ic5)이 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../settingswindow.cpp" line="436"/>
-        <source>Original Cabinet</source>
-        <translation>원래 캐비닛</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="437"/>
-        <source>Cyber Lead Cabinet</source>
-        <translation>사이버 리드 캐비닛</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="445"/>
-        <source>Cabinet:</source>
-        <translation>캐비닛:</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="448"/>
-        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
-        <translation>게임을 남코 사이버 리드 캐비닛의 JVS I/O 보드에 연결합니다. LED 패널은 이 캐비닛에서만 사용할 수 있습니다. System 12에서는 캐비닛의 JVS 조작이 메인보드 입력을 대체하며, System 10에서는 캐비닛의 JVS 조작과 보드 자체 입력 중 무엇을 읽을지 게임이 결정합니다. ArcadeDuck은 두 가지 모두를 같은 컨트롤러 할당으로 조작합니다. 이 설정을 변경한 후 게임을 다시 시작하세요.</translation>
+        <location filename="../settingswindow.cpp" line="444"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board and runs its LED firmware board. When disabled the game keeps its original I/O. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>게임을 남코 사이버 리드 캐비닛의 JVS I/O 보드에 연결하고 LED 펌웨어 보드를 실행합니다. 비활성화하면 게임은 원래 I/O를 유지합니다. System 12에서는 캐비닛의 JVS 조작이 메인보드 입력을 대체하며, System 10에서는 캐비닛의 JVS 조작과 보드 자체 입력 중 무엇을 읽을지 게임이 결정합니다. ArcadeDuck은 두 가지 모두를 같은 컨트롤러 할당으로 조작합니다. 이 설정을 변경한 후 게임을 다시 시작하세요.</translation>
     </message>
     <message>
         <location filename="../settingswindow.cpp" line="74"/>

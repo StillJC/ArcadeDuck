@@ -288,10 +288,10 @@ NamcoCyberLead::CabinetSupport NamcoCyberLead::GetCabinetSupport(std::string_vie
   return CabinetSupport::None;
 }
 
-bool NamcoCyberLead::IsCabinetAttached(std::string_view serial, bool cabinet_selected)
+bool NamcoCyberLead::IsCabinetAttached(std::string_view serial, bool led_hardware_enabled)
 {
   const CabinetSupport support = GetCabinetSupport(serial);
-  return support == CabinetSupport::Native || (support == CabinetSupport::Compatible && cabinet_selected);
+  return support == CabinetSupport::Native || (support == CabinetSupport::Compatible && led_hardware_enabled);
 }
 
 bool NamcoCyberLead::IsCyberLeadGame(std::string_view serial)

@@ -13127,24 +13127,9 @@ Attached modes reserve space above or below the game image. Separate Window can 
 Os modos acoplados reservam espaço acima ou abaixo da imagem do jogo. A janela separada pode ser colocada em outro monitor. A exibição baseada no firmware requer namco_cyberlead_led.zip (ou cl1-leda.ic5 avulso) na pasta da BIOS.</translation>
     </message>
     <message>
-        <location filename="../settingswindow.cpp" line="436"/>
-        <source>Original Cabinet</source>
-        <translation>Gabinete original</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="437"/>
-        <source>Cyber Lead Cabinet</source>
-        <translation>Gabinete Cyber Lead</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="445"/>
-        <source>Cabinet:</source>
-        <translation>Gabinete:</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="448"/>
-        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
-        <translation>Conecta o jogo à placa de E/S JVS de um gabinete Namco Cyber Lead. O painel de LED só está disponível com este gabinete. No System 12, os controles JVS do gabinete substituem as entradas da placa-mãe; no System 10, o jogo decide se lê os controles JVS do gabinete ou as entradas da própria placa. O ArcadeDuck aciona ambos com os mesmos mapeamentos do controle. Reinicie o jogo após alterar esta configuração.</translation>
+        <location filename="../settingswindow.cpp" line="444"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board and runs its LED firmware board. When disabled the game keeps its original I/O. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Conecta o jogo à placa de E/S JVS de um gabinete Namco Cyber Lead e executa sua placa de firmware de LED. Quando desativado, o jogo mantém sua E/S original. No System 12, os controles JVS do gabinete substituem as entradas da placa-mãe; no System 10, o jogo decide se lê os controles JVS do gabinete ou as entradas da própria placa. O ArcadeDuck aciona ambos com os mesmos mapeamentos do controle. Reinicie o jogo após alterar esta configuração.</translation>
     </message>
     <message>
         <location filename="../settingswindow.ui" line="20"/>

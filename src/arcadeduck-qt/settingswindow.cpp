@@ -430,28 +430,6 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
                             "(or loose cl1-leda.ic5) in the BIOS folder.")
                            .arg(led_behavior));
 
-    if (cabinet_support == NamcoCyberLead::CabinetSupport::Compatible)
-    {
-      QComboBox* cabinet_combo = new QComboBox(group);
-      cabinet_combo->addItem(tr("Original Cabinet"), false);
-      cabinet_combo->addItem(tr("Cyber Lead Cabinet"), true);
-      cabinet_combo->setCurrentIndex(
-        getBoolValue("ArcadeMachine", "NamcoCyberLeadCabinet", false).value_or(false) ? 1 : 0);
-      connect(cabinet_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-              [this, cabinet_combo](int index) {
-                setBoolSettingValue("ArcadeMachine", "NamcoCyberLeadCabinet",
-                                    cabinet_combo->itemData(index).toBool());
-              });
-      const QString cabinet_label = tr("Cabinet:");
-      form->addRow(cabinet_label, cabinet_combo);
-      registerWidgetHelp(cabinet_combo, cabinet_label, tr("Original Cabinet"),
-                         tr("Connects the game to a Namco Cyber Lead cabinet's JVS I/O board. The LED panel is only "
-                            "available with this cabinet. On System 12 the cabinet's JVS controls replace the "
-                            "motherboard inputs; on System 10 the game decides whether it reads the cabinet's JVS "
-                            "controls or its own board inputs. ArcadeDuck drives both from the same controller "
-                            "bindings. Restart the game after changing this setting."));
-    }
-
     QCheckBox* hardware_check = new QCheckBox(group);
     hardware_check->setChecked(
       getBoolValue("ArcadeMachine", "NamcoSystem12CyberLeadLEDHardwareEnabled", false).value_or(false));
@@ -460,9 +438,21 @@ QWidget* SettingsWindow::createArcadeOperatorPage()
     });
     const QString hardware_label = tr("Enable LED Hardware Emulation:");
     form->addRow(hardware_label, hardware_check);
-    registerWidgetHelp(hardware_check, hardware_label, tr("Disabled"),
-                       tr("Runs the Cyber Lead LED firmware board. Restart the game after changing this setting. "
-                          "Cabinet JVS controls remain available when it is disabled."));
+    if (cabinet_support == NamcoCyberLead::CabinetSupport::Compatible)
+    {
+      registerWidgetHelp(hardware_check, hardware_label, tr("Disabled"),
+                         tr("Connects the game to a Namco Cyber Lead cabinet's JVS I/O board and runs its LED firmware "
+                            "board. When disabled the game keeps its original I/O. On System 12 the cabinet's JVS "
+                            "controls replace the motherboard inputs; on System 10 the game decides whether it reads "
+                            "the cabinet's JVS controls or its own board inputs. ArcadeDuck drives both from the same "
+                            "controller bindings. Restart the game after changing this setting."));
+    }
+    else
+    {
+      registerWidgetHelp(hardware_check, hardware_label, tr("Disabled"),
+                         tr("Runs the Cyber Lead LED firmware board. Restart the game after changing this setting. "
+                            "Cabinet JVS controls remain available when it is disabled."));
+    }
 
     QComboBox* mode_combo = new QComboBox(group);
     mode_combo->addItem(tr("Off"), 0);

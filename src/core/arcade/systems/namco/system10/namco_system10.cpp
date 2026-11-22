@@ -1213,7 +1213,7 @@ void CreateExpansionBoard(RuntimeState& runtime)
   runtime.mgexio.reset();
   runtime.cabinet_inputs = &FindCabinetInputs(runtime.set_name);
   runtime.cyberlead_cabinet = Arcade::JVS::NamcoCyberLead::IsCabinetAttached(
-    runtime.set_name, g_settings.arcade_namco_cyber_lead_cabinet_selected);
+    runtime.set_name, g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled);
   runtime.cyberlead_led_enabled = false;
 
   // A Cyber Lead cabinet connects its JVS I/O through a full EXIO board.

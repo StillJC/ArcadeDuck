@@ -89,8 +89,8 @@ public:
   };
 
   // Whether the game runs in a Cyber Lead cabinet. Native titles use the CL1-I/OB as their normal I/O board
-  // (ioBoard: cyberlead); compatible titles keep their own I/O unless the cabinet is selected in the game's
-  // settings (cyberLeadCabinet: compatible).
+  // (ioBoard: cyberlead); compatible titles (cyberLeadCabinet: compatible) keep their own I/O unless Cyber Lead LED
+  // hardware emulation is enabled, which attaches the cabinet's CL1-I/OB and LED PCB.
   enum class CabinetSupport : u8
   {
     None,
@@ -101,8 +101,9 @@ public:
   static LEDCapability GetLEDCapability(std::string_view serial);
   static CabinetSupport GetCabinetSupport(std::string_view serial);
 
-  // Whether the CL1-I/OB JVS node, and with it the LED PCB, is attached for this game.
-  static bool IsCabinetAttached(std::string_view serial, bool cabinet_selected);
+  // Whether the CL1-I/OB JVS node is attached for this game. Native titles always have it, even with the LED
+  // hardware disabled; compatible titles only when the LED hardware is enabled.
+  static bool IsCabinetAttached(std::string_view serial, bool led_hardware_enabled);
 
   // True for database games that can run in a Cyber Lead cabinet.
   static bool IsCyberLeadGame(std::string_view serial);

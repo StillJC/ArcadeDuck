@@ -13127,24 +13127,9 @@ Attached modes reserve space above or below the game image. Separate Window can 
 付属モードではゲーム画面の上または下に表示領域を確保します。別ウィンドウは他のモニターに配置できます。ファームウェアによる表示には、BIOSフォルダーに namco_cyberlead_led.zip（または単体の cl1-leda.ic5）が必要です。</translation>
     </message>
     <message>
-        <location filename="../settingswindow.cpp" line="436"/>
-        <source>Original Cabinet</source>
-        <translation>オリジナル筐体</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="437"/>
-        <source>Cyber Lead Cabinet</source>
-        <translation>サイバーリード筐体</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="445"/>
-        <source>Cabinet:</source>
-        <translation>筐体:</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="448"/>
-        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
-        <translation>ゲームをナムコ サイバーリード筐体のJVS I/O基板に接続します。LEDパネルはこの筐体でのみ使用できます。System 12では筐体のJVS操作がマザーボードの入力に置き換わり、System 10では筐体のJVS操作と基板自身の入力のどちらを読むかをゲームが決めます。ArcadeDuckは両方を同じコントローラー割り当てで操作します。この設定を変更した後はゲームを再起動してください。</translation>
+        <location filename="../settingswindow.cpp" line="444"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board and runs its LED firmware board. When disabled the game keeps its original I/O. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>ゲームをナムコ サイバーリード筐体のJVS I/O基板に接続し、LEDファームウェア基板を動作させます。無効の場合、ゲームは元のI/Oを使用します。System 12では筐体のJVS操作がマザーボードの入力に置き換わり、System 10では筐体のJVS操作と基板自身の入力のどちらを読むかをゲームが決めます。ArcadeDuckは両方を同じコントローラー割り当てで操作します。この設定を変更した後はゲームを再起動してください。</translation>
     </message>
     <message>
         <location filename="../settingswindow.ui" line="20"/>

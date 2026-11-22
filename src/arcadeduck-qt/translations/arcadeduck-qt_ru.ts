@@ -13378,24 +13378,9 @@ Attached modes reserve space above or below the game image. Separate Window can 
 Прикреплённые режимы резервируют место над или под изображением игры. Отдельное окно можно разместить на другом мониторе. Для отображения на основе прошивки нужен namco_cyberlead_led.zip (или отдельный cl1-leda.ic5) в папке BIOS.</translation>
     </message>
     <message>
-        <location filename="../settingswindow.cpp" line="436"/>
-        <source>Original Cabinet</source>
-        <translation>Исходный корпус</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="437"/>
-        <source>Cyber Lead Cabinet</source>
-        <translation>Корпус Cyber Lead</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="445"/>
-        <source>Cabinet:</source>
-        <translation>Корпус:</translation>
-    </message>
-    <message>
-        <location filename="../settingswindow.cpp" line="448"/>
-        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board. The LED panel is only available with this cabinet. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
-        <translation>Подключает игру к плате JVS-ввода/вывода корпуса Namco Cyber Lead. LED-панель доступна только с этим корпусом. В System 12 JVS-управление корпуса заменяет входы материнской платы; в System 10 игра сама решает, читать ли JVS-управление корпуса или собственные входы платы. ArcadeDuck управляет обоими через одни и те же назначения контроллера. Перезапустите игру после изменения этого параметра.</translation>
+        <location filename="../settingswindow.cpp" line="444"/>
+        <source>Connects the game to a Namco Cyber Lead cabinet&apos;s JVS I/O board and runs its LED firmware board. When disabled the game keeps its original I/O. On System 12 the cabinet&apos;s JVS controls replace the motherboard inputs; on System 10 the game decides whether it reads the cabinet&apos;s JVS controls or its own board inputs. ArcadeDuck drives both from the same controller bindings. Restart the game after changing this setting.</source>
+        <translation>Подключает игру к плате JVS-ввода/вывода корпуса Namco Cyber Lead и запускает её плату LED-прошивки. Если параметр отключён, игра сохраняет исходный ввод/вывод. В System 12 JVS-управление корпуса заменяет входы материнской платы; в System 10 игра сама решает, читать ли JVS-управление корпуса или собственные входы платы. ArcadeDuck управляет обоими через одни и те же назначения контроллера. Перезапустите игру после изменения этого параметра.</translation>
     </message>
     <message>
         <location filename="../settingswindow.ui" line="20"/>

@@ -3708,7 +3708,7 @@ bool Initialize(LoadedContent content, Error* error)
   RuntimeState runtime;
   runtime.content = std::move(content);
   runtime.cyberlead_cabinet = Arcade::JVS::NamcoCyberLead::IsCabinetAttached(
-    runtime.content.set_name, g_settings.arcade_namco_cyber_lead_cabinet_selected);
+    runtime.content.set_name, g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled);
   runtime.cyberlead_led_enabled =
     runtime.cyberlead_cabinet && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
   if (runtime.cyberlead_led_enabled)
