@@ -16539,6 +16539,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Seishun-Quiz Colorful High School (CHS1 Ver.A)"
       cyberLeadLed: "enable"
+      cyberLeadCabinet: "compatible"
 
   ippo:
     archive: "ippo.zip"
