@@ -58,7 +58,7 @@ public:
   void SaveLEDFlash();
 
   // Whether a save state can be taken now. With the LED PCB running, saving waits until:
-  //   - the LED C77 has answered the profile handshake,
+  //   - the LED C77 has answered the profile handshake, or a status (71/04) that closed setup without one,
   //   - the LED data is in place: the game has switched the LED to display mode (71/08) since the last upload
   //     that changed the flash (first-boot installation ends this way; an installed board goes straight to
   //     display mode), or every committed upload since the handshake rewrote identical data,

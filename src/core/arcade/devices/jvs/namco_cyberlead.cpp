@@ -600,7 +600,14 @@ void NamcoCyberLead::EvaluateLinkState()
       }
       else if (LEDReplyAccepted())
       {
-        m_link.setup_closed_since_query = m_link.handshake_complete;
+        // A status answer with no profile query before it closes setup without an installation: the game sent
+        // 71/04 directly, or the I/O PCB's own post-addressing timeout (C39C) expired.
+        if (!m_link.handshake_complete)
+        {
+          m_link.upload_change_baseline = m_led_device.GetFlashContentChanges();
+          m_link.handshake_complete = true;
+        }
+        m_link.setup_closed_since_query = true;
         m_link.state = LinkState::Idle;
       }
       break;
