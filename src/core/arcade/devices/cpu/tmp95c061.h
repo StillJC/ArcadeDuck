@@ -7,6 +7,7 @@
 
 #include <array>
 #include <deque>
+#include <vector>
 
 class StateWrapper;
 
@@ -78,7 +79,7 @@ public:
   // Runs for the given number of states. Overrun is carried into the next call.
   void Run(u32 states);
 
-  // Serializes the peripherals and, through the single global TLCS-900/H interpreter, the CPU. Callbacks
+  // Serializes the peripherals and, through the shared TLCS-900/H interpreter, this device's CPU. Callbacks
   // and the direct-memory window are host configuration.
   bool DoState(StateWrapper& sw);
 
@@ -117,7 +118,12 @@ private:
   static void ControlWrite(void* context, u8 reg, unsigned size, u32 value);
 
   void ResetPeripherals();
+
+  // The TLCS-900/H interpreter keeps one global register file. A board with two of these MCUs (MEM(P3) and a full
+  // EXIO) runs them alternately, so binding a device saves the previous device's CPU context and restores its own.
   void BindCore();
+  void SaveCoreContext();
+  void LoadCoreContext();
 
   u8 Read8(u32 address);
   void Write8(u32 address, u8 value);
@@ -145,6 +151,9 @@ private:
   bool m_in_reset = true;
   bool m_irq_inhibit = false;
   s64 m_state_balance = 0;
+
+  // CPU context while another device owns the interpreter; empty until this device has been unbound once.
+  std::vector<u8> m_core_context;
 
   std::array<u8, static_cast<size_t>(Port::Count)> m_port_latch{};
   std::array<u8, static_cast<size_t>(Port::Count)> m_port_control{};

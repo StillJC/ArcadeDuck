@@ -16,6 +16,7 @@
 #include "util/state_wrapper.h"
 
 #include <algorithm>
+#include <cstring>
 
 namespace Arcade
 {
@@ -118,12 +119,48 @@ void TMP95C061::SetCallbacks(const Callbacks& callbacks)
   m_callbacks = callbacks;
 }
 
+void TMP95C061::SaveCoreContext()
+{
+  m_core_context.clear();
+  ArcadeDuckTLCS900HDoState(
+    [](void* context, void* data, size_t size) {
+      std::vector<u8>& buffer = *static_cast<std::vector<u8>*>(context);
+      const u8* const bytes = static_cast<const u8*>(data);
+      buffer.insert(buffer.end(), bytes, bytes + size);
+    },
+    &m_core_context);
+}
+
+void TMP95C061::LoadCoreContext()
+{
+  if (m_core_context.empty())
+    return;
+
+  struct Cursor
+  {
+    const std::vector<u8>* buffer;
+    size_t offset;
+  } cursor = {&m_core_context, 0};
+  ArcadeDuckTLCS900HDoState(
+    [](void* context, void* data, size_t size) {
+      Cursor& c = *static_cast<Cursor*>(context);
+      std::memcpy(data, c.buffer->data() + c.offset, size);
+      c.offset += size;
+    },
+    &cursor);
+}
+
 void TMP95C061::BindCore()
 {
   if (s_bound_device == this)
     return;
 
-  // The TLCS-900/H interpreter is a single global instance.
+  // The TLCS-900/H interpreter is a single global instance: park the previous device's CPU context and resume this
+  // device's own.
+  if (s_bound_device)
+    s_bound_device->SaveCoreContext();
+  LoadCoreContext();
+
   ArcadeDuckTLCS900HCallbacks callbacks = {};
   callbacks.context = this;
   callbacks.read8 = &TMP95C061::BusRead8;
