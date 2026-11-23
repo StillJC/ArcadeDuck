@@ -1239,6 +1239,7 @@ void CreateExpansionBoard(RuntimeState& runtime)
 
   runtime.jvs_bus.Reset();
   runtime.cyberlead.Reset();
+  runtime.cyberlead.SetButtonsOnDirectionLines(runtime.cabinet_inputs->input_profile == "squizchs");
   runtime.jvs_addressed = false;
   runtime.cyberlead_led_enabled =
     runtime.cyberlead_cabinet && g_settings.arcade_namco_system12_cyber_lead_led_hardware_enabled;
