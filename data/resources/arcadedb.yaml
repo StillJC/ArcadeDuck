@@ -15551,7 +15551,7 @@ games:
       emulationFlags: "MACHINE_IMPERFECT_SOUND"
       mameDescription: "Star Trigon (Japan, STT1 Ver.A)"
       cyberLeadLed: "none"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   sugorotc:
     archive: "sugorotc.zip"
