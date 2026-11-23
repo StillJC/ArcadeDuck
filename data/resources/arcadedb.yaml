@@ -6340,7 +6340,7 @@ games:
       stateClass: "namcos12_state"
       emulationFlags: "MACHINE_IMPERFECT_GRAPHICS"
       cyberLeadLed: "none"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   soulclbr:
     archive: "soulclbr.zip"
@@ -7037,7 +7037,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       cyberLeadLed: "enable"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   tenkomorja1:
     archive: "tenkomorja1.zip"
@@ -7084,7 +7084,7 @@ games:
       inputProfile: "namcos12"
       stateClass: "namcos12_state"
       cyberLeadLed: "enable"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   fgtlayer:
     archive: "fgtlayer.zip"
@@ -7219,7 +7219,7 @@ games:
       inputProfile: "pacapp"
       stateClass: "namcos12_state"
       cyberLeadLed: "none"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   ptblank2:
     archive: "ptblank2.zip"
@@ -7831,7 +7831,7 @@ games:
       inputProfile: "pacapp2"
       stateClass: "namcos12_state"
       cyberLeadLed: "none"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   mrdrillr:
     archive: "mrdrillr.zip"
@@ -8076,7 +8076,7 @@ games:
       inputProfile: "pacapp2"
       stateClass: "namcos12_state"
       cyberLeadLed: "none"
-      cyberLeadCabinet: "compatible"
+      ioBoard: "cyberlead"
 
   aquarush:
     archive: "aquarush.zip"
