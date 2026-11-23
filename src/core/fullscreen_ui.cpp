@@ -5249,6 +5249,8 @@ void FullscreenUI::DrawPauseMenu()
     }
 
     EndMenuButtons();
+    if (s_current_pause_submenu == PauseSubMenu::None)
+      ImGui::NavMoveRequestTryWrapping(ImGui::GetCurrentWindow(), ImGuiNavMoveFlags_LoopY);
 
     EndFullscreenWindow();
   }
